@@ -14,3 +14,7 @@ GCP_SERVICE_ACCOUNT_CREDENTIALS = getenv_or_action(
 GOOGLE_BIGQUERY_PAGE_SIZE = int(
     getenv_or_action("GOOGLE_BIGQUERY_PAGE_SIZE", default="100")
 )
+PIC_TOKEN = getenv_or_action("PIC_TOKEN", action="raise")
+USE_LOCAL_API = (
+    getenv_or_action("USE_LOCAL_API", default="false", action="ignore") == "true"
+)
