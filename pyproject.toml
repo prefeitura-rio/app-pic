@@ -1,0 +1,25 @@
+[project]
+name = "app-pic"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "google-auth>=2.43.0",
+    "google-cloud-bigquery>=3.38.0",
+    "loguru>=0.7.3",
+    "numpy>=2.3.5",
+    "python-dotenv>=1.2.1",
+]
+
+
+
+
+
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
