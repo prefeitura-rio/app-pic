@@ -1,33 +1,48 @@
 import { auth, signOut } from "@/auth";
+import { Button } from "@/app/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/card";
 
 export default async function Home() {
   const session = await auth();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black">
+    <div className="flex min-h-screen items-center justify-center bg-background font-sans">
+      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-background">
         <div className="flex flex-col items-center gap-6 text-center w-full">
-          <h1 className="text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
+          <h1 className="text-3xl font-semibold leading-10 tracking-tight text-foreground">
             app-pic Dashboard
           </h1>
 
           {session && (
             <div className="flex flex-col gap-4 w-full max-w-2xl">
-              <div className="p-6 border border-zinc-200 dark:border-zinc-800 rounded-lg">
-                <h2 className="text-xl font-medium mb-4">Session Info</h2>
-                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
-                  Logged in as: <strong>{session.user?.email}</strong>
-                </p>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl">Session Info</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Logged in as: <strong className="text-foreground">{session.user?.email}</strong>
+                  </p>
+                </CardContent>
+              </Card>
 
-              <div className="p-6 border border-zinc-200 dark:border-zinc-800 rounded-lg">
-                <h2 className="text-xl font-medium mb-4">Access Token</h2>
-                <div className="bg-zinc-100 dark:bg-zinc-900 p-4 rounded overflow-x-auto">
-                  <code className="text-xs break-all">
-                    {session.accessToken || "No access token"}
-                  </code>
-                </div>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl">Access Token</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-muted p-4 rounded-md overflow-x-auto">
+                    <code className="text-xs break-all text-foreground">
+                      {session.accessToken || "No access token"}
+                    </code>
+                  </div>
+                </CardContent>
+              </Card>
 
               <form
                 action={async () => {
@@ -35,12 +50,9 @@ export default async function Home() {
                   await signOut();
                 }}
               >
-                <button
-                  type="submit"
-                  className="w-full flex h-12 items-center justify-center rounded-full bg-red-600 px-5 text-white transition-colors hover:bg-red-700"
-                >
+                <Button variant="destructive" className="w-full" type="submit">
                   Sign Out
-                </button>
+                </Button>
               </form>
             </div>
           )}
