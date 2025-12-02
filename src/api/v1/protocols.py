@@ -10,11 +10,12 @@ PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
 
 router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
+    # dependencies=[Depends(verify_jwt)],
 )
 
-@router.get("/summary", summary="Resumo de Protocolos", response_model=List[Dict[str, Any]])
-async def get_protocols_summary() -> List[Dict[str, Any]]:
+
+@router.get("/summary", summary="Resumo de Protocolos", response_model=Dict[str, Any])
+async def get_protocols_summary() -> Dict[str, Any]:
     """
     Retorna resumo de violações de protocolos.
     """

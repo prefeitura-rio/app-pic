@@ -68,6 +68,7 @@ class FileBackend(StorageBackend):
     def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
         file_path = self._get_file_path(key)
         try:
+            file_path.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
             with open(file_path, "wb") as f:
                 pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
@@ -152,19 +153,6 @@ class CacheManager:
         now = time.time()
         metadata["checked_at"] = now
         metadata["checked_count"] = metadata.get("checked_count", 0) + 1
-
-        # Re-calculate expires_in based on original TTL and current time
-        if "created_at" in metadata and "ttl" in metadata:
-            remaining_ttl = max(0, (metadata["created_at"] + metadata["ttl"]) - now)
-            metadata["expires_in"] = remaining_ttl
-
-        # Save updated metadata (only needed for File if we want `checked_at` persisted)
-        # For Redis, this would overwrite the entire key, resetting its TTL, which is not desired.
-        # So we only save metadata updates for File.
-        if self.mode in (CacheMode.JSON, CacheMode.BOTH) and not from_redis:
-            self.file_backend.save(
-                query_hash, data, metadata.get("ttl", self.default_ttl)
-            )
 
         return data["data"]
 

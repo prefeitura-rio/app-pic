@@ -29,7 +29,7 @@ async def get_participants(
     SELECT 
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    ORDER BY cpf
+    ORDER BY cpf DESC
     """
     logger.debug(f"Executing query: {query}")
     try:
@@ -52,7 +52,7 @@ async def get_participant_details(cpf: str) -> Dict[str, Any]:
     SELECT 
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    WHERE cpf = '{cpf_clean}'
+    WHERE cpf_particao = {int(cpf_clean)}
     LIMIT 1
     """
     logger.debug(f"Executing query: {query}")
@@ -60,7 +60,7 @@ async def get_participant_details(cpf: str) -> Dict[str, Any]:
         results = get_bigquery_result(query=query)
         if not results:
             raise HTTPException(status_code=404, detail="Participante não encontrado")
-        return results[0]
+        return results
     except HTTPException:
         raise
     except Exception as e:
@@ -71,9 +71,9 @@ async def get_participant_details(cpf: str) -> Dict[str, Any]:
 @router.get(
     "/{cpf}/protocols",
     summary="Protocolos do participante",
-    response_model=List[Dict[str, Any]],
+    response_model=Dict[str, Any],
 )
-async def get_participant_protocols(cpf: str) -> List[Dict[str, Any]]:
+async def get_participant_protocols(cpf: str) -> Dict[str, Any]:
     """
     Lista os protocolos de um participante específico.
     """
@@ -83,7 +83,7 @@ async def get_participant_protocols(cpf: str) -> List[Dict[str, Any]]:
     SELECT 
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_protocolo_detalhes`
-    WHERE cpf = '{cpf_clean}'
+    WHERE cpf_particao = {int(cpf_clean)}
     ORDER BY protocolo_secretaria, protocolo_id
     """
     logger.debug(f"Executing query: {query}")

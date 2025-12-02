@@ -10,11 +10,12 @@ PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
 
 router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
+    # dependencies=[Depends(verify_jwt)],
 )
 
-@router.get("/", summary="Métricas do Dashboard", response_model=List[Dict[str, Any]])
-async def get_dashboard_metrics() -> List[Dict[str, Any]]:
+
+@router.get("/", summary="Métricas do Dashboard", response_model=Dict[str, Any])
+async def get_dashboard_metrics() -> Dict[str, Any]:
     """
     Retorna métricas agregadas para o dashboard principal.
     """
