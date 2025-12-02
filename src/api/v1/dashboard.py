@@ -30,25 +30,20 @@ async def get_dashboard_metrics(
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_dashboard`
     """
     logger.debug(f"Fetching cached data for dashboard: {query}")
-    
+    logger.info(f"Dashboard filters received: bairro={filters.bairro}, cre={filters.cre}, cras={filters.cras}, safra={filters.safra}, grupo={filters.grupo}, status={filters.status}")
+
     try:
         # Get DataFrame from Manager
         df = DataManager.get_dataset(query)
-        
-        # Apply Filters using Manager (Note: endpoint_dashboard might not have these columns, 
-        # so this might effectively be a no-op or we should check columns first)
-        # Since endpoint_dashboard is a summary, standard participant filters (bairro, cre) 
-        # usually don't apply unless the dashboard table is granular.
-        # We will attempt to filter if columns exist, otherwise return as is.
-        
-        # Checking columns availability for filtering is handled implicitly by DataManager if we wanted,
-        # but here we just return the data as it is "processed from BQ".
-        
-        # If the dashboard table had historical data or regional breakdowns, we would filter here.
-        # Assuming single row or compatible rows.
-        
-        # Filter logic is allowed ("so devemos aplicar filtros"), but only if applicable.
-        # df = DataManager.apply_filters(df, filters) 
+        logger.debug(f"Dashboard total rows before filtering: {len(df)}")
+
+        # Apply Filters using Manager
+        # Note: The dashboard table should have the necessary columns for filtering
+        # If filtering a pre-aggregated table, we need to re-fetch participant data
+        # and re-aggregate, OR the dashboard table should be granular enough.
+        # For now, we'll attempt to apply filters if columns exist.
+        df = DataManager.apply_filters(df, filters)
+        logger.debug(f"Dashboard total rows after filtering: {len(df)}")
 
         if df.empty:
              return {

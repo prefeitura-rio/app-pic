@@ -2,23 +2,27 @@ from typing import List, Optional, TypeVar, Generic, Any
 from pydantic import BaseModel, Field
 from datetime import date, datetime
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 # --- Request Models ---
 
+
 class PaginationParams(BaseModel):
     page: int = Field(1, ge=1, description="Page number")
-    page_size: int = Field(50, ge=1, le=100000, description="Items per page")
+    page_size: int = Field(100, ge=1, le=100000, description="Items per page")
+
 
 class CommonFilters(BaseModel):
     bairro: Optional[str] = None
     cre: Optional[str] = None
     cras: Optional[str] = None
-    safra: Optional[str] = None # Keeping as string for flexibility in query params
+    safra: Optional[str] = None  # Keeping as string for flexibility in query params
     grupo: Optional[str] = None
     status: Optional[str] = None
 
+
 # --- Response Models ---
+
 
 class PaginationMeta(BaseModel):
     page: int
@@ -28,38 +32,69 @@ class PaginationMeta(BaseModel):
     cache_hit: bool
     profiling: Optional[Any] = None
 
+
 class PaginatedResponse(BaseModel, Generic[T]):
     data: List[T]
     meta: PaginationMeta
 
-class FiltroOpcao(BaseModel):
+
+# --- Smart Filter Options with Counts ---
+
+
+class FilterOptionCounts(BaseModel):
+    """Contadores para cada opção de filtro"""
+    total: int = 0
+    crianca: int = 0
+    gestante: int = 0
+    ativo: int = 0
+    inativo: int = 0
+
+
+class FilterOptionItem(BaseModel):
+    """Item de filtro com contadores"""
     id: str
     label: str
-    tipo: str  # "bairro", "cap", "cre", "cras", "safra", "grupo", "status"
-    parent_id: Optional[str] = None 
+    counts: FilterOptionCounts
 
-class FilterOptionsResponse(BaseModel):
-    options: List[FiltroOpcao]
+
+class SmartFilterOptions(BaseModel):
+    """Opções de filtros inteligentes com contadores por combinação"""
+    bairros: List[FilterOptionItem] = []
+    grupos: List[FilterOptionItem] = []
+    cohorts: List[FilterOptionItem] = []
+    status_list: List[FilterOptionItem] = []
+    cres: List[FilterOptionItem] = []
+    cras: List[FilterOptionItem] = []
+    escolas: List[FilterOptionItem] = []
+    clinicas: List[FilterOptionItem] = []
+    total_participantes: int = 0
+
 
 # Shared / Nested Models
+
 
 class DistribuicaoMotivoSaida(BaseModel):
     motivo: Optional[str] = None
     total: Optional[int] = None
 
+
 class DistribuicaoGrupo(BaseModel):
     grupo: Optional[str] = None
     total_participantes: Optional[int] = None
+
 
 class DistribuicaoBairro(BaseModel):
     bairro: Optional[str] = None
     total_participantes: Optional[int] = None
 
+
 class DistribuicaoSafra(BaseModel):
-    safra: Optional[str] = None # Changed to str to match DataFrame output usually
+    safra: Optional[str] = None  # Changed to str to match DataFrame output usually
     total_participantes: Optional[int] = None
 
+
 # Endpoint Models
+
 
 class Dashboard(BaseModel):
     total_participantes_ativos: Optional[int] = 0
@@ -85,6 +120,7 @@ class Dashboard(BaseModel):
     distribuicao_por_safra: List[DistribuicaoSafra] = []
     data_atualizacao: Optional[datetime] = None
 
+
 class FiltroRegional(BaseModel):
     id: Optional[str] = None
     nome: Optional[str] = None
@@ -92,6 +128,7 @@ class FiltroRegional(BaseModel):
     secretaria: Optional[str] = None
     bairros: List[str] = []
     data_atualizacao: Optional[datetime] = None
+
 
 class FiltroEquipamento(BaseModel):
     id: Optional[str] = None
@@ -102,6 +139,7 @@ class FiltroEquipamento(BaseModel):
     cep: Optional[str] = None
     bairro: Optional[str] = None
     data_atualizacao: Optional[datetime] = None
+
 
 class Participante(BaseModel):
     cpf: Optional[str] = None
@@ -146,6 +184,7 @@ class Participante(BaseModel):
     nome_clinica_familia: Optional[str] = None
     cpf_particao: Optional[int] = None
 
+
 class ProtocoloDetalhes(BaseModel):
     cpf: Optional[str] = None
     id_membro_familia: Optional[str] = None
@@ -161,6 +200,7 @@ class ProtocoloDetalhes(BaseModel):
     protocolo_status_label: Optional[str] = None
     cpf_particao: Optional[int] = None
 
+
 class ProtocoloResumo(BaseModel):
     protocolo_secretaria: Optional[str] = None
     protocolo_id: Optional[str] = None
@@ -173,6 +213,7 @@ class ProtocoloResumo(BaseModel):
     percentual_violados: Optional[float] = None
     nivel_prioridade: Optional[str] = None
     data_atualizacao: Optional[datetime] = None
+
 
 class EvolucaoSafra(BaseModel):
     safra: Optional[date] = None

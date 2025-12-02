@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Any, Optional, List
+from typing import Any, Optional
 
 from src.core.security.jwt import verify_jwt
 from src.config import env
@@ -8,8 +8,6 @@ from src.api.v1.schemas import (
     FiltroEquipamento,
     FiltroRegional,
     PaginatedResponse,
-    FilterOptionsResponse,
-    FiltroOpcao,
 )
 from src.utils.data_manager import DataManager
 
@@ -21,67 +19,6 @@ router = APIRouter(
 )
 
 
-@router.get(
-    "/options",
-    summary="Opções de Filtros Inteligentes",
-    response_model=FilterOptionsResponse,
-)
-async def get_smart_filter_options() -> Any:
-    """
-    Retorna todas as opções de filtros baseadas nos dados reais dos participantes.
-    Utiliza o cache da query principal de participantes para performance.
-    """
-    # Use the EXACT same query as 'get_participants' to hit the cache
-    query = f"""
-    SELECT 
-        *
-    FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    ORDER BY cpf DESC
-    """
-    logger.debug(f"Fetching cached data for smart filters: {query}")
-    try:
-        # Get DataFrame via Manager
-        df = DataManager.get_dataset(query)
-
-        if df.empty:
-            return FilterOptionsResponse(options=[])
-
-        options: List[FiltroOpcao] = []
-
-        # Helper to add options
-        def add_options(col_name: str, type_name: str, label_col: str = None):
-            if col_name in df.columns:
-                unique_vals = df[col_name].dropna().unique()
-                for val in unique_vals:
-                    # Logic to determine label (could be improved with a proper lookup map if available in DF)
-                    label = str(val)
-
-                    # Formatting
-                    if type_name == "grupo":
-                        label = str(val).title()
-                    elif type_name == "status":
-                        label = str(val).title()
-                    elif type_name == "cre":
-                        label = f"CRE {val}"
-                    elif type_name == "cras":
-                        label = f"CRAS {val}"
-
-                    options.append(
-                        FiltroOpcao(id=str(val), label=label, tipo=type_name)
-                    )
-
-        add_options("bairro", "bairro")
-        add_options("id_cre", "cre")
-        add_options("id_cras", "cras")
-        add_options("cohort", "safra")
-        add_options("grupo", "grupo")
-        add_options("status", "status")
-
-        return FilterOptionsResponse(options=options)
-
-    except Exception as e:
-        logger.error(f"Error fetching smart filter options: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get(

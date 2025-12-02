@@ -1,23 +1,30 @@
 import { Card, CardContent } from "@/app/components/ui/card";
 import { LucideIcon } from "lucide-react";
+import { ReactNode } from "react";
 
 interface StatCardProps {
   title: string;
   value: string | number;
   description?: string;
-  icon: LucideIcon;
-  trend?: "up" | "down" | "neutral";
+  icon: LucideIcon | ReactNode;
+  trend?: {
+    value: string;
+    isPositive: boolean;
+  };
   variant?: "default" | "success" | "warning" | "accent" | "destructive";
 }
 
-export function StatCard({ 
-  title, 
-  value, 
-  description, 
-  icon: Icon, 
+export function StatCard({
+  title,
+  value,
+  description,
+  icon,
   trend,
-  variant = "default" 
+  variant = "default"
 }: StatCardProps) {
+  // Check if icon is a LucideIcon component or JSX element
+  const isComponent = typeof icon === 'function';
+  const Icon = isComponent ? (icon as LucideIcon) : null;
   const variantStyles = {
     default: "bg-card border-border",
     success: "bg-emerald-50 border-emerald-500", // Tailwind 4 color names or standard palette? Assuming standard.
@@ -45,9 +52,14 @@ export function StatCard({
             {description && (
               <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
             )}
+            {trend && (
+              <p className={`text-xs font-medium mt-1 ${trend.isPositive ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {trend.value}
+              </p>
+            )}
           </div>
           <div className={`${iconVariantStyles[variant]} p-3 rounded-lg shadow-md`}>
-            <Icon className="h-6 w-6" />
+            {Icon ? <Icon className="h-6 w-6" /> : icon}
           </div>
         </div>
       </CardContent>

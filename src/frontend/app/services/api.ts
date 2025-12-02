@@ -1,15 +1,23 @@
-import { Individual, PaginatedResponse, BackendResponse, DashboardSummary, FilterOption } from "../types";
 import { signIn } from "next-auth/react";
+import {
+  PaginatedResponse,
+  Participante,
+  ProtocoloDetalhes,
+  SmartFilterOptions,
+  DashboardFilters,
+  ParticipantFilters,
+} from "../types";
 
-const API_BASE_URL = "/api/v1"; 
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
-// Helper to handle response
+/**
+ * Handle API response with automatic login redirect on 401
+ */
 async function handleResponse<T>(response: Response): Promise<T> {
   if (response.status === 401) {
-    // Token expired or invalid, redirect to login
-    if (typeof window !== "undefined") {
-      signIn("authentik"); 
-    }
+    // Token expired or invalid - redirect to login automatically
+    console.warn("Token expirado ou inválido. Redirecionando para login...");
+    signIn("authentik");
     throw new Error("Unauthorized");
   }
 
@@ -17,87 +25,162 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const errorText = await response.text();
     throw new Error(`API Error ${response.status}: ${errorText}`);
   }
+
   return response.json();
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+/**
+ * Build query parameters from filter object, excluding default "todos"/"todas" values
+ */
+function buildFilterParams(
+  filters: DashboardFilters | ParticipantFilters
+): URLSearchParams {
+  const params = new URLSearchParams();
 
-export interface DashboardFilters {
-  bairro?: string;
-  cre?: string;
-  cras?: string;
-  safra?: string;
-  grupo?: string;
-  status?: string;
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value && value !== "todos" && value !== "todas" && value !== "") {
+      params.append(key, value);
+    }
+  });
+
+  return params;
 }
 
+/**
+ * Main API service with only 2 core endpoints:
+ * 1. GET /participants/filter-options - Smart filter options with counts
+ * 2. GET /participants/ - Paginated participants with filters
+ */
 export const apiService = {
-  async getFilterOptions(token?: string): Promise<FilterOption[]> {
-     const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-    const res = await fetch(`${BASE_URL}/api/v1/filters/options`, {
-      cache: "no-store",
-      headers,
-    });
-    const response = await handleResponse<{ options: FilterOption[] }>(res);
-    return response.options;
-  },
-
-  async getDashboardMetrics(filters: DashboardFilters = {}, token?: string): Promise<DashboardSummary> {
+  /**
+   * Get smart filter options with counts for cascading filters.
+   * This endpoint is shared between Overview and Professional tabs.
+   *
+   * @param token - JWT token for authentication
+   * @returns SmartFilterOptions with all available filter values and their counts
+   */
+  async getFilterOptions(token?: string): Promise<SmartFilterOptions> {
     const headers: HeadersInit = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const params = new URLSearchParams();
-    if (filters.bairro && filters.bairro !== "todos") params.append("bairro", filters.bairro);
-    if (filters.cre && filters.cre !== "todas") params.append("cre", filters.cre);
-    if (filters.cras && filters.cras !== "todas") params.append("cras", filters.cras);
-    if (filters.safra && filters.safra !== "todas") params.append("safra", filters.safra);
-    if (filters.grupo && filters.grupo !== "todos") params.append("grupo", filters.grupo);
-    if (filters.status && filters.status !== "todos") params.append("status", filters.status);
+    const url = `${BASE_URL}/api/v1/participants/filter-options`;
 
-    const res = await fetch(`${BASE_URL}/api/v1/dashboard/?${params.toString()}`, {
+    console.log("[API] getFilterOptions - URL:", url);
+
+    const res = await fetch(url, {
       cache: "no-store",
       headers,
     });
-    // The API returns a list of summaries (usually 1 item) wrapped in BackendResponse
-    const response = await handleResponse<BackendResponse<DashboardSummary>>(res);
+
+    return handleResponse<SmartFilterOptions>(res);
+  },
+
+  /**
+   * Get participants with filters and pagination.
+   * Used by both Overview tab (for calculations) and Professional tab (for table display).
+   *
+   * @param filters - Filter criteria (bairro, cre, cras, escola, clinica, safra, grupo, status)
+   * @param page - Page number (1-indexed)
+   * @param pageSize - Items per page
+   * @param token - JWT token for authentication
+   * @returns Paginated response with participants
+   */
+  async getParticipants(
+    filters: ParticipantFilters = {},
+    page: number = 1,
+    pageSize: number = 100,
+    token?: string
+  ): Promise<PaginatedResponse<Participante>> {
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const params = buildFilterParams(filters);
+    params.append("page", page.toString());
+    params.append("page_size", pageSize.toString());
+
+    const url = `${BASE_URL}/api/v1/participants/?${params.toString()}`;
+
+    console.log("[API] getParticipants - Filters:", filters);
+    console.log("[API] getParticipants - Page:", page, "PageSize:", pageSize);
+    console.log("[API] getParticipants - URL:", url);
+
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers,
+    });
+
+    return handleResponse<PaginatedResponse<Participante>>(res);
+  },
+
+  /**
+   * Get details for a specific participant by CPF.
+   *
+   * @param cpf - Participant CPF
+   * @param token - JWT token for authentication
+   * @returns Participant details
+   */
+  async getParticipantDetails(
+    cpf: string,
+    token?: string
+  ): Promise<Participante> {
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const url = `${BASE_URL}/api/v1/participants/${cpf}`;
+
+    console.log("[API] getParticipantDetails - CPF:", cpf);
+    console.log("[API] getParticipantDetails - URL:", url);
+
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers,
+    });
+
+    const response = await handleResponse<PaginatedResponse<Participante>>(res);
+
     if (response.data && response.data.length > 0) {
       return response.data[0];
     }
-    throw new Error("No dashboard summary data returned");
-  },
 
-  async getParticipants(page: number = 1, pageSize: number = 50, token?: string): Promise<PaginatedResponse<Individual>> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-    
-    const res = await fetch(`${BASE_URL}/api/v1/participants/?page=${page}&page_size=${pageSize}`, {
-      cache: "no-store",
-      headers,
-    });
-    return handleResponse<PaginatedResponse<Individual>>(res);
-  },
-
-  async getParticipantDetails(cpf: string, token?: string): Promise<Individual> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const res = await fetch(`${BASE_URL}/api/v1/participants/${cpf}`, {
-      cache: "no-store",
-      headers,
-    });
-    const response = await handleResponse<BackendResponse<Individual>>(res);
-    if (response.data && response.data.length > 0) {
-        return response.data[0];
-    }
     throw new Error("Participant not found");
-  }
+  },
+
+  /**
+   * Get protocols for a specific participant by CPF.
+   *
+   * @param cpf - Participant CPF
+   * @param token - JWT token for authentication
+   * @returns List of protocol details
+   */
+  async getParticipantProtocols(
+    cpf: string,
+    token?: string
+  ): Promise<ProtocoloDetalhes[]> {
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const url = `${BASE_URL}/api/v1/participants/${cpf}/protocols`;
+
+    console.log("[API] getParticipantProtocols - CPF:", cpf);
+    console.log("[API] getParticipantProtocols - URL:", url);
+
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers,
+    });
+
+    const response = await handleResponse<PaginatedResponse<ProtocoloDetalhes>>(
+      res
+    );
+
+    return response.data || [];
+  },
 };
