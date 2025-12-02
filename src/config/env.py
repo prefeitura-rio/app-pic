@@ -5,22 +5,29 @@ import os
 if os.path.exists("src/config/.env"):
     import dotenv
 
-    dotenv.load_dotenv(dotenv_path="src/config/.env")
-
+    dotenv.load_dotenv(dotenv_path="src/config/.env", override=True)
 
 GCP_SERVICE_ACCOUNT_CREDENTIALS = getenv_or_action(
-    "GCP_SERVICE_ACCOUNT_CREDENTIALS", action="ignore", default=None
+    env_name="GCP_SERVICE_ACCOUNT_CREDENTIALS",
+    action="raise",
 )
 GOOGLE_BIGQUERY_PAGE_SIZE = int(
-    getenv_or_action("GOOGLE_BIGQUERY_PAGE_SIZE", default="100")
+    getenv_or_action(env_name="GOOGLE_BIGQUERY_PAGE_SIZE", default="100")
 )
 
-PIC_TOKEN = getenv_or_action("PIC_TOKEN", action="ignore", default=None)
+BQ_PROJECT_ID = getenv_or_action(
+    env_name="BQ_PROJECT_ID", default="rj-pic-dev", action="raise"
+)
+BQ_DATASET_ID = getenv_or_action(
+    env_name="BQ_DATASET_ID", default="app_pequenos_cariocas", action="raise"
+)
+
 USE_LOCAL_API = (
-    getenv_or_action("USE_LOCAL_API", default="false", action="ignore") == "true"
+    getenv_or_action(env_name="USE_LOCAL_API", default="false", action="ignore")
+    == "true"
 )
 
 # Authentik OAuth2 Configuration
-AUTHENTIK_JWKS_URL = getenv_or_action("AUTHENTIK_JWKS_URL", action="raise")
-AUTHENTIK_ISSUER = getenv_or_action("AUTHENTIK_ISSUER", action="raise")
-AUTHENTIK_AUDIENCE = getenv_or_action("AUTHENTIK_AUDIENCE", action="raise")
+AUTHENTIK_JWKS_URL = getenv_or_action(env_name="AUTHENTIK_JWKS_URL", action="raise")
+AUTHENTIK_ISSUER = getenv_or_action(env_name="AUTHENTIK_ISSUER", action="raise")
+AUTHENTIK_AUDIENCE = getenv_or_action(env_name="AUTHENTIK_AUDIENCE", action="raise")

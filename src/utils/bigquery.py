@@ -3,6 +3,7 @@ from google.oauth2 import service_account
 from typing import List, Dict, Any
 import base64
 import json
+import decimal
 import src.config.env as env
 import datetime
 import pytz
@@ -26,6 +27,9 @@ class CustomJSONEncoder(json.JSONEncoder):
             # ... converta-o para uma string no formato ISO.
             return obj.isoformat()
 
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+
         # Para qualquer outro tipo, deixe o encoder padrão fazer o trabalho.
         return super().default(obj)
 
@@ -40,7 +44,6 @@ def get_bigquery_result(query: str):
             row: Row
             row_data = dict(row.items())
             data.append(row_data)
-
     data_str = json.dumps(data, cls=CustomJSONEncoder, indent=2, ensure_ascii=False)
 
     return json.loads(data_str)
