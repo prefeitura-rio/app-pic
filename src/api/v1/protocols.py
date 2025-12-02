@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any, List
+from typing import Any
 
 from src.core.security.jwt import verify_jwt
 from src.config import env
-from src.utils.bigquery import get_bigquery_result
 from src.utils.log import logger
 from src.api.v1.schemas import ProtocoloResumo, PaginatedResponse
+from src.utils.data_manager import DataManager
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
@@ -25,9 +25,15 @@ async def get_protocols_summary() -> Any:
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_protocolo_resumo`
     """
-    logger.debug(f"Executing query: {query}")
+    logger.debug(f"Fetching cached data for protocols summary: {query}")
     try:
-        return get_bigquery_result(query=query)
+        # Fetch Data via Manager
+        df = DataManager.get_dataset(query)
+        
+        # We want all results, so page_size = total (or large number)
+        # Return response object directly
+        return DataManager.paginate_data(df, page=1, page_size=10000)
+        
     except Exception as e:
         logger.error(f"Error fetching protocols summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))

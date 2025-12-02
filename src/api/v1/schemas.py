@@ -1,8 +1,24 @@
 from typing import List, Optional, TypeVar, Generic, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date, datetime
 
 T = TypeVar('T')
+
+# --- Request Models ---
+
+class PaginationParams(BaseModel):
+    page: int = Field(1, ge=1, description="Page number")
+    page_size: int = Field(50, ge=1, le=100000, description="Items per page")
+
+class CommonFilters(BaseModel):
+    bairro: Optional[str] = None
+    cre: Optional[str] = None
+    cras: Optional[str] = None
+    safra: Optional[str] = None # Keeping as string for flexibility in query params
+    grupo: Optional[str] = None
+    status: Optional[str] = None
+
+# --- Response Models ---
 
 class PaginationMeta(BaseModel):
     page: int
@@ -15,6 +31,15 @@ class PaginationMeta(BaseModel):
 class PaginatedResponse(BaseModel, Generic[T]):
     data: List[T]
     meta: PaginationMeta
+
+class FiltroOpcao(BaseModel):
+    id: str
+    label: str
+    tipo: str  # "bairro", "cap", "cre", "cras", "safra", "grupo", "status"
+    parent_id: Optional[str] = None 
+
+class FilterOptionsResponse(BaseModel):
+    options: List[FiltroOpcao]
 
 # Shared / Nested Models
 
@@ -31,65 +56,29 @@ class DistribuicaoBairro(BaseModel):
     total_participantes: Optional[int] = None
 
 class DistribuicaoSafra(BaseModel):
-    safra: Optional[date] = None
+    safra: Optional[str] = None # Changed to str to match DataFrame output usually
     total_participantes: Optional[int] = None
 
 # Endpoint Models
 
-class EvolucaoSafra(BaseModel):
-    safra: Optional[date] = None
-    total_entrada: Optional[int] = None
-    total_ativos: Optional[int] = None
-    total_inativos: Optional[int] = None
-    distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
-    data_atualizacao: Optional[datetime] = None
-
-class ProtocoloDetalhes(BaseModel):
-    cpf: Optional[str] = None
-    id_membro_familia: Optional[str] = None
-    nome: Optional[str] = None
-    grupo: Optional[str] = None
-    protocolo_id: Optional[str] = None
-    protocolo_secretaria: Optional[str] = None
-    protocolo_descricao: Optional[str] = None
-    protocolo_level: Optional[str] = None
-    protocolo_status: Optional[str] = None
-    protocolo_violado: Optional[bool] = None
-    protocolo_data_referencia_particicao: Optional[date] = None
-    protocolo_status_label: Optional[str] = None
-    cpf_particao: Optional[int] = None
-
-class ProtocoloResumo(BaseModel):
-    protocolo_secretaria: Optional[str] = None
-    protocolo_id: Optional[str] = None
-    protocolo_descricao: Optional[str] = None
-    protocolo_level: Optional[str] = None
-    total_participantes: Optional[int] = None
-    total_violados: Optional[int] = None
-    total_regular: Optional[int] = None
-    total_nao_aplica: Optional[int] = None
-    percentual_violados: Optional[float] = None
-    nivel_prioridade: Optional[str] = None
-    data_atualizacao: Optional[datetime] = None
-
 class Dashboard(BaseModel):
-    total_participantes_ativos: Optional[int] = None
-    total_participantes_inativos: Optional[int] = None
-    total_participantes_geral: Optional[int] = None
-    total_participantes_em_atencao: Optional[int] = None
-    percentual_em_atencao: Optional[float] = None
-    total_protocolos: Optional[int] = None
-    total_protocolos_violados: Optional[int] = None
-    percentual_protocolos_violados: Optional[float] = None
-    total_protocolos_smas: Optional[int] = None
-    total_protocolos_smas_violados: Optional[int] = None
-    percentual_smas_violados: Optional[float] = None
-    total_protocolos_sme: Optional[int] = None
-    total_protocolos_sme_violados: Optional[int] = None
-    percentual_sme_violados: Optional[float] = None
-    total_protocolos_sms: Optional[int] = None
-    total_protocolos_sms_violados: Optional[int] = None
-    percentual_sms_violados: Optional[float] = None
+    total_participantes_ativos: Optional[int] = 0
+    total_participantes_inativos: Optional[int] = 0
+    total_participantes_geral: Optional[int] = 0
+    total_participantes_em_atencao: Optional[int] = 0
+    percentual_em_atencao: Optional[float] = 0.0
+    total_protocolos: Optional[int] = 0
+    total_protocolos_violados: Optional[int] = 0
+    percentual_protocolos_violados: Optional[float] = 0.0
+    total_protocolos_smas: Optional[int] = 0
+    total_protocolos_smas_violados: Optional[int] = 0
+    percentual_smas_violados: Optional[float] = 0.0
+    total_protocolos_sme: Optional[int] = 0
+    total_protocolos_sme_violados: Optional[int] = 0
+    percentual_sme_violados: Optional[float] = 0.0
+    total_protocolos_sms: Optional[int] = 0
+    total_protocolos_sms_violados: Optional[int] = 0
+    percentual_sms_violados: Optional[float] = 0.0
     distribuicao_por_grupo: List[DistribuicaoGrupo] = []
     top_bairros: List[DistribuicaoBairro] = []
     distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
@@ -156,3 +145,39 @@ class Participante(BaseModel):
     id_clinica_familia: Optional[str] = None
     nome_clinica_familia: Optional[str] = None
     cpf_particao: Optional[int] = None
+
+class ProtocoloDetalhes(BaseModel):
+    cpf: Optional[str] = None
+    id_membro_familia: Optional[str] = None
+    nome: Optional[str] = None
+    grupo: Optional[str] = None
+    protocolo_id: Optional[str] = None
+    protocolo_secretaria: Optional[str] = None
+    protocolo_descricao: Optional[str] = None
+    protocolo_level: Optional[str] = None
+    protocolo_status: Optional[str] = None
+    protocolo_violado: Optional[bool] = None
+    protocolo_data_referencia_particicao: Optional[date] = None
+    protocolo_status_label: Optional[str] = None
+    cpf_particao: Optional[int] = None
+
+class ProtocoloResumo(BaseModel):
+    protocolo_secretaria: Optional[str] = None
+    protocolo_id: Optional[str] = None
+    protocolo_descricao: Optional[str] = None
+    protocolo_level: Optional[str] = None
+    total_participantes: Optional[int] = None
+    total_violados: Optional[int] = None
+    total_regular: Optional[int] = None
+    total_nao_aplica: Optional[int] = None
+    percentual_violados: Optional[float] = None
+    nivel_prioridade: Optional[str] = None
+    data_atualizacao: Optional[datetime] = None
+
+class EvolucaoSafra(BaseModel):
+    safra: Optional[date] = None
+    total_entrada: Optional[int] = None
+    total_ativos: Optional[int] = None
+    total_inativos: Optional[int] = None
+    distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
+    data_atualizacao: Optional[datetime] = None

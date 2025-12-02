@@ -1,33 +1,180 @@
+import { useState, useMemo } from "react";
 import { StatCard } from "./StatCard";
-import { Baby, Heart, Activity, BookOpen, Home, AlertTriangle, Users } from "lucide-react";
-import { DashboardSummary } from "../types";
+import { Baby, Heart, Activity, BookOpen, Home, AlertTriangle, Users, Filter } from "lucide-react";
+import { DashboardSummary, FilterOption } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import { DashboardFilters } from "@/app/services/api";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { Button } from "./ui/button";
 
 interface OverviewTabProps {
   data: DashboardSummary;
+  filterOptions: FilterOption[];
+  onFilterChange: (filters: DashboardFilters) => void;
 }
 
-export function OverviewTab({ data }: OverviewTabProps) {
-  // Mapping API data to charts
+export function OverviewTab({ data, filterOptions, onFilterChange }: OverviewTabProps) {
+  const [selectedBairro, setSelectedBairro] = useState<string>("todos");
+  const [selectedCRE, setSelectedCRE] = useState<string>("todas");
+  const [selectedCRAS, setSelectedCRAS] = useState<string>("todas");
+  const [selectedCohort, setSelectedCohort] = useState<string>("todas");
+  const [selectedGrupo, setSelectedGrupo] = useState<string>("todos");
+  const [selectedStatus, setSelectedStatus] = useState<string>("todos");
+
+  // --- Smart Filtering Logic ---
   
-  // Grupos (Pie Chart)
+  // Extract unique options from the master list provided by the backend
+  const allBairros = useMemo(() => filterOptions.filter(o => o.tipo === "bairro"), [filterOptions]);
+  const allCREs = useMemo(() => filterOptions.filter(o => o.tipo === "cre"), [filterOptions]);
+  const allCRAS = useMemo(() => filterOptions.filter(o => o.tipo === "cras"), [filterOptions]);
+  const allCohorts = useMemo(() => filterOptions.filter(o => o.tipo === "safra"), [filterOptions]);
+  const allGrupos = useMemo(() => filterOptions.filter(o => o.tipo === "grupo"), [filterOptions]);
+  const allStatus = useMemo(() => filterOptions.filter(o => o.tipo === "status"), [filterOptions]);
+
+  // Derived options (simulated dependency, real dependency needs hierarchy in FilterOption)
+  // For now, we show all, but in a real smart filter, selecting CRE would filter Bairros.
+  // Since we don't have the parent_id mapped in the backend response yet (it's optional), 
+  // we will just display the lists. The Backend aggregation handles the combination.
+  
+  const handleFilterUpdate = (key: keyof DashboardFilters, value: string) => {
+    // 1. Update local state
+    if (key === "bairro") setSelectedBairro(value);
+    if (key === "cre") setSelectedCRE(value);
+    if (key === "cras") setSelectedCRAS(value);
+    if (key === "safra") setSelectedCohort(value);
+    if (key === "grupo") setSelectedGrupo(value);
+    if (key === "status") setSelectedStatus(value);
+
+    // 2. Trigger fetch
+    const newFilters: DashboardFilters = {
+      bairro: key === "bairro" ? value : selectedBairro,
+      cre: key === "cre" ? value : selectedCRE,
+      cras: key === "cras" ? value : selectedCRAS,
+      safra: key === "safra" ? value : selectedCohort,
+      grupo: key === "grupo" ? value : selectedGrupo,
+      status: key === "status" ? value : selectedStatus,
+    };
+    onFilterChange(newFilters);
+  };
+
+  const clearFilters = () => {
+    setSelectedBairro("todos");
+    setSelectedCRE("todas");
+    setSelectedCRAS("todas");
+    setSelectedCohort("todas");
+    setSelectedGrupo("todos");
+    setSelectedStatus("todos");
+    onFilterChange({});
+  };
+
+  // Mapping API data to charts
   const gruposData = data.distribuicao_por_grupo || [];
-
-  // Top Bairros (Bar Chart)
   const bairrosData = (data.top_bairros || []).slice(0, 10);
-
-  // Motivos Saída (Pie Chart)
   const motivosData = data.distribuicao_motivo_saida || [];
-
-  // Safra (Bar Chart)
   const safraData = (data.distribuicao_por_safra || []).map(d => ({
     ...d,
-    safraDate: new Date(d.safra).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }) // Format timestamp to "Jan 24"
+    safraDate: new Date(d.safra).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
   }));
 
   return (
     <div className="space-y-8">
+      {/* Filtros */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            Filtros Dinâmicos
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">
+            Limpar Filtros
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            
+            {/* Grupo */}
+            <Select value={selectedGrupo} onValueChange={(v) => handleFilterUpdate("grupo", v)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Grupo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os Grupos</SelectItem>
+                {allGrupos.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Status */}
+            <Select value={selectedStatus} onValueChange={(v) => handleFilterUpdate("status", v)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os Status</SelectItem>
+                {allStatus.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Safra */}
+            <Select value={selectedCohort} onValueChange={(v) => handleFilterUpdate("safra", v)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Safra" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as Safras</SelectItem>
+                {allCohorts.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Regionais (CRE) */}
+            <Select value={selectedCRE} onValueChange={(v) => handleFilterUpdate("cre", v)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="CRE" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as CREs</SelectItem>
+                {allCREs.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+             {/* CRAS */}
+             <Select value={selectedCRAS} onValueChange={(v) => handleFilterUpdate("cras", v)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="CRAS" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as CAS</SelectItem>
+                {allCRAS.map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Bairro */}
+            <Select value={selectedBairro} onValueChange={(v) => handleFilterUpdate("bairro", v)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Bairro" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os Bairros</SelectItem>
+                {allBairros.sort((a,b) => a.label.localeCompare(b.label)).map(opt => (
+                  <SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Indicadores Principais */}
       <div>
         <h2 className="text-2xl font-bold text-foreground mb-2">Indicadores Principais</h2>

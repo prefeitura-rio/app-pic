@@ -38,6 +38,13 @@ export interface Individual {
   id?: string | number;
 }
 
+export interface FilterOption {
+  id: string;
+  label: string;
+  tipo: string; // "bairro", "cre", "cras", "safra", "grupo", "status"
+  parent_id?: string;
+}
+
 export interface DashboardSummary {
   total_participantes_ativos: number;
   total_participantes_inativos: number;
@@ -59,8 +66,8 @@ export interface DashboardSummary {
   distribuicao_por_grupo: Array<{ grupo: string; total_participantes: number }>;
   top_bairros: Array<{ bairro: string; total_participantes: number }>;
   distribuicao_motivo_saida: Array<{ motivo: string; total: number }>;
-  distribuicao_por_safra: Array<{ safra: number; total_participantes: number }>;
-  data_atualizacao: number;
+  distribuicao_por_safra: Array<{ safra: string; total_participantes: number }>;
+  data_atualizacao: string;
 }
 
 export interface BackendResponse<T> {

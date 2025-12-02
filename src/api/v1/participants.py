@@ -3,9 +3,9 @@ from typing import Dict, Any, List, Optional, Union
 
 from src.core.security.jwt import verify_jwt
 from src.config import env
-from src.utils.bigquery import get_bigquery_result
 from src.utils.log import logger
-from src.api.v1.schemas import Participante, ProtocoloDetalhes, PaginatedResponse
+from src.api.v1.schemas import Participante, ProtocoloDetalhes, PaginatedResponse, CommonFilters, PaginationParams
+from src.utils.data_manager import DataManager
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
@@ -21,10 +21,11 @@ router = APIRouter(
     response_model=PaginatedResponse[Participante],
 )
 async def get_participants(
-    page: int = 1, page_size: int = env.GOOGLE_BIGQUERY_PAGE_SIZE
+    filters: CommonFilters = Depends(),
+    pagination: PaginationParams = Depends()
 ) -> Any:
     """
-    Busca lista de participantes.
+    Busca lista de participantes com suporte a filtros e paginação.
     """
     query = f"""
     SELECT 
@@ -32,9 +33,16 @@ async def get_participants(
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
     ORDER BY cpf DESC
     """
-    logger.debug(f"Executing query: {query}")
+    logger.debug(f"Fetching cached data for participants list: {query}")
     try:
-        return get_bigquery_result(query=query, page_size=page_size, page=page)
+        # Get DataFrame from Manager
+        df = DataManager.get_dataset(query)
+        
+        # Apply Filters
+        df = DataManager.apply_filters(df, filters)
+        
+        # Apply Pagination and Return Response Object
+        return DataManager.paginate_data(df, pagination.page, pagination.page_size)
 
     except Exception as e:
         logger.error(f"Error fetching participants: {e}")
@@ -53,15 +61,29 @@ async def get_participant_details(cpf: str) -> Any:
     SELECT 
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    WHERE cpf_particao = {int(cpf_clean)}
-    LIMIT 1
+    ORDER BY cpf DESC
     """
-    logger.debug(f"Executing query: {query}")
     try:
-        results = get_bigquery_result(query=query)
-        if not results or not results.get("data"):
+        df = DataManager.get_dataset(query)
+        
+        # Filter by CPF partition/column
+        if 'cpf' in df.columns:
+             result = df[df['cpf'] == cpf]
+             if result.empty and 'cpf_particao' in df.columns:
+                 try:
+                     result = df[df['cpf_particao'] == int(cpf_clean)]
+                 except ValueError:
+                     pass
+        else:
+             # Fallback (unlikely)
+             result = df[0:0] 
+
+        if result.empty:
             raise HTTPException(status_code=404, detail="Participante não encontrado")
-        return results
+            
+        # Use DataManager to package the single result
+        return DataManager.paginate_data(result, page=1, page_size=1)
+
     except HTTPException:
         raise
     except Exception as e:
@@ -80,16 +102,29 @@ async def get_participant_protocols(cpf: str) -> Any:
     """
     cpf_clean = "".join(filter(str.isdigit, cpf))
 
+    # This is a different table, so it needs its own dataset cache
     query = f"""
     SELECT 
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_protocolo_detalhes`
-    WHERE cpf_particao = {int(cpf_clean)}
     ORDER BY protocolo_secretaria, protocolo_id
     """
-    logger.debug(f"Executing query: {query}")
+    logger.debug(f"Fetching cached data for protocols: {query}")
     try:
-        return get_bigquery_result(query=query)
+        df = DataManager.get_dataset(query)
+        
+        # Filter by CPF
+        if 'cpf_particao' in df.columns:
+             try:
+                 df = df[df['cpf_particao'] == int(cpf_clean)]
+             except ValueError:
+                 df = df[0:0] # Empty
+        elif 'cpf' in df.columns:
+             df = df[df['cpf'] == cpf]
+        
+        # Use DataManager to package all results
+        return DataManager.paginate_data(df, page=1, page_size=len(df) if not df.empty else 1)
+        
     except Exception as e:
         logger.error(f"Error fetching participant protocols: {e}")
         raise HTTPException(status_code=500, detail=str(e))

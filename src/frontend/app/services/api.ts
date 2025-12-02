@@ -1,4 +1,4 @@
-import { Individual, PaginatedResponse, BackendResponse, DashboardSummary } from "../types";
+import { Individual, PaginatedResponse, BackendResponse, DashboardSummary, FilterOption } from "../types";
 import { signIn } from "next-auth/react";
 
 const API_BASE_URL = "/api/v1"; 
@@ -22,14 +22,44 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
+export interface DashboardFilters {
+  bairro?: string;
+  cre?: string;
+  cras?: string;
+  safra?: string;
+  grupo?: string;
+  status?: string;
+}
+
 export const apiService = {
-  async getDashboardMetrics(token?: string): Promise<DashboardSummary> {
+  async getFilterOptions(token?: string): Promise<FilterOption[]> {
+     const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${BASE_URL}/api/v1/filters/options`, {
+      cache: "no-store",
+      headers,
+    });
+    const response = await handleResponse<{ options: FilterOption[] }>(res);
+    return response.options;
+  },
+
+  async getDashboardMetrics(filters: DashboardFilters = {}, token?: string): Promise<DashboardSummary> {
     const headers: HeadersInit = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${BASE_URL}/api/v1/dashboard/`, {
+    const params = new URLSearchParams();
+    if (filters.bairro && filters.bairro !== "todos") params.append("bairro", filters.bairro);
+    if (filters.cre && filters.cre !== "todas") params.append("cre", filters.cre);
+    if (filters.cras && filters.cras !== "todas") params.append("cras", filters.cras);
+    if (filters.safra && filters.safra !== "todas") params.append("safra", filters.safra);
+    if (filters.grupo && filters.grupo !== "todos") params.append("grupo", filters.grupo);
+    if (filters.status && filters.status !== "todos") params.append("status", filters.status);
+
+    const res = await fetch(`${BASE_URL}/api/v1/dashboard/?${params.toString()}`, {
       cache: "no-store",
       headers,
     });
