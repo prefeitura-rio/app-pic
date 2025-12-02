@@ -31,3 +31,7 @@ USE_LOCAL_API = (
 AUTHENTIK_JWKS_URL = getenv_or_action(env_name="AUTHENTIK_JWKS_URL", action="raise")
 AUTHENTIK_ISSUER = getenv_or_action(env_name="AUTHENTIK_ISSUER", action="raise")
 AUTHENTIK_AUDIENCE = getenv_or_action(env_name="AUTHENTIK_AUDIENCE", action="raise")
+
+
+REDIS_URL = getenv_or_action(env_name="REDIS_URL", action="raise")
+CACHE_TTL_SECONDS = int(getenv_or_action(env_name="CACHE_TTL_SECONDS", default="300"))

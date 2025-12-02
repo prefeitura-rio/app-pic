@@ -33,7 +33,7 @@ async def get_participants(
     """
     logger.debug(f"Executing query: {query}")
     try:
-        return get_bigquery_result(query=query, page_size=page_size, page_number=page)
+        return get_bigquery_result(query=query, page_size=page_size, page=page)
 
     except Exception as e:
         logger.error(f"Error fetching participants: {e}")

@@ -3,75 +3,95 @@ from google.oauth2 import service_account
 from typing import List, Dict, Any
 import base64
 import json
-import decimal
+import time
 import src.config.env as env
-import datetime
-import pytz
 from src.utils.log import logger
-from google.cloud.exceptions import GoogleCloudError
-from src.config import env
-from google.cloud.bigquery.table import Row
-import numpy as np
-import pandas as pd
-from src.utils.log import logger
-import math
-
-
-class CustomJSONEncoder(json.JSONEncoder):
-    """
-    JSON Encoder customizado que sabe como converter objetos
-    de data, hora e data/hora do Python para strings no padrão ISO 8601.
-    """
-
-    def default(self, obj):
-        # Se o objeto for uma instância de datetime, date ou time...
-        if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
-            # ... converta-o para uma string no formato ISO.
-            return obj.isoformat()
-
-        if isinstance(obj, decimal.Decimal):
-            return float(obj)
-
-        # Para qualquer outro tipo, deixe o encoder padrão fazer o trabalho.
-        return super().default(obj)
+from math import ceil
+from src.utils.cache_manager import query_cache
 
 
 def get_bigquery_result(
-    query: str, page_size: int = env.GOOGLE_BIGQUERY_PAGE_SIZE, page_number: int = 1
-):
-    bq_client = get_bigquery_client()
-    query_job = bq_client.query(query)
-    result = query_job.result(page_size=page_size)
+    query: str, page: int = 1, page_size: int = 100
+) -> Dict[str, Any]:
+    """
+    Executes a BigQuery query (or retrieves from persistent cache) and returns the results
+    with pagination logic applied in Python memory.
+    """
 
-    data = []
-    for page in result.pages:
-        page_data = []
-        for row in page:
-            row: Row
-            row_data = dict(row.items())
-            page_data.append(row_data)
-        data.append(page_data)
-    data_str = json.dumps(data, cls=CustomJSONEncoder, indent=2, ensure_ascii=False)
-    data = json.loads(data_str)
-    meta = {
-        "page": page_number,
-        "total_pages": len(data),
-        "total_rows": result.total_rows,
-        "page_size": page_size,
+    # Start overall profiling
+    start_overall = time.perf_counter()
+    profiling_data = {}
+
+    # 1. Try to get data from persistent cache
+    start_cache_lookup = time.perf_counter()
+    all_data = query_cache.get(query)
+    end_cache_lookup = time.perf_counter()
+    profiling_data["cache_lookup_time_s"] = end_cache_lookup - start_cache_lookup
+    is_cache_hit = all_data is not None
+
+    # 2. If Miss, fetch from BigQuery
+    if not is_cache_hit:
+        logger.debug("Cache MISS - Fetching full dataset from BigQuery")
+        start_bq_fetch = time.perf_counter()
+        bq_client = get_bigquery_client()
+
+        # Execute raw query to get everything
+        query_job = bq_client.query(query)
+        result = query_job.result()
+        result_df = result.to_dataframe()
+        all_data = result_df.to_json(
+            orient="records",
+        )
+        all_data = json.loads(all_data)
+        end_bq_fetch = time.perf_counter()
+        profiling_data["bigquery_fetch_time_s"] = end_bq_fetch - start_bq_fetch
+
+        # 3. Store in persistent cache
+        start_cache_save = time.perf_counter()
+        query_cache.set(query, all_data, profiling_data=profiling_data)
+        end_cache_save = time.perf_counter()
+        profiling_data["cache_save_time_s"] = end_cache_save - start_cache_save
+    else:
+        logger.debug("Cache HIT - Serving data from persistent storage")
+
+    # 4. Pagination Logic (In-Memory)
+    start_pagination = time.perf_counter()
+    total_rows = len(all_data)
+
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 100
+
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+
+    paginated_data = all_data[start_idx:end_idx]
+    total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
+    end_pagination = time.perf_counter()
+    profiling_data["pagination_logic_time_s"] = end_pagination - start_pagination
+
+    end_overall = time.perf_counter()
+    profiling_data["overall_execution_time_s"] = end_overall - start_overall
+
+    logger.debug(f"Profiling Data: {json.dumps(profiling_data, indent=2)}")
+
+    response = {
+        "data": paginated_data,
+        "meta": {
+            "page": page,
+            "page_size": page_size,
+            "total_rows": total_rows,
+            "total_pages": total_pages,
+            "cache_hit": is_cache_hit,
+            "profiling": profiling_data,  # Add profiling data to response meta as well
+        },
     }
-    logger.debug(meta)
-    return {
-        "meta": meta,
-        "data": data[page_number - 1],
-    }
+
+    return response
 
 
 def get_bigquery_client() -> bigquery.Client:
-    """Get the BigQuery client.
-
-    Returns:
-        bigquery.Client: The BigQuery client.
-    """
     credentials = get_gcp_credentials(
         scopes=[
             "https://www.googleapis.com/auth/drive",
@@ -82,85 +102,8 @@ def get_bigquery_client() -> bigquery.Client:
 
 
 def get_gcp_credentials(scopes: List[str] = None) -> service_account.Credentials:
-    """Get the GCP credentials.
-
-    Args:
-        scopes (List[str], optional): The scopes to use. Defaults to None.
-
-    Returns:
-        service_account.Credentials: The GCP credentials.
-    """
     info: dict = json.loads(base64.b64decode(env.GCP_SERVICE_ACCOUNT_CREDENTIALS))
     creds = service_account.Credentials.from_service_account_info(info)
     if scopes:
         creds = creds.with_scopes(scopes)
     return creds
-
-
-def get_datetime() -> str:
-    timestamp = datetime.datetime.now(pytz.timezone("America/Sao_Paulo"))
-    return timestamp.strftime("%Y-%m-%dT%H:%M:%S.%f")
-
-
-def save_response_in_bq(
-    data: dict,
-    endpoint: str,
-    dataset_id: str,
-    table_id: str,
-    project_id: str = "rj-iplanrio",
-):
-    table_full_name = f"{project_id}.{dataset_id}.{table_id}"
-    logger.info(f"Salvando resposta no BigQuery: {table_full_name}")
-    schema = [
-        bigquery.SchemaField("datetime", "DATETIME", mode="NULLABLE"),
-        bigquery.SchemaField("endpoint", "STRING", mode="NULLABLE"),
-        bigquery.SchemaField("data", "JSON", mode="NULLABLE"),
-        bigquery.SchemaField("data_particao", "DATE", mode="NULLABLE"),
-    ]
-
-    job_config = bigquery.LoadJobConfig(
-        schema=schema,
-        # Optionally, set the write disposition. BigQuery appends loaded rows
-        # to an existing table by default, but with WRITE_TRUNCATE write
-        # disposition it replaces the table with the loaded data.
-        write_disposition="WRITE_APPEND",
-        time_partitioning=bigquery.TimePartitioning(
-            type_=bigquery.TimePartitioningType.DAY,
-            field="data_particao",  # name of column to use for partitioning
-        ),
-    )
-    datetime_to_save = get_datetime()
-    data_to_save = {
-        "datetime": datetime_to_save,
-        "endpoint": endpoint,
-        "data": data,
-        "data_particao": datetime_to_save.split("T")[0],
-    }
-    json_data = json.loads(json.dumps([data_to_save]))
-    client = get_bigquery_client()
-
-    try:
-        job = client.load_table_from_json(
-            json_data, table_full_name, job_config=job_config
-        )
-        job.result()
-        logger.info(f"Resposta salva no BigQuery: {table_full_name}")
-    except Exception:
-        raise Exception(json_data)
-
-
-def clean_json_field(obj):
-    """
-    Limpa campos JSON recursivamente: converte NaN para None,
-    converte numpy/pandas types e força serialização válida.
-    """
-    if isinstance(obj, float) and np.isnan(obj):
-        return None
-    elif isinstance(obj, (np.generic, pd.Timestamp)):
-        return obj.item() if hasattr(obj, "item") else str(obj)
-    elif isinstance(obj, dict):
-        return {k: clean_json_field(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [clean_json_field(v) for v in obj]
-    else:
-        return obj
