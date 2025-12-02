@@ -5,25 +5,26 @@ from src.core.security.jwt import verify_jwt
 from src.config import env
 from src.utils.bigquery import get_bigquery_result
 from src.utils.log import logger
+from src.api.v1.schemas import FiltroEquipamento, FiltroRegional, PaginatedResponse
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
 
 router = APIRouter(
-    # dependencies=[Depends(verify_jwt)],
+    dependencies=[Depends(verify_jwt)],
 )
 
 
 @router.get(
     "/equipments",
     summary="Filtros de Equipamentos",
-    response_model=Dict[str, Any],
+    response_model=PaginatedResponse[FiltroEquipamento],
 )
 async def get_equipment_filters(
     tipo: Optional[str] = Query(
         None, description="Filtrar por tipo (ESCOLA, CLINICA_FAMILIA, CRAS)"
     )
-) -> Dict[str, Any]:
+) -> Any:
     """
     Retorna lista de equipamentos para filtros.
     """
@@ -44,10 +45,10 @@ async def get_equipment_filters(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/regionals", summary="Filtros Regionais", response_model=Dict[str, Any])
+@router.get("/regionals", summary="Filtros Regionais", response_model=PaginatedResponse[FiltroRegional])
 async def get_regional_filters(
     tipo: Optional[str] = Query(None, description="Filtrar por tipo (CRE, CAP, CAS)")
-) -> Dict[str, Any]:
+) -> Any:
     """
     Retorna lista de regionais para filtros.
     """

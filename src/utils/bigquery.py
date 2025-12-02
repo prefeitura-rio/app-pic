@@ -41,6 +41,7 @@ def get_bigquery_result(
         result_df = result.to_dataframe()
         all_data = result_df.to_json(
             orient="records",
+            date_format="iso",
         )
         all_data = json.loads(all_data)
         end_bq_fetch = time.perf_counter()

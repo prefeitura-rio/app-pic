@@ -1,69 +1,6 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
-:root {
-  --background: hsl(210 40% 98%);
-  --foreground: hsl(222.2 84% 4.9%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(222.2 84% 4.9%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222.2 84% 4.9%);
-  --primary: hsl(221.2 83.2% 53.3%);
-  --primary-foreground: hsl(210 40% 98%);
-  --secondary: hsl(210 40% 96.1%);
-  --secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --muted: hsl(210 40% 96.1%);
-  --muted-foreground: hsl(215.4 16.3% 46.9%);
-  --accent: hsl(210 40% 96.1%);
-  --accent-foreground: hsl(222.2 47.4% 11.2%);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(210 40% 98%);
-  --success: hsl(142.1 76.2% 41.2%); /* Green */
-  --success-foreground: hsl(210 40% 98%);
-  --warning: hsl(47.9 95.8% 53.1%); /* Yellow */
-  --warning-foreground: hsl(222.2 84% 4.9%);
-  --border: hsl(214.3 31.8% 91.4%);
-  --input: hsl(214.3 31.8% 91.4%);
-  --ring: hsl(222.2 84% 4.9%);
-  --radius: 0.5rem;
-  --radix-tooltip-open-delay: 100ms;
-  
-  /* Font Size Variables */
-  --font-size-base: 0.9rem; /* 16px */
-  --font-size-sm: 0.875rem; /* 14px */
-  --font-size-xs: 0.75rem; /* 12px */
-  --font-size-lg: 1.125rem; /* 18px */
-  --font-size-xl: 1.25rem; /* 20px */
-}
-
-.dark {
-  /* VS Code One Dark Pro Palette */
-  --background: hsl(220, 13%, 18%);  /* #282c34 */
-  --foreground: hsl(220, 14%, 85%);  /* Brighter White - Adjusted from #abb2bf */
-  --card: hsl(220, 13%, 18%);       /* Same as background for a seamless look */
-  --card-foreground: hsl(220, 14%, 85%); /* Brighter White */
-  --popover: hsl(220, 13%, 18%);
-  --popover-foreground: hsl(220, 14%, 85%);
-  --primary: hsl(207, 82%, 66%);    /* #61afef */
-  --primary-foreground: hsl(220, 13%, 18%);
-  --secondary: hsl(220, 10%, 23%);   /* Gutter Grey #4b5263 */
-  --secondary-foreground: hsl(220, 14%, 85%);
-  --muted: hsl(220, 10%, 23%);
-  --muted-foreground: hsl(216, 3%, 68%);
-  --accent: hsl(220, 10%, 23%);
-  --accent-foreground: hsl(220, 14%, 85%);
-  --destructive: hsl(355, 65%, 65%); /* Light Red #e06c75 - Less vibrant */
-  --destructive-foreground: hsl(220, 13%, 18%);
-  --success: hsl(158, 56%, 51%); /* #50c878 */
-  --success-foreground: hsl(220, 13%, 18%);
-  --warning: hsl(45, 93%, 54%); /* #e5c07b */
-  --warning-foreground: hsl(220, 13%, 18%);
-  --border: hsl(220, 10%, 23%);
-  --input: hsl(220, 10%, 23%);
-  --ring: hsl(207, 82%, 66%);
-}
-
-@theme inline {
+@theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -80,61 +17,127 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
+  
+  /* Lovable/Shadcn Colors */
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-light: var(--success-light);
+
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-light: var(--warning-light);
+  
   --radius: var(--radius);
+  
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  
+  @keyframes accordion-down {
+    from { height: 0 }
+    to { height: var(--radix-accordion-content-height) }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height) }
+    to { height: 0 }
+  }
 }
 
-body {
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-size: 12px;
+:root {
+  /* Rio Institutional Colors & Lovable Tokens */
+  --background: hsl(0 0% 98%);
+  --foreground: hsl(210 100% 20%);
+
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(210 100% 20%);
+
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(210 100% 20%);
+
+  /* Primary: Institutional Blue #003366 */
+  --primary: hsl(210 100% 20%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-light: hsl(210 100% 35%);
+  --primary-dark: hsl(210 100% 15%);
+
+  /* Secondary: Neutral Grays */
+  --secondary: hsl(0 0% 96%);
+  --secondary-foreground: hsl(210 100% 20%);
+
+  --muted: hsl(210 20% 95%);
+  --muted-foreground: hsl(210 15% 45%);
+
+  /* Accent: Gold Yellow #FFCC00 */
+  --accent: hsl(48 100% 50%);
+  --accent-foreground: hsl(210 100% 20%);
+
+  /* Success: Light Green #7CC242 */
+  --success: hsl(95 54% 51%);
+  --success-foreground: hsl(0 0% 100%);
+  --success-light: hsl(95 54% 90%);
+
+  /* Warning/Attention */
+  --warning: hsl(38 100% 50%);
+  --warning-foreground: hsl(210 100% 20%);
+  --warning-light: hsl(48 100% 95%);
+
+  /* Destructive/Error */
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --border: hsl(210 20% 88%);
+  --input: hsl(210 20% 92%);
+  --ring: hsl(210 100% 20%);
+
+  --radius: 0.75rem;
 }
 
-.prose a {
-    color: var(--color-primary);
+.dark {
+  --background: hsl(210 100% 8%);
+  --foreground: hsl(0 0% 98%);
+
+  --card: hsl(210 100% 12%);
+  --card-foreground: hsl(0 0% 98%);
+
+  --popover: hsl(210 100% 12%);
+  --popover-foreground: hsl(0 0% 98%);
+
+  --primary: hsl(210 100% 55%);
+  --primary-foreground: hsl(210 100% 8%);
+
+  --secondary: hsl(210 30% 18%);
+  --secondary-foreground: hsl(0 0% 98%);
+
+  --muted: hsl(210 30% 18%);
+  --muted-foreground: hsl(210 20% 65%);
+
+  --accent: hsl(48 100% 60%);
+  --accent-foreground: hsl(210 100% 8%);
+
+  --success: hsl(95 54% 55%);
+  --success-foreground: hsl(0 0% 98%);
+  --success-light: hsl(95 54% 20%);
+
+  --warning: hsl(38 100% 55%);
+  --warning-foreground: hsl(210 100% 8%);
+  --warning-light: hsl(48 100% 15%);
+
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 98%);
+
+  --border: hsl(210 30% 25%);
+  --input: hsl(210 30% 22%);
+  --ring: hsl(210 100% 55%);
 }
 
-.prose a:hover {
-    text-decoration: underline;
-}
-
-/* Custom Font Size Classes */
-.text-base-custom {
-    font-size: var(--font-size-base) !important;
-}
-
-.text-sm-custom {
-    font-size: var(--font-size-sm) !important;
-}
-
-.text-xs-custom {
-    font-size: var(--font-size-xs) !important;
-}
-
-.text-lg-custom {
-    font-size: var(--font-size-lg) !important;
-}
-
-.text-xl-custom {
-    font-size: var(--font-size-xl) !important;
-}
-
-/* Prose Custom Classes */
-.prose-base-custom {
-    font-size: var(--font-size-base) !important;
-}
-
-.prose-sm-custom {
-    font-size: var(--font-size-sm) !important;
-}
-
-.prose-lg-custom {
-    font-size: var(--font-size-lg) !important;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
