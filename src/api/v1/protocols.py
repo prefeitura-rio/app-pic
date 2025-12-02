@@ -9,24 +9,23 @@ from src.utils.log import logger
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
 
-# router = APIRouter(dependencies=[Depends(verify_jwt)], prefix="/dash")
-router = APIRouter(prefix="/dash", tags=["Dashboard"])
+router = APIRouter(
+    dependencies=[Depends(verify_jwt)],
+)
 
-
-@router.get("/participants")
-async def get_participantes() -> List[Dict[str, Any]]:
+@router.get("/summary", summary="Resumo de Protocolos", response_model=List[Dict[str, Any]])
+async def get_protocols_summary() -> List[Dict[str, Any]]:
+    """
+    Retorna resumo de violações de protocolos.
+    """
     query = f"""
     SELECT 
         *
-    FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    LIMIT 10
+    FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_protocolo_resumo`
     """
-
     logger.debug(f"Executing query: {query}")
-
     try:
-        r = get_bigquery_result(query=query)
-        return r
+        return get_bigquery_result(query=query)
     except Exception as e:
-        logger.error(f"Error fetching participants: {e}")
+        logger.error(f"Error fetching protocols summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))
