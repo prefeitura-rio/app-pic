@@ -24,8 +24,10 @@ RUN uv sync --frozen --no-cache
 # Copy application code
 COPY src/ ./src/
 
-# Create logs directory and set permissions
-RUN mkdir -p logs && chown -R appuser:appuser /app
+# Create necessary directories and set permissions
+RUN mkdir -p logs && \
+    mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser
 
 # Switch to non-root user
 USER appuser
