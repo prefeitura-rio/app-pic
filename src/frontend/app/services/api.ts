@@ -59,7 +59,9 @@ export const apiService = {
    * @param token - JWT token for authentication
    * @returns SmartFilterOptions with all available filter values and their counts
    */
-  async getFilterOptions(token?: string): Promise<SmartFilterOptions> {
+  async getFilterOptions(
+    token?: string
+  ): Promise<PaginatedResponse<SmartFilterOptions>> {
     const headers: HeadersInit = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -74,7 +76,37 @@ export const apiService = {
       headers,
     });
 
-    return handleResponse<SmartFilterOptions>(res);
+    return handleResponse<PaginatedResponse<SmartFilterOptions>>(res);
+  },
+
+  /**
+   * Get dashboard metrics with filters.
+   *
+   * @param filters - Filter criteria
+   * @param token - JWT token for authentication
+   * @returns Dashboard data
+   */
+  async getDashboard(
+    filters: DashboardFilters = {},
+    token?: string
+  ): Promise<PaginatedResponse<any>> {
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const params = buildFilterParams(filters);
+    const url = `${BASE_URL}/api/v1/dashboard/?${params.toString()}`;
+
+    console.log("[API] getDashboard - Filters:", filters);
+    console.log("[API] getDashboard - URL:", url);
+
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers,
+    });
+
+    return handleResponse<PaginatedResponse<any>>(res);
   },
 
   /**

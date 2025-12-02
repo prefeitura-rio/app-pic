@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
@@ -9,40 +9,47 @@ import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { apiService } from "@/app/services/api";
 import {
   SmartFilterOptions,
+  Dashboard,
   Participante,
   DashboardFilters,
   ParticipantFilters,
-  LoadingState,
+  PaginationMeta,
 } from "@/app/types";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
 /**
  * Main Dashboard Orchestrator Component
  *
- * Architecture:
- * - Fetches filter options once on mount (shared between tabs)
- * - Fetches participants once on mount (shared between tabs)
+ * Architecture (CORRIGIDA):
+ * - Fetches filter options once on mount
+ * - Overview tab: Calls dashboard API with filters
+ * - Professional tab: Calls participants API with filters + pagination
  * - Each tab has independent filter state
- * - Overview tab: Filters participants in-memory for calculations
- * - Professional tab: Uses search and client-side pagination
+ * - NO client-side data loading - all via API calls
  */
 export function DashboardClient() {
   const { data: session, status } = useSession();
 
-  // Shared data (fetched once, used by both tabs)
+  // Shared filter options (fetched once)
   const [filterOptions, setFilterOptions] = useState<SmartFilterOptions | null>(null);
-  const [allParticipants, setAllParticipants] = useState<Participante[]>([]);
 
-  // Loading states
-  const [filterOptionsState, setFilterOptionsState] = useState<LoadingState>("idle");
-  const [participantsState, setParticipantsState] = useState<LoadingState>("idle");
+  // Overview tab state
+  const [dashboardData, setDashboardData] = useState<Dashboard | null>(null);
+  const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
+  const [overviewLoading, setOverviewLoading] = useState(false);
+
+  // Professional tab state
+  const [participantsData, setParticipantsData] = useState<Participante[]>([]);
+  const [participantsMeta, setParticipantsMeta] = useState<PaginationMeta | null>(null);
+  const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>({});
+  const [professionalPage, setProfessionalPage] = useState(1);
+  const [professionalLoading, setProfessionalLoading] = useState(false);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
 
-  // Independent filter states (each tab manages its own)
-  const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
-  const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>({});
+  // Loading states
+  const [initialLoading, setInitialLoading] = useState(true);
 
   /**
    * Fetch filter options on mount
@@ -55,68 +62,117 @@ export function DashboardClient() {
       return;
     }
 
-    if (session?.accessToken && filterOptionsState === "idle") {
-      setFilterOptionsState("loading");
-
+    if (session?.accessToken) {
       apiService
         .getFilterOptions(session.accessToken as string)
-        .then((options) => {
-          setFilterOptions(options);
-          setFilterOptionsState("success");
+        .then((response) => {
+          setFilterOptions(response.data[0]);
+          setInitialLoading(false);
         })
         .catch((err) => {
           if (err.message !== "Unauthorized") {
             console.error("[DashboardClient] Failed to load filter options:", err);
           }
-          setFilterOptionsState("error");
+          setInitialLoading(false);
         });
     }
-  }, [session, status, filterOptionsState]);
+  }, [session, status]);
 
   /**
-   * Fetch ALL participants on mount (for in-memory filtering)
-   * We request a large page size to get everything in one call
+   * Fetch dashboard data when overview tab is active or filters change
+   */
+  const fetchDashboard = useCallback(
+    async (filters: DashboardFilters) => {
+      if (!session?.accessToken) return;
+
+      setOverviewLoading(true);
+      try {
+        const response = await apiService.getDashboard(
+          filters,
+          session.accessToken as string
+        );
+        setDashboardData(response.data[0]);
+      } catch (err: any) {
+        if (err.message !== "Unauthorized") {
+          console.error("[DashboardClient] Failed to load dashboard:", err);
+        }
+      } finally {
+        setOverviewLoading(false);
+      }
+    },
+    [session]
+  );
+
+  /**
+   * Fetch participants when professional tab is active or filters/page change
+   */
+  const fetchParticipants = useCallback(
+    async (filters: ParticipantFilters, page: number) => {
+      if (!session?.accessToken) return;
+
+      setProfessionalLoading(true);
+      try {
+        const response = await apiService.getParticipants(
+          filters,
+          page,
+          20, // page_size
+          session.accessToken as string
+        );
+        setParticipantsData(response.data);
+        setParticipantsMeta(response.meta);
+      } catch (err: any) {
+        if (err.message !== "Unauthorized") {
+          console.error("[DashboardClient] Failed to load participants:", err);
+        }
+      } finally {
+        setProfessionalLoading(false);
+      }
+    },
+    [session]
+  );
+
+  /**
+   * Load initial data for active tab
    */
   useEffect(() => {
-    if (status === "loading") return;
+    if (initialLoading || !session?.accessToken) return;
 
-    if (status === "unauthenticated") {
-      signIn("authentik");
-      return;
+    if (activeTab === "overview") {
+      fetchDashboard(overviewFilters);
+    } else {
+      fetchParticipants(professionalFilters, professionalPage);
     }
+  }, [activeTab, initialLoading, session]);
 
-    if (session?.accessToken && participantsState === "idle") {
-      setParticipantsState("loading");
+  /**
+   * Handle overview filter changes
+   */
+  const handleOverviewFilterChange = (newFilters: DashboardFilters) => {
+    setOverviewFilters(newFilters);
+    fetchDashboard(newFilters);
+  };
 
-      // Request all participants (adjust page_size based on your dataset)
-      // For datasets > 100k, consider implementing proper pagination
-      apiService
-        .getParticipants({}, 1, 100000, session.accessToken as string)
-        .then((response) => {
-          setAllParticipants(response.data);
-          setParticipantsState("success");
-          console.log(
-            `[DashboardClient] Loaded ${response.data.length} participants (${response.meta.total_rows} total)`
-          );
-        })
-        .catch((err) => {
-          if (err.message !== "Unauthorized") {
-            console.error("[DashboardClient] Failed to load participants:", err);
-          }
-          setParticipantsState("error");
-        });
-    }
-  }, [session, status, participantsState]);
+  /**
+   * Handle professional filter changes
+   */
+  const handleProfessionalFilterChange = (newFilters: ParticipantFilters) => {
+    setProfessionalFilters(newFilters);
+    setProfessionalPage(1); // Reset to page 1
+    fetchParticipants(newFilters, 1);
+  };
+
+  /**
+   * Handle professional page change
+   */
+  const handleProfessionalPageChange = (page: number) => {
+    setProfessionalPage(page);
+    fetchParticipants(professionalFilters, page);
+  };
 
   /**
    * Show loading screen while initial data loads
    */
-  const isLoading =
-    status === "loading" ||
-    filterOptionsState === "loading" ||
-    participantsState === "loading";
-
-  if (isLoading) {
+  if (status === "loading" || initialLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -124,42 +180,23 @@ export function DashboardClient() {
           <p className="text-lg text-muted-foreground">
             Carregando dados do Painel...
           </p>
-          <p className="text-sm text-muted-foreground mt-2">
-            {filterOptionsState === "loading" && "Carregando opções de filtros..."}
-            {participantsState === "loading" && "Carregando participantes..."}
-          </p>
         </div>
       </div>
     );
   }
 
   /**
-   * Show error state if data failed to load
+   * Show empty state if no filter options loaded
    */
-  if (filterOptionsState === "error" || participantsState === "error") {
+  if (!filterOptions) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <p className="text-lg text-destructive mb-4">
-            Erro ao carregar dados do painel
+            Erro ao carregar opções de filtros
           </p>
           <p className="text-sm text-muted-foreground">
             Verifique sua conexão e tente novamente.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  /**
-   * Show empty state if no data loaded
-   */
-  if (!filterOptions || allParticipants.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg text-muted-foreground">
-            Nenhum dado disponível no momento
           </p>
         </div>
       </div>
@@ -195,19 +232,23 @@ export function DashboardClient() {
 
           <TabsContent value="overview" className="mt-6">
             <OverviewTab
-              allParticipants={allParticipants}
+              data={dashboardData}
               filterOptions={filterOptions}
               filters={overviewFilters}
-              onFilterChange={setOverviewFilters}
+              onFilterChange={handleOverviewFilterChange}
+              loading={overviewLoading}
             />
           </TabsContent>
 
           <TabsContent value="professional" className="mt-6">
             <ProfessionalTab
-              allParticipants={allParticipants}
+              data={participantsData}
+              meta={participantsMeta}
               filterOptions={filterOptions}
               filters={professionalFilters}
-              onFilterChange={setProfessionalFilters}
+              onFilterChange={handleProfessionalFilterChange}
+              onPageChange={handleProfessionalPageChange}
+              loading={professionalLoading}
             />
           </TabsContent>
         </Tabs>

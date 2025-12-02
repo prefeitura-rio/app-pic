@@ -16,9 +16,12 @@ class CommonFilters(BaseModel):
     bairro: Optional[str] = None
     cre: Optional[str] = None
     cras: Optional[str] = None
+    escola: Optional[str] = None
+    clinica: Optional[str] = None
     safra: Optional[str] = None  # Keeping as string for flexibility in query params
     grupo: Optional[str] = None
     status: Optional[str] = None
+    search: Optional[str] = None  # CPF or name search
 
 
 # --- Response Models ---

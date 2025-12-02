@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
   Participante,
   SmartFilterOptions,
   ParticipantFilters,
+  PaginationMeta,
 } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import {
@@ -28,98 +29,30 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  Eye,
   Filter,
+  Loader2,
 } from "lucide-react";
 
 interface ProfessionalTabProps {
-  allParticipants: Participante[];
+  data: Participante[];
+  meta: PaginationMeta | null;
   filterOptions: SmartFilterOptions;
   filters: ParticipantFilters;
   onFilterChange: (filters: ParticipantFilters) => void;
+  onPageChange: (page: number) => void;
+  loading?: boolean;
 }
 
-const ITEMS_PER_PAGE = 20;
-
 export function ProfessionalTab({
-  allParticipants,
+  data,
+  meta,
   filterOptions,
   filters,
   onFilterChange,
+  onPageChange,
+  loading = false,
 }: ProfessionalTabProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  /**
-   * Apply filters and search to participants in-memory
-   */
-  const filteredParticipants = useMemo(() => {
-    let result = allParticipants;
-
-    // Apply filters
-    if (filters.bairro && filters.bairro !== "todos") {
-      result = result.filter((p) => p.bairro === filters.bairro);
-    }
-
-    if (filters.cre && filters.cre !== "todas") {
-      result = result.filter((p) => p.id_cre === filters.cre);
-    }
-
-    if (filters.cras && filters.cras !== "todas") {
-      result = result.filter((p) => p.id_cras === filters.cras);
-    }
-
-    if (filters.escola && filters.escola !== "todas") {
-      result = result.filter((p) => p.id_escola === filters.escola);
-    }
-
-    if (filters.clinica && filters.clinica !== "todas") {
-      result = result.filter((p) => p.id_clinica_familia === filters.clinica);
-    }
-
-    if (filters.safra && filters.safra !== "todas") {
-      result = result.filter((p) => p.cohort === filters.safra);
-    }
-
-    if (filters.grupo && filters.grupo !== "todos") {
-      result = result.filter(
-        (p) =>
-          p.grupo?.toLowerCase().includes(filters.grupo!.toLowerCase()) ?? false
-      );
-    }
-
-    if (filters.status && filters.status !== "todos") {
-      result = result.filter((p) => p.status === filters.status);
-    }
-
-    // Apply search (CPF or Name)
-    if (searchTerm && searchTerm.trim() !== "") {
-      const search = searchTerm.toLowerCase().trim();
-      result = result.filter(
-        (p) =>
-          p.nome?.toLowerCase().includes(search) ||
-          p.cpf?.includes(search.replace(/\D/g, ""))
-      );
-    }
-
-    return result;
-  }, [allParticipants, filters, searchTerm]);
-
-  /**
-   * Paginate filtered results
-   */
-  const paginatedParticipants = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    return filteredParticipants.slice(startIndex, endIndex);
-  }, [filteredParticipants, currentPage]);
-
-  const totalPages = Math.ceil(filteredParticipants.length / ITEMS_PER_PAGE);
-
-  // Reset to page 1 when filters or search change
-  useMemo(() => {
-    setCurrentPage(1);
-  }, [filters, searchTerm]);
+  const [searchInput, setSearchInput] = useState("");
 
   const handleFilterUpdate = (key: keyof ParticipantFilters, value: string) => {
     onFilterChange({
@@ -128,8 +61,15 @@ export function ProfessionalTab({
     });
   };
 
+  const handleSearch = () => {
+    onFilterChange({
+      ...filters,
+      search: searchInput,
+    });
+  };
+
   const clearFilters = () => {
-    setSearchTerm("");
+    setSearchInput("");
     onFilterChange({});
   };
 
@@ -158,21 +98,29 @@ export function ProfessionalTab({
             <Filter className="h-5 w-5 text-primary" />
             Busca e Filtros
           </CardTitle>
-          <Button variant="outline" size="sm" onClick={clearFilters}>
+          <Button variant="outline" size="sm" onClick={clearFilters} disabled={loading}>
             Limpar Tudo
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Search Input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Buscar por CPF ou Nome..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar por CPF ou Nome..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="pl-10"
+                disabled={loading}
+              />
+            </div>
+            <Button onClick={handleSearch} disabled={loading}>
+              <Search className="h-4 w-4 mr-2" />
+              Buscar
+            </Button>
           </div>
 
           {/* Primary Filters */}
@@ -181,6 +129,7 @@ export function ProfessionalTab({
             <Select
               value={filters.grupo || "todos"}
               onValueChange={(v) => handleFilterUpdate("grupo", v)}
+              disabled={loading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Grupo" />
@@ -196,6 +145,7 @@ export function ProfessionalTab({
             <Select
               value={filters.status || "todos"}
               onValueChange={(v) => handleFilterUpdate("status", v)}
+              disabled={loading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
@@ -216,6 +166,7 @@ export function ProfessionalTab({
             <Select
               value={filters.safra || "todas"}
               onValueChange={(v) => handleFilterUpdate("safra", v)}
+              disabled={loading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Safra" />
@@ -239,6 +190,7 @@ export function ProfessionalTab({
             <Select
               value={filters.bairro || "todos"}
               onValueChange={(v) => handleFilterUpdate("bairro", v)}
+              disabled={loading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Bairro" />
@@ -259,6 +211,7 @@ export function ProfessionalTab({
             <Select
               value={filters.cre || "todas"}
               onValueChange={(v) => handleFilterUpdate("cre", v)}
+              disabled={loading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="CRE (Educação)" />
@@ -279,6 +232,7 @@ export function ProfessionalTab({
             <Select
               value={filters.cras || "todas"}
               onValueChange={(v) => handleFilterUpdate("cras", v)}
+              disabled={loading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="CRAS (Assistência)" />
@@ -296,59 +250,20 @@ export function ProfessionalTab({
             </Select>
           </div>
 
-          {/* Equipment Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Escola */}
-            <Select
-              value={filters.escola || "todas"}
-              onValueChange={(v) => handleFilterUpdate("escola", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Escola" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as Escolas</SelectItem>
-                {filterOptions.escolas
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .slice(0, 100) // Limit for performance
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-
-            {/* Clínica */}
-            <Select
-              value={filters.clinica || "todas"}
-              onValueChange={(v) => handleFilterUpdate("clinica", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Clínica da Família" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as Clínicas</SelectItem>
-                {filterOptions.clinicas
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .slice(0, 100) // Limit for performance
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="pt-2 text-sm text-muted-foreground">
-            {filteredParticipants.length} resultado(s) encontrado(s)
-          </div>
+          {meta && (
+            <div className="pt-2 text-sm text-muted-foreground">
+              {meta.total_rows} resultado(s) encontrado(s)
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Results Table */}
-      {paginatedParticipants.length > 0 ? (
+      {loading && !data.length ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : data.length > 0 ? (
         <Card className="border-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -371,7 +286,7 @@ export function ProfessionalTab({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedParticipants.map((participant, idx) => (
+                  {data.map((participant, idx) => (
                     <TableRow
                       key={`${participant.cpf}-${idx}`}
                       className="hover:bg-muted/50"
@@ -416,32 +331,29 @@ export function ProfessionalTab({
             </div>
 
             {/* Pagination */}
-            {totalPages > 1 && (
+            {meta && meta.total_pages > 1 && (
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">
-                  Página {currentPage} de {totalPages} (
-                  {filteredParticipants.length} itens)
+                  Página {meta.page} de {meta.total_pages} ({meta.total_rows} itens)
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => onPageChange(Math.max(1, meta.page - 1))}
+                    disabled={meta.page === 1 || loading}
                   >
                     <ChevronLeft className="h-4 w-4" />
                     Anterior
                   </Button>
 
-                  <span className="text-sm px-2">Página {currentPage}</span>
+                  <span className="text-sm px-2">Página {meta.page}</span>
 
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={currentPage === totalPages}
+                    onClick={() => onPageChange(Math.min(meta.total_pages, meta.page + 1))}
+                    disabled={meta.page === meta.total_pages || loading}
                   >
                     Próxima
                     <ChevronRight className="h-4 w-4" />

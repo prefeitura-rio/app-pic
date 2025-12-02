@@ -1,10 +1,8 @@
-import { useMemo, useState } from "react";
 import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home } from "lucide-react";
 import {
-  Participante,
+  Dashboard,
   SmartFilterOptions,
   DashboardFilters,
-  FilterOptionItem,
 } from "../types";
 import { StatCard } from "./StatCard";
 import { Button } from "./ui/button";
@@ -29,222 +27,23 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { Loader2 } from "lucide-react";
 
 interface OverviewTabProps {
-  allParticipants: Participante[];
+  data: Dashboard | null;
   filterOptions: SmartFilterOptions;
   filters: DashboardFilters;
   onFilterChange: (filters: DashboardFilters) => void;
+  loading?: boolean;
 }
 
 export function OverviewTab({
-  allParticipants,
+  data,
   filterOptions,
   filters,
   onFilterChange,
+  loading = false,
 }: OverviewTabProps) {
-  const [selectedGrupo, setSelectedGrupo] = useState<string>("todos");
-
-  /**
-   * Apply filters to participants in-memory
-   */
-  const filteredParticipants = useMemo(() => {
-    let result = allParticipants;
-
-    // Apply filters
-    if (filters.bairro && filters.bairro !== "todos") {
-      result = result.filter((p) => p.bairro === filters.bairro);
-    }
-
-    if (filters.cre && filters.cre !== "todas") {
-      result = result.filter((p) => p.id_cre === filters.cre);
-    }
-
-    if (filters.cras && filters.cras !== "todas") {
-      result = result.filter((p) => p.id_cras === filters.cras);
-    }
-
-    if (filters.safra && filters.safra !== "todas") {
-      result = result.filter((p) => p.cohort === filters.safra);
-    }
-
-    if (filters.grupo && filters.grupo !== "todos") {
-      result = result.filter(
-        (p) =>
-          p.grupo?.toLowerCase().includes(filters.grupo!.toLowerCase()) ?? false
-      );
-    }
-
-    if (filters.status && filters.status !== "todos") {
-      result = result.filter((p) => p.status === filters.status);
-    }
-
-    return result;
-  }, [allParticipants, filters]);
-
-  /**
-   * Apply additional grupo filter (crianças/gestantes)
-   */
-  const displayedParticipants = useMemo(() => {
-    if (selectedGrupo === "todos") return filteredParticipants;
-    return filteredParticipants.filter((p) =>
-      p.grupo?.toLowerCase().includes(selectedGrupo.toLowerCase())
-    );
-  }, [filteredParticipants, selectedGrupo]);
-
-  /**
-   * Calculate statistics
-   */
-  const stats = useMemo(() => {
-    const ativos = displayedParticipants.filter((p) => p.status === "ativo");
-    const inativos = displayedParticipants.filter((p) => p.status === "inativo");
-    const criancas = displayedParticipants.filter((p) =>
-      p.grupo?.toLowerCase().includes("crianca")
-    );
-    const gestantes = displayedParticipants.filter((p) =>
-      p.grupo?.toLowerCase().includes("gestante")
-    );
-
-    // Protocol statistics
-    const totalProtocolos = displayedParticipants.reduce(
-      (acc, p) => acc + (p.total_protocolos || 0),
-      0
-    );
-    const protocolosViolados = displayedParticipants.reduce(
-      (acc, p) => acc + (p.total_protocolos_violados || 0),
-      0
-    );
-
-    const protocolosSMAS = displayedParticipants.reduce(
-      (acc, p) => acc + (p.assistencia_protocolos_total || 0),
-      0
-    );
-    const protocolosSMASViolados = displayedParticipants.reduce(
-      (acc, p) => acc + (p.assistencia_protocolos_violados || 0),
-      0
-    );
-
-    const protocolosSME = displayedParticipants.reduce(
-      (acc, p) => acc + (p.educacao_protocolos_total || 0),
-      0
-    );
-    const protocolosSMEViolados = displayedParticipants.reduce(
-      (acc, p) => acc + (p.educacao_protocolos_violados || 0),
-      0
-    );
-
-    const protocolosSMS = displayedParticipants.reduce(
-      (acc, p) => acc + (p.saude_protocolos_total || 0),
-      0
-    );
-    const protocolosSMSViolados = displayedParticipants.reduce(
-      (acc, p) => acc + (p.saude_protocolos_violados || 0),
-      0
-    );
-
-    // Participants in attention (com protocolos violados)
-    const participantesEmAtencao = displayedParticipants.filter(
-      (p) => (p.total_protocolos_violados || 0) > 0
-    );
-
-    return {
-      totalParticipantes: displayedParticipants.length,
-      ativos: ativos.length,
-      inativos: inativos.length,
-      criancas: criancas.length,
-      gestantes: gestantes.length,
-      totalProtocolos,
-      protocolosViolados,
-      percentualViolados:
-        totalProtocolos > 0
-          ? ((protocolosViolados / totalProtocolos) * 100).toFixed(1)
-          : "0",
-      protocolosSMAS,
-      protocolosSMASViolados,
-      percentualSMASViolados:
-        protocolosSMAS > 0
-          ? ((protocolosSMASViolados / protocolosSMAS) * 100).toFixed(1)
-          : "0",
-      protocolosSME,
-      protocolosSMEViolados,
-      percentualSMEViolados:
-        protocolosSME > 0
-          ? ((protocolosSMEViolados / protocolosSME) * 100).toFixed(1)
-          : "0",
-      protocolosSMS,
-      protocolosSMSViolados,
-      percentualSMSViolados:
-        protocolosSMS > 0
-          ? ((protocolosSMSViolados / protocolosSMS) * 100).toFixed(1)
-          : "0",
-      participantesEmAtencao: participantesEmAtencao.length,
-      percentualEmAtencao:
-        displayedParticipants.length > 0
-          ? (
-              (participantesEmAtencao.length / displayedParticipants.length) *
-              100
-            ).toFixed(1)
-          : "0",
-    };
-  }, [displayedParticipants]);
-
-  /**
-   * Generate chart data
-   */
-  const chartData = useMemo(() => {
-    // Group distribution
-    const grupoMap = new Map<string, number>();
-    displayedParticipants.forEach((p) => {
-      if (p.grupo) {
-        grupoMap.set(p.grupo, (grupoMap.get(p.grupo) || 0) + 1);
-      }
-    });
-    const distribuicaoGrupo = Array.from(grupoMap.entries()).map(
-      ([grupo, total]) => ({ grupo, total })
-    );
-
-    // Top bairros
-    const bairroMap = new Map<string, number>();
-    displayedParticipants.forEach((p) => {
-      if (p.bairro) {
-        bairroMap.set(p.bairro, (bairroMap.get(p.bairro) || 0) + 1);
-      }
-    });
-    const topBairros = Array.from(bairroMap.entries())
-      .map(([bairro, total]) => ({ bairro, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-
-    // Safra distribution
-    const safraMap = new Map<string, number>();
-    displayedParticipants.forEach((p) => {
-      if (p.cohort) {
-        safraMap.set(p.cohort, (safraMap.get(p.cohort) || 0) + 1);
-      }
-    });
-    const distribuicaoSafra = Array.from(safraMap.entries())
-      .map(([safra, total]) => ({ safra, total }))
-      .sort((a, b) => a.safra.localeCompare(b.safra));
-
-    // Inactivity reasons
-    const motivoMap = new Map<string, number>();
-    displayedParticipants
-      .filter((p) => p.status === "inativo" && p.status_inativo_motivo)
-      .forEach((p) => {
-        const motivo = p.status_inativo_motivo!;
-        motivoMap.set(motivo, (motivoMap.get(motivo) || 0) + 1);
-      });
-    const motivosSaida = Array.from(motivoMap.entries()).map(
-      ([motivo, total]) => ({ motivo, total })
-    );
-
-    return {
-      distribuicaoGrupo,
-      topBairros,
-      distribuicaoSafra,
-      motivosSaida,
-    };
-  }, [displayedParticipants]);
 
   const handleFilterUpdate = (key: keyof DashboardFilters, value: string) => {
     onFilterChange({
@@ -254,11 +53,26 @@ export function OverviewTab({
   };
 
   const clearFilters = () => {
-    setSelectedGrupo("todos");
     onFilterChange({});
   };
 
   const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+
+  if (loading && !data) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Nenhum dado disponível</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -274,24 +88,31 @@ export function OverviewTab({
             size="sm"
             onClick={clearFilters}
             className="h-8 text-xs"
+            disabled={loading}
           >
             Limpar Filtros
           </Button>
         </CardHeader>
         <CardContent className="pt-0 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-2">
-            {/* Grupo (local filter) */}
+            {/* Grupo */}
             <Select
-              value={selectedGrupo}
-              onValueChange={(v) => setSelectedGrupo(v)}
+              value={filters.grupo || "todos"}
+              onValueChange={(v) => handleFilterUpdate("grupo", v)}
+              disabled={loading}
             >
               <SelectTrigger className="h-8">
                 <SelectValue placeholder="Grupo" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="crianca">Crianças</SelectItem>
-                <SelectItem value="gestante">Gestantes</SelectItem>
+                {filterOptions.grupos
+                  .filter((item) => item.id && item.id.trim() !== "")
+                  .map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label} ({item.counts.total})
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
 
@@ -299,6 +120,7 @@ export function OverviewTab({
             <Select
               value={filters.bairro || "todos"}
               onValueChange={(v) => handleFilterUpdate("bairro", v)}
+              disabled={loading}
             >
               <SelectTrigger className="h-8">
                 <SelectValue placeholder="Bairro" />
@@ -319,6 +141,7 @@ export function OverviewTab({
             <Select
               value={filters.cre || "todas"}
               onValueChange={(v) => handleFilterUpdate("cre", v)}
+              disabled={loading}
             >
               <SelectTrigger className="h-8">
                 <SelectValue placeholder="CRE" />
@@ -339,6 +162,7 @@ export function OverviewTab({
             <Select
               value={filters.cras || "todas"}
               onValueChange={(v) => handleFilterUpdate("cras", v)}
+              disabled={loading}
             >
               <SelectTrigger className="h-8">
                 <SelectValue placeholder="CRAS" />
@@ -359,6 +183,7 @@ export function OverviewTab({
             <Select
               value={filters.safra || "todas"}
               onValueChange={(v) => handleFilterUpdate("safra", v)}
+              disabled={loading}
             >
               <SelectTrigger className="h-8">
                 <SelectValue placeholder="Safra" />
@@ -379,6 +204,7 @@ export function OverviewTab({
             <Select
               value={filters.status || "todos"}
               onValueChange={(v) => handleFilterUpdate("status", v)}
+              disabled={loading}
             >
               <SelectTrigger className="h-8">
                 <SelectValue placeholder="Status" />
@@ -398,177 +224,186 @@ export function OverviewTab({
         </CardContent>
       </Card>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total de Participantes"
-          value={stats.totalParticipantes}
-          icon={<Users className="h-4 w-4" />}
-          trend={{
-            value: `${stats.ativos} ativos`,
-            isPositive: true,
-          }}
-        />
-        <StatCard
-          title="Crianças"
-          value={stats.criancas}
-          icon={<Baby className="h-4 w-4" />}
-          trend={{
-            value: `${((stats.criancas / stats.totalParticipantes) * 100).toFixed(1)}%`,
-            isPositive: true,
-          }}
-        />
-        <StatCard
-          title="Gestantes"
-          value={stats.gestantes}
-          icon={<Heart className="h-4 w-4" />}
-          trend={{
-            value: `${((stats.gestantes / stats.totalParticipantes) * 100).toFixed(1)}%`,
-            isPositive: true,
-          }}
-        />
-        <StatCard
-          title="Em Atenção"
-          value={stats.participantesEmAtencao}
-          icon={<Activity className="h-4 w-4" />}
-          trend={{
-            value: `${stats.percentualEmAtencao}%`,
-            isPositive: false,
-          }}
-        />
-      </div>
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
 
-      {/* Protocol Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Protocolos Totais"
-          value={stats.totalProtocolos}
-          icon={<TrendingUp className="h-4 w-4" />}
-          trend={{
-            value: `${stats.percentualViolados}% violados`,
-            isPositive: false,
-          }}
-        />
-        <StatCard
-          title="Assistência Social"
-          value={stats.protocolosSMAS}
-          icon={<Home className="h-4 w-4" />}
-          trend={{
-            value: `${stats.percentualSMASViolados}% violados`,
-            isPositive: false,
-          }}
-        />
-        <StatCard
-          title="Educação"
-          value={stats.protocolosSME}
-          icon={<Baby className="h-4 w-4" />}
-          trend={{
-            value: `${stats.percentualSMEViolados}% violados`,
-            isPositive: false,
-          }}
-        />
-        <StatCard
-          title="Saúde"
-          value={stats.protocolosSMS}
-          icon={<Heart className="h-4 w-4" />}
-          trend={{
-            value: `${stats.percentualSMSViolados}% violados`,
-            isPositive: false,
-          }}
-        />
-      </div>
+      {!loading && (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              title="Total de Participantes"
+              value={data.total_participantes_geral || 0}
+              icon={<Users className="h-4 w-4" />}
+              trend={{
+                value: `${data.total_participantes_ativos || 0} ativos`,
+                isPositive: true,
+              }}
+            />
+            <StatCard
+              title="Participantes Ativos"
+              value={data.total_participantes_ativos || 0}
+              icon={<Activity className="h-4 w-4" />}
+              variant="success"
+            />
+            <StatCard
+              title="Participantes Inativos"
+              value={data.total_participantes_inativos || 0}
+              icon={<Users className="h-4 w-4" />}
+              variant="secondary"
+            />
+            <StatCard
+              title="Em Atenção"
+              value={data.total_participantes_em_atencao || 0}
+              icon={<Activity className="h-4 w-4" />}
+              trend={{
+                value: `${data.percentual_em_atencao || 0}%`,
+                isPositive: false,
+              }}
+              variant="warning"
+            />
+          </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Group Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribuição por Grupo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={chartData.distribuicaoGrupo}
-                  dataKey="total"
-                  nameKey="grupo"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label
-                >
-                  {chartData.distribuicaoGrupo.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          {/* Protocol Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              title="Protocolos Totais"
+              value={data.total_protocolos || 0}
+              icon={<TrendingUp className="h-4 w-4" />}
+              trend={{
+                value: `${data.percentual_protocolos_violados || 0}% violados`,
+                isPositive: false,
+              }}
+            />
+            <StatCard
+              title="Assistência Social"
+              value={data.total_protocolos_smas || 0}
+              icon={<Home className="h-4 w-4" />}
+              trend={{
+                value: `${data.percentual_smas_violados || 0}% violados`,
+                isPositive: false,
+              }}
+            />
+            <StatCard
+              title="Educação"
+              value={data.total_protocolos_sme || 0}
+              icon={<Baby className="h-4 w-4" />}
+              trend={{
+                value: `${data.percentual_sme_violados || 0}% violados`,
+                isPositive: false,
+              }}
+            />
+            <StatCard
+              title="Saúde"
+              value={data.total_protocolos_sms || 0}
+              icon={<Heart className="h-4 w-4" />}
+              trend={{
+                value: `${data.percentual_sms_violados || 0}% violados`,
+                isPositive: false,
+              }}
+            />
+          </div>
 
-        {/* Top Bairros */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top 10 Bairros</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData.topBairros}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="bairro" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="total" fill="#8884d8" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Group Distribution */}
+            {data.distribuicao_por_grupo && data.distribuicao_por_grupo.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Distribuição por Grupo</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={data.distribuicao_por_grupo}
+                        dataKey="total_participantes"
+                        nameKey="grupo"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        label
+                      >
+                        {data.distribuicao_por_grupo.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
-        {/* Safra Distribution */}
-        {chartData.distribuicaoSafra.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Distribuição por Safra</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={chartData.distribuicaoSafra}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="safra" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="total" fill="#00C49F" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
+            {/* Top Bairros */}
+            {data.top_bairros && data.top_bairros.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Bairros</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={data.top_bairros}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="bairro" angle={-45} textAnchor="end" height={100} />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="total_participantes" fill="#8884d8" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
-        {/* Motivos de Saída */}
-        {chartData.motivosSaida.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Motivos de Inativação</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={chartData.motivosSaida}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="motivo" angle={-45} textAnchor="end" height={100} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="total" fill="#FF8042" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            {/* Safra Distribution */}
+            {data.distribuicao_por_safra && data.distribuicao_por_safra.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Distribuição por Safra</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={data.distribuicao_por_safra}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="safra" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="total_participantes" fill="#00C49F" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Motivos de Saída */}
+            {data.distribuicao_motivo_saida && data.distribuicao_motivo_saida.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Motivos de Inativação</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={data.distribuicao_motivo_saida}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="motivo" angle={-45} textAnchor="end" height={100} />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="total" fill="#FF8042" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

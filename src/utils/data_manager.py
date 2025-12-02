@@ -62,6 +62,14 @@ class DataManager:
             if 'id_cras' in filtered_df.columns:
                 filtered_df = filtered_df[filtered_df['id_cras'].astype(str) == filters.cras]
 
+        if filters.escola and filters.escola != "todas":
+            if 'id_escola' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['id_escola'].astype(str) == filters.escola]
+
+        if filters.clinica and filters.clinica != "todas":
+            if 'id_clinica_familia' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['id_clinica_familia'].astype(str) == filters.clinica]
+
         if filters.safra and filters.safra != "todas":
             if 'cohort' in filtered_df.columns:
                 filtered_df = filtered_df[filtered_df['cohort'].astype(str) == filters.safra]
@@ -74,6 +82,23 @@ class DataManager:
         if filters.status and filters.status != "todos":
             if 'status' in filtered_df.columns:
                 filtered_df = filtered_df[filtered_df['status'] == filters.status]
+
+        # Search filter - search by CPF or name
+        if filters.search and filters.search.strip():
+            search_term = filters.search.strip()
+            # Clean CPF search (remove non-digits)
+            cpf_search = ''.join(filter(str.isdigit, search_term))
+
+            # Search in CPF or name columns
+            mask = pd.Series([False] * len(filtered_df))
+
+            if 'cpf' in filtered_df.columns:
+                mask = mask | filtered_df['cpf'].astype(str).str.contains(cpf_search, case=False, na=False)
+
+            if 'nome' in filtered_df.columns:
+                mask = mask | filtered_df['nome'].astype(str).str.contains(search_term, case=False, na=False)
+
+            filtered_df = filtered_df[mask]
 
         # Log apenas resumo final
         if initial_rows != len(filtered_df):

@@ -13,6 +13,7 @@ from src.api.v1.schemas import (
     SmartFilterOptions,
     FilterOptionItem,
     FilterOptionCounts,
+    PaginationMeta,
 )
 from src.utils.data_manager import DataManager
 
@@ -27,7 +28,7 @@ router = APIRouter(
 @router.get(
     "/filter-options",
     summary="Opções de filtros com contadores (otimizado com SQL)",
-    response_model=SmartFilterOptions,
+    response_model=PaginatedResponse[SmartFilterOptions],
 )
 async def get_filter_options() -> Any:
     """
@@ -199,47 +200,60 @@ async def get_filter_options() -> Any:
             cras=[],
             escolas=[],
             clinicas=[],
-            total_participantes=0
+            total_participantes=0,
         )
 
         for _, row in df.iterrows():
             item = FilterOptionItem(
-                id=str(row['id']),
-                label=str(row['label']),
+                id=str(row["id"]),
+                label=str(row["label"]),
                 counts=FilterOptionCounts(
-                    total=int(row['total']),
-                    crianca=int(row['crianca']),
-                    gestante=int(row['gestante']),
-                    ativo=int(row['ativo']),
-                    inativo=int(row['inativo'])
-                )
+                    total=int(row["total"]),
+                    crianca=int(row["crianca"]),
+                    gestante=int(row["gestante"]),
+                    ativo=int(row["ativo"]),
+                    inativo=int(row["inativo"]),
+                ),
             )
 
-            tipo = row['tipo']
-            if tipo == 'bairro':
+            tipo = row["tipo"]
+            if tipo == "bairro":
                 result.bairros.append(item)
-            elif tipo == 'grupo':
+            elif tipo == "grupo":
                 result.grupos.append(item)
-            elif tipo == 'cohort':
+            elif tipo == "cohort":
                 result.cohorts.append(item)
-            elif tipo == 'status':
+            elif tipo == "status":
                 result.status_list.append(item)
-            elif tipo == 'cre':
+            elif tipo == "cre":
                 result.cres.append(item)
-            elif tipo == 'cras':
+            elif tipo == "cras":
                 result.cras.append(item)
-            elif tipo == 'escola':
+            elif tipo == "escola":
                 result.escolas.append(item)
-            elif tipo == 'clinica':
+            elif tipo == "clinica":
                 result.clinicas.append(item)
 
         # Calcular total de participantes
         if result.status_list:
             result.total_participantes = sum(s.counts.total for s in result.status_list)
 
-        logger.info(f"Filter options: {len(result.bairros)} bairros, {len(result.grupos)} grupos, {result.total_participantes} total")
+        logger.info(
+            f"Filter options: {len(result.bairros)} bairros, {len(result.grupos)} grupos, {result.total_participantes} total"
+        )
 
-        return result
+        # Wrap in PaginatedResponse format
+        return PaginatedResponse(
+            data=[result],
+            meta=PaginationMeta(
+                page=1,
+                page_size=1,
+                total_rows=1,
+                total_pages=1,
+                cache_hit=True,
+                profiling={},
+            ),
+        )
 
     except Exception as e:
         logger.error(f"Error fetching filter options: {e}")
