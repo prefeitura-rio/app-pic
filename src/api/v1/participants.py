@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 from src.core.security.jwt import verify_jwt
 from src.config import env
@@ -10,12 +10,18 @@ PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
 
 router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
+    # dependencies=[Depends(verify_jwt)],
 )
 
 
-@router.get("/", summary="Listar participantes", response_model=List[Dict[str, Any]])
-async def get_participants() -> List[Dict[str, Any]]:
+@router.get(
+    "/",
+    summary="Listar participantes",
+    response_model=Union[List[Dict[str, Any]], Dict[str, Any]],
+)
+async def get_participants(
+    page: int = 1, page_size: int = env.GOOGLE_BIGQUERY_PAGE_SIZE
+) -> Dict[str, Any]:
     """
     Busca lista de participantes.
     """
@@ -23,10 +29,12 @@ async def get_participants() -> List[Dict[str, Any]]:
     SELECT 
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
+    ORDER BY cpf
     """
     logger.debug(f"Executing query: {query}")
     try:
-        return get_bigquery_result(query=query)
+        return get_bigquery_result(query=query, page_size=page_size, page_number=page)
+
     except Exception as e:
         logger.error(f"Error fetching participants: {e}")
         raise HTTPException(status_code=500, detail=str(e))

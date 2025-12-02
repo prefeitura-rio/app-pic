@@ -13,6 +13,8 @@ from src.config import env
 from google.cloud.bigquery.table import Row
 import numpy as np
 import pandas as pd
+from src.utils.log import logger
+import math
 
 
 class CustomJSONEncoder(json.JSONEncoder):
@@ -34,19 +36,34 @@ class CustomJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def get_bigquery_result(query: str):
+def get_bigquery_result(
+    query: str, page_size: int = env.GOOGLE_BIGQUERY_PAGE_SIZE, page_number: int = 1
+):
     bq_client = get_bigquery_client()
     query_job = bq_client.query(query)
-    result = query_job.result(page_size=env.GOOGLE_BIGQUERY_PAGE_SIZE)
+    result = query_job.result(page_size=page_size)
+
     data = []
     for page in result.pages:
+        page_data = []
         for row in page:
             row: Row
             row_data = dict(row.items())
-            data.append(row_data)
+            page_data.append(row_data)
+        data.append(page_data)
     data_str = json.dumps(data, cls=CustomJSONEncoder, indent=2, ensure_ascii=False)
-
-    return json.loads(data_str)
+    data = json.loads(data_str)
+    meta = {
+        "page": page_number,
+        "total_pages": len(data),
+        "total_rows": result.total_rows,
+        "page_size": page_size,
+    }
+    logger.debug(meta)
+    return {
+        "meta": meta,
+        "data": data[page_number - 1],
+    }
 
 
 def get_bigquery_client() -> bigquery.Client:
