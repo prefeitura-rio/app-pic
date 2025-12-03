@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
@@ -143,29 +143,43 @@ export function DashboardClient() {
   }, [activeTab, initialLoading, session]);
 
   /**
-   * Handle overview filter changes
+   * Handle overview filter changes (memoizado)
    */
-  const handleOverviewFilterChange = (newFilters: DashboardFilters) => {
+  const handleOverviewFilterChange = useCallback((newFilters: DashboardFilters) => {
     setOverviewFilters(newFilters);
     fetchDashboard(newFilters);
-  };
+  }, [fetchDashboard]);
 
   /**
-   * Handle professional filter changes
+   * Handle professional filter changes (memoizado)
    */
-  const handleProfessionalFilterChange = (newFilters: ParticipantFilters) => {
+  const handleProfessionalFilterChange = useCallback((newFilters: ParticipantFilters) => {
     setProfessionalFilters(newFilters);
     setProfessionalPage(1); // Reset to page 1
     fetchParticipants(newFilters, 1);
-  };
+  }, [fetchParticipants]);
 
   /**
-   * Handle professional page change
+   * Handle professional page change (memoizado)
    */
-  const handleProfessionalPageChange = (page: number) => {
+  const handleProfessionalPageChange = useCallback((page: number) => {
     setProfessionalPage(page);
     fetchParticipants(professionalFilters, page);
-  };
+  }, [fetchParticipants, professionalFilters]);
+
+  /**
+   * Memoizar filter options vazias para evitar re-criação
+   */
+  const emptyFilterOptions = useMemo(() => ({
+    bairros: [],
+    grupos: [],
+    cohorts: [],
+    status_list: [],
+    cres: [],
+    cras: [],
+    escolas: [],
+    clinicas: []
+  }), []);
 
   /**
    * Show loading screen while initial data loads
@@ -215,7 +229,7 @@ export function DashboardClient() {
           <TabsContent value="overview" className="mt-6">
             <OverviewTab
               data={dashboardData}
-              filterOptions={overviewFilterOptions || { bairros: [], grupos: [], cohorts: [], status_list: [], cres: [], cras: [], escolas: [], clinicas: [] }}
+              filterOptions={overviewFilterOptions || emptyFilterOptions}
               filters={overviewFilters}
               onFilterChange={handleOverviewFilterChange}
               loading={overviewLoading}
@@ -226,7 +240,7 @@ export function DashboardClient() {
             <ProfessionalTab
               data={participantsData}
               meta={participantsMeta}
-              filterOptions={professionalFilterOptions || { bairros: [], grupos: [], cohorts: [], status_list: [], cres: [], cras: [], escolas: [], clinicas: [] }}
+              filterOptions={professionalFilterOptions || emptyFilterOptions}
               filters={professionalFilters}
               onFilterChange={handleProfessionalFilterChange}
               onPageChange={handleProfessionalPageChange}

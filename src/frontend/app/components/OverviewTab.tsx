@@ -1,4 +1,6 @@
-import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home } from "lucide-react";
+import { memo, useMemo, useCallback } from "react";
+import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home, Loader2 } from "lucide-react";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
   Dashboard,
   SmartFilterOptions,
@@ -27,7 +29,6 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Loader2 } from "lucide-react";
 
 interface OverviewTabProps {
   data: Dashboard | null;
@@ -37,26 +38,36 @@ interface OverviewTabProps {
   loading?: boolean;
 }
 
-export function OverviewTab({
+const OverviewTabComponent = ({
   data,
   filterOptions,
   filters,
   onFilterChange,
   loading = false,
-}: OverviewTabProps) {
+}: OverviewTabProps) => {
 
-  const handleFilterUpdate = (key: keyof DashboardFilters, value: string) => {
+  // Memoizar callbacks para evitar re-criação
+  const handleFilterUpdate = useCallback((key: keyof DashboardFilters, value: string) => {
     onFilterChange({
       ...filters,
       [key]: value,
     });
-  };
+  }, [filters, onFilterChange]);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     onFilterChange({});
-  };
+  }, [onFilterChange]);
 
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
+  // Memoizar constantes
+  const COLORS = useMemo(() => ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"], []);
+
+  // Memoizar dados dos gráficos para evitar re-processamento
+  const chartData = useMemo(() => ({
+    grupoDistribution: data?.distribuicao_por_grupo || [],
+    topBairros: data?.top_bairros || [],
+    safraDistribution: data?.distribuicao_por_safra || [],
+    motivosSaida: data?.distribuicao_motivo_saida || [],
+  }), [data]);
 
   if (loading && !data) {
     return (
@@ -224,13 +235,55 @@ export function OverviewTab({
         </CardContent>
       </Card>
 
-      {loading && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+      {loading && !data && (
+        <>
+          {/* Skeleton for Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2">
+                  <Skeleton className="h-4 w-32" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-24 mb-2" />
+                  <Skeleton className="h-3 w-20" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Skeleton for Protocol Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2">
+                  <Skeleton className="h-4 w-32" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-24 mb-2" />
+                  <Skeleton className="h-3 w-20" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Skeleton for Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <Skeleton className="h-6 w-40" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-[300px] w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
-      {!loading && (
+      {!loading && data && (
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -310,7 +363,7 @@ export function OverviewTab({
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Group Distribution */}
-            {data.distribuicao_por_grupo && data.distribuicao_por_grupo.length > 0 && (
+            {chartData.grupoDistribution.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Distribuição por Grupo</CardTitle>
@@ -319,15 +372,16 @@ export function OverviewTab({
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={data.distribuicao_por_grupo}
+                        data={chartData.grupoDistribution}
                         dataKey="total_participantes"
                         nameKey="grupo"
                         cx="50%"
                         cy="50%"
                         outerRadius={100}
                         label
+                        isAnimationActive={false}
                       >
-                        {data.distribuicao_por_grupo.map((entry, index) => (
+                        {chartData.grupoDistribution.map((entry, index) => (
                           <Cell
                             key={`cell-${index}`}
                             fill={COLORS[index % COLORS.length]}
@@ -343,19 +397,19 @@ export function OverviewTab({
             )}
 
             {/* Top Bairros */}
-            {data.top_bairros && data.top_bairros.length > 0 && (
+            {chartData.topBairros.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Top Bairros</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data.top_bairros}>
+                    <BarChart data={chartData.topBairros}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="bairro" angle={-45} textAnchor="end" height={100} />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="total_participantes" fill="#8884d8" />
+                      <Bar dataKey="total_participantes" fill="#8884d8" isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -363,19 +417,19 @@ export function OverviewTab({
             )}
 
             {/* Safra Distribution */}
-            {data.distribuicao_por_safra && data.distribuicao_por_safra.length > 0 && (
+            {chartData.safraDistribution.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Distribuição por Safra</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data.distribuicao_por_safra}>
+                    <BarChart data={chartData.safraDistribution}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="safra" />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="total_participantes" fill="#00C49F" />
+                      <Bar dataKey="total_participantes" fill="#00C49F" isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -383,19 +437,19 @@ export function OverviewTab({
             )}
 
             {/* Motivos de Saída */}
-            {data.distribuicao_motivo_saida && data.distribuicao_motivo_saida.length > 0 && (
+            {chartData.motivosSaida.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Motivos de Inativação</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data.distribuicao_motivo_saida}>
+                    <BarChart data={chartData.motivosSaida}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="motivo" angle={-45} textAnchor="end" height={100} />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="total" fill="#FF8042" />
+                      <Bar dataKey="total" fill="#FF8042" isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -406,4 +460,7 @@ export function OverviewTab({
       )}
     </div>
   );
-}
+};
+
+// Exportar com React.memo para evitar re-renders quando props não mudarem
+export const OverviewTab = memo(OverviewTabComponent);

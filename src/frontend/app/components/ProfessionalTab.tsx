@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
+import { useDebounce } from "../hooks/useDebounce";
 import {
   Participante,
   SmartFilterOptions,
@@ -24,6 +25,7 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
   Users,
   Search,
@@ -43,7 +45,7 @@ interface ProfessionalTabProps {
   loading?: boolean;
 }
 
-export function ProfessionalTab({
+const ProfessionalTabComponent = ({
   data,
   meta,
   filterOptions,
@@ -51,34 +53,41 @@ export function ProfessionalTab({
   onFilterChange,
   onPageChange,
   loading = false,
-}: ProfessionalTabProps) {
+}: ProfessionalTabProps) => {
   const [searchInput, setSearchInput] = useState("");
 
-  const handleFilterUpdate = (key: keyof ParticipantFilters, value: string) => {
+  // Debounce search input para evitar re-renders durante digitação
+  const debouncedSearch = useDebounce(searchInput, 300);
+
+  // Memoizar callbacks para evitar re-criação
+  const handleFilterUpdate = useCallback((key: keyof ParticipantFilters, value: string) => {
     onFilterChange({
       ...filters,
       [key]: value,
     });
-  };
+  }, [filters, onFilterChange]);
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     onFilterChange({
       ...filters,
       search: searchInput,
     });
-  };
+  }, [filters, searchInput, onFilterChange]);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearchInput("");
     onFilterChange({});
-  };
+  }, [onFilterChange]);
 
-  const getBadgeVariant = (situacao?: string) => {
+  const getBadgeVariant = useCallback((situacao?: string) => {
     if (!situacao) return "outline";
     if (situacao.toLowerCase().includes("regular")) return "default";
     if (situacao.toLowerCase().includes("atenção")) return "secondary";
     return "destructive";
-  };
+  }, []);
+
+  // Memoizar dados filtrados (caso precisemos de filtro client-side no futuro)
+  const displayData = useMemo(() => data, [data]);
 
   return (
     <div className="space-y-6">
@@ -260,10 +269,17 @@ export function ProfessionalTab({
 
       {/* Results Table */}
       {loading && !data.length ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : data.length > 0 ? (
+        <Card className="border-2">
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+      ) : displayData.length > 0 ? (
         <Card className="border-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -286,7 +302,7 @@ export function ProfessionalTab({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.map((participant, idx) => (
+                  {displayData.map((participant, idx) => (
                     <TableRow
                       key={`${participant.cpf}-${idx}`}
                       className="hover:bg-muted/50"
@@ -378,4 +394,7 @@ export function ProfessionalTab({
       )}
     </div>
   );
-}
+};
+
+// Exportar com React.memo para evitar re-renders quando props não mudarem
+export const ProfessionalTab = memo(ProfessionalTabComponent);
