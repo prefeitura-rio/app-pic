@@ -172,7 +172,7 @@ const OverviewTabComponent = ({
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="todos">Todos os Status</SelectItem>
                   {filterOptions.status_list
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
@@ -190,19 +190,19 @@ const OverviewTabComponent = ({
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Filtros Regionais
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-              {/* Bairro */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {/* CAP */}
               <Select
-                value={filters.bairro || "todos"}
-                onValueChange={(v) => handleFilterUpdate("bairro", v)}
+                value={filters.cap || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Bairro" />
+                  <SelectValue placeholder="CAP" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os Bairros</SelectItem>
-                  {filterOptions.bairros
+                  <SelectItem value="todas">Todas as CAPs</SelectItem>
+                  {filterOptions.caps
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
@@ -219,7 +219,7 @@ const OverviewTabComponent = ({
                 disabled={loading}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CRE (Educação)" />
+                  <SelectValue placeholder="CRE" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas as CREs</SelectItem>
@@ -233,18 +233,39 @@ const OverviewTabComponent = ({
                 </SelectContent>
               </Select>
 
-              {/* CRAS (Assistência) */}
+              {/* CAS */}
               <Select
-                value={filters.cras || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                value={filters.cas || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cas", v)}
                 disabled={loading}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CRAS (Assistência)" />
+                  <SelectValue placeholder="CAS" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todas">Todos os CRAS</SelectItem>
-                  {filterOptions.cras
+                  <SelectItem value="todas">Todas as CAS</SelectItem>
+                  {filterOptions.cas_list
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {/* Bairro */}
+              <Select
+                value={filters.bairro || "todos"}
+                onValueChange={(v) => handleFilterUpdate("bairro", v)}
+                disabled={loading}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Bairro" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Bairros</SelectItem>
+                  {filterOptions.bairros
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
@@ -275,18 +296,39 @@ const OverviewTabComponent = ({
                 </SelectContent>
               </Select>
 
-              {/* Clínicas */}
+              {/* Clínicas da Família */}
               <Select
                 value={filters.clinica || "todas"}
                 onValueChange={(v) => handleFilterUpdate("clinica", v)}
                 disabled={loading}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Clínica" />
+                  <SelectValue placeholder="Clínica da Família" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todas">Todas as Clínicas</SelectItem>
+                  <SelectItem value="todas">Todas as Clínicas da Família</SelectItem>
                   {filterOptions.clinicas
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {/* CRAS */}
+              <Select
+                value={filters.cras || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                disabled={loading}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="CRAS" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todos os CRAS</SelectItem>
+                  {filterOptions.cras
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
@@ -361,21 +403,21 @@ const OverviewTabComponent = ({
               title="Total de Participantes"
               value={data.total_participantes_geral || 0}
               description={`${data.total_participantes_ativos || 0} ativos • ${data.total_participantes_inativos || 0} inativos`}
-              icon={Users}
+              icon={<Users className="h-6 w-6" />}
               variant="default"
             />
             <StatCard
               title="% Regular"
               value={`${(data.percentual_regular || 0).toFixed(1)}%`}
               description="Cumprindo todos os protocolos"
-              icon={CheckCircle}
+              icon={<CheckCircle className="h-6 w-6" />}
               variant="success"
             />
             <StatCard
               title="% Irregular"
               value={`${(data.percentual_irregular || 0).toFixed(1)}%`}
               description="Com protocolos violados"
-              icon={AlertTriangle}
+              icon={<AlertTriangle className="h-6 w-6" />}
               variant="destructive"
             />
           </div>
@@ -388,7 +430,7 @@ const OverviewTabComponent = ({
               </div>
             )}
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              Dimensão Assistência Social
+              🏠 Dimensão Assistência Social
             </h3>
             <div className="grid gap-3 md:grid-cols-3">
               <Card className="bg-muted">
@@ -398,7 +440,7 @@ const OverviewTabComponent = ({
                     {(data.assistencia_bolsa_familia_percentual || 0).toFixed(1)}%
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.assistencia_bolsa_familia_total || 0} participantes
+                    {data.assistencia_bolsa_familia_total || 0} de {data.total_participantes_geral || 0} participantes
                   </p>
                 </CardContent>
               </Card>
@@ -410,19 +452,17 @@ const OverviewTabComponent = ({
                     {(data.assistencia_cadunico_atualizado_percentual || 0).toFixed(1)}%
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.assistencia_cadunico_atualizado_total || 0} participantes
+                    cadastros desatualizados ({(data.total_participantes_geral || 0) - (data.assistencia_cadunico_atualizado_total || 0)} de {data.total_participantes_geral || 0})
                   </p>
                 </CardContent>
               </Card>
 
               <Card className="bg-muted">
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">✅ Protocolos Completos</p>
-                  <p className="text-2xl font-bold mt-1">
-                    {(data.assistencia_completude_percentual || 0).toFixed(1)}%
-                  </p>
+                  <p className="text-sm font-medium">👥 Equipe de Referência</p>
+                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.assistencia_completude_total || 0} participantes
+                    Em desenvolvimento
                   </p>
                 </CardContent>
               </Card>
@@ -437,29 +477,27 @@ const OverviewTabComponent = ({
               </div>
             )}
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              Dimensão Educação
+              📚 Dimensão Educação
             </h3>
             <div className="grid gap-3 md:grid-cols-2">
               <Card className="bg-muted">
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">📚 Frequência Escolar Adequada</p>
+                  <p className="text-sm font-medium">🎒 Frequência Escolar</p>
                   <p className="text-2xl font-bold mt-1">
-                    {(data.educacao_frequencia_adequada_percentual || 0).toFixed(1)}%
+                    {((100 - (data.educacao_frequencia_adequada_percentual || 0))).toFixed(1)}%
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.educacao_frequencia_adequada_total || 0} participantes (≥75%)
+                    com frequência inferior ao mínimo ({(data.total_participantes_geral || 0) - (data.educacao_frequencia_adequada_total || 0)} de {data.total_participantes_geral || 0})
                   </p>
                 </CardContent>
               </Card>
 
               <Card className="bg-muted">
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">✅ Protocolos Completos</p>
-                  <p className="text-2xl font-bold mt-1">
-                    {(data.educacao_completude_percentual || 0).toFixed(1)}%
-                  </p>
+                  <p className="text-sm font-medium">🏫 Matrícula em Creche</p>
+                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.educacao_completude_total || 0} participantes
+                    Em desenvolvimento
                   </p>
                 </CardContent>
               </Card>
@@ -474,17 +512,35 @@ const OverviewTabComponent = ({
               </div>
             )}
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              Dimensão Saúde
+              ❤️ Dimensão Saúde
             </h3>
-            <div className="grid gap-3 md:grid-cols-1">
+            <div className="grid gap-3 md:grid-cols-3">
               <Card className="bg-muted">
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">✅ Protocolos Completos</p>
-                  <p className="text-2xl font-bold mt-1">
-                    {(data.saude_completude_percentual || 0).toFixed(1)}%
-                  </p>
+                  <p className="text-sm font-medium">👶 Consultas Infantis</p>
+                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.saude_completude_total || 0} participantes
+                    Em desenvolvimento
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">🤰 Consultas Pré-natal</p>
+                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Em desenvolvimento
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">💉 Vacinação</p>
+                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Em desenvolvimento
                   </p>
                 </CardContent>
               </Card>

@@ -59,6 +59,11 @@ export interface Participante {
   id_escola?: string;
   nome_escola?: string;
   id_cre?: string;
+  nome_cre?: string;
+  id_cap?: string;
+  nome_cap?: string;
+  id_cas?: string;
+  nome_cas?: string;
   frequencia_escolar_percentual?: number;
   id_clinica_familia?: string;
   nome_clinica_familia?: string;
@@ -97,6 +102,8 @@ export interface SmartFilterOptions {
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
   cres: FilterOptionItem[];
+  caps: FilterOptionItem[];
+  cas_list: FilterOptionItem[];
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
@@ -232,6 +239,8 @@ export interface FiltroRegional {
 export interface DashboardFilters {
   bairro?: string;
   cre?: string;
+  cap?: string;
+  cas?: string;
   cras?: string;
   escola?: string;
   clinica?: string;
@@ -246,6 +255,8 @@ export interface DashboardFilters {
 export interface ParticipantFilters {
   bairro?: string;
   cre?: string;
+  cap?: string;
+  cas?: string;
   cras?: string;
   escola?: string;
   clinica?: string;

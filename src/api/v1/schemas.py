@@ -21,6 +21,8 @@ class PaginationParams(BaseModel):
 class CommonFilters(BaseModel):
     bairro: Optional[str] = None
     cre: Optional[str] = None
+    cap: Optional[str] = None  # CAP (Coordenadoria de Área Programática)
+    cas: Optional[str] = None  # CAS (Centro de Atenção à Saúde)
     cras: Optional[str] = None
     escola: Optional[str] = None
     clinica: Optional[str] = None
@@ -70,6 +72,8 @@ class SmartFilterOptions(BaseModel):
     status_list: List[FilterOptionItem] = []
     situacoes: List[FilterOptionItem] = []
     cres: List[FilterOptionItem] = []
+    caps: List[FilterOptionItem] = []
+    cas_list: List[FilterOptionItem] = []
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
     clinicas: List[FilterOptionItem] = []
@@ -233,6 +237,11 @@ class Participante(BaseModel):
     id_escola: Optional[str] = None
     nome_escola: Optional[str] = None
     id_cre: Optional[str] = None
+    nome_cre: Optional[str] = None
+    id_cap: Optional[str] = None
+    nome_cap: Optional[str] = None
+    id_cas: Optional[str] = None
+    nome_cas: Optional[str] = None
     frequencia_escolar_percentual: Optional[float] = None
     id_clinica_familia: Optional[str] = None
     nome_clinica_familia: Optional[str] = None

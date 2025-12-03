@@ -27,12 +27,20 @@ import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
+import { Separator } from "@/app/components/ui/separator";
+import {
   Users,
   Search,
   ChevronLeft,
   ChevronRight,
   Filter,
   Loader2,
+  Eye,
 } from "lucide-react";
 
 interface ProfessionalTabProps {
@@ -55,6 +63,7 @@ const ProfessionalTabComponent = ({
   loading = false,
 }: ProfessionalTabProps) => {
   const [searchInput, setSearchInput] = useState("");
+  const [selectedParticipant, setSelectedParticipant] = useState<Participante | null>(null);
 
   // Debounce search input para evitar re-renders durante digitação
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -176,7 +185,7 @@ const ProfessionalTabComponent = ({
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="todos">Todos os Status</SelectItem>
                   {filterOptions.status_list
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
@@ -197,7 +206,7 @@ const ProfessionalTabComponent = ({
                   <SelectValue placeholder="Situação" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todas">Todas</SelectItem>
+                  <SelectItem value="todas">Todas as Situações</SelectItem>
                   {filterOptions.situacoes
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
@@ -237,6 +246,27 @@ const ProfessionalTabComponent = ({
               Filtros Regionais
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* CAP */}
+              <Select
+                value={filters.cap || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cap", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="CAP" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as CAPs</SelectItem>
+                  {filterOptions.caps
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
               {/* CRE */}
               <Select
                 value={filters.cre || "todas"}
@@ -244,7 +274,7 @@ const ProfessionalTabComponent = ({
                 disabled={loading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="CRE (Educação)" />
+                  <SelectValue placeholder="CRE" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas as CREs</SelectItem>
@@ -258,18 +288,18 @@ const ProfessionalTabComponent = ({
                 </SelectContent>
               </Select>
 
-              {/* CRAS */}
+              {/* CAS */}
               <Select
-                value={filters.cras || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                value={filters.cas || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cas", v)}
                 disabled={loading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="CRAS (Assistência)" />
+                  <SelectValue placeholder="CAS" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todas">Todos os CRAS</SelectItem>
-                  {filterOptions.cras
+                  <SelectItem value="todas">Todas as CAS</SelectItem>
+                  {filterOptions.cas_list
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
@@ -278,15 +308,7 @@ const ProfessionalTabComponent = ({
                     ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
 
-          {/* Terceiro Nível - Filtros Locais */}
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Filtros Locais
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Bairro */}
               <Select
                 value={filters.bairro || "todos"}
@@ -329,18 +351,39 @@ const ProfessionalTabComponent = ({
                 </SelectContent>
               </Select>
 
-              {/* Clínicas */}
+              {/* Clínicas da Família */}
               <Select
                 value={filters.clinica || "todas"}
                 onValueChange={(v) => handleFilterUpdate("clinica", v)}
                 disabled={loading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Clínica" />
+                  <SelectValue placeholder="Clínica da Família" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todas">Todas as Clínicas</SelectItem>
+                  <SelectItem value="todas">Todas as Clínicas da Família</SelectItem>
                   {filterOptions.clinicas
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {/* CRAS */}
+              <Select
+                value={filters.cras || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="CRAS" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todos os CRAS</SelectItem>
+                  {filterOptions.cras
                     .filter((item) => item.id && item.id.trim() !== "")
                     .map((item) => (
                       <SelectItem key={item.id} value={item.id}>
@@ -398,19 +441,33 @@ const ProfessionalTabComponent = ({
                     <TableHead>CPF</TableHead>
                     <TableHead>Grupo</TableHead>
                     <TableHead>Bairro</TableHead>
+                    <TableHead>Idade</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-center">Situação</TableHead>
+                    <TableHead className="text-center">Total</TableHead>
                     <TableHead className="text-center">Assistência</TableHead>
                     <TableHead className="text-center">Educação</TableHead>
                     <TableHead className="text-center">Saúde</TableHead>
-                    <TableHead className="text-center">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayData.map((participant, idx) => (
+                  {displayData.map((participant, idx) => {
+                    // Extrair numerador e denominador das frações para colorir
+                    const getTotalColor = (fracao?: string) => {
+                      if (!fracao) return "text-muted-foreground";
+                      const [num, den] = fracao.split('/').map(Number);
+                      if (isNaN(num) || isNaN(den) || den === 0) return "text-muted-foreground";
+                      const percent = (num / den) * 100;
+                      if (percent === 100) return "text-green-600 font-semibold";
+                      if (percent >= 60) return "text-yellow-600 font-semibold";
+                      return "text-red-600 font-semibold";
+                    };
+
+                    return (
                     <TableRow
                       key={`${participant.cpf}-${idx}`}
-                      className="hover:bg-muted/50"
+                      className="hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setSelectedParticipant(participant)}
                     >
                       <TableCell className="font-medium">
                         {participant.nome || "-"}
@@ -426,6 +483,7 @@ const ProfessionalTabComponent = ({
                           : participant.grupo || "-"}
                       </TableCell>
                       <TableCell>{participant.bairro || "-"}</TableCell>
+                      <TableCell>{participant.idade ? `${participant.idade} anos` : "0 anos"}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -442,6 +500,9 @@ const ProfessionalTabComponent = ({
                           {participant.situacao || "-"}
                         </Badge>
                       </TableCell>
+                      <TableCell className={`text-center font-mono text-sm ${getTotalColor(participant.total_fracao)}`}>
+                        {participant.total_fracao || "-"}
+                      </TableCell>
                       <TableCell className="text-center font-mono text-sm">
                         {participant.assistencia_fracao || "-"}
                       </TableCell>
@@ -451,11 +512,9 @@ const ProfessionalTabComponent = ({
                       <TableCell className="text-center font-mono text-sm">
                         {participant.saude_fracao || "-"}
                       </TableCell>
-                      <TableCell className="text-center font-mono text-sm font-medium">
-                        {participant.total_fracao || "-"}
-                      </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -506,6 +565,189 @@ const ProfessionalTabComponent = ({
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de Detalhamento */}
+      <Dialog open={!!selectedParticipant} onOpenChange={() => setSelectedParticipant(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {selectedParticipant && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl flex items-center gap-2">
+                  <Eye className="h-6 w-6 text-primary" />
+                  Detalhamento do Participante
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-6 mt-4">
+                {/* Informações Básicas */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-foreground">Informações Básicas</h3>
+                  <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Nome</p>
+                      <p className="font-medium">{selectedParticipant.nome}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">CPF</p>
+                      <p className="font-mono font-medium">{selectedParticipant.cpf}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Grupo</p>
+                      <p className="font-medium">
+                        {selectedParticipant.grupo?.toLowerCase().includes("crianca") ? "👶 Criança" : "🤰 Gestante"}
+                        {selectedParticipant.bolsa_familia_indicador && " • Bolsa Família"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Idade</p>
+                      <p className="font-medium">{selectedParticipant.idade || "-"} anos</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bairro</p>
+                      <p className="font-medium">{selectedParticipant.bairro}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Escola</p>
+                      <p className="font-medium">{selectedParticipant.nome_escola || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Clínica da Família</p>
+                      <p className="font-medium">{selectedParticipant.nome_clinica_familia || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">CRAS</p>
+                      <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Safra</p>
+                      <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Status</p>
+                      <Badge variant={selectedParticipant.status === "ativo" ? "default" : "secondary"}>
+                        {selectedParticipant.status}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Situação Geral */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-foreground">Situação Geral</h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    <Card className="bg-muted">
+                      <CardContent className="p-4 text-center">
+                        <p className="text-sm text-muted-foreground">Total</p>
+                        <p className="text-2xl font-bold">{selectedParticipant.total_fracao || "0/0"}</p>
+                        <Badge variant={getBadgeVariant(selectedParticipant.situacao)} className="mt-2">
+                          {selectedParticipant.situacao}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-green-50 dark:bg-green-950/20">
+                      <CardContent className="p-4 text-center">
+                        <p className="text-sm text-muted-foreground">Assistência</p>
+                        <p className="text-2xl font-bold">{selectedParticipant.assistencia_fracao || "0/0"}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedParticipant.assistencia_protocolos_violados || 0} violados
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-orange-50 dark:bg-orange-950/20">
+                      <CardContent className="p-4 text-center">
+                        <p className="text-sm text-muted-foreground">Educação</p>
+                        <p className="text-2xl font-bold">{selectedParticipant.educacao_fracao || "0/0"}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedParticipant.educacao_protocolos_violados || 0} violados
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-red-50 dark:bg-red-950/20">
+                      <CardContent className="p-4 text-center">
+                        <p className="text-sm text-muted-foreground">Saúde</p>
+                        <p className="text-2xl font-bold">{selectedParticipant.saude_fracao || "0/0"}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedParticipant.saude_protocolos_violados || 0} violados
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Indicadores Assistência Social */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-foreground">📋 Dimensão Assistência Social</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                      <span className="text-sm">💰 Bolsa Família</span>
+                      <Badge variant={selectedParticipant.bolsa_familia_indicador ? "default" : "destructive"}>
+                        {selectedParticipant.bolsa_familia_indicador ? "✓ Sim" : "✗ Não"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                      <span className="text-sm">📋 CadÚnico Atualizado</span>
+                      <Badge variant={selectedParticipant.cadunico_indicador ? "default" : "destructive"}>
+                        {selectedParticipant.cadunico_indicador ? "✓ Sim" : "✗ Não"}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Indicadores Educação */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-foreground">📚 Dimensão Educação</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                      <span className="text-sm">Frequência Escolar</span>
+                      <Badge variant={
+                        selectedParticipant.frequencia_escolar_percentual
+                          ? (selectedParticipant.frequencia_escolar_percentual >= 75 ? "default" : "destructive")
+                          : "secondary"
+                      }>
+                        {selectedParticipant.frequencia_escolar_percentual
+                          ? `${selectedParticipant.frequencia_escolar_percentual.toFixed(1)}%`
+                          : "N/A"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                      <span className="text-sm">Escola</span>
+                      <span className="text-sm font-medium">{selectedParticipant.nome_escola || "-"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Resumo Protocolos */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-foreground">Resumo de Protocolos</h3>
+                  <div className="bg-muted/50 p-4 rounded-lg">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total de Protocolos</p>
+                        <p className="text-3xl font-bold text-primary">{selectedParticipant.total_protocolos || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Protocolos Violados</p>
+                        <p className="text-3xl font-bold text-destructive">{selectedParticipant.total_protocolos_violados || 0}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

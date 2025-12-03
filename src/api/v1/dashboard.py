@@ -28,6 +28,8 @@ router = APIRouter(
 DASHBOARD_FILTER_COLUMN_MAP = {
     "bairro": "bairro",
     "cre": "id_cre",
+    "cap": "id_cap",
+    "cas": "id_cas",
     "cras": "id_cras",
     "escola": "id_escola",
     "clinica": "id_clinica_familia",
@@ -44,7 +46,9 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "cohorts": {"column": "cohort"},
     "status_list": {"column": "status"},
     "situacoes": {"column": "situacao"},
-    "cres": {"column": "id_cre"},
+    "cres": {"column": "id_cre", "label_column": "nome_cre"},
+    "caps": {"column": "id_cap", "label_column": "nome_cap"},
+    "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},
     "clinicas": {
