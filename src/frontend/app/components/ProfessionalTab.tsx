@@ -8,13 +8,7 @@ import {
 } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedParticipantTable } from "./VirtualizedParticipantTable";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/app/components/ui/select";
+import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
@@ -46,37 +40,7 @@ interface ProfessionalTabProps {
   loading?: boolean;
 }
 
-// OTIMIZAÇÃO: Select memoizado para evitar re-renders
-const MemoizedSelect = memo(({
-  value,
-  onValueChange,
-  disabled,
-  placeholder,
-  defaultLabel,
-  options
-}: {
-  value: string;
-  onValueChange: (v: string) => void;
-  disabled: boolean;
-  placeholder: string;
-  defaultLabel: string;
-  options: Array<{ id: string; label: string }>;
-}) => (
-  <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-    <SelectTrigger>
-      <SelectValue placeholder={placeholder} />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectItem value={value === "todos" || value === "todas" ? value : "todos"}>{defaultLabel}</SelectItem>
-      {options.map((item) => (
-        <SelectItem key={item.id} value={item.id}>
-          {item.label}
-        </SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
-));
-MemoizedSelect.displayName = "MemoizedSelect";
+// Removido MemoizedSelect - agora usando VirtualizedSelect
 
 const ProfessionalTabComponent = ({
   data,
@@ -195,9 +159,9 @@ const ProfessionalTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Grupo */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.grupo || "todos"}
-                onValueChange={(v) => handleFilterUpdate("grupo", v)}
+                onSelect={(v) => handleFilterUpdate("grupo", v)}
                 disabled={loading}
                 placeholder="Grupo"
                 defaultLabel="Todos os Grupos"
@@ -205,9 +169,9 @@ const ProfessionalTabComponent = ({
               />
 
               {/* Status */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.status || "todos"}
-                onValueChange={(v) => handleFilterUpdate("status", v)}
+                onSelect={(v) => handleFilterUpdate("status", v)}
                 disabled={loading}
                 placeholder="Status"
                 defaultLabel="Todos os Status"
@@ -215,9 +179,9 @@ const ProfessionalTabComponent = ({
               />
 
               {/* Situação */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.situacao || "todas"}
-                onValueChange={(v) => handleFilterUpdate("situacao", v)}
+                onSelect={(v) => handleFilterUpdate("situacao", v)}
                 disabled={loading}
                 placeholder="Situação"
                 defaultLabel="Todas as Situações"
@@ -225,9 +189,9 @@ const ProfessionalTabComponent = ({
               />
 
               {/* Safra */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.safra || "todas"}
-                onValueChange={(v) => handleFilterUpdate("safra", v)}
+                onSelect={(v) => handleFilterUpdate("safra", v)}
                 disabled={loading}
                 placeholder="Safra"
                 defaultLabel="Todas as Safras"
@@ -243,151 +207,74 @@ const ProfessionalTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* CAP */}
-              <Select
+              <VirtualizedSelect
                 value={filters.cap || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cap", v)}
+                onSelect={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="CAP" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as CAPs</SelectItem>
-                  {filterOptions.caps
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CAP"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.caps}
+              />
 
               {/* CRE */}
-              <Select
+              <VirtualizedSelect
                 value={filters.cre || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cre", v)}
+                onSelect={(v) => handleFilterUpdate("cre", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="CRE" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as CREs</SelectItem>
-                  {filterOptions.cres
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CRE"
+                defaultLabel="Todas as CREs"
+                options={filteredOptions.cres}
+              />
 
               {/* CAS */}
-              <Select
+              <VirtualizedSelect
                 value={filters.cas || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cas", v)}
+                onSelect={(v) => handleFilterUpdate("cas", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="CAS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as CAS</SelectItem>
-                  {filterOptions.cas_list
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CAS"
+                defaultLabel="Todas as CAS"
+                options={filteredOptions.cas_list}
+              />
 
               {/* Bairro */}
-              <Select
+              <VirtualizedSelect
                 value={filters.bairro || "todos"}
-                onValueChange={(v) => handleFilterUpdate("bairro", v)}
+                onSelect={(v) => handleFilterUpdate("bairro", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Bairro" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Bairros</SelectItem>
-                  {filterOptions.bairros
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Bairro"
+                defaultLabel="Todos os Bairros"
+                options={filteredOptions.bairros}
+              />
 
               {/* Escolas */}
-              <Select
+              <VirtualizedSelect
                 value={filters.escola || "todas"}
-                onValueChange={(v) => handleFilterUpdate("escola", v)}
+                onSelect={(v) => handleFilterUpdate("escola", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Escola" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Escolas</SelectItem>
-                  {filterOptions.escolas
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Escola"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
+              />
 
               {/* Clínicas da Família */}
-              <Select
+              <VirtualizedSelect
                 value={filters.clinica || "todas"}
-                onValueChange={(v) => handleFilterUpdate("clinica", v)}
+                onSelect={(v) => handleFilterUpdate("clinica", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Clínica da Família" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Clínicas da Família</SelectItem>
-                  {filterOptions.clinicas
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Clínica da Família"
+                defaultLabel="Todas as Clínicas da Família"
+                options={filteredOptions.clinicas}
+              />
 
               {/* CRAS */}
-              <Select
+              <VirtualizedSelect
                 value={filters.cras || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                onSelect={(v) => handleFilterUpdate("cras", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="CRAS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todos os CRAS</SelectItem>
-                  {filterOptions.cras
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
+              />
             </div>
           </div>
 

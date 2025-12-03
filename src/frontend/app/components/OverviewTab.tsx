@@ -9,13 +9,7 @@ import {
 import { StatCard } from "./StatCard";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/app/components/ui/select";
+import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import dynamic from "next/dynamic";
 
 // OTIMIZAÇÃO CRÍTICA: Lazy load dos gráficos (só carrega quando necessário)
@@ -41,37 +35,7 @@ interface OverviewTabProps {
   loading?: boolean;
 }
 
-// OTIMIZAÇÃO: Componente de Select memoizado
-const MemoizedSelect = memo(({
-  value,
-  onValueChange,
-  disabled,
-  placeholder,
-  defaultLabel,
-  options
-}: {
-  value: string;
-  onValueChange: (v: string) => void;
-  disabled: boolean;
-  placeholder: string;
-  defaultLabel: string;
-  options: Array<{ id: string; label: string }>;
-}) => (
-  <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-    <SelectTrigger className="h-9">
-      <SelectValue placeholder={placeholder} />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectItem value={value === "todos" || value === "todas" ? value : "todos"}>{defaultLabel}</SelectItem>
-      {options.map((item) => (
-        <SelectItem key={item.id} value={item.id}>
-          {item.label}
-        </SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
-));
-MemoizedSelect.displayName = "MemoizedSelect";
+// Removido MemoizedSelect - agora usando VirtualizedSelect
 
 const OverviewTabComponent = ({
   data,
@@ -168,9 +132,9 @@ const OverviewTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {/* Grupo */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.grupo || "todos"}
-                onValueChange={(v) => handleFilterUpdate("grupo", v)}
+                onSelect={(v) => handleFilterUpdate("grupo", v)}
                 disabled={loading}
                 placeholder="Grupo"
                 defaultLabel="Todos os Grupos"
@@ -178,9 +142,9 @@ const OverviewTabComponent = ({
               />
 
               {/* Safra */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.safra || "todas"}
-                onValueChange={(v) => handleFilterUpdate("safra", v)}
+                onSelect={(v) => handleFilterUpdate("safra", v)}
                 disabled={loading}
                 placeholder="Safra"
                 defaultLabel="Todas as Safras"
@@ -188,9 +152,9 @@ const OverviewTabComponent = ({
               />
 
               {/* Status */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.status || "todos"}
-                onValueChange={(v) => handleFilterUpdate("status", v)}
+                onSelect={(v) => handleFilterUpdate("status", v)}
                 disabled={loading}
                 placeholder="Status"
                 defaultLabel="Todos os Status"
@@ -206,9 +170,9 @@ const OverviewTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {/* CAP */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.cap || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cap", v)}
+                onSelect={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
                 placeholder="CAP"
                 defaultLabel="Todas as CAPs"
@@ -216,9 +180,9 @@ const OverviewTabComponent = ({
               />
 
               {/* CRE (Educação) */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.cre || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cre", v)}
+                onSelect={(v) => handleFilterUpdate("cre", v)}
                 disabled={loading}
                 placeholder="CRE"
                 defaultLabel="Todas as CREs"
@@ -226,9 +190,9 @@ const OverviewTabComponent = ({
               />
 
               {/* CAS */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.cas || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cas", v)}
+                onSelect={(v) => handleFilterUpdate("cas", v)}
                 disabled={loading}
                 placeholder="CAS"
                 defaultLabel="Todas as CAS"
@@ -236,9 +200,9 @@ const OverviewTabComponent = ({
               />
 
               {/* Bairro */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.bairro || "todos"}
-                onValueChange={(v) => handleFilterUpdate("bairro", v)}
+                onSelect={(v) => handleFilterUpdate("bairro", v)}
                 disabled={loading}
                 placeholder="Bairro"
                 defaultLabel="Todos os Bairros"
@@ -246,9 +210,9 @@ const OverviewTabComponent = ({
               />
 
               {/* Escolas */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.escola || "todas"}
-                onValueChange={(v) => handleFilterUpdate("escola", v)}
+                onSelect={(v) => handleFilterUpdate("escola", v)}
                 disabled={loading}
                 placeholder="Escola"
                 defaultLabel="Todas as Escolas"
@@ -256,9 +220,9 @@ const OverviewTabComponent = ({
               />
 
               {/* Clínicas da Família */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.clinica || "todas"}
-                onValueChange={(v) => handleFilterUpdate("clinica", v)}
+                onSelect={(v) => handleFilterUpdate("clinica", v)}
                 disabled={loading}
                 placeholder="Clínica da Família"
                 defaultLabel="Todas as Clínicas da Família"
@@ -266,9 +230,9 @@ const OverviewTabComponent = ({
               />
 
               {/* CRAS */}
-              <MemoizedSelect
+              <VirtualizedSelect
                 value={filters.cras || "todas"}
-                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                onSelect={(v) => handleFilterUpdate("cras", v)}
                 disabled={loading}
                 placeholder="CRAS"
                 defaultLabel="Todos os CRAS"
