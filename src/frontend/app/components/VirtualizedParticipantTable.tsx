@@ -1,31 +1,25 @@
 "use client";
 
-import { memo, useCallback, useMemo } from "react";
-import { List } from "react-window";
+import { memo } from "react";
 import { Participante } from "../types";
 import { Badge } from "@/app/components/ui/badge";
 
-interface VirtualizedParticipantTableProps {
+interface ParticipantTableProps {
   data: Participante[];
   onRowClick: (participant: Participante) => void;
   getBadgeVariant: (situacao?: string) => "outline" | "default" | "secondary" | "destructive";
 }
 
-// OTIMIZAÇÃO: Componente de linha memoizado
-const VirtualRow = memo(({
-  index,
+// Componente de linha memoizado
+const ParticipantRow = memo(({
+  participant,
   onRowClick,
   getBadgeVariant,
-  data,
 }: {
-  index: number;
+  participant: Participante;
   onRowClick: (participant: Participante) => void;
   getBadgeVariant: (situacao?: string) => "outline" | "default" | "secondary" | "destructive";
-  data: Participante[];
 }) => {
-  const participant = data[index];
-
-  if (!participant) return null;
   // Função para colorir as frações
   const getTotalColor = (fracao?: string) => {
     if (!fracao) return "text-muted-foreground";
@@ -113,56 +107,46 @@ const VirtualRow = memo(({
     </div>
   );
 });
-VirtualRow.displayName = "VirtualRow";
+ParticipantRow.displayName = "ParticipantRow";
 
 export const VirtualizedParticipantTable = memo(({
   data,
   onRowClick,
   getBadgeVariant,
-}: VirtualizedParticipantTableProps) => {
+}: ParticipantTableProps) => {
   // Validação de segurança
   if (!data || !Array.isArray(data) || data.length === 0) {
     return null;
   }
 
-  // Row props que serão passados para cada linha
-  const rowProps = useMemo(() => ({
-    onRowClick,
-    getBadgeVariant,
-    data,
-  }), [onRowClick, getBadgeVariant, data]);
-
-  // Height da lista baseado no tamanho da janela (max 600px)
-  const listHeight = useMemo(() => Math.min(data.length * 60 + 48, 600), [data.length]);
-
   return (
     <div className="rounded-lg border overflow-hidden">
       {/* Header fixo */}
-      <div className="flex items-center bg-muted border-b font-medium text-sm">
-        <div className="flex-1 px-4 py-3 flex gap-4">
-          <div className="w-[20%]">Nome</div>
-          <div className="w-[12%]">CPF</div>
-          <div className="w-[10%]">Grupo</div>
-          <div className="w-[12%]">Bairro</div>
-          <div className="w-[8%]">Idade</div>
-          <div className="w-[8%]">Status</div>
-          <div className="w-[10%] text-center">Situação</div>
-          <div className="w-[5%] text-center">Total</div>
-          <div className="w-[5%] text-center">Assist.</div>
-          <div className="w-[5%] text-center">Educ.</div>
-          <div className="w-[5%] text-center">Saúde</div>
-        </div>
+      <div className="flex items-center bg-muted border-b font-medium text-sm px-4 py-3 gap-4">
+        <div className="w-[20%]">Nome</div>
+        <div className="w-[12%]">CPF</div>
+        <div className="w-[10%]">Grupo</div>
+        <div className="w-[12%]">Bairro</div>
+        <div className="w-[8%]">Idade</div>
+        <div className="w-[8%]">Status</div>
+        <div className="w-[10%] text-center">Situação</div>
+        <div className="w-[5%] text-center">Total</div>
+        <div className="w-[5%] text-center">Assist.</div>
+        <div className="w-[5%] text-center">Educ.</div>
+        <div className="w-[5%] text-center">Saúde</div>
       </div>
 
-      {/* Lista virtualizada */}
-      <List
-        defaultHeight={listHeight}
-        rowCount={data.length}
-        rowHeight={60}
-        overscanCount={5}
-        rowComponent={VirtualRow}
-        rowProps={rowProps}
-      />
+      {/* Lista com scroll - aproveita melhor o espaço vertical */}
+      <div className="max-h-[calc(100vh-400px)] overflow-y-auto">
+        {data.map((participant) => (
+          <ParticipantRow
+            key={participant.cpf}
+            participant={participant}
+            onRowClick={onRowClick}
+            getBadgeVariant={getBadgeVariant}
+          />
+        ))}
+      </div>
     </div>
   );
 });
