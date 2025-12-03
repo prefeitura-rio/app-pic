@@ -57,16 +57,21 @@ const OverviewTabComponent = ({
     onFilterChange({});
   }, [onFilterChange]);
 
-  // Memoizar constantes
-  const COLORS = useMemo(() => ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"], []);
-
   // Memoizar dados dos gráficos para evitar re-processamento
-  const chartData = useMemo(() => ({
-    grupoDistribution: data?.distribuicao_por_grupo || [],
-    topBairros: data?.top_bairros || [],
-    safraDistribution: data?.distribuicao_por_safra || [],
-    motivosSaida: data?.distribuicao_motivo_saida || [],
-  }), [data]);
+  const chartData = useMemo(() => {
+    const pieColors = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
+    const grupoData = (data?.distribuicao_por_grupo || []).map((item, index) => ({
+      ...item,
+      fill: pieColors[index % pieColors.length]
+    }));
+
+    return {
+      grupoDistribution: grupoData,
+      topBairros: data?.top_bairros || [],
+      safraDistribution: data?.distribuicao_por_safra || [],
+      motivosSaida: data?.distribuicao_motivo_saida || [],
+    };
+  }, [data]);
 
   // OTIMIZAÇÃO CRÍTICA: Pré-filtrar todas as opções de filtro UMA VEZ
   const filteredOptions = useMemo(() => ({
@@ -100,6 +105,7 @@ const OverviewTabComponent = ({
 
   return (
     <div className="space-y-8">
+      {/* Espaçamento vertical consistente: 32px entre seções principais */}
       {/* Filters */}
       <Card className="relative">
         {/* Indicador de loading nos filtros */}
@@ -293,6 +299,14 @@ const OverviewTabComponent = ({
 
       {data && (
         <>
+          {/* Indicadores Principais */}
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-foreground">Indicadores Principais</h2>
+            <p className="text-sm text-muted-foreground">
+              Visão macro para lideranças das secretarias (Saúde, Educação, Assistência e Casa Civil)
+            </p>
+          </div>
+
           {/* Métricas Principais - com overlay se loading */}
           <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             {loading && (
@@ -450,15 +464,18 @@ const OverviewTabComponent = ({
 
           {/* Resultado do Programa */}
           {data.resultado_programa && data.resultado_programa.length > 0 && (
-            <Card className={`relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Card className={`border-2 hover:shadow-lg transition-shadow relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
               {loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               )}
-              <CardHeader>
-                <CardTitle>Resultado do Programa</CardTitle>
-                <p className="text-sm text-muted-foreground">Evolução temporal da completude por dimensão</p>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  Resultado do Programa
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Evolução temporal da completude por dimensão</p>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -522,7 +539,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos || 0}
               icon={<TrendingUp className="h-4 w-4" />}
               trend={{
-                value: `${data.percentual_protocolos_violados || 0}% violados`,
+                value: `${(data.percentual_protocolos_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
             />
@@ -531,7 +548,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos_smas || 0}
               icon={<Home className="h-4 w-4" />}
               trend={{
-                value: `${data.percentual_smas_violados || 0}% violados`,
+                value: `${(data.percentual_smas_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
             />
@@ -540,7 +557,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos_sme || 0}
               icon={<Baby className="h-4 w-4" />}
               trend={{
-                value: `${data.percentual_sme_violados || 0}% violados`,
+                value: `${(data.percentual_sme_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
             />
@@ -549,7 +566,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos_sms || 0}
               icon={<Heart className="h-4 w-4" />}
               trend={{
-                value: `${data.percentual_sms_violados || 0}% violados`,
+                value: `${(data.percentual_sms_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
             />
@@ -564,9 +581,13 @@ const OverviewTabComponent = ({
             )}
             {/* Group Distribution */}
             {chartData.grupoDistribution.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Distribuição por Grupo</CardTitle>
+              <Card className="border-2 hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    Distribuição por Grupo
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Total de participantes por grupo</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -578,16 +599,9 @@ const OverviewTabComponent = ({
                         cx="50%"
                         cy="50%"
                         outerRadius={100}
-                        label
+                        label={(props: any) => `${(props.percent * 100).toFixed(1)}%`}
                         isAnimationActive={false}
-                      >
-                        {chartData.grupoDistribution.map((entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={COLORS[index % COLORS.length]}
-                          />
-                        ))}
-                      </Pie>
+                      />
                       <Tooltip />
                       <Legend />
                     </PieChart>
@@ -598,9 +612,13 @@ const OverviewTabComponent = ({
 
             {/* Top Bairros */}
             {chartData.topBairros.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top Bairros</CardTitle>
+              <Card className="border-2 hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Home className="h-5 w-5 text-primary" />
+                    Top Bairros
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Bairros com maior número de participantes</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -618,9 +636,13 @@ const OverviewTabComponent = ({
 
             {/* Safra Distribution - Participantes por Safra */}
             {chartData.safraDistribution.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Participantes por Safra</CardTitle>
+              <Card className="border-2 hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    Participantes por Safra
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Distribuição de participantes ativos e inativos por safra</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -640,9 +662,13 @@ const OverviewTabComponent = ({
 
             {/* Motivos de Saída */}
             {chartData.motivosSaida.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Motivos de Inativação</CardTitle>
+              <Card className="border-2 hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-primary" />
+                    Motivos de Inativação
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Principais motivos de saída do programa</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>

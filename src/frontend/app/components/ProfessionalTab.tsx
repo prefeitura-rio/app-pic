@@ -279,8 +279,8 @@ const ProfessionalTabComponent = ({
           </div>
 
           {meta && (
-            <div className="pt-2 text-sm text-muted-foreground">
-              {meta.total_rows} resultado(s) encontrado(s)
+            <div className="pt-2 text-sm text-muted-foreground border-t mt-4">
+              📊 {meta.total_rows.toLocaleString('pt-BR')} resultado(s) encontrado(s)
             </div>
           )}
         </CardContent>

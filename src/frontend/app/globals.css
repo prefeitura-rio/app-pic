@@ -93,6 +93,14 @@
   --ring: hsl(210 100% 20%);
 
   --radius: 0.75rem;
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, hsl(210 100% 20%), hsl(210 100% 35%));
+  --gradient-accent: linear-gradient(135deg, hsl(48 100% 50%), hsl(38 100% 50%));
+  --gradient-success: linear-gradient(135deg, hsl(95 54% 51%), hsl(95 54% 70%));
+
+  /* Transitions */
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark {
@@ -135,9 +143,27 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border transition-colors duration-300;
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg;
+  }
+
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .gradient-accent {
+    background: var(--gradient-accent);
+  }
+
+  .gradient-success {
+    background: var(--gradient-success);
   }
 }

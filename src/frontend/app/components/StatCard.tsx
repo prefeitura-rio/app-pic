@@ -27,19 +27,19 @@ export function StatCard({
   const Icon = isComponent ? (icon as LucideIcon) : null;
   const variantStyles = {
     default: "bg-card border-border",
-    success: "bg-emerald-50 border-emerald-500", // Tailwind 4 color names or standard palette? Assuming standard.
-    warning: "bg-amber-50 border-amber-500",
-    accent: "bg-accent/10 border-accent",
-    destructive: "bg-red-50 border-red-500",
+    success: "bg-success/10 border-success/50",
+    warning: "bg-warning/10 border-warning/50",
+    accent: "bg-accent/10 border-accent/50",
+    destructive: "bg-destructive/10 border-destructive/50",
   };
 
   // Adjust icon styles to match the bg
   const iconVariantStyles = {
     default: "bg-primary text-primary-foreground",
-    success: "bg-emerald-500 text-white",
-    warning: "bg-amber-500 text-white",
+    success: "bg-success text-success-foreground",
+    warning: "bg-warning text-warning-foreground",
     accent: "bg-accent text-accent-foreground",
-    destructive: "bg-red-500 text-white",
+    destructive: "bg-destructive text-destructive-foreground",
   };
 
   return (
