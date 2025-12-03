@@ -156,7 +156,7 @@ export function ProfessionalTab({
                   .filter((item) => item.id && item.id.trim() !== "")
                   .map((item) => (
                     <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
+                      {item.label}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -177,7 +177,7 @@ export function ProfessionalTab({
                   .filter((item) => item.id && item.id.trim() !== "")
                   .map((item) => (
                     <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
+                      {item.label}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -201,7 +201,7 @@ export function ProfessionalTab({
                   .filter((item) => item.id && item.id.trim() !== "")
                   .map((item) => (
                     <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
+                      {item.label}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -222,7 +222,7 @@ export function ProfessionalTab({
                   .filter((item) => item.id && item.id.trim() !== "")
                   .map((item) => (
                     <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
+                      {item.label}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -243,7 +243,7 @@ export function ProfessionalTab({
                   .filter((item) => item.id && item.id.trim() !== "")
                   .map((item) => (
                     <SelectItem key={item.id} value={item.id}>
-                      {item.label} ({item.counts.total})
+                      {item.label}
                     </SelectItem>
                   ))}
               </SelectContent>

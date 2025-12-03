@@ -10,10 +10,6 @@ from src.api.v1.schemas import (
     PaginatedResponse,
     CommonFilters,
     PaginationParams,
-    SmartFilterOptions,
-    FilterOptionItem,
-    FilterOptionCounts,
-    PaginationMeta,
 )
 from src.utils.data_manager import DataManager
 
@@ -24,240 +20,31 @@ router = APIRouter(
     dependencies=[Depends(verify_jwt)],
 )
 
+# Configuração de filtros para participantes (definido no endpoint, não no DataManager)
+PARTICIPANT_FILTER_COLUMN_MAP = {
+    "bairro": "bairro",
+    "cre": "id_cre",
+    "cras": "id_cras",
+    "escola": "id_escola",
+    "clinica": "id_clinica_familia",
+    "safra": "cohort",
+    "grupo": "grupo",
+    "status": "status",
+}
 
-@router.get(
-    "/filter-options",
-    summary="Opções de filtros com contadores (otimizado com SQL)",
-    response_model=PaginatedResponse[SmartFilterOptions],
-)
-async def get_filter_options() -> Any:
-    """
-    Retorna opções de filtros com contadores calculados diretamente no BigQuery.
-    Muito mais rápido que calcular no Python.
-    """
-    # Query agregada que calcula contadores no BQ
-    query = f"""
-    WITH base_data AS (
-        SELECT
-            bairro,
-            grupo,
-            CAST(cohort AS STRING) as cohort,
-            status,
-            id_cre,
-            id_cras,
-            id_escola,
-            nome_escola,
-            id_clinica_familia,
-            nome_clinica_familia,
-            nome_cras
-        FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    )
-
-    -- Contadores por bairro
-    SELECT
-        'bairro' as tipo,
-        bairro as id,
-        bairro as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE bairro IS NOT NULL AND TRIM(bairro) != ''
-    GROUP BY bairro
-
-    UNION ALL
-
-    -- Contadores por grupo
-    SELECT
-        'grupo' as tipo,
-        grupo as id,
-        grupo as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE grupo IS NOT NULL AND TRIM(grupo) != ''
-    GROUP BY grupo
-
-    UNION ALL
-
-    -- Contadores por cohort
-    SELECT
-        'cohort' as tipo,
-        cohort as id,
-        cohort as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE cohort IS NOT NULL AND TRIM(cohort) != ''
-    GROUP BY cohort
-
-    UNION ALL
-
-    -- Contadores por status
-    SELECT
-        'status' as tipo,
-        status as id,
-        status as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE status IS NOT NULL AND TRIM(status) != ''
-    GROUP BY status
-
-    UNION ALL
-
-    -- Contadores por CRE
-    SELECT
-        'cre' as tipo,
-        id_cre as id,
-        id_cre as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE id_cre IS NOT NULL AND TRIM(id_cre) != ''
-    GROUP BY id_cre
-
-    UNION ALL
-
-    -- Contadores por CRAS
-    SELECT
-        'cras' as tipo,
-        id_cras as id,
-        COALESCE(nome_cras, id_cras) as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE id_cras IS NOT NULL AND TRIM(id_cras) != ''
-    GROUP BY id_cras, nome_cras
-
-    UNION ALL
-
-    -- Contadores por escola
-    SELECT
-        'escola' as tipo,
-        id_escola as id,
-        COALESCE(nome_escola, id_escola) as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE id_escola IS NOT NULL AND TRIM(id_escola) != ''
-    GROUP BY id_escola, nome_escola
-
-    UNION ALL
-
-    -- Contadores por clínica
-    SELECT
-        'clinica' as tipo,
-        id_clinica_familia as id,
-        COALESCE(nome_clinica_familia, id_clinica_familia) as label,
-        COUNT(*) as total,
-        COUNTIF(LOWER(grupo) LIKE '%crianca%') as crianca,
-        COUNTIF(LOWER(grupo) LIKE '%gestante%') as gestante,
-        COUNTIF(status = 'ativo') as ativo,
-        COUNTIF(status = 'inativo') as inativo
-    FROM base_data
-    WHERE id_clinica_familia IS NOT NULL AND TRIM(id_clinica_familia) != ''
-    GROUP BY id_clinica_familia, nome_clinica_familia
-
-    ORDER BY tipo, label
-    """
-
-    logger.info("Fetching filter options with SQL aggregation")
-
-    try:
-        df = DataManager.get_dataset(query)
-
-        if df.empty:
-            return SmartFilterOptions()
-
-        # Organizar dados por tipo
-        result = SmartFilterOptions(
-            bairros=[],
-            grupos=[],
-            cohorts=[],
-            status_list=[],
-            cres=[],
-            cras=[],
-            escolas=[],
-            clinicas=[],
-            total_participantes=0,
-        )
-
-        for _, row in df.iterrows():
-            item = FilterOptionItem(
-                id=str(row["id"]),
-                label=str(row["label"]),
-                counts=FilterOptionCounts(
-                    total=int(row["total"]),
-                    crianca=int(row["crianca"]),
-                    gestante=int(row["gestante"]),
-                    ativo=int(row["ativo"]),
-                    inativo=int(row["inativo"]),
-                ),
-            )
-
-            tipo = row["tipo"]
-            if tipo == "bairro":
-                result.bairros.append(item)
-            elif tipo == "grupo":
-                result.grupos.append(item)
-            elif tipo == "cohort":
-                result.cohorts.append(item)
-            elif tipo == "status":
-                result.status_list.append(item)
-            elif tipo == "cre":
-                result.cres.append(item)
-            elif tipo == "cras":
-                result.cras.append(item)
-            elif tipo == "escola":
-                result.escolas.append(item)
-            elif tipo == "clinica":
-                result.clinicas.append(item)
-
-        # Calcular total de participantes
-        if result.status_list:
-            result.total_participantes = sum(s.counts.total for s in result.status_list)
-
-        logger.info(
-            f"Filter options: {len(result.bairros)} bairros, {len(result.grupos)} grupos, {result.total_participantes} total"
-        )
-
-        # Wrap in PaginatedResponse format
-        return PaginatedResponse(
-            data=[result],
-            meta=PaginationMeta(
-                page=1,
-                page_size=1,
-                total_rows=1,
-                total_pages=1,
-                cache_hit=True,
-                profiling={},
-            ),
-        )
-
-    except Exception as e:
-        logger.error(f"Error fetching filter options: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+PARTICIPANT_FILTER_OPTIONS_CONFIG = {
+    "bairros": {"column": "bairro"},
+    "grupos": {"column": "grupo"},
+    "cohorts": {"column": "cohort"},
+    "status_list": {"column": "status"},
+    "cres": {"column": "id_cre"},
+    "cras": {"column": "id_cras", "label_column": "nome_cras"},
+    "escolas": {"column": "id_escola", "label_column": "nome_escola"},
+    "clinicas": {
+        "column": "id_clinica_familia",
+        "label_column": "nome_clinica_familia",
+    },
+}
 
 
 @router.get(
@@ -270,7 +57,15 @@ async def get_participants(
 ) -> Any:
     """
     Retorna participantes com suporte a filtros e paginação.
-    Filtros aplicados no backend, paginação eficiente.
+
+    A resposta inclui:
+    - data: Lista paginada de participantes
+    - meta: Informações de paginação (página atual, total de páginas, etc.)
+    - filters: Opções de filtros dinâmicas baseadas nos dados filtrados atuais
+
+    As opções de filtro são calculadas APÓS aplicar os filtros, mostrando apenas
+    as opções disponíveis considerando os filtros já ativos. Isso evita discrepâncias
+    entre contadores e resultados reais.
     """
     query = f"""
     SELECT
@@ -288,13 +83,26 @@ async def get_participants(
         # Get DataFrame from cache
         df = DataManager.get_dataset(query)
 
-        # Apply filters using DataManager
-        df = DataManager.apply_filters(df, filters)
+        # Converter filtros de API para colunas do DataFrame
+        filters_dict = filters.model_dump(exclude_none=True)
+        column_filters = {}
+        for filter_key, filter_value in filters_dict.items():
+            if filter_key in PARTICIPANT_FILTER_COLUMN_MAP:
+                column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
+                column_filters[column_name] = filter_value
+
+        # Apply filters using DataManager (genérico)
+        df = DataManager.apply_filters(df, column_filters)
 
         logger.info(f"Total after filters: {len(df)} participants")
 
-        # Paginate and return
-        return DataManager.paginate_data(df, pagination.page, pagination.page_size)
+        # Paginate and return (includes dynamic filter options)
+        return DataManager.paginate_data(
+            df,
+            pagination.page,
+            pagination.page_size,
+            filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
+        )
 
     except Exception as e:
         logger.error(f"Error fetching participants: {e}")
@@ -314,7 +122,7 @@ async def get_participant_details(cpf: str) -> Any:
     cpf_clean = "".join(filter(str.isdigit, cpf))
 
     query = f"""
-    SELECT 
+    SELECT
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
     ORDER BY cpf DESC
@@ -337,8 +145,10 @@ async def get_participant_details(cpf: str) -> Any:
         if result.empty:
             raise HTTPException(status_code=404, detail="Participante não encontrado")
 
-        # Use DataManager to package the single result
-        return DataManager.paginate_data(result, page=1, page_size=1)
+        # Use DataManager to package the single result (no filters needed for single record)
+        return DataManager.paginate_data(
+            result, page=1, page_size=1, filter_columns_config=None
+        )
 
     except HTTPException:
         raise
@@ -360,7 +170,7 @@ async def get_participant_protocols(cpf: str) -> Any:
 
     # This is a different table, so it needs its own dataset cache
     query = f"""
-    SELECT 
+    SELECT
         *
     FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_protocolo_detalhes`
     ORDER BY protocolo_secretaria, protocolo_id
@@ -378,9 +188,12 @@ async def get_participant_protocols(cpf: str) -> Any:
         elif "cpf" in df.columns:
             df = df[df["cpf"] == cpf]
 
-        # Use DataManager to package all results
+        # Use DataManager to package all results (no filters needed for protocols)
         return DataManager.paginate_data(
-            df, page=1, page_size=len(df) if not df.empty else 1
+            df,
+            page=1,
+            page_size=len(df) if not df.empty else 1,
+            filter_columns_config=None,
         )
 
     except Exception as e:

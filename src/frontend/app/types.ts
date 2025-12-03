@@ -14,6 +14,7 @@ export interface PaginationMeta {
 export interface PaginatedResponse<T> {
   data: T[];
   meta: PaginationMeta;
+  filters?: SmartFilterOptions; // Opções de filtros dinâmicas baseadas nos dados filtrados
 }
 
 // ============================================================================
@@ -84,18 +85,9 @@ export interface ProtocoloDetalhes {
 // FILTER OPTION TYPES (matching SmartFilterOptions schema)
 // ============================================================================
 
-export interface FilterOptionCounts {
-  total: number;
-  crianca: number;
-  gestante: number;
-  ativo: number;
-  inativo: number;
-}
-
 export interface FilterOptionItem {
   id: string;
   label: string;
-  counts: FilterOptionCounts;
 }
 
 export interface SmartFilterOptions {
@@ -107,7 +99,6 @@ export interface SmartFilterOptions {
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
-  total_participantes: number;
 }
 
 // ============================================================================

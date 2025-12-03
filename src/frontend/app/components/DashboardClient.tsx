@@ -30,18 +30,17 @@ import { Loader2, BarChart3, Search } from "lucide-react";
 export function DashboardClient() {
   const { data: session, status } = useSession();
 
-  // Shared filter options (fetched once)
-  const [filterOptions, setFilterOptions] = useState<SmartFilterOptions | null>(null);
-
   // Overview tab state
   const [dashboardData, setDashboardData] = useState<Dashboard | null>(null);
   const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
+  const [overviewFilterOptions, setOverviewFilterOptions] = useState<SmartFilterOptions | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
 
   // Professional tab state
   const [participantsData, setParticipantsData] = useState<Participante[]>([]);
   const [participantsMeta, setParticipantsMeta] = useState<PaginationMeta | null>(null);
   const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>({});
+  const [professionalFilterOptions, setProfessionalFilterOptions] = useState<SmartFilterOptions | null>(null);
   const [professionalPage, setProfessionalPage] = useState(1);
   const [professionalLoading, setProfessionalLoading] = useState(false);
 
@@ -52,7 +51,7 @@ export function DashboardClient() {
   const [initialLoading, setInitialLoading] = useState(true);
 
   /**
-   * Fetch filter options on mount
+   * Check auth status
    */
   useEffect(() => {
     if (status === "loading") return;
@@ -63,18 +62,7 @@ export function DashboardClient() {
     }
 
     if (session?.accessToken) {
-      apiService
-        .getFilterOptions(session.accessToken as string)
-        .then((response) => {
-          setFilterOptions(response.data[0]);
-          setInitialLoading(false);
-        })
-        .catch((err) => {
-          if (err.message !== "Unauthorized") {
-            console.error("[DashboardClient] Failed to load filter options:", err);
-          }
-          setInitialLoading(false);
-        });
+      setInitialLoading(false);
     }
   }, [session, status]);
 
@@ -92,6 +80,8 @@ export function DashboardClient() {
           session.accessToken as string
         );
         setDashboardData(response.data[0]);
+        // Dashboard não precisa de filter options (dados pré-agregados)
+        // Mas podemos usar os filtros do participants para popular inicialmente
       } catch (err: any) {
         if (err.message !== "Unauthorized") {
           console.error("[DashboardClient] Failed to load dashboard:", err);
@@ -120,6 +110,14 @@ export function DashboardClient() {
         );
         setParticipantsData(response.data);
         setParticipantsMeta(response.meta);
+        // Atualizar filter options com os filtros dinâmicos da resposta
+        if (response.filters) {
+          setProfessionalFilterOptions(response.filters);
+          // Também usar para overview se não tiver ainda
+          if (!overviewFilterOptions) {
+            setOverviewFilterOptions(response.filters);
+          }
+        }
       } catch (err: any) {
         if (err.message !== "Unauthorized") {
           console.error("[DashboardClient] Failed to load participants:", err);
@@ -128,7 +126,7 @@ export function DashboardClient() {
         setProfessionalLoading(false);
       }
     },
-    [session]
+    [session, overviewFilterOptions]
   );
 
   /**
@@ -185,23 +183,7 @@ export function DashboardClient() {
     );
   }
 
-  /**
-   * Show empty state if no filter options loaded
-   */
-  if (!filterOptions) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg text-destructive mb-4">
-            Erro ao carregar opções de filtros
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Verifique sua conexão e tente novamente.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Filter options serão carregados dinamicamente quando os dados forem buscados
 
   return (
     <div className="min-h-screen bg-background">
@@ -233,7 +215,7 @@ export function DashboardClient() {
           <TabsContent value="overview" className="mt-6">
             <OverviewTab
               data={dashboardData}
-              filterOptions={filterOptions}
+              filterOptions={overviewFilterOptions || { bairros: [], grupos: [], cohorts: [], status_list: [], cres: [], cras: [], escolas: [], clinicas: [] }}
               filters={overviewFilters}
               onFilterChange={handleOverviewFilterChange}
               loading={overviewLoading}
@@ -244,7 +226,7 @@ export function DashboardClient() {
             <ProfessionalTab
               data={participantsData}
               meta={participantsMeta}
-              filterOptions={filterOptions}
+              filterOptions={professionalFilterOptions || { bairros: [], grupos: [], cohorts: [], status_list: [], cres: [], cras: [], escolas: [], clinicas: [] }}
               filters={professionalFilters}
               onFilterChange={handleProfessionalFilterChange}
               onPageChange={handleProfessionalPageChange}

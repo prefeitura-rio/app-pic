@@ -47,37 +47,9 @@ function buildFilterParams(
 }
 
 /**
- * Main API service with only 2 core endpoints:
- * 1. GET /participants/filter-options - Smart filter options with counts
- * 2. GET /participants/ - Paginated participants with filters
+ * Main API service - agora todos os endpoints retornam filtros dinâmicos na resposta
  */
 export const apiService = {
-  /**
-   * Get smart filter options with counts for cascading filters.
-   * This endpoint is shared between Overview and Professional tabs.
-   *
-   * @param token - JWT token for authentication
-   * @returns SmartFilterOptions with all available filter values and their counts
-   */
-  async getFilterOptions(
-    token?: string
-  ): Promise<PaginatedResponse<SmartFilterOptions>> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const url = `${BASE_URL}/api/v1/participants/filter-options`;
-
-    console.log("[API] getFilterOptions - URL:", url);
-
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers,
-    });
-
-    return handleResponse<PaginatedResponse<SmartFilterOptions>>(res);
-  },
 
   /**
    * Get dashboard metrics with filters.

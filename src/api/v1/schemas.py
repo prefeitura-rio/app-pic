@@ -39,29 +39,20 @@ class PaginationMeta(BaseModel):
 class PaginatedResponse(BaseModel, Generic[T]):
     data: List[T]
     meta: PaginationMeta
+    filters: Optional["SmartFilterOptions"] = None  # Opções de filtros dinâmicas baseadas nos dados atuais
 
 
-# --- Smart Filter Options with Counts ---
-
-
-class FilterOptionCounts(BaseModel):
-    """Contadores para cada opção de filtro"""
-    total: int = 0
-    crianca: int = 0
-    gestante: int = 0
-    ativo: int = 0
-    inativo: int = 0
+# --- Smart Filter Options ---
 
 
 class FilterOptionItem(BaseModel):
-    """Item de filtro com contadores"""
+    """Item de filtro simples"""
     id: str
     label: str
-    counts: FilterOptionCounts
 
 
 class SmartFilterOptions(BaseModel):
-    """Opções de filtros inteligentes com contadores por combinação"""
+    """Opções de filtros disponíveis baseadas nos dados filtrados"""
     bairros: List[FilterOptionItem] = []
     grupos: List[FilterOptionItem] = []
     cohorts: List[FilterOptionItem] = []
@@ -70,7 +61,6 @@ class SmartFilterOptions(BaseModel):
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
     clinicas: List[FilterOptionItem] = []
-    total_participantes: int = 0
 
 
 # Shared / Nested Models
