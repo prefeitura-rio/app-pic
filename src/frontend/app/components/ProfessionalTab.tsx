@@ -7,6 +7,7 @@ import {
   PaginationMeta,
 } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { VirtualizedParticipantTable } from "./VirtualizedParticipantTable";
 import {
   Select,
   SelectContent,
@@ -14,14 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/app/components/ui/table";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
@@ -52,6 +45,38 @@ interface ProfessionalTabProps {
   onPageChange: (page: number) => void;
   loading?: boolean;
 }
+
+// OTIMIZAÇÃO: Select memoizado para evitar re-renders
+const MemoizedSelect = memo(({
+  value,
+  onValueChange,
+  disabled,
+  placeholder,
+  defaultLabel,
+  options
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+  disabled: boolean;
+  placeholder: string;
+  defaultLabel: string;
+  options: Array<{ id: string; label: string }>;
+}) => (
+  <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+    <SelectTrigger>
+      <SelectValue placeholder={placeholder} />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value={value === "todos" || value === "todas" ? value : "todos"}>{defaultLabel}</SelectItem>
+      {options.map((item) => (
+        <SelectItem key={item.id} value={item.id}>
+          {item.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+));
+MemoizedSelect.displayName = "MemoizedSelect";
 
 const ProfessionalTabComponent = ({
   data,
@@ -170,86 +195,44 @@ const ProfessionalTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Grupo */}
-              <Select
+              <MemoizedSelect
                 value={filters.grupo || "todos"}
                 onValueChange={(v) => handleFilterUpdate("grupo", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Grupo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Grupos</SelectItem>
-                  {filteredOptions.grupos.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="Grupo"
+                defaultLabel="Todos os Grupos"
+                options={filteredOptions.grupos}
+              />
 
               {/* Status */}
-              <Select
+              <MemoizedSelect
                 value={filters.status || "todos"}
                 onValueChange={(v) => handleFilterUpdate("status", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Status</SelectItem>
-                  {filterOptions.status_list
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Status"
+                defaultLabel="Todos os Status"
+                options={filteredOptions.status_list}
+              />
 
               {/* Situação */}
-              <Select
+              <MemoizedSelect
                 value={filters.situacao || "todas"}
                 onValueChange={(v) => handleFilterUpdate("situacao", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Situação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Situações</SelectItem>
-                  {filterOptions.situacoes
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Situação"
+                defaultLabel="Todas as Situações"
+                options={filteredOptions.situacoes}
+              />
 
               {/* Safra */}
-              <Select
+              <MemoizedSelect
                 value={filters.safra || "todas"}
                 onValueChange={(v) => handleFilterUpdate("safra", v)}
                 disabled={loading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Safra" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Safras</SelectItem>
-                  {filterOptions.cohorts
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Safra"
+                defaultLabel="Todas as Safras"
+                options={filteredOptions.cohorts}
+              />
             </div>
           </div>
 
@@ -446,91 +429,12 @@ const ProfessionalTabComponent = ({
             </CardTitle>
           </CardHeader>
           <CardContent className={loading ? 'opacity-50 pointer-events-none' : ''}>
-            <div className="rounded-lg border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted">
-                    <TableHead>Nome</TableHead>
-                    <TableHead>CPF</TableHead>
-                    <TableHead>Grupo</TableHead>
-                    <TableHead>Bairro</TableHead>
-                    <TableHead>Idade</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-center">Situação</TableHead>
-                    <TableHead className="text-center">Total</TableHead>
-                    <TableHead className="text-center">Assistência</TableHead>
-                    <TableHead className="text-center">Educação</TableHead>
-                    <TableHead className="text-center">Saúde</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayData.map((participant, idx) => {
-                    // Extrair numerador e denominador das frações para colorir
-                    const getTotalColor = (fracao?: string) => {
-                      if (!fracao) return "text-muted-foreground";
-                      const [num, den] = fracao.split('/').map(Number);
-                      if (isNaN(num) || isNaN(den) || den === 0) return "text-muted-foreground";
-                      const percent = (num / den) * 100;
-                      if (percent === 100) return "text-green-600 font-semibold";
-                      if (percent >= 60) return "text-yellow-600 font-semibold";
-                      return "text-red-600 font-semibold";
-                    };
-
-                    return (
-                    <TableRow
-                      key={`${participant.cpf}-${idx}`}
-                      className="hover:bg-muted/50 cursor-pointer"
-                      onClick={() => setSelectedParticipant(participant)}
-                    >
-                      <TableCell className="font-medium">
-                        {participant.nome || "-"}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {participant.cpf || "-"}
-                      </TableCell>
-                      <TableCell>
-                        {participant.grupo?.toLowerCase().includes("crianca")
-                          ? "👶 Criança"
-                          : participant.grupo?.toLowerCase().includes("gestante")
-                          ? "🤰 Gestante"
-                          : participant.grupo || "-"}
-                      </TableCell>
-                      <TableCell>{participant.bairro || "-"}</TableCell>
-                      <TableCell>{participant.idade ? `${participant.idade} anos` : "0 anos"}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            participant.status === "ativo"
-                              ? "default"
-                              : "secondary"
-                          }
-                        >
-                          {participant.status || "-"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={getBadgeVariant(participant.situacao)}>
-                          {participant.situacao || "-"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className={`text-center font-mono text-sm ${getTotalColor(participant.total_fracao)}`}>
-                        {participant.total_fracao || "-"}
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-sm">
-                        {participant.assistencia_fracao || "-"}
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-sm">
-                        {participant.educacao_fracao || "-"}
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-sm">
-                        {participant.saude_fracao || "-"}
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            {/* OTIMIZAÇÃO: Tabela virtualizada para performance com muitos dados */}
+            <VirtualizedParticipantTable
+              data={displayData}
+              onRowClick={setSelectedParticipant}
+              getBadgeVariant={getBadgeVariant}
+            />
 
             {/* Pagination */}
             {meta && meta.total_pages > 1 && (

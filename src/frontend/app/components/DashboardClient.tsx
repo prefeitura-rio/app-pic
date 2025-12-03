@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useTransition, startTransition } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
@@ -46,6 +46,7 @@ export function DashboardClient() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
+  const [isPending, startTransition] = useTransition();
 
   // Loading states
   const [initialLoading, setInitialLoading] = useState(true);
@@ -268,7 +269,12 @@ export function DashboardClient() {
       <main className="container mx-auto px-4 py-8">
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as "overview" | "professional")}
+          onValueChange={(value) => {
+            // OTIMIZAÇÃO: Usar startTransition para tornar a troca de abas não-bloqueante
+            startTransition(() => {
+              setActiveTab(value as "overview" | "professional");
+            });
+          }}
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted">

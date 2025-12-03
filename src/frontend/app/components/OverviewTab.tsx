@@ -16,21 +16,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-} from "recharts";
+import dynamic from "next/dynamic";
+
+// OTIMIZAÇÃO CRÍTICA: Lazy load dos gráficos (só carrega quando necessário)
+const BarChart = dynamic(() => import("recharts").then(mod => ({ default: mod.BarChart })), { ssr: false });
+const Bar = dynamic(() => import("recharts").then(mod => ({ default: mod.Bar })), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then(mod => ({ default: mod.XAxis })), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then(mod => ({ default: mod.YAxis })), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then(mod => ({ default: mod.CartesianGrid })), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then(mod => ({ default: mod.Tooltip })), { ssr: false });
+const Legend = dynamic(() => import("recharts").then(mod => ({ default: mod.Legend })), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })), { ssr: false });
+const PieChart = dynamic(() => import("recharts").then(mod => ({ default: mod.PieChart })), { ssr: false });
+const Pie = dynamic(() => import("recharts").then(mod => ({ default: mod.Pie })), { ssr: false });
+const Cell = dynamic(() => import("recharts").then(mod => ({ default: mod.Cell })), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then(mod => ({ default: mod.LineChart })), { ssr: false });
+const Line = dynamic(() => import("recharts").then(mod => ({ default: mod.Line })), { ssr: false });
 
 interface OverviewTabProps {
   data: Dashboard | null;
@@ -39,6 +40,38 @@ interface OverviewTabProps {
   onFilterChange: (filters: DashboardFilters) => void;
   loading?: boolean;
 }
+
+// OTIMIZAÇÃO: Componente de Select memoizado
+const MemoizedSelect = memo(({
+  value,
+  onValueChange,
+  disabled,
+  placeholder,
+  defaultLabel,
+  options
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+  disabled: boolean;
+  placeholder: string;
+  defaultLabel: string;
+  options: Array<{ id: string; label: string }>;
+}) => (
+  <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+    <SelectTrigger className="h-9">
+      <SelectValue placeholder={placeholder} />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value={value === "todos" || value === "todas" ? value : "todos"}>{defaultLabel}</SelectItem>
+      {options.map((item) => (
+        <SelectItem key={item.id} value={item.id}>
+          {item.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+));
+MemoizedSelect.displayName = "MemoizedSelect";
 
 const OverviewTabComponent = ({
   data,
@@ -135,67 +168,34 @@ const OverviewTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {/* Grupo */}
-              <Select
+              <MemoizedSelect
                 value={filters.grupo || "todos"}
                 onValueChange={(v) => handleFilterUpdate("grupo", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Grupo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Grupos</SelectItem>
-                  {filterOptions.grupos
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Grupo"
+                defaultLabel="Todos os Grupos"
+                options={filteredOptions.grupos}
+              />
 
               {/* Safra */}
-              <Select
+              <MemoizedSelect
                 value={filters.safra || "todas"}
                 onValueChange={(v) => handleFilterUpdate("safra", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Safra" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Safras</SelectItem>
-                  {filterOptions.cohorts
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Safra"
+                defaultLabel="Todas as Safras"
+                options={filteredOptions.cohorts}
+              />
 
               {/* Status */}
-              <Select
+              <MemoizedSelect
                 value={filters.status || "todos"}
                 onValueChange={(v) => handleFilterUpdate("status", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Status</SelectItem>
-                  {filterOptions.status_list
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Status"
+                defaultLabel="Todos os Status"
+                options={filteredOptions.status_list}
+              />
             </div>
           </div>
 
@@ -206,151 +206,74 @@ const OverviewTabComponent = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {/* CAP */}
-              <Select
+              <MemoizedSelect
                 value={filters.cap || "todas"}
                 onValueChange={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CAP" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as CAPs</SelectItem>
-                  {filterOptions.caps
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CAP"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.caps}
+              />
 
               {/* CRE (Educação) */}
-              <Select
+              <MemoizedSelect
                 value={filters.cre || "todas"}
                 onValueChange={(v) => handleFilterUpdate("cre", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CRE" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as CREs</SelectItem>
-                  {filterOptions.cres
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CRE"
+                defaultLabel="Todas as CREs"
+                options={filteredOptions.cres}
+              />
 
               {/* CAS */}
-              <Select
+              <MemoizedSelect
                 value={filters.cas || "todas"}
                 onValueChange={(v) => handleFilterUpdate("cas", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CAS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as CAS</SelectItem>
-                  {filterOptions.cas_list
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CAS"
+                defaultLabel="Todas as CAS"
+                options={filteredOptions.cas_list}
+              />
 
               {/* Bairro */}
-              <Select
+              <MemoizedSelect
                 value={filters.bairro || "todos"}
                 onValueChange={(v) => handleFilterUpdate("bairro", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Bairro" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Bairros</SelectItem>
-                  {filterOptions.bairros
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Bairro"
+                defaultLabel="Todos os Bairros"
+                options={filteredOptions.bairros}
+              />
 
               {/* Escolas */}
-              <Select
+              <MemoizedSelect
                 value={filters.escola || "todas"}
                 onValueChange={(v) => handleFilterUpdate("escola", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Escola" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Escolas</SelectItem>
-                  {filterOptions.escolas
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Escola"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
+              />
 
               {/* Clínicas da Família */}
-              <Select
+              <MemoizedSelect
                 value={filters.clinica || "todas"}
                 onValueChange={(v) => handleFilterUpdate("clinica", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Clínica da Família" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Clínicas da Família</SelectItem>
-                  {filterOptions.clinicas
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="Clínica da Família"
+                defaultLabel="Todas as Clínicas da Família"
+                options={filteredOptions.clinicas}
+              />
 
               {/* CRAS */}
-              <Select
+              <MemoizedSelect
                 value={filters.cras || "todas"}
                 onValueChange={(v) => handleFilterUpdate("cras", v)}
                 disabled={loading}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CRAS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todos os CRAS</SelectItem>
-                  {filterOptions.cras
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
+              />
             </div>
           </div>
         </CardContent>

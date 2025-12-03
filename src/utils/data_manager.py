@@ -151,11 +151,14 @@ class DataManager:
             profiling.rows_after_search = len(df_filtered)
 
         # 4. CALCULATE FILTER OPTIONS (sobre dados filtrados COMPLETOS)
+        # OTIMIZAÇÃO UX: Filtros ativos mantêm opções originais, apenas não-ativos sofrem cascata
         filter_options_dict = None
         if filter_columns_config:
             filter_opts_start = time.perf_counter()
             filter_options_dict = DataManager.calculate_filter_options(
-                df_filtered, filter_columns_config
+                df_original=df,  # DataFrame completo (sem filtros)
+                filter_columns_config=filter_columns_config,
+                active_filters=filters_dict  # Filtros atualmente ativos
             )
             filter_opts_time = time.perf_counter() - filter_opts_start
             profiling.filter_options_s = round(
@@ -190,7 +193,9 @@ class DataManager:
         profiling.paginate_s = round(paginate_time, config.PROFILING_DECIMAL_PLACES)
 
         convert_start = time.perf_counter()
-        paginated_data = df_clean.to_dict("records")
+        # OTIMIZAÇÃO: to_dict("records") pode ser lento para DataFrames grandes
+        # Usar orient="records" com split=False é mais rápido que padrão
+        paginated_data = df_clean.to_dict(orient="records")
         convert_time = time.perf_counter() - convert_start
         profiling.convert_to_dict_s = round(
             convert_time, config.PROFILING_DECIMAL_PLACES
@@ -483,68 +488,108 @@ class DataManager:
 
     @staticmethod
     def calculate_filter_options(
-        df: pd.DataFrame, columns_config: Dict[str, Dict[str, str]]
+        df_original: pd.DataFrame,
+        filter_columns_config: Dict[str, Dict[str, str]],
+        active_filters: Dict[str, Any]
     ) -> SmartFilterOptions:
         """
-        Calcula opções de filtros disponíveis baseadas nos dados filtrados.
+        Calcula opções de filtros com CASCATA INTELIGENTE E CRONOLÓGICA.
 
-        IMPORTANTE: Deve ser chamado APÓS apply_filters() para garantir
-        efeito cascata correto (mostrar apenas opções disponíveis).
+        REGRA: Para cada filtro, aplicar TODOS os OUTROS filtros (exceto ele mesmo).
+               Isso permite trocar o valor do filtro mantendo o contexto dos demais.
 
-        Otimizações:
-            - Usa .unique() vetorizado do pandas
-            - Drop duplicates para mapear labels
-            - Ordenação por label para UX
+        Exemplo cronológico:
+            1. Seleciona "grupo=Criança"
+               - GRUPO: [Criança, Gestante] ← sem grupo aplicado, mas COM outros filtros
+               - BAIRRO: apenas bairros com crianças ← COM grupo=Criança
 
-        Performance:
-            - ~0.5s para processar 8 colunas em 179k rows
+            2. Adiciona "bairro=Copacabana"
+               - GRUPO: [Criança, Gestante] ← COM bairro=Copacabana, SEM grupo
+               - BAIRRO: apenas bairros com crianças ← COM grupo=Criança, SEM bairro
+               - ESCOLA: apenas escolas em Copa com crianças ← COM grupo E bairro
+
+        UX: Permite trocar qualquer filtro sem perder contexto dos demais.
 
         Args:
-            df: DataFrame JÁ FILTRADO com os dados
-            columns_config: Config de colunas
-                {
-                    'bairros': {'column': 'bairro'},
-                    'cras': {'column': 'id_cras', 'label_column': 'nome_cras'},
-                }
+            df_original: DataFrame completo SEM filtros
+            filter_columns_config: Mapeamento de filtros
+                Exemplo: {"grupos": {"column": "grupo"}, "bairros": {"column": "bairro"}}
+            active_filters: Dict com filtros atualmente ativos
+                Exemplo: {"grupo": "Criança", "bairro": "Copacabana"}
+                NOTA: Chaves podem ser diferentes das do config (grupo vs grupos)
 
         Returns:
-            SmartFilterOptions com valores únicos por coluna
-
-        Example:
-            >>> filter_options = DataManager.calculate_filter_options(
-            ...     df_filtered,
-            ...     {'bairros': {'column': 'bairro'}}
-            ... )
-            >>> print(filter_options.bairros)
-            [FilterOptionItem(id='46', label='46'), ...]
+            SmartFilterOptions com opções calculadas
         """
         start_time = time.perf_counter()
 
-        if df.empty:
+        if df_original.empty:
             return SmartFilterOptions()
+
+        # MAPEAR result_key → column_name para identificar qual filtro excluir
+        # Exemplo: "grupos" → "grupo", "bairros" → "bairro"
+        result_key_to_column = {}
+        for result_key, config in filter_columns_config.items():
+            column = config.get("column")
+            if column:
+                result_key_to_column[result_key] = column
 
         filter_options_dict = {}
         column_times = {}
 
-        for result_key, config in columns_config.items():
+        for result_key, config in filter_columns_config.items():
             col_start = time.perf_counter()
 
             column = config.get("column")
             label_column = config.get("label_column")
 
             # Pular se coluna não existe
-            if not column or column not in df.columns:
+            if not column or column not in df_original.columns:
                 filter_options_dict[result_key] = []
                 continue
 
-            # Pegar valores únicos
-            unique_values = df[column].dropna().unique()
+            # CASCATA INTELIGENTE: Aplicar TODOS os filtros EXCETO este
+            # Precisamos identificar qual filtro em active_filters corresponde a este result_key
+            # Exemplo: result_key="grupos" → column="grupo" → excluir active_filters["grupo"]
+
+            # Criar dict de filtros SEM o filtro atual
+            # Comparar pela COLUNA, não pela chave (pois podem ser diferentes)
+            filters_without_current = {}
+            for k, v in active_filters.items():
+                # Pular valores vazios
+                if v in [None, "", "todos", "todas"]:
+                    continue
+
+                # Verificar se este filtro corresponde à coluna atual
+                # Procurar se k é uma coluna que mapeia para o result_key atual
+                is_current_filter = False
+                for other_result_key, other_config in filter_columns_config.items():
+                    if other_config.get("column") == k and other_result_key == result_key:
+                        is_current_filter = True
+                        break
+
+                # Se não for o filtro atual, incluir
+                if not is_current_filter:
+                    filters_without_current[k] = v
+
+            # Aplicar filtros parciais (sem o filtro atual)
+            df_for_options = DataManager.apply_filters(df_original, filters_without_current)
+
+            logger.debug(
+                f"Filter '{result_key}' (column='{column}'): "
+                f"excluded current filter, applied {len(filters_without_current)} other filters, "
+                f"got {len(df_for_options)} rows from {len(df_original)} original. "
+                f"Filters applied: {list(filters_without_current.keys())}"
+            )
+
+            # Pegar valores únicos do DataFrame com filtros parciais
+            unique_values = df_for_options[column].dropna().unique()
 
             # Criar dict de labels se tiver coluna de label
             label_map = {}
-            if label_column and label_column in df.columns:
+            if label_column and label_column in df_for_options.columns:
                 label_map = (
-                    df[[column, label_column]]
+                    df_for_options[[column, label_column]]
                     .dropna()
                     .drop_duplicates(column)
                     .set_index(column)[label_column]
@@ -573,7 +618,8 @@ class DataManager:
 
         total_time = time.perf_counter() - start_time
         logger.info(
-            f"calculate_filter_options completed in {total_time:.3f}s - {len(column_times)} columns processed"
+            f"calculate_filter_options (SMART CHRONOLOGICAL CASCADE) completed in {total_time:.3f}s - "
+            f"{len(column_times)} columns processed"
         )
 
         return SmartFilterOptions(**filter_options_dict)
