@@ -31,6 +31,7 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     "safra": "cohort",
     "grupo": "grupo",
     "status": "status",
+    "situacao": "situacao",
 }
 
 PARTICIPANT_FILTER_OPTIONS_CONFIG = {
@@ -38,6 +39,7 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "grupos": {"column": "grupo"},
     "cohorts": {"column": "cohort"},
     "status_list": {"column": "status"},
+    "situacoes": {"column": "situacao"},
     "cres": {"column": "id_cre"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},

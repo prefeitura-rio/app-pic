@@ -20,23 +20,23 @@ import { Loader2, BarChart3, Search } from "lucide-react";
 /**
  * Main Dashboard Orchestrator Component
  *
- * Architecture (CORRIGIDA):
- * - Fetches filter options once on mount
- * - Overview tab: Calls dashboard API with filters
- * - Professional tab: Calls participants API with filters + pagination
- * - Each tab has independent filter state
- * - NO client-side data loading - all via API calls
+ * Arquitetura Híbrida:
+ * 1. Inicialização: Carrega dashboard + participants em paralelo
+ * 2. Overview tab: Chama /dashboard com filtros para recalcular métricas
+ * 3. Professional tab: Chama /participants com filtros + paginação
+ * 4. Trocar de aba: NÃO faz chamadas (usa cache)
+ * 5. Filtros: Recarrega apenas o endpoint necessário
  */
 export function DashboardClient() {
   const { data: session, status } = useSession();
 
-  // Overview tab state
+  // Overview tab state (INDEPENDENTE)
   const [dashboardData, setDashboardData] = useState<Dashboard | null>(null);
   const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
   const [overviewFilterOptions, setOverviewFilterOptions] = useState<SmartFilterOptions | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
 
-  // Professional tab state
+  // Professional tab state (INDEPENDENTE)
   const [participantsData, setParticipantsData] = useState<Participante[]>([]);
   const [participantsMeta, setParticipantsMeta] = useState<PaginationMeta | null>(null);
   const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>({});
@@ -68,7 +68,7 @@ export function DashboardClient() {
   }, [session, status]);
 
   /**
-   * Fetch dashboard data when overview tab is active or filters change
+   * Fetch dashboard data (métricas agregadas)
    */
   const fetchDashboard = useCallback(
     async (filters: DashboardFilters) => {
@@ -81,8 +81,11 @@ export function DashboardClient() {
           session.accessToken as string
         );
         setDashboardData(response.data[0]);
-        // Dashboard não precisa de filter options (dados pré-agregados)
-        // Mas podemos usar os filtros do participants para popular inicialmente
+
+        // Atualizar filter options da aba Overview
+        if (response.filters) {
+          setOverviewFilterOptions(response.filters);
+        }
       } catch (err: any) {
         if (err.message === "Unauthorized") {
           setIsReauthenticating(true);
@@ -97,7 +100,7 @@ export function DashboardClient() {
   );
 
   /**
-   * Fetch participants when professional tab is active or filters/page change
+   * Fetch participants data (lista paginada)
    */
   const fetchParticipants = useCallback(
     async (filters: ParticipantFilters, page: number) => {
@@ -113,13 +116,10 @@ export function DashboardClient() {
         );
         setParticipantsData(response.data);
         setParticipantsMeta(response.meta);
-        // Atualizar filter options com os filtros dinâmicos da resposta
+
+        // Atualizar filter options da aba Professional
         if (response.filters) {
           setProfessionalFilterOptions(response.filters);
-          // Também usar para overview se não tiver ainda
-          if (!overviewFilterOptions) {
-            setOverviewFilterOptions(response.filters);
-          }
         }
       } catch (err: any) {
         if (err.message === "Unauthorized") {
@@ -131,24 +131,27 @@ export function DashboardClient() {
         setProfessionalLoading(false);
       }
     },
-    [session, overviewFilterOptions]
+    [session]
   );
 
   /**
-   * Load initial data for active tab
+   * Load initial data (apenas uma vez)
    */
   useEffect(() => {
     if (initialLoading || !session?.accessToken) return;
 
-    if (activeTab === "overview") {
-      fetchDashboard(overviewFilters);
-    } else {
-      fetchParticipants(professionalFilters, professionalPage);
-    }
-  }, [activeTab, initialLoading, session]);
+    // Carregar dashboard PRIMEIRO (é a aba inicial visível)
+    // Dashboard popula cache, participants reutiliza depois
+    const loadData = async () => {
+      await fetchDashboard({}); // Dashboard sem filtros (popula cache + mostra dados)
+      await fetchParticipants({}, 1); // Primeira página de participantes (reutiliza cache)
+    };
+
+    loadData();
+  }, [initialLoading, session, fetchDashboard, fetchParticipants]);
 
   /**
-   * Handle overview filter changes (memoizado)
+   * Handle overview filter changes
    */
   const handleOverviewFilterChange = useCallback((newFilters: DashboardFilters) => {
     setOverviewFilters(newFilters);
@@ -156,7 +159,7 @@ export function DashboardClient() {
   }, [fetchDashboard]);
 
   /**
-   * Handle professional filter changes (memoizado)
+   * Handle professional filter changes
    */
   const handleProfessionalFilterChange = useCallback((newFilters: ParticipantFilters) => {
     setProfessionalFilters(newFilters);
@@ -165,7 +168,7 @@ export function DashboardClient() {
   }, [fetchParticipants]);
 
   /**
-   * Handle professional page change (memoizado)
+   * Handle professional page change
    */
   const handleProfessionalPageChange = useCallback((page: number) => {
     setProfessionalPage(page);
@@ -180,6 +183,7 @@ export function DashboardClient() {
     grupos: [],
     cohorts: [],
     status_list: [],
+    situacoes: [],
     cres: [],
     cras: [],
     escolas: [],
@@ -220,8 +224,6 @@ export function DashboardClient() {
       </div>
     );
   }
-
-  // Filter options serão carregados dinamicamente quando os dados forem buscados
 
   return (
     <div className="min-h-screen bg-background">

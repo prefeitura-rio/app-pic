@@ -95,6 +95,7 @@ export interface SmartFilterOptions {
   grupos: FilterOptionItem[];
   cohorts: FilterOptionItem[];
   status_list: FilterOptionItem[];
+  situacoes: FilterOptionItem[];
   cres: FilterOptionItem[];
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
@@ -185,6 +186,8 @@ export interface DashboardFilters {
   bairro?: string;
   cre?: string;
   cras?: string;
+  escola?: string;
+  clinica?: string;
   safra?: string;
   grupo?: string;
   status?: string;
@@ -202,6 +205,7 @@ export interface ParticipantFilters {
   safra?: string;
   grupo?: string;
   status?: string;
+  situacao?: string;
   search?: string; // CPF or name search
 }
 

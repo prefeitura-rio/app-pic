@@ -85,6 +85,8 @@ class ProfilingData:
     search_s: float = 0.0
     filter_options_s: float = 0.0
     paginate_s: float = 0.0
+    clean_s: float = 0.0
+    convert_to_dict_s: float = 0.0  # Convert DataFrame to dict (JSON serialization)
     total_pipeline_s: float = 0.0
 
     # Metadados adicionais
@@ -106,5 +108,7 @@ class ProfilingData:
             f"filter={self.apply_filters_s:.3f}s, "
             f"search={self.search_s:.3f}s, "
             f"filter_opts={self.filter_options_s:.3f}s, "
-            f"paginate={self.paginate_s:.3f}s)"
+            f"paginate={self.paginate_s:.3f}s, "
+            f"clean={self.clean_s:.3f}s, "
+            f"to_dict={self.convert_to_dict_s:.3f}s)"
         )

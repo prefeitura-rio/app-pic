@@ -9,7 +9,7 @@ from src.utils.log import logger
 from src.utils.cache_manager import query_cache
 from src.utils.text_utils import TextNormalizer
 from src.utils.data_manager_config import (
-    DataManagerConfig,
+    DataManagerConfig as config,
     DataManagerError,
     ValidationError,
     FilterColumnNotFoundError,
@@ -34,7 +34,7 @@ class DataManager:
         query: str,
         filters_dict: Dict[str, Any],
         page: int,
-        page_size: int,
+        page_size: Optional[int],
         filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
         search_term: Optional[str] = None,
         search_columns: Optional[list[str]] = None,
@@ -57,7 +57,7 @@ class DataManager:
             query: SQL completa com SELECT, FROM, WHERE, ORDER BY
             filters_dict: {col_name: value} - Normalização automática
             page: Página desejada (1-indexed, min=1)
-            page_size: Itens por página (min=1, max=10000)
+            page_size: Itens por página (min=1, max=10000). Se None, retorna TODOS os dados sem paginação.
             filter_columns_config: Config para calcular filter options
             search_term: Termo de busca parcial (opcional)
             search_columns: Colunas para buscar o termo (ex: ['nome', 'cpf'])
@@ -103,15 +103,17 @@ class DataManager:
         if page < 1:
             raise ValidationError(f"page must be >= 1, got {page}")
 
-        if page_size < DataManagerConfig.MIN_PAGE_SIZE:
-            raise ValidationError(
-                f"page_size must be >= {DataManagerConfig.MIN_PAGE_SIZE}, got {page_size}"
-            )
+        # Se page_size é None, não validar (retorna todos os dados)
+        if page_size is not None:
+            if page_size < config.MIN_PAGE_SIZE:
+                raise ValidationError(
+                    f"page_size must be >= {config.MIN_PAGE_SIZE}, got {page_size}"
+                )
 
-        if page_size > DataManagerConfig.MAX_PAGE_SIZE:
-            raise ValidationError(
-                f"page_size must be <= {DataManagerConfig.MAX_PAGE_SIZE}, got {page_size}"
-            )
+            if page_size > config.MAX_PAGE_SIZE:
+                raise ValidationError(
+                    f"page_size must be <= {config.MAX_PAGE_SIZE}, got {page_size}"
+                )
 
         pipeline_start = time.perf_counter()
         profiling = ProfilingData()
@@ -120,9 +122,7 @@ class DataManager:
         get_start = time.perf_counter()
         df, cache_hit = DataManager.get_dataset(query)
         get_time = time.perf_counter() - get_start
-        profiling.get_dataset_s = round(
-            get_time, DataManagerConfig.PROFILING_DECIMAL_PLACES
-        )
+        profiling.get_dataset_s = round(get_time, config.PROFILING_DECIMAL_PLACES)
         profiling.cache_hit = cache_hit
         profiling.rows_before_filter = len(df)
 
@@ -130,14 +130,12 @@ class DataManager:
         filter_start = time.perf_counter()
         df_filtered = DataManager.apply_filters(df, filters_dict)
         filter_time = time.perf_counter() - filter_start
-        profiling.apply_filters_s = round(
-            filter_time, DataManagerConfig.PROFILING_DECIMAL_PLACES
-        )
+        profiling.apply_filters_s = round(filter_time, config.PROFILING_DECIMAL_PLACES)
         profiling.filters_applied = len(
             [
                 v
                 for v in filters_dict.values()
-                if v and str(v) not in DataManagerConfig.FILTER_IGNORE_VALUES
+                if v and str(v) not in config.FILTER_IGNORE_VALUES
             ]
         )
         profiling.rows_after_filter = len(df_filtered)
@@ -149,9 +147,7 @@ class DataManager:
                 df_filtered, search_term, search_columns
             )
             search_time = time.perf_counter() - search_start
-            profiling.search_s = round(
-                search_time, DataManagerConfig.PROFILING_DECIMAL_PLACES
-            )
+            profiling.search_s = round(search_time, config.PROFILING_DECIMAL_PLACES)
             profiling.rows_after_search = len(df_filtered)
 
         # 4. CALCULATE FILTER OPTIONS (sobre dados filtrados COMPLETOS)
@@ -163,37 +159,47 @@ class DataManager:
             )
             filter_opts_time = time.perf_counter() - filter_opts_start
             profiling.filter_options_s = round(
-                filter_opts_time, DataManagerConfig.PROFILING_DECIMAL_PLACES
+                filter_opts_time, config.PROFILING_DECIMAL_PLACES
             )
 
-        # 4. PAGINATE (última etapa)
+        # 4. PAGINATE (última etapa) - ou pular se page_size=None
         paginate_start = time.perf_counter()
-
         total_rows = len(df_filtered)
-        total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
+        # Se page_size é None, retornar TODOS os dados (sem paginação)
+        if page_size is None:
+            total_pages = 1
+            df_clean = df_filtered
+            clean_time = 0.0
+            logger.info(f"Returning ALL {total_rows} rows (no pagination)")
+        else:
+            total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            # Slice
+            df_page = df_filtered.iloc[start_idx:end_idx]
 
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
+            # Clean (NaN/Inf)
+            clean_start = time.perf_counter()
+            df_clean = df_page.replace([np.inf, -np.inf, np.nan], None)
+            df_clean.columns = df_clean.columns.astype(str)
+            clean_time = time.perf_counter() - clean_start
 
-        # Slice
-        df_page = df_filtered.iloc[start_idx:end_idx]
-
-        # Clean (NaN/Inf)
-        df_clean = df_page.replace([np.inf, -np.inf, np.nan], None)
-        df_clean.columns = df_clean.columns.astype(str)
-
+        profiling.clean_s = round(clean_time, config.PROFILING_DECIMAL_PLACES)
         # Convert to dict
-        paginated_data = df_clean.to_dict("records")
-
         paginate_time = time.perf_counter() - paginate_start
-        profiling.paginate_s = round(
-            paginate_time, DataManagerConfig.PROFILING_DECIMAL_PLACES
+        profiling.paginate_s = round(paginate_time, config.PROFILING_DECIMAL_PLACES)
+
+        convert_start = time.perf_counter()
+        paginated_data = df_clean.to_dict("records")
+        convert_time = time.perf_counter() - convert_start
+        profiling.convert_to_dict_s = round(
+            convert_time, config.PROFILING_DECIMAL_PLACES
         )
 
         # 5. TOTAL TIME
         pipeline_time = time.perf_counter() - pipeline_start
         profiling.total_pipeline_s = round(
-            pipeline_time, DataManagerConfig.PROFILING_DECIMAL_PLACES
+            pipeline_time, config.PROFILING_DECIMAL_PLACES
         )
 
         # Log estruturado
@@ -349,9 +355,7 @@ class DataManager:
             filter_value = [
                 v
                 for v in filter_value
-                if v
-                and str(v).strip()
-                and str(v) not in DataManagerConfig.FILTER_IGNORE_VALUES
+                if v and str(v).strip() and str(v) not in config.FILTER_IGNORE_VALUES
             ]
             if not filter_value:
                 continue

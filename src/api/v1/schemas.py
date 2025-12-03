@@ -27,6 +27,7 @@ class CommonFilters(BaseModel):
     safra: Optional[str] = None  # Keeping as string for flexibility in query params
     grupo: Optional[str] = None
     status: Optional[str] = None
+    situacao: Optional[str] = None  # Regular, Atenção, Irregular
     search: Optional[str] = None  # CPF or name search
 
 
@@ -35,7 +36,7 @@ class CommonFilters(BaseModel):
 
 class PaginationMeta(BaseModel):
     page: int
-    page_size: int
+    page_size: Optional[int] = None
     total_rows: int
     total_pages: int
     cache_hit: bool
@@ -67,6 +68,7 @@ class SmartFilterOptions(BaseModel):
     grupos: List[FilterOptionItem] = []
     cohorts: List[FilterOptionItem] = []
     status_list: List[FilterOptionItem] = []
+    situacoes: List[FilterOptionItem] = []
     cres: List[FilterOptionItem] = []
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []

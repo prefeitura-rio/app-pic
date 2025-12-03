@@ -139,131 +139,217 @@ const ProfessionalTabComponent = ({
             </Button>
           </div>
 
-          {/* Primary Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Grupo */}
-            <Select
-              value={filters.grupo || "todos"}
-              onValueChange={(v) => handleFilterUpdate("grupo", v)}
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Grupo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Grupos</SelectItem>
-                <SelectItem value="crianca">Crianças</SelectItem>
-                <SelectItem value="gestante">Gestantes</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Primeiro Nível - Filtros Principais */}
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Filtros Principais
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Grupo */}
+              <Select
+                value={filters.grupo || "todos"}
+                onValueChange={(v) => handleFilterUpdate("grupo", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Grupo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Grupos</SelectItem>
+                  {filterOptions.grupos
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
 
-            {/* Status */}
-            <Select
-              value={filters.status || "todos"}
-              onValueChange={(v) => handleFilterUpdate("status", v)}
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {filterOptions.status_list
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+              {/* Status */}
+              <Select
+                value={filters.status || "todos"}
+                onValueChange={(v) => handleFilterUpdate("status", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {filterOptions.status_list
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
 
-            {/* Safra */}
-            <Select
-              value={filters.safra || "todas"}
-              onValueChange={(v) => handleFilterUpdate("safra", v)}
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Safra" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as Safras</SelectItem>
-                {filterOptions.cohorts
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+              {/* Situação */}
+              <Select
+                value={filters.situacao || "todas"}
+                onValueChange={(v) => handleFilterUpdate("situacao", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Situação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas</SelectItem>
+                  {filterOptions.situacoes
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {/* Safra */}
+              <Select
+                value={filters.safra || "todas"}
+                onValueChange={(v) => handleFilterUpdate("safra", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Safra" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as Safras</SelectItem>
+                  {filterOptions.cohorts
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Regional Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Bairro */}
-            <Select
-              value={filters.bairro || "todos"}
-              onValueChange={(v) => handleFilterUpdate("bairro", v)}
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Bairro" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Bairros</SelectItem>
-                {filterOptions.bairros
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+          {/* Segundo Nível - Filtros Regionais */}
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Filtros Regionais
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* CRE */}
+              <Select
+                value={filters.cre || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cre", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="CRE (Educação)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as CREs</SelectItem>
+                  {filterOptions.cres
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
 
-            {/* CRE */}
-            <Select
-              value={filters.cre || "todas"}
-              onValueChange={(v) => handleFilterUpdate("cre", v)}
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="CRE (Educação)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as CREs</SelectItem>
-                {filterOptions.cres
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+              {/* CRAS */}
+              <Select
+                value={filters.cras || "todas"}
+                onValueChange={(v) => handleFilterUpdate("cras", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="CRAS (Assistência)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todos os CRAS</SelectItem>
+                  {filterOptions.cras
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-            {/* CRAS */}
-            <Select
-              value={filters.cras || "todas"}
-              onValueChange={(v) => handleFilterUpdate("cras", v)}
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="CRAS (Assistência)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todos os CRAS</SelectItem>
-                {filterOptions.cras
-                  .filter((item) => item.id && item.id.trim() !== "")
-                  .map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+          {/* Terceiro Nível - Filtros Locais */}
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Filtros Locais
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Bairro */}
+              <Select
+                value={filters.bairro || "todos"}
+                onValueChange={(v) => handleFilterUpdate("bairro", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Bairro" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Bairros</SelectItem>
+                  {filterOptions.bairros
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {/* Escolas */}
+              <Select
+                value={filters.escola || "todas"}
+                onValueChange={(v) => handleFilterUpdate("escola", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as Escolas</SelectItem>
+                  {filterOptions.escolas
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {/* Clínicas */}
+              <Select
+                value={filters.clinica || "todas"}
+                onValueChange={(v) => handleFilterUpdate("clinica", v)}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Clínica" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as Clínicas</SelectItem>
+                  {filterOptions.clinicas
+                    .filter((item) => item.id && item.id.trim() !== "")
+                    .map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {meta && (
@@ -314,7 +400,10 @@ const ProfessionalTabComponent = ({
                     <TableHead>Bairro</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-center">Situação</TableHead>
-                    <TableHead className="text-right">Protocolos</TableHead>
+                    <TableHead className="text-center">Assistência</TableHead>
+                    <TableHead className="text-center">Educação</TableHead>
+                    <TableHead className="text-center">Saúde</TableHead>
+                    <TableHead className="text-center">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -353,7 +442,16 @@ const ProfessionalTabComponent = ({
                           {participant.situacao || "-"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-center font-mono text-sm">
+                        {participant.assistencia_fracao || "-"}
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-sm">
+                        {participant.educacao_fracao || "-"}
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-sm">
+                        {participant.saude_fracao || "-"}
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-sm font-medium">
                         {participant.total_fracao || "-"}
                       </TableCell>
                     </TableRow>
