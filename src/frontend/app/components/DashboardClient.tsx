@@ -50,6 +50,7 @@ export function DashboardClient() {
   // Loading states
   const [initialLoading, setInitialLoading] = useState(true);
   const [isReauthenticating, setIsReauthenticating] = useState(false);
+  const [hasLoadedInitialData, setHasLoadedInitialData] = useState(false);
 
   /**
    * Check auth status
@@ -74,6 +75,7 @@ export function DashboardClient() {
     async (filters: DashboardFilters) => {
       if (!session?.accessToken) return;
 
+      console.log("[DashboardClient] fetchDashboard called with filters:", filters);
       setOverviewLoading(true);
       try {
         const response = await apiService.getDashboard(
@@ -106,6 +108,7 @@ export function DashboardClient() {
     async (filters: ParticipantFilters, page: number) => {
       if (!session?.accessToken) return;
 
+      console.log("[DashboardClient] fetchParticipants called with filters:", filters, "page:", page);
       setProfessionalLoading(true);
       try {
         const response = await apiService.getParticipants(
@@ -138,34 +141,65 @@ export function DashboardClient() {
    * Load initial data (apenas uma vez)
    */
   useEffect(() => {
-    if (initialLoading || !session?.accessToken) return;
+    if (initialLoading || !session?.accessToken || hasLoadedInitialData) return;
+
+    let isMounted = true;
 
     // Carregar dashboard PRIMEIRO (é a aba inicial visível)
     // Dashboard popula cache, participants reutiliza depois
     const loadData = async () => {
-      await fetchDashboard({}); // Dashboard sem filtros (popula cache + mostra dados)
-      await fetchParticipants({}, 1); // Primeira página de participantes (reutiliza cache)
+      if (!isMounted) return;
+
+      console.log("[DashboardClient] Loading initial data...");
+
+      try {
+        await fetchDashboard({}); // Dashboard sem filtros (popula cache + mostra dados)
+
+        if (!isMounted) return;
+
+        await fetchParticipants({}, 1); // Primeira página de participantes (reutiliza cache)
+
+        if (isMounted) {
+          setHasLoadedInitialData(true); // Marcar DEPOIS de carregar com sucesso
+          console.log("[DashboardClient] Initial data loaded successfully");
+        }
+      } catch (error) {
+        console.error("[DashboardClient] Error loading initial data:", error);
+      }
     };
 
     loadData();
-  }, [initialLoading, session, fetchDashboard, fetchParticipants]);
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLoading, hasLoadedInitialData]); // hasLoadedInitialData previne múltiplas chamadas
 
   /**
    * Handle overview filter changes
    */
   const handleOverviewFilterChange = useCallback((newFilters: DashboardFilters) => {
+    // Evitar chamada se os filtros não mudaram
+    if (JSON.stringify(newFilters) === JSON.stringify(overviewFilters)) {
+      return;
+    }
     setOverviewFilters(newFilters);
     fetchDashboard(newFilters);
-  }, [fetchDashboard]);
+  }, [fetchDashboard, overviewFilters]);
 
   /**
    * Handle professional filter changes
    */
   const handleProfessionalFilterChange = useCallback((newFilters: ParticipantFilters) => {
+    // Evitar chamada se os filtros não mudaram
+    if (JSON.stringify(newFilters) === JSON.stringify(professionalFilters)) {
+      return;
+    }
     setProfessionalFilters(newFilters);
     setProfessionalPage(1); // Reset to page 1
     fetchParticipants(newFilters, 1);
-  }, [fetchParticipants]);
+  }, [fetchParticipants, professionalFilters]);
 
   /**
    * Handle professional page change
@@ -185,6 +219,8 @@ export function DashboardClient() {
     status_list: [],
     situacoes: [],
     cres: [],
+    caps: [],
+    cas_list: [],
     cras: [],
     escolas: [],
     clinicas: []
@@ -252,27 +288,31 @@ export function DashboardClient() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-6">
-            <OverviewTab
-              data={dashboardData}
-              filterOptions={overviewFilterOptions || emptyFilterOptions}
-              filters={overviewFilters}
-              onFilterChange={handleOverviewFilterChange}
-              loading={overviewLoading}
-            />
-          </TabsContent>
+          {activeTab === "overview" && (
+            <TabsContent value="overview" className="mt-6">
+              <OverviewTab
+                data={dashboardData}
+                filterOptions={overviewFilterOptions || emptyFilterOptions}
+                filters={overviewFilters}
+                onFilterChange={handleOverviewFilterChange}
+                loading={overviewLoading}
+              />
+            </TabsContent>
+          )}
 
-          <TabsContent value="professional" className="mt-6">
-            <ProfessionalTab
-              data={participantsData}
-              meta={participantsMeta}
-              filterOptions={professionalFilterOptions || emptyFilterOptions}
-              filters={professionalFilters}
-              onFilterChange={handleProfessionalFilterChange}
-              onPageChange={handleProfessionalPageChange}
-              loading={professionalLoading}
-            />
-          </TabsContent>
+          {activeTab === "professional" && (
+            <TabsContent value="professional" className="mt-6">
+              <ProfessionalTab
+                data={participantsData}
+                meta={participantsMeta}
+                filterOptions={professionalFilterOptions || emptyFilterOptions}
+                filters={professionalFilters}
+                onFilterChange={handleProfessionalFilterChange}
+                onPageChange={handleProfessionalPageChange}
+                loading={professionalLoading}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </main>
 

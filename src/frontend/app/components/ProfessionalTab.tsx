@@ -98,6 +98,21 @@ const ProfessionalTabComponent = ({
   // Memoizar dados filtrados (caso precisemos de filtro client-side no futuro)
   const displayData = useMemo(() => data, [data]);
 
+  // OTIMIZAÇÃO CRÍTICA: Pré-filtrar todas as opções de filtro UMA VEZ
+  const filteredOptions = useMemo(() => ({
+    grupos: filterOptions.grupos.filter((item) => item.id && item.id.trim() !== ""),
+    status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
+    situacoes: filterOptions.situacoes.filter((item) => item.id && item.id.trim() !== ""),
+    cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
+    caps: filterOptions.caps.filter((item) => item.id && item.id.trim() !== ""),
+    cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
+    cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
+    bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
+    escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
+    clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
+    cras: filterOptions.cras.filter((item) => item.id && item.id.trim() !== ""),
+  }), [filterOptions]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -165,13 +180,11 @@ const ProfessionalTabComponent = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os Grupos</SelectItem>
-                  {filterOptions.grupos
-                    .filter((item) => item.id && item.id.trim() !== "")
-                    .map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
+                  {filteredOptions.grupos.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 

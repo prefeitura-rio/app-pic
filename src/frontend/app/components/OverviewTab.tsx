@@ -71,6 +71,20 @@ const OverviewTabComponent = ({
     motivosSaida: data?.distribuicao_motivo_saida || [],
   }), [data]);
 
+  // OTIMIZAÇÃO CRÍTICA: Pré-filtrar todas as opções de filtro UMA VEZ
+  const filteredOptions = useMemo(() => ({
+    grupos: filterOptions.grupos.filter((item) => item.id && item.id.trim() !== ""),
+    status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
+    cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
+    caps: filterOptions.caps.filter((item) => item.id && item.id.trim() !== ""),
+    cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
+    cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
+    bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
+    escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
+    clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
+    cras: filterOptions.cras.filter((item) => item.id && item.id.trim() !== ""),
+  }), [filterOptions]);
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-12">
