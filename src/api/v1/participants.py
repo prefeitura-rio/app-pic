@@ -12,6 +12,7 @@ from src.api.v1.schemas import (
     PaginationParams,
 )
 from src.utils.data_manager import DataManager
+from src.utils.data_manager_config import DataManagerConfig as config
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
@@ -82,19 +83,25 @@ async def get_participants(
     try:
         # Converter filtros de API para colunas do DataFrame
         filters_dict = filters.model_dump(exclude_none=True)
+
+        # Extrair search_term se existir
+        search_term = filters_dict.pop("search", None)
+
         column_filters = {}
         for filter_key, filter_value in filters_dict.items():
             if filter_key in PARTICIPANT_FILTER_COLUMN_MAP:
                 column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
                 column_filters[column_name] = filter_value
 
-        # Pipeline completo: fetch -> filter -> paginate (com profiling detalhado)
+        # Pipeline completo: fetch -> filter -> search -> filter_options -> paginate
         return DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
             page=pagination.page,
             page_size=pagination.page_size,
             filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
+            search_term=search_term,
+            search_columns=["nome", "cpf"] if search_term else None,
         )
 
     except Exception as e:
@@ -189,7 +196,7 @@ async def get_participant_protocols(cpf: str) -> Any:
             query=query,
             filters_dict=filters_dict,
             page=1,
-            page_size=10000,  # Retornar todos os protocolos
+            page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,
         )
 

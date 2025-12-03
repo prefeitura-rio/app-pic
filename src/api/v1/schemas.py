@@ -1,6 +1,7 @@
 from typing import List, Optional, TypeVar, Generic, Any
 from pydantic import BaseModel, Field
 from datetime import date, datetime
+from src.utils.data_manager_config import DataManagerConfig as config
 
 T = TypeVar("T")
 
@@ -9,7 +10,12 @@ T = TypeVar("T")
 
 class PaginationParams(BaseModel):
     page: int = Field(1, ge=1, description="Page number")
-    page_size: int = Field(100, ge=1, le=100000, description="Items per page")
+    page_size: int = Field(
+        config.DEFAULT_PAGE_SIZE,
+        ge=config.MIN_PAGE_SIZE,
+        le=config.MAX_PAGE_SIZE,
+        description="Items per page",
+    )
 
 
 class CommonFilters(BaseModel):

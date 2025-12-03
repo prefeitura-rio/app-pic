@@ -10,6 +10,7 @@ from src.api.v1.schemas import (
     PaginatedResponse,
 )
 from src.utils.data_manager import DataManager
+from src.utils.data_manager_config import DataManagerConfig as config
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
@@ -17,8 +18,6 @@ DATASET_ID = env.BQ_DATASET_ID
 router = APIRouter(
     dependencies=[Depends(verify_jwt)],
 )
-
-
 
 
 @router.get(
@@ -56,7 +55,7 @@ async def get_equipment_filters(
             query=query,
             filters_dict=filters_dict,
             page=1,
-            page_size=10000,
+            page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,
         )
 
@@ -93,7 +92,7 @@ async def get_regional_filters(
             query=query,
             filters_dict=filters_dict,
             page=1,
-            page_size=10000,
+            page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,
         )
 

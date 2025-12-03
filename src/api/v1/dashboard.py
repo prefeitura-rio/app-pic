@@ -6,6 +6,7 @@ from src.config import env
 from src.utils.log import logger
 from src.api.v1.schemas import Dashboard, PaginatedResponse
 from src.utils.data_manager import DataManager
+from src.utils.data_manager_config import DataManagerConfig as config
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
@@ -36,7 +37,7 @@ async def get_dashboard_metrics() -> Any:
             query=query,
             filters_dict={},  # Sem filtros
             page=1,
-            page_size=999999,  # Retornar tudo
+            page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,  # Sem opções de filtro
         )
 
