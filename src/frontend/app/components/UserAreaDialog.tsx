@@ -42,7 +42,7 @@ export function UserAreaDialog({ children }: { children: React.ReactNode }) {
               <div className="text-sm space-y-1 text-muted-foreground">
                 <p><span className="font-medium text-foreground">Nome:</span> {session.user?.name || "Não informado"}</p>
                 <p><span className="font-medium text-foreground">Email:</span> {session.user?.email}</p>
-                <p><span className="font-medium text-foreground">ID:</span> {session.user?.id || session.sub || "N/A"}</p>
+                <p><span className="font-medium text-foreground">ID:</span> {session.user?.id || "N/A"}</p>
               </div>
             </div>
 

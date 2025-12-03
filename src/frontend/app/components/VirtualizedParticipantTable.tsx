@@ -12,15 +12,22 @@ interface ParticipantTableProps {
   getBadgeVariant: (situacao?: string) => "outline" | "default" | "secondary" | "destructive";
 }
 
-// Componente Row para react-window
-const Row = (props: {
-  index: number;
-  style: React.CSSProperties;
-  ariaAttributes: { "aria-posinset": number; "aria-setsize": number; role: "listitem" };
+// Custom props que passamos para o Row
+interface CustomRowProps {
   items: Participante[];
   onRowClick: (participant: Participante) => void;
   getBadgeVariant: (situacao?: string) => "outline" | "default" | "secondary" | "destructive";
-}) => {
+}
+
+// Props completos que o Row recebe (auto-provided + custom)
+interface RowProps extends CustomRowProps {
+  index: number;
+  style: React.CSSProperties;
+  ariaAttributes: { "aria-posinset": number; "aria-setsize": number; role: "listitem" };
+}
+
+// Componente Row para react-window
+const Row = (props: RowProps) => {
   const { index, style, items, onRowClick, getBadgeVariant } = props;
   const participant: Participante = items[index];
 
@@ -106,7 +113,7 @@ export const VirtualizedParticipantTable = memo(({
                 rowComponent={Row}
                 rowCount={data.length}
                 rowHeight={48}
-                rowProps={{ items: data, onRowClick, getBadgeVariant }}
+                rowProps={{ items: data, onRowClick, getBadgeVariant } as any}
                 style={{ height, width }}
               />
             </div>

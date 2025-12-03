@@ -59,7 +59,7 @@ export function StatCard({
             )}
           </div>
           <div className={`${iconVariantStyles[variant]} p-3 rounded-lg shadow-md`}>
-            {Icon ? <Icon className="h-6 w-6" /> : icon}
+            {Icon ? <Icon className="h-6 w-6" /> : <>{icon}</>}
           </div>
         </div>
       </CardContent>
