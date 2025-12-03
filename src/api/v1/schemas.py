@@ -37,9 +37,11 @@ class PaginationMeta(BaseModel):
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    data: List[T]
     meta: PaginationMeta
-    filters: Optional["SmartFilterOptions"] = None  # Opções de filtros dinâmicas baseadas nos dados atuais
+    data: List[T]
+    filters: Optional["SmartFilterOptions"] = (
+        None  # Opções de filtros dinâmicas baseadas nos dados atuais
+    )
 
 
 # --- Smart Filter Options ---
@@ -47,12 +49,14 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
 class FilterOptionItem(BaseModel):
     """Item de filtro simples"""
+
     id: str
     label: str
 
 
 class SmartFilterOptions(BaseModel):
     """Opções de filtros disponíveis baseadas nos dados filtrados"""
+
     bairros: List[FilterOptionItem] = []
     grupos: List[FilterOptionItem] = []
     cohorts: List[FilterOptionItem] = []

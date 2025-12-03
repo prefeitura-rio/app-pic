@@ -31,28 +31,13 @@ async def get_dashboard_metrics() -> Any:
     """
     logger.debug(f"Fetching cached data for dashboard: {query}")
     try:
-        # Get DataFrame from Manager
-        df = DataManager.get_dataset(query)
-        logger.debug(f"Dashboard total rows: {len(df)}")
-
-        if df.empty:
-            return {
-                "data": [],
-                "meta": {
-                    "page": 1,
-                    "page_size": 1,
-                    "total_rows": 0,
-                    "total_pages": 0,
-                    "cache_hit": True,
-                    "profiling": {},
-                },
-                "filters": None,
-            }
-
-        return DataManager.paginate_data(
-            df,
+        # Dashboard não tem filtros, apenas retorna tudo
+        return DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict={},  # Sem filtros
             page=1,
-            page_size=len(df) if not df.empty else 1,
+            page_size=999999,  # Retornar tudo
+            filter_columns_config=None,  # Sem opções de filtro
         )
 
     except Exception as e:

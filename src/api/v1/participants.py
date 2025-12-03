@@ -80,9 +80,6 @@ async def get_participants(
     logger.debug(f"Filters: {filters.model_dump(exclude_none=True)}")
 
     try:
-        # Get DataFrame from cache
-        df = DataManager.get_dataset(query)
-
         # Converter filtros de API para colunas do DataFrame
         filters_dict = filters.model_dump(exclude_none=True)
         column_filters = {}
@@ -91,16 +88,12 @@ async def get_participants(
                 column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
                 column_filters[column_name] = filter_value
 
-        # Apply filters using DataManager (genérico)
-        df = DataManager.apply_filters(df, column_filters)
-
-        logger.info(f"Total after filters: {len(df)} participants")
-
-        # Paginate and return (includes dynamic filter options)
-        return DataManager.paginate_data(
-            df,
-            pagination.page,
-            pagination.page_size,
+        # Pipeline completo: fetch -> filter -> paginate (com profiling detalhado)
+        return DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict=column_filters,
+            page=pagination.page,
+            page_size=pagination.page_size,
             filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
         )
 
@@ -128,27 +121,35 @@ async def get_participant_details(cpf: str) -> Any:
     ORDER BY cpf DESC
     """
     try:
-        df = DataManager.get_dataset(query)
+        # Tentar filtrar por CPF ou cpf_particao
+        filters_dict = {"cpf": cpf}
 
-        # Filter by CPF partition/column
-        if "cpf" in df.columns:
-            result = df[df["cpf"] == cpf]
-            if result.empty and "cpf_particao" in df.columns:
-                try:
-                    result = df[df["cpf_particao"] == int(cpf_clean)]
-                except ValueError:
-                    pass
-        else:
-            # Fallback (unlikely)
-            result = df[0:0]
+        response = DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict=filters_dict,
+            page=1,
+            page_size=1,
+            filter_columns_config=None,
+        )
 
-        if result.empty:
+        # Se não encontrou por CPF, tentar por cpf_particao
+        if response.meta.total_rows == 0:
+            try:
+                filters_dict = {"cpf_particao": int(cpf_clean)}
+                response = DataManager.fetch_filter_paginate(
+                    query=query,
+                    filters_dict=filters_dict,
+                    page=1,
+                    page_size=1,
+                    filter_columns_config=None,
+                )
+            except ValueError:
+                pass
+
+        if response.meta.total_rows == 0:
             raise HTTPException(status_code=404, detail="Participante não encontrado")
 
-        # Use DataManager to package the single result (no filters needed for single record)
-        return DataManager.paginate_data(
-            result, page=1, page_size=1, filter_columns_config=None
-        )
+        return response
 
     except HTTPException:
         raise
@@ -177,22 +178,18 @@ async def get_participant_protocols(cpf: str) -> Any:
     """
     logger.debug(f"Fetching cached data for protocols: {query}")
     try:
-        df = DataManager.get_dataset(query)
+        # Tentar filtrar por cpf_particao primeiro, depois por cpf
+        filters_dict = {}
+        try:
+            filters_dict = {"cpf_particao": int(cpf_clean)}
+        except ValueError:
+            filters_dict = {"cpf": cpf}
 
-        # Filter by CPF
-        if "cpf_particao" in df.columns:
-            try:
-                df = df[df["cpf_particao"] == int(cpf_clean)]
-            except ValueError:
-                df = df[0:0]  # Empty
-        elif "cpf" in df.columns:
-            df = df[df["cpf"] == cpf]
-
-        # Use DataManager to package all results (no filters needed for protocols)
-        return DataManager.paginate_data(
-            df,
+        return DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict=filters_dict,
             page=1,
-            page_size=len(df) if not df.empty else 1,
+            page_size=10000,  # Retornar todos os protocolos
             filter_columns_config=None,
         )
 

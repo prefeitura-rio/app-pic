@@ -47,13 +47,18 @@ async def get_equipment_filters(
     """
     logger.debug(f"Fetching cached data for equipments: {query}")
     try:
-        df = DataManager.get_dataset(query)
+        # Aplicar filtro de tipo se fornecido
+        filters_dict = {}
+        if tipo:
+            filters_dict["tipo"] = tipo
 
-        # Apply Filter in Python
-        if tipo and not df.empty and "tipo" in df.columns:
-            df = df[df["tipo"] == tipo]
-
-        return DataManager.paginate_data(df, page=1, page_size=10000)
+        return DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict=filters_dict,
+            page=1,
+            page_size=10000,
+            filter_columns_config=None,
+        )
 
     except Exception as e:
         logger.error(f"Error fetching equipment filters: {e}")
@@ -79,13 +84,18 @@ async def get_regional_filters(
     """
     logger.debug(f"Fetching cached data for regionals: {query}")
     try:
-        df = DataManager.get_dataset(query)
+        # Aplicar filtro de tipo se fornecido
+        filters_dict = {}
+        if tipo:
+            filters_dict["tipo"] = tipo
 
-        # Apply Filter in Python
-        if tipo and not df.empty and "tipo" in df.columns:
-            df = df[df["tipo"] == tipo]
-
-        return DataManager.paginate_data(df, page=1, page_size=10000)
+        return DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict=filters_dict,
+            page=1,
+            page_size=10000,
+            filter_columns_config=None,
+        )
 
     except Exception as e:
         logger.error(f"Error fetching regional filters: {e}")

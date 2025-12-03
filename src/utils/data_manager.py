@@ -44,27 +44,142 @@ class DataManager:
     """
 
     @staticmethod
+    def fetch_filter_paginate(
+        query: str,
+        filters_dict: Dict[str, Any],
+        page: int,
+        page_size: int,
+        filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
+    ) -> PaginatedResponse[Any]:
+        """
+        Método único que executa todo o pipeline: fetch -> filter -> filter_options -> paginate
+        com profiling detalhado de cada etapa.
+
+        Args:
+            query: SQL query para buscar dados
+            filters_dict: Filtros a aplicar {coluna: valor}
+            page: Número da página
+            page_size: Tamanho da página
+            filter_columns_config: Config para calcular opções de filtros
+
+        Returns:
+            PaginatedResponse com dados paginados e profiling completo
+        """
+        pipeline_start = time.perf_counter()
+        profiling = {}
+
+        # 1. GET DATASET (cache + DataFrame conversion)
+        get_start = time.perf_counter()
+        df = DataManager.get_dataset(query)
+        get_time = time.perf_counter() - get_start
+        profiling["get_dataset_s"] = round(get_time, 3)
+
+        # 2. APPLY FILTERS
+        filter_start = time.perf_counter()
+        df_filtered = DataManager.apply_filters(df, filters_dict)
+        filter_time = time.perf_counter() - filter_start
+        profiling["apply_filters_s"] = round(filter_time, 3)
+
+        # 3. CALCULATE FILTER OPTIONS (sobre dados filtrados COMPLETOS)
+        filter_options_dict = None
+        if filter_columns_config:
+            filter_opts_start = time.perf_counter()
+            filter_options_dict = DataManager.calculate_filter_options(
+                df_filtered, filter_columns_config
+            )
+            filter_opts_time = time.perf_counter() - filter_opts_start
+            profiling["filter_options_s"] = round(filter_opts_time, 3)
+        else:
+            profiling["filter_options_s"] = 0
+
+        # 4. PAGINATE (última etapa)
+        paginate_start = time.perf_counter()
+
+        total_rows = len(df_filtered)
+        total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
+        if page < 1:
+            page = 1
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+
+        # Slice
+        df_page = df_filtered.iloc[start_idx:end_idx]
+
+        # Clean (NaN/Inf)
+        df_clean = df_page.replace([np.inf, -np.inf, np.nan], None)
+        df_clean.columns = df_clean.columns.astype(str)
+
+        # Convert to dict
+        paginated_data = df_clean.to_dict("records")
+
+        paginate_time = time.perf_counter() - paginate_start
+        profiling["paginate_s"] = round(paginate_time, 3)
+
+        # 5. TOTAL TIME
+        pipeline_time = time.perf_counter() - pipeline_start
+        profiling["total_pipeline_s"] = round(pipeline_time, 3)
+
+        logger.info(
+            f"fetch_filter_paginate completed in {pipeline_time:.3f}s - "
+            f"get:{profiling['get_dataset_s']}s, filter:{profiling['apply_filters_s']}s, "
+            f"filter_opts:{profiling['filter_options_s']}s, paginate:{profiling['paginate_s']}s - "
+            f"returned {len(paginated_data)}/{total_rows} rows"
+        )
+
+        return PaginatedResponse(
+            data=paginated_data,
+            meta=PaginationMeta(
+                page=page,
+                page_size=page_size,
+                total_rows=total_rows,
+                total_pages=total_pages,
+                cache_hit=True,
+                profiling=profiling,
+            ),
+            filters=filter_options_dict,
+        )
+
+    @staticmethod
     def get_dataset(query: str) -> pd.DataFrame:
         """
         Retrieves the full dataset from cache or BigQuery and returns it as a Pandas DataFrame.
         """
+        start_time = time.perf_counter()
+
         # 1. Try to get data from persistent cache
+        cache_start = time.perf_counter()
         raw_data = query_cache.get(query)
+        cache_time = time.perf_counter() - cache_start
 
         if raw_data is not None:
-            logger.debug("Cache HIT - Serving data from persistent storage")
+            logger.info(f"Cache HIT - cache_lookup: {cache_time:.3f}s")
         else:
             # 2. If Miss, fetch from BigQuery via Utility
-            logger.debug("Cache MISS - Fetching full dataset from BigQuery")
+            logger.info("Cache MISS - Fetching from BigQuery")
+            bq_start = time.perf_counter()
             raw_data = execute_query(query)
+            bq_time = time.perf_counter() - bq_start
+            logger.info(f"BigQuery fetch time: {bq_time:.3f}s")
 
             # 3. Store in persistent cache
+            cache_write_start = time.perf_counter()
             query_cache.set(query, raw_data)
+            cache_write_time = time.perf_counter() - cache_write_start
+            logger.info(f"Cache write time: {cache_write_time:.3f}s")
 
         if not raw_data:
             return pd.DataFrame()
 
-        return pd.DataFrame(raw_data)
+        df_convert_start = time.perf_counter()
+        df = pd.DataFrame(raw_data)
+        df_convert_time = time.perf_counter() - df_convert_start
+
+        total_time = time.perf_counter() - start_time
+        logger.info(
+            f"get_dataset completed - df_conversion: {df_convert_time:.3f}s, total: {total_time:.3f}s, rows: {len(df)}"
+        )
+
+        return df
 
     @staticmethod
     def apply_filters(df: pd.DataFrame, filters_dict: Dict[str, Any]) -> pd.DataFrame:
@@ -80,18 +195,25 @@ class DataManager:
         Returns:
             DataFrame filtrado
         """
+        start_time = time.perf_counter()
+
         if df.empty:
             return df
 
         initial_rows = len(df)
-        df_filtered = df.copy()
+        filter_times = {}
+
+        # Criar máscara booleana acumulativa (mais eficiente que múltiplas cópias)
+        mask = pd.Series([True] * len(df), index=df.index)
 
         # Aplicar cada filtro usando .isin()
         for col, filter_value in filters_dict.items():
+            filter_start = time.perf_counter()
+
             # Pular se coluna não existe
-            if col not in df_filtered.columns:
+            if col not in df.columns:
                 logger.warning(
-                    f"Column '{col}' not found in DataFrame. Available columns: {list(df_filtered.columns)}"
+                    f"Column '{col}' not found in DataFrame. Available columns: {list(df.columns)}"
                 )
                 continue
 
@@ -110,17 +232,30 @@ class DataManager:
 
             # Aplicar filtro usando .isin() - case-insensitive e sem acentos
             # Normalizar tanto os valores do DataFrame quanto os filtros
+            before_filter = mask.sum()
             normalized_filter_values = [normalize_string(str(v)) for v in filter_value]
-            df_filtered = df_filtered[
-                df_filtered[col]
+            col_mask = (
+                df[col]
                 .astype(str)
                 .apply(normalize_string)
                 .isin(normalized_filter_values)
-            ]
+            )
+            mask = mask & col_mask
+            after_filter = mask.sum()
 
-        # Log apenas se mudou algo
-        if initial_rows != len(df_filtered):
-            logger.info(f"Filters applied: {initial_rows} -> {len(df_filtered)} rows")
+            filter_time = time.perf_counter() - filter_start
+            filter_times[col] = filter_time
+            logger.info(
+                f"Filter '{col}': {before_filter} -> {after_filter} rows in {filter_time:.3f}s"
+            )
+
+        # Aplicar máscara uma única vez no final
+        df_filtered = df[mask]
+
+        total_time = time.perf_counter() - start_time
+        logger.info(
+            f"apply_filters completed - filters: {sum(filter_times.values()):.3f}s, total: {total_time:.3f}s, result: {initial_rows} -> {len(df_filtered)} rows"
+        )
 
         return df_filtered
 
@@ -142,12 +277,17 @@ class DataManager:
         Returns:
             SmartFilterOptions com valores únicos por coluna
         """
+        start_time = time.perf_counter()
+
         if df.empty:
             return SmartFilterOptions()
 
         filter_options_dict = {}
+        column_times = {}
 
         for result_key, config in columns_config.items():
+            col_start = time.perf_counter()
+
             column = config.get("column")
             label_column = config.get("label_column")
 
@@ -187,74 +327,12 @@ class DataManager:
             options.sort(key=lambda x: x.label)
             filter_options_dict[result_key] = options
 
-        return SmartFilterOptions(**filter_options_dict)
+            col_time = time.perf_counter() - col_start
+            column_times[result_key] = col_time
 
-    @staticmethod
-    def paginate_data(
-        df: pd.DataFrame,
-        page: int,
-        page_size: int,
-        filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
-    ) -> PaginatedResponse[Any]:
-        """
-        Paginates the DataFrame and returns the full PaginatedResponse object.
-        Optionally includes dynamic filter options based on the filtered data.
-
-        Args:
-            df: DataFrame to paginate
-            page: Page number (1-indexed)
-            page_size: Items per page
-            filter_columns_config: Config for filter options (optional)
-                {
-                    'bairros': {'column': 'bairro'},
-                    'cras': {'column': 'id_cras', 'label_column': 'nome_cras'},
-                }
-        """
-        start_time = time.perf_counter()
-
-        total_rows = len(df)
-        total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
-
-        if page < 1:
-            page = 1
-
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-
-        # Handle NaN/Inf values which are not valid JSON
-        df_clean = df.replace([np.inf, -np.inf, np.nan], None)
-
-        # Ensure column names are strings for dictionary keys before conversion
-        df_clean.columns = df_clean.columns.astype(str)
-
-        paginated_data_raw = df_clean.iloc[start_idx:end_idx].to_dict("records")
-
-        # Explicitly convert each dictionary's keys to strings to satisfy type hint
-        paginated_data: List[Dict[str, Any]] = []
-        for item_dict in paginated_data_raw:
-            strict_str_dict: Dict[str, Any] = {str(k): v for k, v in item_dict.items()}
-            paginated_data.append(strict_str_dict)
-
-        # Calculate filter options based on the full filtered dataset (before pagination)
-        filter_options_dict = None
-        if filter_columns_config:
-            filter_options_dict = DataManager.calculate_filter_options(
-                df, filter_columns_config
-            )
-
-        end_time = time.perf_counter()
-
-        profiling = {"pagination_time_ms": (end_time - start_time) * 1000}
-
-        return PaginatedResponse(
-            data=paginated_data,
-            meta=PaginationMeta(
-                page=page,
-                page_size=page_size,
-                total_rows=total_rows,
-                total_pages=total_pages,
-                cache_hit=True,
-                profiling=profiling,
-            ),
-            filters=filter_options_dict,
+        total_time = time.perf_counter() - start_time
+        logger.info(
+            f"calculate_filter_options completed in {total_time:.3f}s - {len(column_times)} columns processed"
         )
+
+        return SmartFilterOptions(**filter_options_dict)

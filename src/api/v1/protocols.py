@@ -27,12 +27,13 @@ async def get_protocols_summary() -> Any:
     """
     logger.debug(f"Fetching cached data for protocols summary: {query}")
     try:
-        # Fetch Data via Manager
-        df = DataManager.get_dataset(query)
-        
-        # We want all results, so page_size = total (or large number)
-        # Return response object directly
-        return DataManager.paginate_data(df, page=1, page_size=10000)
+        return DataManager.fetch_filter_paginate(
+            query=query,
+            filters_dict={},  # Sem filtros
+            page=1,
+            page_size=10000,
+            filter_columns_config=None,
+        )
         
     except Exception as e:
         logger.error(f"Error fetching protocols summary: {e}")
