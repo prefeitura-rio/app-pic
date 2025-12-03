@@ -13,6 +13,7 @@ from src.api.v1.schemas import (
     DistribuicaoBairro,
     DistribuicaoMotivoSaida,
     DistribuicaoSafra,
+    ResultadoProgramaPoint,
 )
 from src.utils.data_manager import DataManager
 
@@ -176,6 +177,20 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     total_ativos = df.filter(pl.col("status") == "ativo").height
     total_inativos = total_geral - total_ativos
 
+    # Métricas principais: Regular/Irregular
+    # Regular = participante com 0 protocolos violados
+    # Irregular = participante com >= 1 protocolo violado
+    total_regulares = (
+        df.filter(pl.col("total_protocolos_violados") == 0).height
+        if "total_protocolos_violados" in df.columns
+        else 0
+    )
+    total_irregulares = total_geral - total_regulares
+
+    # Percentuais
+    perc_regular = (total_regulares / total_geral * 100) if total_geral > 0 else 0.0
+    perc_irregular = (total_irregulares / total_geral * 100) if total_geral > 0 else 0.0
+
     # Participantes em atenção (situacao contém "atenção" ou "irregular")
     em_atencao = (
         df.filter(
@@ -259,17 +274,28 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
             if row["bairro"] is not None
         ]
 
-    # Distribuição por safra
+    # Distribuição por safra (com ativos/inativos)
     distribuicao_safra = []
     if "cohort" in df.columns:
         # Converter cohort para string se for date
         df_safra = df.with_columns(pl.col("cohort").cast(pl.Utf8).alias("safra"))
         safra_counts = df_safra.group_by("safra").agg(
-            pl.count().alias("total_participantes")
+            pl.count().alias("total_participantes"),
+            pl.col("status")
+            .filter(pl.col("status") == "ativo")
+            .count()
+            .alias("total_ativos"),
+            pl.col("status")
+            .filter(pl.col("status") != "ativo")
+            .count()
+            .alias("total_inativos"),
         )
         distribuicao_safra = [
             DistribuicaoSafra(
-                safra=row["safra"], total_participantes=row["total_participantes"]
+                safra=row["safra"],
+                total_participantes=row["total_participantes"],
+                total_ativos=row["total_ativos"],
+                total_inativos=row["total_inativos"],
             )
             for row in safra_counts.to_dicts()
             if row["safra"] is not None
@@ -291,7 +317,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
                 if row["status_inativo_motivo"] is not None
             ]
 
-    # Calcular percentuais
+    # Calcular percentuais antigos (manter compatibilidade)
     perc_atencao = (em_atencao / total_geral * 100) if total_geral > 0 else 0.0
     perc_protocolos_violados = (
         (total_violados / total_protocolos * 100) if total_protocolos > 0 else 0.0
@@ -300,15 +326,88 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     perc_sme_violados = (violados_sme / total_sme * 100) if total_sme > 0 else 0.0
     perc_sms_violados = (violados_sms / total_sms * 100) if total_sms > 0 else 0.0
 
+    # ===== DIMENSÃO ASSISTÊNCIA SOCIAL =====
+    # Indicador 1: Bolsa Família
+    bolsa_familia_total = (
+        df.filter(pl.col("bolsa_familia_indicador") == True).height
+        if "bolsa_familia_indicador" in df.columns
+        else 0
+    )
+    bolsa_familia_perc = (
+        (bolsa_familia_total / total_geral * 100) if total_geral > 0 else 0.0
+    )
+
+    # Indicador 2: CadÚnico Atualizado
+    cadunico_total = (
+        df.filter(pl.col("cadunico_indicador") == True).height
+        if "cadunico_indicador" in df.columns
+        else 0
+    )
+    cadunico_perc = (cadunico_total / total_geral * 100) if total_geral > 0 else 0.0
+
+    # Indicador 3: Completude Assistência (0 protocolos violados)
+    assistencia_completude_total = (
+        df.filter(pl.col("assistencia_protocolos_violados") == 0).height
+        if "assistencia_protocolos_violados" in df.columns
+        else 0
+    )
+    assistencia_completude_perc = (
+        (assistencia_completude_total / total_geral * 100) if total_geral > 0 else 0.0
+    )
+
+    # ===== DIMENSÃO EDUCAÇÃO =====
+    # Indicador 1: Frequência Adequada (>= 75%)
+    frequencia_adequada_total = (
+        df.filter(pl.col("frequencia_escolar_percentual") >= 75.0).height
+        if "frequencia_escolar_percentual" in df.columns
+        else 0
+    )
+    frequencia_adequada_perc = (
+        (frequencia_adequada_total / total_geral * 100) if total_geral > 0 else 0.0
+    )
+
+    # Indicador 2: Completude Educação (0 protocolos violados)
+    educacao_completude_total = (
+        df.filter(pl.col("educacao_protocolos_violados") == 0).height
+        if "educacao_protocolos_violados" in df.columns
+        else 0
+    )
+    educacao_completude_perc = (
+        (educacao_completude_total / total_geral * 100) if total_geral > 0 else 0.0
+    )
+
+    # ===== DIMENSÃO SAÚDE =====
+    # Completude Saúde (0 protocolos violados)
+    saude_completude_total = (
+        df.filter(pl.col("saude_protocolos_violados") == 0).height
+        if "saude_protocolos_violados" in df.columns
+        else 0
+    )
+    saude_completude_perc = (
+        (saude_completude_total / total_geral * 100) if total_geral > 0 else 0.0
+    )
+
+    # ===== RESULTADO DO PROGRAMA (Evolução Temporal) =====
+    resultado_programa = _calculate_resultado_programa(df)
+
     return Dashboard(
+        # Totais básicos
         total_participantes_ativos=total_ativos,
         total_participantes_inativos=total_inativos,
         total_participantes_geral=total_geral,
+        # Métricas principais
+        total_participantes_regulares=total_regulares,
+        total_participantes_irregulares=total_irregulares,
+        percentual_regular=perc_regular,
+        percentual_irregular=perc_irregular,
+        # Métricas antigas
         total_participantes_em_atencao=em_atencao,
         percentual_em_atencao=perc_atencao,
+        # Protocolos gerais
         total_protocolos=int(total_protocolos) if total_protocolos else 0,
         total_protocolos_violados=int(total_violados) if total_violados else 0,
         percentual_protocolos_violados=perc_protocolos_violados,
+        # Protocolos por dimensão
         total_protocolos_smas=int(total_smas) if total_smas else 0,
         total_protocolos_smas_violados=int(violados_smas) if violados_smas else 0,
         percentual_smas_violados=perc_smas_violados,
@@ -318,8 +417,104 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
         total_protocolos_sms=int(total_sms) if total_sms else 0,
         total_protocolos_sms_violados=int(violados_sms) if violados_sms else 0,
         percentual_sms_violados=perc_sms_violados,
+        # Dimensão Assistência Social
+        assistencia_bolsa_familia_total=bolsa_familia_total,
+        assistencia_bolsa_familia_percentual=bolsa_familia_perc,
+        assistencia_cadunico_atualizado_total=cadunico_total,
+        assistencia_cadunico_atualizado_percentual=cadunico_perc,
+        assistencia_completude_total=assistencia_completude_total,
+        assistencia_completude_percentual=assistencia_completude_perc,
+        # Dimensão Educação
+        educacao_frequencia_adequada_total=frequencia_adequada_total,
+        educacao_frequencia_adequada_percentual=frequencia_adequada_perc,
+        educacao_completude_total=educacao_completude_total,
+        educacao_completude_percentual=educacao_completude_perc,
+        # Dimensão Saúde
+        saude_completude_total=saude_completude_total,
+        saude_completude_percentual=saude_completude_perc,
+        # Distribuições
         distribuicao_por_grupo=distribuicao_grupo,
         top_bairros=top_bairros,
         distribuicao_motivo_saida=distribuicao_motivo,
         distribuicao_por_safra=distribuicao_safra,
+        # Resultado do Programa
+        resultado_programa=resultado_programa,
     )
+
+
+def _calculate_resultado_programa(df: pl.DataFrame) -> list[ResultadoProgramaPoint]:
+    """
+    Calcula evolução temporal do programa por dimensão.
+
+    Usa cohort como proxy para meses. Para cada safra, calcula:
+    - Completude geral (% com 0 protocolos violados)
+    - Completude por dimensão (% com 0 protocolos violados em cada secretaria)
+
+    Args:
+        df: Polars DataFrame com dados de participantes
+
+    Returns:
+        Lista de pontos temporais com completude por dimensão
+    """
+    if df.is_empty() or "cohort" not in df.columns:
+        return []
+
+    resultado = []
+
+    # Group by cohort
+    df_tempo = df.with_columns(pl.col("cohort").cast(pl.Utf8).alias("mes"))
+    cohorts = sorted(df_tempo["mes"].unique().to_list())
+
+    for cohort in cohorts:
+        if cohort is None:
+            continue
+
+        df_mes = df_tempo.filter(pl.col("mes") == cohort)
+        total = len(df_mes)
+
+        if total == 0:
+            continue
+
+        # Completude geral (0 protocolos violados no total)
+        regulares = (
+            df_mes.filter(pl.col("total_protocolos_violados") == 0).height
+            if "total_protocolos_violados" in df_mes.columns
+            else 0
+        )
+        completude_todos = (regulares / total * 100) if total > 0 else 0.0
+
+        # Completude Saúde (0 protocolos violados em saúde)
+        saude_ok = (
+            df_mes.filter(pl.col("saude_protocolos_violados") == 0).height
+            if "saude_protocolos_violados" in df_mes.columns
+            else 0
+        )
+        completude_saude = (saude_ok / total * 100) if total > 0 else 0.0
+
+        # Completude Educação (0 protocolos violados em educação)
+        educacao_ok = (
+            df_mes.filter(pl.col("educacao_protocolos_violados") == 0).height
+            if "educacao_protocolos_violados" in df_mes.columns
+            else 0
+        )
+        completude_educacao = (educacao_ok / total * 100) if total > 0 else 0.0
+
+        # Completude Assistência (0 protocolos violados em assistência)
+        assistencia_ok = (
+            df_mes.filter(pl.col("assistencia_protocolos_violados") == 0).height
+            if "assistencia_protocolos_violados" in df_mes.columns
+            else 0
+        )
+        completude_assistencia = (assistencia_ok / total * 100) if total > 0 else 0.0
+
+        resultado.append(
+            ResultadoProgramaPoint(
+                mes=cohort,
+                todos=round(completude_todos, 1),
+                saude=round(completude_saude, 1),
+                educacao=round(completude_educacao, 1),
+                assistencia=round(completude_assistencia, 1),
+            )
+        )
+
+    return resultado

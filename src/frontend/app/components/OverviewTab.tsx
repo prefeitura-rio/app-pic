@@ -1,5 +1,5 @@
 import { memo, useMemo, useCallback } from "react";
-import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home, Loader2 } from "lucide-react";
+import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home, Loader2, AlertTriangle, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
   Dashboard,
@@ -28,6 +28,8 @@ import {
   PieChart,
   Pie,
   Cell,
+  LineChart,
+  Line,
 } from "recharts";
 
 interface OverviewTabProps {
@@ -348,8 +350,8 @@ const OverviewTabComponent = ({
 
       {data && (
         <>
-          {/* Summary Cards - com overlay se loading */}
-          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+          {/* Métricas Principais - com overlay se loading */}
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -358,35 +360,198 @@ const OverviewTabComponent = ({
             <StatCard
               title="Total de Participantes"
               value={data.total_participantes_geral || 0}
-              icon={<Users className="h-4 w-4" />}
-              trend={{
-                value: `${data.total_participantes_ativos || 0} ativos`,
-                isPositive: true,
-              }}
+              description={`${data.total_participantes_ativos || 0} ativos • ${data.total_participantes_inativos || 0} inativos`}
+              icon={Users}
+              variant="default"
             />
             <StatCard
-              title="Participantes Ativos"
-              value={data.total_participantes_ativos || 0}
-              icon={<Activity className="h-4 w-4" />}
+              title="% Regular"
+              value={`${(data.percentual_regular || 0).toFixed(1)}%`}
+              description="Cumprindo todos os protocolos"
+              icon={CheckCircle}
               variant="success"
             />
             <StatCard
-              title="Participantes Inativos"
-              value={data.total_participantes_inativos || 0}
-              icon={<Users className="h-4 w-4" />}
-              variant="secondary"
-            />
-            <StatCard
-              title="Em Atenção"
-              value={data.total_participantes_em_atencao || 0}
-              icon={<Activity className="h-4 w-4" />}
-              trend={{
-                value: `${data.percentual_em_atencao || 0}%`,
-                isPositive: false,
-              }}
-              variant="warning"
+              title="% Irregular"
+              value={`${(data.percentual_irregular || 0).toFixed(1)}%`}
+              description="Com protocolos violados"
+              icon={AlertTriangle}
+              variant="destructive"
             />
           </div>
+
+          {/* Dimensão Assistência Social */}
+          <div className={`space-y-3 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              Dimensão Assistência Social
+            </h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">💰 Bolsa Família</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(data.assistencia_bolsa_familia_percentual || 0).toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {data.assistencia_bolsa_familia_total || 0} participantes
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">📋 CadÚnico Atualizado</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(data.assistencia_cadunico_atualizado_percentual || 0).toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {data.assistencia_cadunico_atualizado_total || 0} participantes
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">✅ Protocolos Completos</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(data.assistencia_completude_percentual || 0).toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {data.assistencia_completude_total || 0} participantes
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Dimensão Educação */}
+          <div className={`space-y-3 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              Dimensão Educação
+            </h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">📚 Frequência Escolar Adequada</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(data.educacao_frequencia_adequada_percentual || 0).toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {data.educacao_frequencia_adequada_total || 0} participantes (≥75%)
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">✅ Protocolos Completos</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(data.educacao_completude_percentual || 0).toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {data.educacao_completude_total || 0} participantes
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Dimensão Saúde */}
+          <div className={`space-y-3 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              Dimensão Saúde
+            </h3>
+            <div className="grid gap-3 md:grid-cols-1">
+              <Card className="bg-muted">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">✅ Protocolos Completos</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(data.saude_completude_percentual || 0).toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {data.saude_completude_total || 0} participantes
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Resultado do Programa */}
+          {data.resultado_programa && data.resultado_programa.length > 0 && (
+            <Card className={`relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Resultado do Programa</CardTitle>
+                <p className="text-sm text-muted-foreground">Evolução temporal da completude por dimensão</p>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={data.resultado_programa}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="mes" />
+                    <YAxis domain={[0, 100]} />
+                    <Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="todos"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      name="Todos"
+                      dot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="saude"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      name="Saúde"
+                      dot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="educacao"
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      name="Educação"
+                      dot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="assistencia"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      name="Assistência"
+                      dot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Protocol Statistics - com overlay se loading */}
           <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -494,11 +659,11 @@ const OverviewTabComponent = ({
               </Card>
             )}
 
-            {/* Safra Distribution */}
+            {/* Safra Distribution - Participantes por Safra */}
             {chartData.safraDistribution.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Distribuição por Safra</CardTitle>
+                  <CardTitle>Participantes por Safra</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -507,7 +672,9 @@ const OverviewTabComponent = ({
                       <XAxis dataKey="safra" />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="total_participantes" fill="#00C49F" isAnimationActive={false} />
+                      <Legend />
+                      <Bar dataKey="total_ativos" stackId="a" fill="#10b981" name="Ativos" isAnimationActive={false} />
+                      <Bar dataKey="total_inativos" stackId="a" fill="#6b7280" name="Inativos" isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>

@@ -124,17 +124,40 @@ export interface DistribuicaoBairro {
 export interface DistribuicaoSafra {
   safra?: string;
   total_participantes?: number;
+  total_ativos?: number;
+  total_inativos?: number;
+}
+
+export interface ResultadoProgramaPoint {
+  mes: string;
+  todos: number; // % completude geral
+  saude: number; // % completude saúde
+  educacao: number; // % completude educação
+  assistencia: number; // % completude assistência
 }
 
 export interface Dashboard {
+  // Totais básicos
   total_participantes_ativos?: number;
   total_participantes_inativos?: number;
   total_participantes_geral?: number;
+
+  // Métricas principais (Regular/Irregular)
+  total_participantes_regulares?: number;
+  total_participantes_irregulares?: number;
+  percentual_regular?: number;
+  percentual_irregular?: number;
+
+  // Métricas antigas (manter compatibilidade)
   total_participantes_em_atencao?: number;
   percentual_em_atencao?: number;
+
+  // Protocolos gerais
   total_protocolos?: number;
   total_protocolos_violados?: number;
   percentual_protocolos_violados?: number;
+
+  // Protocolos por dimensão
   total_protocolos_smas?: number;
   total_protocolos_smas_violados?: number;
   percentual_smas_violados?: number;
@@ -144,10 +167,34 @@ export interface Dashboard {
   total_protocolos_sms?: number;
   total_protocolos_sms_violados?: number;
   percentual_sms_violados?: number;
+
+  // Dimensão Assistência Social
+  assistencia_bolsa_familia_total?: number;
+  assistencia_bolsa_familia_percentual?: number;
+  assistencia_cadunico_atualizado_total?: number;
+  assistencia_cadunico_atualizado_percentual?: number;
+  assistencia_completude_total?: number;
+  assistencia_completude_percentual?: number;
+
+  // Dimensão Educação
+  educacao_frequencia_adequada_total?: number;
+  educacao_frequencia_adequada_percentual?: number;
+  educacao_completude_total?: number;
+  educacao_completude_percentual?: number;
+
+  // Dimensão Saúde
+  saude_completude_total?: number;
+  saude_completude_percentual?: number;
+
+  // Distribuições
   distribuicao_por_grupo?: DistribuicaoGrupo[];
   top_bairros?: DistribuicaoBairro[];
   distribuicao_motivo_saida?: DistribuicaoMotivoSaida[];
   distribuicao_por_safra?: DistribuicaoSafra[];
+
+  // Resultado do Programa (evolução temporal)
+  resultado_programa?: ResultadoProgramaPoint[];
+
   data_atualizacao?: string; // ISO datetime string
 }
 

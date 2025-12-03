@@ -96,20 +96,45 @@ class DistribuicaoBairro(BaseModel):
 class DistribuicaoSafra(BaseModel):
     safra: Optional[str] = None  # Changed to str to match DataFrame output usually
     total_participantes: Optional[int] = None
+    total_ativos: Optional[int] = None
+    total_inativos: Optional[int] = None
+
+
+class ResultadoProgramaPoint(BaseModel):
+    """Ponto de evolução temporal do programa por dimensão"""
+
+    mes: str
+    todos: float  # % completude geral
+    saude: float  # % completude saúde
+    educacao: float  # % completude educação
+    assistencia: float  # % completude assistência
 
 
 # Endpoint Models
 
 
 class Dashboard(BaseModel):
+    # Totais básicos
     total_participantes_ativos: Optional[int] = 0
     total_participantes_inativos: Optional[int] = 0
     total_participantes_geral: Optional[int] = 0
+
+    # Métricas principais (Regular/Irregular)
+    total_participantes_regulares: Optional[int] = 0
+    total_participantes_irregulares: Optional[int] = 0
+    percentual_regular: Optional[float] = 0.0
+    percentual_irregular: Optional[float] = 0.0
+
+    # Métricas antigas (manter compatibilidade)
     total_participantes_em_atencao: Optional[int] = 0
     percentual_em_atencao: Optional[float] = 0.0
+
+    # Protocolos gerais
     total_protocolos: Optional[int] = 0
     total_protocolos_violados: Optional[int] = 0
     percentual_protocolos_violados: Optional[float] = 0.0
+
+    # Protocolos por dimensão (secretaria)
     total_protocolos_smas: Optional[int] = 0
     total_protocolos_smas_violados: Optional[int] = 0
     percentual_smas_violados: Optional[float] = 0.0
@@ -119,10 +144,34 @@ class Dashboard(BaseModel):
     total_protocolos_sms: Optional[int] = 0
     total_protocolos_sms_violados: Optional[int] = 0
     percentual_sms_violados: Optional[float] = 0.0
+
+    # Dimensão Assistência Social
+    assistencia_bolsa_familia_total: Optional[int] = 0
+    assistencia_bolsa_familia_percentual: Optional[float] = 0.0
+    assistencia_cadunico_atualizado_total: Optional[int] = 0
+    assistencia_cadunico_atualizado_percentual: Optional[float] = 0.0
+    assistencia_completude_total: Optional[int] = 0
+    assistencia_completude_percentual: Optional[float] = 0.0
+
+    # Dimensão Educação
+    educacao_frequencia_adequada_total: Optional[int] = 0
+    educacao_frequencia_adequada_percentual: Optional[float] = 0.0
+    educacao_completude_total: Optional[int] = 0
+    educacao_completude_percentual: Optional[float] = 0.0
+
+    # Dimensão Saúde
+    saude_completude_total: Optional[int] = 0
+    saude_completude_percentual: Optional[float] = 0.0
+
+    # Distribuições
     distribuicao_por_grupo: List[DistribuicaoGrupo] = []
     top_bairros: List[DistribuicaoBairro] = []
     distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
     distribuicao_por_safra: List[DistribuicaoSafra] = []
+
+    # Resultado do Programa (evolução temporal)
+    resultado_programa: List[ResultadoProgramaPoint] = []
+
     data_atualizacao: Optional[datetime] = None
 
 
