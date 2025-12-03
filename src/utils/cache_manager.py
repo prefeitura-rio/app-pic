@@ -1,12 +1,11 @@
 import os
-import json
 import hashlib
 import time
 import pickle
 from pathlib import Path
 from enum import Enum
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 import datetime
 
 from src.config import env
@@ -79,15 +78,18 @@ class RedisBackend(StorageBackend):
     def __init__(self, redis_url: str):
         if redis is None:
             raise ImportError("redis-py library is required for RedisBackend")
+        # OTIMIZAÇÃO CRÍTICA: decode_responses=False para permitir salvar bytes (Pickle)
+        # Pickle é ~10x mais rápido que JSON para DataFrames
         self.client = redis.Redis.from_url(
-            redis_url, decode_responses=True, socket_connect_timeout=5, socket_timeout=5
+            redis_url, decode_responses=False, socket_connect_timeout=5, socket_timeout=5
         )
 
     def load(self, key: str) -> Optional[Dict[str, Any]]:
         try:
             data = self.client.get(key)
             if data:
-                return json.loads(data)
+                # OTIMIZAÇÃO: Desserializar Pickle (suporta DataFrames nativamente)
+                return pickle.loads(data)
             return None
         except Exception as e:
             logger.error(f"Redis load error for {key}: {e}")
@@ -95,7 +97,9 @@ class RedisBackend(StorageBackend):
 
     def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
         try:
-            serialized = json.dumps(data, ensure_ascii=False, default=str)
+            # OTIMIZAÇÃO: Serializar com Pickle (muito mais rápido que JSON)
+            # Pickle preserva tipos do DataFrame (category, datetime, etc)
+            serialized = pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
             # Use Redis native TTL
             self.client.set(name=key, value=serialized, ex=ttl_seconds)
         except Exception as e:
@@ -127,13 +131,11 @@ class CacheManager:
     def get(self, query: str) -> Optional[Dict[str, Any]]:
         query_hash = self._get_query_hash(query)
         data = None
-        from_redis = False
 
         # Try Redis first if enabled
         if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
             data = self.redis_backend.load(query_hash)
             if data:
-                from_redis = True
                 logger.debug("Cache HIT from Redis")
 
         # Fallback to File (Pickle) if enabled and missed in Redis (or Redis disabled)

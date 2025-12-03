@@ -51,12 +51,21 @@ async def get_equipment_filters(
         if tipo:
             filters_dict["tipo"] = tipo
 
-        return DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=filters_dict,
             page=1,
             page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,
+        )
+
+        # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
+        data_json = DataManager.df_to_json(df_data)
+
+        return PaginatedResponse(
+            data=data_json,
+            meta=meta,
+            filters=filter_options,
         )
 
     except Exception as e:
@@ -88,12 +97,21 @@ async def get_regional_filters(
         if tipo:
             filters_dict["tipo"] = tipo
 
-        return DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=filters_dict,
             page=1,
             page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,
+        )
+
+        # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
+        data_json = DataManager.df_to_json(df_data)
+
+        return PaginatedResponse(
+            data=data_json,
+            meta=meta,
+            filters=filter_options,
         )
 
     except Exception as e:

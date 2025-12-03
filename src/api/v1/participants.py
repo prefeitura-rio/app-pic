@@ -100,7 +100,7 @@ async def get_participants(
                 column_filters[column_name] = filter_value
 
         # Pipeline completo: fetch -> filter -> search -> filter_options -> paginate
-        return DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
             page=pagination.page,
@@ -108,6 +108,15 @@ async def get_participants(
             filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
             search_term=search_term,
             search_columns=["nome", "cpf"] if search_term else None,
+        )
+
+        # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
+        data_json = DataManager.df_to_json(df_data)
+
+        return PaginatedResponse(
+            data=data_json,
+            meta=meta,
+            filters=filter_options,
         )
 
     except Exception as e:
@@ -137,7 +146,7 @@ async def get_participant_details(cpf: str) -> Any:
         # Tentar filtrar por CPF ou cpf_particao
         filters_dict = {"cpf": cpf}
 
-        response = DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=filters_dict,
             page=1,
@@ -146,10 +155,10 @@ async def get_participant_details(cpf: str) -> Any:
         )
 
         # Se não encontrou por CPF, tentar por cpf_particao
-        if response.meta.total_rows == 0:
+        if meta.total_rows == 0:
             try:
                 filters_dict = {"cpf_particao": int(cpf_clean)}
-                response = DataManager.fetch_filter_paginate(
+                df_data, meta, filter_options = DataManager.fetch_filter_paginate(
                     query=query,
                     filters_dict=filters_dict,
                     page=1,
@@ -159,10 +168,17 @@ async def get_participant_details(cpf: str) -> Any:
             except ValueError:
                 pass
 
-        if response.meta.total_rows == 0:
+        if meta.total_rows == 0:
             raise HTTPException(status_code=404, detail="Participante não encontrado")
 
-        return response
+        # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
+        data_json = DataManager.df_to_json(df_data)
+
+        return PaginatedResponse(
+            data=data_json,
+            meta=meta,
+            filters=filter_options,
+        )
 
     except HTTPException:
         raise
@@ -198,12 +214,21 @@ async def get_participant_protocols(cpf: str) -> Any:
         except ValueError:
             filters_dict = {"cpf": cpf}
 
-        return DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=filters_dict,
             page=1,
             page_size=config.MAX_PAGE_SIZE,  # Retornar tudo
             filter_columns_config=None,
+        )
+
+        # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
+        data_json = DataManager.df_to_json(df_data)
+
+        return PaginatedResponse(
+            data=data_json,
+            meta=meta,
+            filters=filter_options,
         )
 
     except Exception as e:

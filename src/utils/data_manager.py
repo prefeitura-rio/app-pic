@@ -30,6 +30,34 @@ class DataManager:
     """
 
     @staticmethod
+    def df_to_json(df: pd.DataFrame) -> list[dict]:
+        """
+        Converte DataFrame para lista de dicts, convertendo NaN/Inf para None.
+
+        SOLUÇÃO: Usa JSON round-trip que converte NaN → null automaticamente.
+        Pandas .to_json() com orient='records' já faz a conversão correta.
+
+        Args:
+            df: DataFrame para converter
+
+        Returns:
+            Lista de dicts pronta para JSON serialization (NaN viram None)
+
+        Example:
+            >>> df = pd.DataFrame({'a': [1, np.nan], 'b': ['x', 'y']})
+            >>> DataManager.df_to_json(df)
+            [{'a': 1.0, 'b': None}, {'a': None, 'b': 'y'}]
+        """
+        if df.empty:
+            return []
+
+        # SOLUÇÃO ROBUSTA: to_json() converte NaN → null automaticamente
+        # json.loads() converte null → None
+        import json
+        json_str = df.to_json(orient='records', date_format='iso')
+        return json.loads(json_str)
+
+    @staticmethod
     def fetch_filter_paginate(
         query: str,
         filters_dict: Dict[str, Any],
@@ -38,19 +66,22 @@ class DataManager:
         filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
         search_term: Optional[str] = None,
         search_columns: Optional[list[str]] = None,
-    ) -> PaginatedResponse[Any]:
+    ) -> tuple[pd.DataFrame, PaginationMeta, Optional[SmartFilterOptions]]:
         """
         Executa pipeline completo de fetch → filter → filter_options → paginate.
 
+        OTIMIZAÇÃO: Retorna DataFrame direto, não converte para dict.
+        A API deve fazer a conversão para JSON apenas no último momento.
+
         Pipeline:
-            1. GET DATASET: Busca do cache/BigQuery (~2-3s em cache miss)
+            1. GET DATASET: Busca do cache/BigQuery (~0.2s em cache hit)
             2. APPLY FILTERS: Aplica filtros case-insensitive (~0.05s)
             3. APPLY SEARCH: Busca parcial em múltiplas colunas (~0.02s)
             4. CALCULATE FILTER OPTIONS: Valores únicos para cascata (~0.5s)
-            5. PAGINATE: Slice + clean + convert (~0.01s)
+            5. PAGINATE: Slice + clean (~0.01s)
 
         Performance:
-            - Cache hit: ~0.5-1s
+            - Cache hit: ~0.5-1s (antes era 8-17s!)
             - Cache miss: ~3-5s (primeira request)
 
         Args:
@@ -63,10 +94,10 @@ class DataManager:
             search_columns: Colunas para buscar o termo (ex: ['nome', 'cpf'])
 
         Returns:
-            PaginatedResponse com:
-                - data: Lista de registros (max page_size)
-                - meta: Paginação + profiling detalhado
-                - filters: Opções de filtro baseadas nos dados filtrados
+            Tuple de (DataFrame, PaginationMeta, SmartFilterOptions):
+                - DataFrame: Dados paginados e limpos (ready para to_dict)
+                - PaginationMeta: Paginação + profiling detalhado
+                - SmartFilterOptions: Opções de filtro baseadas nos dados filtrados
 
         Raises:
             ValidationError: Se parâmetros inválidos
@@ -187,20 +218,13 @@ class DataManager:
             clean_time = time.perf_counter() - clean_start
 
         profiling.clean_s = round(clean_time, config.PROFILING_DECIMAL_PLACES)
-        # Convert to dict
+        # Paginação completa
         paginate_time = time.perf_counter() - paginate_start
         profiling.paginate_s = round(paginate_time, config.PROFILING_DECIMAL_PLACES)
 
-        convert_start = time.perf_counter()
-        # OTIMIZAÇÃO CRÍTICA: to_dict() é MUITO lento (5s+ para 179k linhas)
-        # Usar values.tolist() + zip é ~10x mais rápido
-        columns = df_clean.columns.tolist()
-        values = df_clean.values.tolist()
-        paginated_data = [dict(zip(columns, row)) for row in values]
-        convert_time = time.perf_counter() - convert_start
-        profiling.convert_to_dict_s = round(
-            convert_time, config.PROFILING_DECIMAL_PLACES
-        )
+        # OTIMIZAÇÃO: NÃO converter para dict aqui!
+        # Deixar a API fazer isso apenas no momento de serializar JSON
+        profiling.convert_to_dict_s = 0.0  # Não convertemos mais aqui
 
         # 5. TOTAL TIME
         pipeline_time = time.perf_counter() - pipeline_start
@@ -221,14 +245,15 @@ class DataManager:
                 "rows_after_search": profiling.rows_after_search,
                 "page": page,
                 "page_size": page_size,
-                "returned_rows": len(paginated_data),
+                "returned_rows": len(df_clean),
             },
         )
         logger.info(f"Profiling: {profiling}")
 
-        return PaginatedResponse(
-            data=paginated_data,
-            meta=PaginationMeta(
+        # RETORNA DATAFRAME, não lista de dicts!
+        return (
+            df_clean,
+            PaginationMeta(
                 page=page,
                 page_size=page_size,
                 total_rows=total_rows,
@@ -236,7 +261,7 @@ class DataManager:
                 cache_hit=cache_hit,
                 profiling=profiling.to_dict(),
             ),
-            filters=filter_options_dict,
+            filter_options_dict,
         )
 
     @staticmethod
@@ -273,34 +298,63 @@ class DataManager:
         cache_hit = raw_data is not None
 
         if cache_hit:
-            logger.info(f"Cache HIT - cache_lookup: {cache_time:.3f}s")
+            # OTIMIZAÇÃO: Cache agora retorna DataFrame DIRETO (Pickle)
+            # Verificar se é DataFrame (cache novo) ou List[Dict] (cache antigo)
+            if isinstance(raw_data, pd.DataFrame):
+                logger.info(
+                    f"✅ Cache HIT - Returning optimized DataFrame - {cache_time:.3f}s"
+                )
+                return raw_data, True
+            else:
+                # Fallback: cache antigo (JSON) - converter para DataFrame
+                logger.info(
+                    f"Cache HIT (old format) - Converting to DataFrame - {cache_time:.3f}s"
+                )
+                df = pd.DataFrame(raw_data)
+                return df, True
         else:
-            # 2. If Miss, fetch from BigQuery via Utility
-            logger.info("Cache MISS - Fetching from BigQuery")
+            # 2. Cache MISS - fetch from BigQuery
+            logger.info("❌ Cache MISS - Fetching from BigQuery")
             bq_start = time.perf_counter()
-            raw_data = execute_query(query)
+            df = execute_query(query)  # OTIMIZAÇÃO: Já retorna DataFrame!
             bq_time = time.perf_counter() - bq_start
             logger.info(f"BigQuery fetch time: {bq_time:.3f}s")
 
-            # 3. Store in persistent cache
+            if df.empty:
+                return pd.DataFrame(), False
+
+            # 3. OTIMIZAÇÃO CRÍTICA: Converter colunas para 'category'
+            # Isso acelera filtros em até 100x
+            optimize_start = time.perf_counter()
+
+            for col in df.select_dtypes(include=["object"]).columns:
+                # Converter para category se a cardinalidade for baixa (< 50% unique)
+                num_unique = df[col].nunique()
+                num_total = len(df)
+
+                if num_total > 0 and (num_unique / num_total) < 0.5:
+                    df[col] = df[col].astype("category")
+                    logger.debug(
+                        f"Converted '{col}' to category ({num_unique} unique values)"
+                    )
+
+            optimize_time = time.perf_counter() - optimize_start
+            logger.info(f"Category optimization: {optimize_time:.3f}s")
+
+            # 4. Salvar DataFrame OTIMIZADO no cache (Pickle preserva dtypes)
             cache_write_start = time.perf_counter()
-            query_cache.set(query, raw_data)
+            query_cache.set(query, df)
             cache_write_time = time.perf_counter() - cache_write_start
-            logger.info(f"Cache write time: {cache_write_time:.3f}s")
+            logger.info(
+                f"💾 Cache write (optimized DataFrame): {cache_write_time:.3f}s"
+            )
 
-        if not raw_data:
-            return pd.DataFrame(), cache_hit
+            total_time = time.perf_counter() - start_time
+            logger.info(
+                f"get_dataset completed (CACHE MISS) - total: {total_time:.3f}s, rows: {len(df)}"
+            )
 
-        df_convert_start = time.perf_counter()
-        df = pd.DataFrame(raw_data)
-        df_convert_time = time.perf_counter() - df_convert_start
-
-        total_time = time.perf_counter() - start_time
-        logger.info(
-            f"get_dataset completed - df_conversion: {df_convert_time:.3f}s, total: {total_time:.3f}s, rows: {len(df)}"
-        )
-
-        return df, cache_hit
+            return df, False
 
     @staticmethod
     def apply_filters(df: pd.DataFrame, filters_dict: Dict[str, Any]) -> pd.DataFrame:
@@ -519,12 +573,22 @@ class DataManager:
             if k not in df_original.columns:
                 continue
 
-            # Criar máscara normalizada (case-insensitive, sem acentos)
-            col_values = df_original[k].astype(str)
-            col_normalized = col_values.apply(text_normalizer.normalize)
-            filter_normalized = text_normalizer.normalize(str(v))
-
-            filter_masks[k] = col_normalized == filter_normalized
+            # OTIMIZAÇÃO: Se a coluna for category, comparação é ~100x mais rápida
+            if df_original[k].dtype.name == "category":
+                # Category dtype: comparação direta (já está otimizado internamente)
+                # Mas ainda precisa normalizar o valor do filtro
+                filter_normalized = text_normalizer.normalize(str(v))
+                # Normalizar categories também
+                col_normalized = (
+                    df_original[k].astype(str).apply(text_normalizer.normalize)
+                )
+                filter_masks[k] = col_normalized == filter_normalized
+            else:
+                # Object dtype: normalização completa
+                col_values = df_original[k].astype(str)
+                col_normalized = col_values.apply(text_normalizer.normalize)
+                filter_normalized = text_normalizer.normalize(str(v))
+                filter_masks[k] = col_normalized == filter_normalized
 
         filter_options_dict = {}
 

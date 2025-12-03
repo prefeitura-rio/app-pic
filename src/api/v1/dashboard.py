@@ -103,7 +103,7 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
         # 2. Aplicar filtros
         # 3. Calcular filter options com cascata inteligente
         # 4. Retornar TODOS os dados filtrados (sem paginação)
-        response = DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
             page=1,
@@ -111,12 +111,18 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
             filter_columns_config=DASHBOARD_FILTER_OPTIONS_CONFIG,
         )
 
-        # Converter para Polars DataFrame para cálculos eficientes
-        df = pl.DataFrame(response.data)
+        # OTIMIZAÇÃO: Converter Pandas DataFrame para Polars para cálculos eficientes
+        # Polars é ~10x mais rápido que Pandas para agregações
+        # IMPORTANTE: Converter category dtype para string antes (Polars não suporta category)
+        df_pandas = df_data.copy()
+        for col in df_pandas.select_dtypes(include=['category']).columns:
+            df_pandas[col] = df_pandas[col].astype(str)
+
+        df = pl.from_pandas(df_pandas)
 
         logger.info(
             f"Dashboard metrics calculated for {len(df)} participants "
-            f"(cache_hit={response.meta.cache_hit})"
+            f"(cache_hit={meta.cache_hit})"
         )
 
         # Se vazio, retornar métricas zeradas
@@ -145,9 +151,9 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
                 distribuicao_por_safra=[],
             )
             return PaginatedResponse(
-                meta=response.meta,
+                meta=meta,
                 data=[empty_dashboard],
-                filters=response.filters,
+                filters=filter_options,
             )
 
         # Calcular métricas agregadas
@@ -156,9 +162,9 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
         # Retornar como PaginatedResponse com um único item
         # IMPORTANTE: Incluir filter options com cascata inteligente
         return PaginatedResponse(
-            meta=response.meta,
+            meta=meta,
             data=[dashboard_metrics],
-            filters=response.filters,
+            filters=filter_options,
         )
 
     except Exception as e:
