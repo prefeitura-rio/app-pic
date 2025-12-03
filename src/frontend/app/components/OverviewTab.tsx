@@ -88,11 +88,18 @@ const OverviewTabComponent = ({
   return (
     <div className="space-y-8">
       {/* Filters */}
-      <Card>
+      <Card className="relative">
+        {/* Indicador de loading nos filtros */}
+        {loading && (
+          <div className="absolute top-3 right-3 z-10">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          </div>
+        )}
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Filter className="h-4 w-4" />
             Filtros
+            {loading && <span className="text-xs text-muted-foreground ml-2">(carregando...)</span>}
           </CardTitle>
           <Button
             variant="ghost"
@@ -283,10 +290,15 @@ const OverviewTabComponent = ({
         </>
       )}
 
-      {!loading && data && (
+      {data && (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Summary Cards - com overlay se loading */}
+          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
             <StatCard
               title="Total de Participantes"
               value={data.total_participantes_geral || 0}
@@ -320,8 +332,13 @@ const OverviewTabComponent = ({
             />
           </div>
 
-          {/* Protocol Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Protocol Statistics - com overlay se loading */}
+          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
             <StatCard
               title="Protocolos Totais"
               value={data.total_protocolos || 0}
@@ -360,8 +377,13 @@ const OverviewTabComponent = ({
             />
           </div>
 
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Charts - com overlay se loading */}
+          <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
             {/* Group Distribution */}
             {chartData.grupoDistribution.length > 0 && (
               <Card>

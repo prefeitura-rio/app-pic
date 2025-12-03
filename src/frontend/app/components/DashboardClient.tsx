@@ -49,6 +49,7 @@ export function DashboardClient() {
 
   // Loading states
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isReauthenticating, setIsReauthenticating] = useState(false);
 
   /**
    * Check auth status
@@ -83,7 +84,9 @@ export function DashboardClient() {
         // Dashboard não precisa de filter options (dados pré-agregados)
         // Mas podemos usar os filtros do participants para popular inicialmente
       } catch (err: any) {
-        if (err.message !== "Unauthorized") {
+        if (err.message === "Unauthorized") {
+          setIsReauthenticating(true);
+        } else {
           console.error("[DashboardClient] Failed to load dashboard:", err);
         }
       } finally {
@@ -119,7 +122,9 @@ export function DashboardClient() {
           }
         }
       } catch (err: any) {
-        if (err.message !== "Unauthorized") {
+        if (err.message === "Unauthorized") {
+          setIsReauthenticating(true);
+        } else {
           console.error("[DashboardClient] Failed to load participants:", err);
         }
       } finally {
@@ -180,6 +185,25 @@ export function DashboardClient() {
     escolas: [],
     clinicas: []
   }), []);
+
+  /**
+   * Show reauthentication message if token expired
+   */
+  if (isReauthenticating) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-8">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-foreground mb-2">
+            Sessão Expirada
+          </h2>
+          <p className="text-muted-foreground">
+            Sua sessão expirou. Redirecionando para login...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   /**
    * Show loading screen while initial data loads

@@ -101,11 +101,18 @@ const ProfessionalTabComponent = ({
       </div>
 
       {/* Search and Filters */}
-      <Card className="border-2">
+      <Card className="border-2 relative">
+        {/* Indicador de loading nos filtros */}
+        {loading && (
+          <div className="absolute top-3 right-3 z-10">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          </div>
+        )}
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5 text-primary" />
             Busca e Filtros
+            {loading && <span className="text-xs text-muted-foreground">(carregando...)</span>}
           </CardTitle>
           <Button variant="outline" size="sm" onClick={clearFilters} disabled={loading}>
             Limpar Tudo
@@ -280,14 +287,23 @@ const ProfessionalTabComponent = ({
           </CardContent>
         </Card>
       ) : displayData.length > 0 ? (
-        <Card className="border-2">
+        <Card className="border-2 relative">
+          {/* Loading overlay durante refetch */}
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/70 z-20 rounded-lg">
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Atualizando dados...</p>
+              </div>
+            </div>
+          )}
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-6 w-6 text-primary" />
               Lista de Participantes
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className={loading ? 'opacity-50 pointer-events-none' : ''}>
             <div className="rounded-lg border overflow-hidden">
               <Table>
                 <TableHeader>
