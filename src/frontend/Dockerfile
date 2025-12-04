@@ -20,16 +20,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set build-time environment variables for Next.js
-ARG NEXT_PUBLIC_AUTHENTIK_ID
-ARG NEXT_PUBLIC_AUTHENTIK_ISSUER
-ARG NEXT_PUBLIC_API_URL
-
-ENV NEXT_PUBLIC_AUTHENTIK_ID=$NEXT_PUBLIC_AUTHENTIK_ID
-ENV NEXT_PUBLIC_AUTHENTIK_ISSUER=$NEXT_PUBLIC_AUTHENTIK_ISSUER
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
 # Build the Next.js application
+# No build-time env vars needed - everything is runtime (from Infisical)
 RUN npm run build
 
 # Production image, copy all the files and run next

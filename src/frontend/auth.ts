@@ -7,10 +7,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       id: "authentik",
       name: "Authentik",
       type: "oidc",
-      issuer: process.env.NEXT_PUBLIC_AUTHENTIK_ISSUER,
-      clientId: process.env.NEXT_PUBLIC_AUTHENTIK_ID,
+      // Runtime env vars (server-side only - from Infisical)
+      // NextAuth runs on server-side, so no need for NEXT_PUBLIC_*
+      issuer: process.env.AUTHENTIK_ISSUER,
+      clientId: process.env.AUTHENTIK_ID,
       clientSecret: process.env.AUTHENTIK_SECRET,
-      wellKnown: `${process.env.NEXT_PUBLIC_AUTHENTIK_ISSUER}.well-known/openid-configuration`,
+      wellKnown: `${process.env.AUTHENTIK_ISSUER}.well-known/openid-configuration`,
       authorization: {
         params: {
           scope: "openid profile email",

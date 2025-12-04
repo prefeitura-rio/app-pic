@@ -8,7 +8,9 @@ import {
   ParticipantFilters,
 } from "../types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+// Use server-side proxy to access backend API
+// This allows reading API_URL from runtime environment (Infisical)
+const BASE_URL = "/api/proxy";
 
 /**
  * Handle API response with automatic login redirect on 401

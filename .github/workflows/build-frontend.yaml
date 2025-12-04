@@ -47,9 +47,6 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/amd64 \
-            --build-arg NEXT_PUBLIC_AUTHENTIK_ID="Opa8zHSMfTscY8lMSLfGYrJJwecVb0jAQhPEMKHy" \
-            --build-arg NEXT_PUBLIC_AUTHENTIK_ISSUER="https://authentik.iplan.dados.rio/application/o/app-pic-staging/" \
-            --build-arg NEXT_PUBLIC_API_URL="http://api.app-pic-staging.svc.cluster.local/" \
             --tag $IMAGE_NAME:$TAG1 \
             --tag $IMAGE_NAME:$TAG2 \
             --push src/frontend/
@@ -59,9 +56,6 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/amd64 \
-            --build-arg NEXT_PUBLIC_AUTHENTIK_ID="Opa8zHSMfTscY8lMSLfGYrJJwecVb0jAQhPEMKHy" \
-            --build-arg NEXT_PUBLIC_AUTHENTIK_ISSUER="https://authentik.iplan.dados.rio/application/o/app-pic-production/" \
-            --build-arg NEXT_PUBLIC_API_URL="http://api.app-pic-production.svc.cluster.local/" \
             --tag $IMAGE_NAME:$TAG1 \
             --tag $IMAGE_NAME:$TAG2 \
             --push src/frontend/
