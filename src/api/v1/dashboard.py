@@ -115,7 +115,7 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
         # Polars é ~10x mais rápido que Pandas para agregações
         # IMPORTANTE: Converter category dtype para string antes (Polars não suporta category)
         df_pandas = df_data.copy()
-        for col in df_pandas.select_dtypes(include=['category']).columns:
+        for col in df_pandas.select_dtypes(include=["category"]).columns:
             df_pandas[col] = df_pandas[col].astype(str)
 
         df = pl.from_pandas(df_pandas)

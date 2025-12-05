@@ -67,7 +67,9 @@ class FileBackend(StorageBackend):
     def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
         file_path = self._get_file_path(key)
         try:
-            file_path.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
+            file_path.parent.mkdir(
+                parents=True, exist_ok=True
+            )  # Ensure directory exists
             with open(file_path, "wb") as f:
                 pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
@@ -81,7 +83,10 @@ class RedisBackend(StorageBackend):
         # OTIMIZAÇÃO CRÍTICA: decode_responses=False para permitir salvar bytes (Pickle)
         # Pickle é ~10x mais rápido que JSON para DataFrames
         self.client = redis.Redis.from_url(
-            redis_url, decode_responses=False, socket_connect_timeout=5, socket_timeout=5
+            redis_url,
+            decode_responses=False,
+            socket_connect_timeout=5,
+            socket_timeout=5,
         )
 
     def load(self, key: str) -> Optional[Dict[str, Any]]:
@@ -136,7 +141,7 @@ class CacheManager:
         if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
             data = self.redis_backend.load(query_hash)
             if data:
-                logger.debug("Cache HIT from Redis")
+                logger.info("💾 Cache HIT from Redis ♨️")
 
         # Fallback to File (Pickle) if enabled and missed in Redis (or Redis disabled)
         if not data and self.mode in (CacheMode.JSON, CacheMode.BOTH):
@@ -144,7 +149,7 @@ class CacheManager:
                 query_hash
             )  # File backend handles its own TTL check
             if data:
-                logger.debug("Cache HIT from File")
+                logger.info("💾 Cache HIT from File 📝")
 
         if not data:
             return None
