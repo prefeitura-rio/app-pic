@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { cookies } from "next/headers";
 
 /**
  * Backend API Proxy - Server-Side Requests
@@ -24,11 +24,16 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ) {
-  const session = await auth();
+  const cookieStore = await cookies();
+  const idToken = cookieStore.get("id_token")?.value;
+  const accessToken = cookieStore.get("access_token")?.value;
 
-  if (!session?.accessToken) {
+  // Use ID Token for authentication (Keycloak Access Token may be opaque)
+  const token = idToken || accessToken;
+
+  if (!token) {
     return NextResponse.json(
-      { error: "Unauthorized - No valid session" },
+      { error: "Unauthorized - No valid token" },
       { status: 401 }
     );
   }
@@ -44,7 +49,7 @@ export async function GET(
     const response = await fetch(targetUrl, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       cache: "no-store",
@@ -71,11 +76,15 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ) {
-  const session = await auth();
+  const cookieStore = await cookies();
+  const idToken = cookieStore.get("id_token")?.value;
+  const accessToken = cookieStore.get("access_token")?.value;
 
-  if (!session?.accessToken) {
+  const token = idToken || accessToken;
+
+  if (!token) {
     return NextResponse.json(
-      { error: "Unauthorized - No valid session" },
+      { error: "Unauthorized - No valid token" },
       { status: 401 }
     );
   }
@@ -91,7 +100,7 @@ export async function POST(
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -116,11 +125,15 @@ export async function PUT(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ) {
-  const session = await auth();
+  const cookieStore = await cookies();
+  const idToken = cookieStore.get("id_token")?.value;
+  const accessToken = cookieStore.get("access_token")?.value;
 
-  if (!session?.accessToken) {
+  const token = idToken || accessToken;
+
+  if (!token) {
     return NextResponse.json(
-      { error: "Unauthorized - No valid session" },
+      { error: "Unauthorized - No valid token" },
       { status: 401 }
     );
   }
@@ -136,7 +149,7 @@ export async function PUT(
     const response = await fetch(targetUrl, {
       method: "PUT",
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -161,11 +174,15 @@ export async function DELETE(
   _request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ) {
-  const session = await auth();
+  const cookieStore = await cookies();
+  const idToken = cookieStore.get("id_token")?.value;
+  const accessToken = cookieStore.get("access_token")?.value;
 
-  if (!session?.accessToken) {
+  const token = idToken || accessToken;
+
+  if (!token) {
     return NextResponse.json(
-      { error: "Unauthorized - No valid session" },
+      { error: "Unauthorized - No valid token" },
       { status: 401 }
     );
   }
@@ -180,7 +197,7 @@ export async function DELETE(
     const response = await fetch(targetUrl, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       cache: "no-store",

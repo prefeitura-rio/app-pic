@@ -27,10 +27,15 @@ USE_LOCAL_API = (
     == "true"
 )
 
-# Authentik OAuth2 Configuration
-AUTHENTIK_JWKS_URL = getenv_or_action(env_name="AUTHENTIK_JWKS_URL", action="raise")
-AUTHENTIK_ISSUER = getenv_or_action(env_name="AUTHENTIK_ISSUER", action="raise")
-AUTHENTIK_AUDIENCE = getenv_or_action(env_name="AUTHENTIK_AUDIENCE", action="raise")
+# RMI OAuth2 Configuration (Keycloak)
+RMI_ISSUER = getenv_or_action(env_name="RMI_ISSUER", action="raise")
+RMI_AUDIENCE = getenv_or_action(env_name="RMI_AUDIENCE", action="raise")
+# JWKS URL with fallback to standard Keycloak endpoint
+RMI_JWKS_URL = getenv_or_action(
+    env_name="RMI_JWKS_URL",
+    default=f"{RMI_ISSUER}/protocol/openid-connect/certs",
+    action="ignore"
+)
 
 
 REDIS_URL = getenv_or_action(env_name="REDIS_URL", action="raise")

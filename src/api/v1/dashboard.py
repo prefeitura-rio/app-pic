@@ -84,7 +84,7 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
     """
 
     logger.info("Fetching dashboard metrics with filters (using participants cache)")
-    logger.debug(f"Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
 
     try:
         # Converter filtros de API para colunas do DataFrame

@@ -54,7 +54,8 @@ class DataManager:
         # SOLUÇÃO ROBUSTA: to_json() converte NaN → null automaticamente
         # json.loads() converte null → None
         import json
-        json_str = df.to_json(orient='records', date_format='iso')
+
+        json_str = df.to_json(orient="records", date_format="iso")
         return json.loads(json_str)
 
     @staticmethod
@@ -88,7 +89,7 @@ class DataManager:
             return "[]"
 
         # Pandas já converte NaN → null na string JSON
-        return df.to_json(orient='records', date_format='iso')
+        return df.to_json(orient="records", date_format="iso")
 
     @staticmethod
     def fetch_filter_paginate(
@@ -367,7 +368,7 @@ class DataManager:
 
                 if num_total > 0 and (num_unique / num_total) < 0.5:
                     df[col] = df[col].astype("category")
-                    logger.debug(
+                    logger.info(
                         f"Converted '{col}' to category ({num_unique} unique values)"
                     )
 

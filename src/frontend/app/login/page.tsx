@@ -1,4 +1,4 @@
-import { signIn } from "@/auth";
+import { redirect } from "next/navigation";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -8,7 +8,27 @@ import {
   CardTitle,
 } from "@/app/components/ui/card";
 
+/**
+ * Build Keycloak OAuth2 authorization URL (server-side)
+ */
+function buildAuthUrl(): string {
+  const baseUrl = `${process.env.RMI_ISSUER}/protocol/openid-connect/auth`;
+  const params = new URLSearchParams({
+    client_id: process.env.RMI_CLIENT_ID!,
+    redirect_uri: `${process.env.NEXTAUTH_URL}/api/auth/callback/rmi`,
+    response_type: "code",
+    scope: "openid profile email",
+  });
+
+  return `${baseUrl}?${params.toString()}`;
+}
+
 export default function LoginPage() {
+  async function handleLogin() {
+    "use server";
+    redirect(buildAuthUrl());
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background font-sans">
       <Card className="w-full max-w-md">
@@ -21,15 +41,9 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("authentik", { redirectTo: "/" });
-            }}
-            className="w-full"
-          >
+          <form action={handleLogin}>
             <Button className="w-full" type="submit">
-              Sign In with Authentik
+              Sign In with RMI
             </Button>
           </form>
         </CardContent>

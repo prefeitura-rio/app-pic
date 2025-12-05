@@ -1,0 +1,57 @@
+'use client'
+
+import CicloCariocaIcon from '@/assets/ciclocarioca-icon.png'
+import { HomeIcon, SearchIcon } from '@/assets/icons'
+import { HelpCircleIcon } from '@/assets/icons/help-circle-icon'
+import { MenuIcon } from '@/assets/icons/menu-icon'
+import OportunidadesCariocas from '@/assets/oportunidades-cariocas-icon.png'
+import type { UserInfo } from '@/lib/user-info'
+import Image from 'next/image'
+import Link from 'next/link'
+
+export default function CoursesHeader({ userInfo }: { userInfo: UserInfo }) {
+  const isLoggedIn = !!(userInfo.cpf && userInfo.name)
+
+  return (
+    <header className="fixed top-0 left-0 w-full z-50 bg-background text-foreground px-4 py-3">
+      <div className="mx-auto md:px-4 flex max-w-4xl items-center justify-between">
+        <div className="flex justify-center">
+          <Image
+            src={OportunidadesCariocas}
+            alt="Oportunidades Cariocas Logo"
+            width={170}
+            height={38}
+            className="rounded-full"
+          />
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/servicos/cursos/busca"
+            className="rounded-full bg-transparent p-4"
+          >
+            <SearchIcon className="h-5 w-5 text-foreground" />
+            <span className="sr-only">Buscar cursos</span>
+          </Link>
+          {isLoggedIn ? (
+            <Link
+              href="/servicos/cursos/opcoes"
+              className="rounded-full bg-transparent p-4"
+            >
+              <MenuIcon className="h-5 w-5 text-foreground" />
+              <span className="sr-only">Options</span>
+            </Link>
+          ) : (
+            <Link
+              href="/servicos/cursos/faq"
+              className="rounded-full bg-transparent p-4"
+            >
+              <HelpCircleIcon className="h-5 w-5 text-foreground" />
+              <span className="sr-only">FAQ</span>
+            </Link>
+          )}
+        </div>
+      </div>
+    </header>
+  )
+}

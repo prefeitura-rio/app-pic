@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +12,14 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { User, Shield, LogOut } from "lucide-react";
 
-export function UserAreaDialog({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
+export function UserAreaDialog({ children, userName }: { children: React.ReactNode; userName?: string }) {
+  const router = useRouter();
 
-  if (!session) return null;
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout");
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <Dialog>
@@ -40,9 +44,7 @@ export function UserAreaDialog({ children }: { children: React.ReactNode }) {
                 Dados de Autenticação
               </h4>
               <div className="text-sm space-y-1 text-muted-foreground">
-                <p><span className="font-medium text-foreground">Nome:</span> {session.user?.name || "Não informado"}</p>
-                <p><span className="font-medium text-foreground">Email:</span> {session.user?.email}</p>
-                <p><span className="font-medium text-foreground">ID:</span> {session.user?.id || "N/A"}</p>
+                <p><span className="font-medium text-foreground">Nome:</span> {userName || "Não informado"}</p>
               </div>
             </div>
 
@@ -63,7 +65,7 @@ export function UserAreaDialog({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="flex justify-end">
-            <Button variant="destructive" onClick={() => signOut()} className="gap-2">
+            <Button variant="destructive" onClick={handleLogout} className="gap-2">
                 <LogOut className="h-4 w-4" />
                 Sair
             </Button>

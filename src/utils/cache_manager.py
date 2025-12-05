@@ -55,7 +55,7 @@ class FileBackend(StorageBackend):
                     if created_at and ttl and (time.time() - created_at) < ttl:
                         return data
                     else:
-                        logger.debug(f"File cache expired for {key}")
+                        logger.info(f"File cache expired for {key}")
                         # Optionally delete expired file
                         # os.remove(file_path)
                         return None

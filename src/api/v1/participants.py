@@ -84,7 +84,7 @@ async def get_participants(
     logger.info(
         f"Fetching participants - Page: {pagination.page}, Size: {pagination.page_size}"
     )
-    logger.debug(f"Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
 
     try:
         # Converter filtros de API para colunas do DataFrame

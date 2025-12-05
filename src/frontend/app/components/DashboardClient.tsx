@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useTransition, startTransition, useEffect } from "react";
-import { useSession, signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
@@ -28,8 +28,8 @@ import { Loader2, BarChart3, Search } from "lucide-react";
  * 4. Trocar de aba: NÃO faz chamadas (usa cache)
  * 5. Filtros: Recarrega apenas o endpoint necessário
  */
-export function DashboardClient() {
-  const { data: session, status } = useSession();
+export function DashboardClient({ userName }: { userName?: string }) {
+  const router = useRouter();
 
   // State para filtros e paginação
   const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
@@ -37,7 +37,6 @@ export function DashboardClient() {
   const [professionalPage, setProfessionalPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
   const [isPending, startTransition] = useTransition();
-  const [isReauthenticating, setIsReauthenticating] = useState(false);
 
   // TanStack Query para Dashboard (Visão Geral)
   const {
@@ -46,8 +45,7 @@ export function DashboardClient() {
     error: dashboardError,
   } = useQuery({
     queryKey: ['dashboard', overviewFilters],
-    queryFn: () => apiService.getDashboard(overviewFilters, session?.accessToken as string),
-    enabled: !!session?.accessToken && status === "authenticated",
+    queryFn: () => apiService.getDashboard(overviewFilters),
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
@@ -59,31 +57,25 @@ export function DashboardClient() {
     error: participantsError,
   } = useQuery({
     queryKey: ['participants', professionalFilters, professionalPage],
-    queryFn: () => apiService.getParticipants(professionalFilters, professionalPage, 20, session?.accessToken as string),
-    enabled: !!session?.accessToken && status === "authenticated",
+    queryFn: () => apiService.getParticipants(professionalFilters, professionalPage, 20),
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
 
   /**
-   * Check auth status and handle errors
+   * Handle authentication errors
    */
   useEffect(() => {
-    if (status === "loading") return;
-
-    if (status === "unauthenticated") {
-      signIn("authentik");
-      return;
-    }
-
     // Handle errors from queries
     if (dashboardError && (dashboardError as any).message === "Unauthorized") {
-      setIsReauthenticating(true);
+      router.push("/login");
+      return;
     }
     if (participantsError && (participantsError as any).message === "Unauthorized") {
-      setIsReauthenticating(true);
+      router.push("/login");
+      return;
     }
-  }, [status, dashboardError, participantsError]);
+  }, [dashboardError, participantsError, router]);
 
   /**
    * Handle overview filter changes
@@ -128,28 +120,9 @@ export function DashboardClient() {
   }), []);
 
   /**
-   * Show reauthentication message if token expired
+   * Show loading screen while loading data
    */
-  if (isReauthenticating) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-8">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-foreground mb-2">
-            Sessão Expirada
-          </h2>
-          <p className="text-muted-foreground">
-            Sua sessão expirou. Redirecionando para login...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  /**
-   * Show loading screen while authenticating
-   */
-  if (status === "loading") {
+  if (dashboardLoading && participantsLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -164,7 +137,7 @@ export function DashboardClient() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <DashboardHeader />
+      <DashboardHeader userName={userName} />
 
       <main className="container mx-auto px-4 py-8 flex-1">
         <Tabs
@@ -226,8 +199,8 @@ export function DashboardClient() {
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>Prefeitura do Rio de Janeiro • Programa Pequenos Cariocas</p>
           <p className="mt-1">Integração Saúde • Educação • Assistência Social</p>
-          {session && (
-            <p className="mt-2 text-xs">Logado como: {session.user?.email}</p>
+          {userName && (
+            <p className="mt-2 text-xs">Logado como: {userName}</p>
           )}
         </div>
       </footer>

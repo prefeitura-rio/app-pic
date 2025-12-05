@@ -1,4 +1,3 @@
-import { signIn } from "next-auth/react";
 import {
   PaginatedResponse,
   Participante,
@@ -19,7 +18,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (response.status === 401) {
     // Token expired or invalid - redirect to login automatically
     console.warn("Token expirado ou inválido. Redirecionando para login...");
-    signIn("authentik");
+    window.location.href = '/login';
     throw new Error("Unauthorized");
   }
 
@@ -57,18 +56,11 @@ export const apiService = {
    * Get dashboard metrics with filters.
    *
    * @param filters - Filter criteria
-   * @param token - JWT token for authentication
    * @returns Dashboard data
    */
   async getDashboard(
-    filters: DashboardFilters = {},
-    token?: string
+    filters: DashboardFilters = {}
   ): Promise<PaginatedResponse<any>> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const params = buildFilterParams(filters);
     const url = `${BASE_URL}/api/v1/dashboard/?${params.toString()}`;
 
@@ -77,7 +69,6 @@ export const apiService = {
 
     const res = await fetch(url, {
       cache: "no-store",
-      headers,
     });
 
     return handleResponse<PaginatedResponse<any>>(res);
@@ -90,20 +81,13 @@ export const apiService = {
    * @param filters - Filter criteria (bairro, cre, cras, escola, clinica, safra, grupo, status)
    * @param page - Page number (1-indexed)
    * @param pageSize - Items per page
-   * @param token - JWT token for authentication
    * @returns Paginated response with participants
    */
   async getParticipants(
     filters: ParticipantFilters = {},
     page: number = 1,
-    pageSize: number = 100,
-    token?: string
+    pageSize: number = 100
   ): Promise<PaginatedResponse<Participante>> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const params = buildFilterParams(filters);
     params.append("page", page.toString());
     params.append("page_size", pageSize.toString());
@@ -116,7 +100,6 @@ export const apiService = {
 
     const res = await fetch(url, {
       cache: "no-store",
-      headers,
     });
 
     return handleResponse<PaginatedResponse<Participante>>(res);
@@ -126,18 +109,11 @@ export const apiService = {
    * Get details for a specific participant by CPF.
    *
    * @param cpf - Participant CPF
-   * @param token - JWT token for authentication
    * @returns Participant details
    */
   async getParticipantDetails(
-    cpf: string,
-    token?: string
+    cpf: string
   ): Promise<Participante> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const url = `${BASE_URL}/api/v1/participants/${cpf}`;
 
     console.log("[API] getParticipantDetails - CPF:", cpf);
@@ -145,7 +121,6 @@ export const apiService = {
 
     const res = await fetch(url, {
       cache: "no-store",
-      headers,
     });
 
     const response = await handleResponse<PaginatedResponse<Participante>>(res);
@@ -161,18 +136,11 @@ export const apiService = {
    * Get protocols for a specific participant by CPF.
    *
    * @param cpf - Participant CPF
-   * @param token - JWT token for authentication
    * @returns List of protocol details
    */
   async getParticipantProtocols(
-    cpf: string,
-    token?: string
+    cpf: string
   ): Promise<ProtocoloDetalhes[]> {
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const url = `${BASE_URL}/api/v1/participants/${cpf}/protocols`;
 
     console.log("[API] getParticipantProtocols - CPF:", cpf);
@@ -180,7 +148,6 @@ export const apiService = {
 
     const res = await fetch(url, {
       cache: "no-store",
-      headers,
     });
 
     const response = await handleResponse<PaginatedResponse<ProtocoloDetalhes>>(

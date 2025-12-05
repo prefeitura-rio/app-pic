@@ -3,7 +3,7 @@ import { Button } from "@/app/components/ui/button";
 import { UserAreaDialog } from "@/app/components/UserAreaDialog";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 
-export function DashboardHeader() {
+export function DashboardHeader({ userName }: { userName?: string }) {
   return (
     <header className="bg-primary text-primary-foreground shadow-lg">
       <div className="container mx-auto px-6 py-6">
@@ -22,7 +22,7 @@ export function DashboardHeader() {
 
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <UserAreaDialog>
+            <UserAreaDialog userName={userName}>
               <Button variant="secondary" size="icon" className="rounded-full">
                 <User className="h-5 w-5" />
               </Button>

@@ -13,13 +13,13 @@ _jwks_cache: Dict[str, Any] = {}
 
 
 async def get_jwks() -> Dict[str, Any]:
-    """Fetch JWKS from Authentik and cache it."""
+    """Fetch JWKS from RMI (Keycloak) and cache it."""
     if _jwks_cache:
         return _jwks_cache
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(env.AUTHENTIK_JWKS_URL)
+            response = await client.get(env.RMI_JWKS_URL)
             response.raise_for_status()
             jwks = response.json()
             _jwks_cache.update(jwks)
@@ -78,8 +78,8 @@ async def verify_jwt(
             token,
             signing_key,
             algorithms=["RS256"],
-            audience=env.AUTHENTIK_AUDIENCE,
-            issuer=env.AUTHENTIK_ISSUER,
+            audience=env.RMI_AUDIENCE,
+            issuer=env.RMI_ISSUER,
         )
 
         logger.info(f"Token verified for user: {payload.get('sub')}")
