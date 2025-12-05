@@ -18,6 +18,8 @@ function buildAuthUrl(): string {
     redirect_uri: `${process.env.NEXTAUTH_URL}/api/auth/callback/rmi`,
     response_type: "code",
     scope: "openid profile email",
+    // Skip Identidade Carioca selection page and go directly to GovBR login
+    kc_idp_hint: "govbr",
   });
 
   return `${baseUrl}?${params.toString()}`;

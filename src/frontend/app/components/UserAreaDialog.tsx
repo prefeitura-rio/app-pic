@@ -15,10 +15,9 @@ import { User, Shield, LogOut } from "lucide-react";
 export function UserAreaDialog({ children, userName }: { children: React.ReactNode; userName?: string }) {
   const router = useRouter();
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout");
-    router.push("/login");
-    router.refresh();
+  const handleLogout = () => {
+    // Just redirect to logout endpoint - it will handle Keycloak logout and redirect back to /login
+    window.location.href = "/api/auth/logout";
   };
 
   return (

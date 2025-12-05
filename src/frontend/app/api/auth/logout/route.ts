@@ -4,43 +4,54 @@ import { NextResponse } from "next/server";
 /**
  * Logout Handler
  *
- * Logs out from Keycloak and clears local session cookies.
- * Based on the working implementation from superapp.
+ * Clears local session cookies and redirects to Keycloak logout endpoint.
+ * This ensures both local session AND Keycloak SSO session (including GovBR) are cleared.
  */
 export async function GET() {
   const cookieStore = await cookies();
+  const idToken = cookieStore.get("id_token")?.value;
   const refreshToken = cookieStore.get("refresh_token")?.value;
 
-  // Logout from Keycloak if we have a refresh token
+  // Strategy 1: If we have refresh_token, call logout endpoint server-side first
   if (refreshToken) {
     const logoutUrl = `${process.env.RMI_ISSUER}/protocol/openid-connect/logout`;
-    const clientId = process.env.RMI_CLIENT_ID;
-    const clientSecret = process.env.RMI_CLIENT_SECRET;
+    const params = new URLSearchParams({
+      client_id: process.env.RMI_CLIENT_ID!,
+      client_secret: process.env.RMI_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+    });
 
-    if (clientId && clientSecret) {
-      const params = new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
+    try {
+      console.log("[Logout] Calling Keycloak logout endpoint with refresh_token");
+      await fetch(logoutUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params,
       });
-
-      try {
-        console.log("[Logout] Logging out from Keycloak");
-        await fetch(logoutUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: params,
-        });
-        console.log("[Logout] Keycloak logout successful");
-      } catch (e) {
-        console.error("[Logout] Error logging out from Keycloak:", e);
-      }
+    } catch (e) {
+      console.error("[Logout] Error calling logout endpoint:", e);
     }
   }
 
-  // Create response and clear all auth cookies
-  const response = NextResponse.json({ success: true }, { status: 200 });
+  // Strategy 2: Redirect browser to logout URL to clear SSO session
+  const keycloakLogoutUrl = `${process.env.RMI_ISSUER}/protocol/openid-connect/logout`;
+  const postLogoutRedirectUri = `${process.env.NEXTAUTH_URL}/login`;
 
+  const urlParams = new URLSearchParams({
+    post_logout_redirect_uri: postLogoutRedirectUri,
+  });
+
+  // Add id_token_hint if available (recommended by OIDC spec)
+  if (idToken) {
+    urlParams.append("id_token_hint", idToken);
+  }
+
+  const logoutRedirectUrl = `${keycloakLogoutUrl}?${urlParams.toString()}`;
+
+  // Create redirect response
+  const response = NextResponse.redirect(logoutRedirectUrl);
+
+  // Clear all auth cookies before redirecting
   response.cookies.set("access_token", "", {
     path: "/",
     httpOnly: true,
@@ -59,7 +70,7 @@ export async function GET() {
     maxAge: 0,
   });
 
-  console.log("[Logout] Cookies cleared");
+  console.log("[Logout] Redirecting browser to Keycloak logout:", logoutRedirectUrl);
 
   return response;
 }
