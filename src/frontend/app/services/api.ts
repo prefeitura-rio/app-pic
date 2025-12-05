@@ -12,13 +12,51 @@ import {
 const BASE_URL = "/api/proxy";
 
 /**
- * Handle API response with automatic login redirect on 401
+ * Attempt to refresh the access token using the refresh token
  */
-async function handleResponse<T>(response: Response): Promise<T> {
+async function tryRefreshToken(): Promise<boolean> {
+  try {
+    console.log("[API] Attempting token refresh...");
+    const response = await fetch("/api/auth/refresh", {
+      method: "POST",
+    });
+
+    if (response.ok) {
+      console.log("[API] Token refresh successful");
+      return true;
+    }
+
+    console.warn("[API] Token refresh failed");
+    return false;
+  } catch (error) {
+    console.error("[API] Token refresh error:", error);
+    return false;
+  }
+}
+
+/**
+ * Handle API response with automatic token refresh on 401
+ */
+async function handleResponse<T>(
+  response: Response,
+  retryFn?: () => Promise<Response>
+): Promise<T> {
   if (response.status === 401) {
-    // Token expired or invalid - redirect to login automatically
-    console.warn("Token expirado ou inválido. Redirecionando para login...");
-    window.location.href = '/login';
+    // Token expired - try to refresh
+    console.warn("[API] Received 401, attempting token refresh...");
+
+    const refreshed = await tryRefreshToken();
+
+    if (refreshed && retryFn) {
+      // Token refreshed successfully - retry the original request
+      console.log("[API] Retrying original request after token refresh");
+      const retryResponse = await retryFn();
+      return handleResponse<T>(retryResponse); // Recursive call without retry to avoid infinite loop
+    }
+
+    // Refresh failed or no retry function - redirect to login
+    console.warn("[API] Token refresh failed. Redirecting to login...");
+    window.location.href = "/login";
     throw new Error("Unauthorized");
   }
 
@@ -67,11 +105,10 @@ export const apiService = {
     console.log("[API] getDashboard - Filters:", filters);
     console.log("[API] getDashboard - URL:", url);
 
-    const res = await fetch(url, {
-      cache: "no-store",
-    });
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
 
-    return handleResponse<PaginatedResponse<any>>(res);
+    return handleResponse<PaginatedResponse<any>>(res, fetchFn);
   },
 
   /**
@@ -98,11 +135,10 @@ export const apiService = {
     console.log("[API] getParticipants - Page:", page, "PageSize:", pageSize);
     console.log("[API] getParticipants - URL:", url);
 
-    const res = await fetch(url, {
-      cache: "no-store",
-    });
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
 
-    return handleResponse<PaginatedResponse<Participante>>(res);
+    return handleResponse<PaginatedResponse<Participante>>(res, fetchFn);
   },
 
   /**
@@ -119,11 +155,10 @@ export const apiService = {
     console.log("[API] getParticipantDetails - CPF:", cpf);
     console.log("[API] getParticipantDetails - URL:", url);
 
-    const res = await fetch(url, {
-      cache: "no-store",
-    });
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
 
-    const response = await handleResponse<PaginatedResponse<Participante>>(res);
+    const response = await handleResponse<PaginatedResponse<Participante>>(res, fetchFn);
 
     if (response.data && response.data.length > 0) {
       return response.data[0];
@@ -146,12 +181,12 @@ export const apiService = {
     console.log("[API] getParticipantProtocols - CPF:", cpf);
     console.log("[API] getParticipantProtocols - URL:", url);
 
-    const res = await fetch(url, {
-      cache: "no-store",
-    });
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
 
     const response = await handleResponse<PaginatedResponse<ProtocoloDetalhes>>(
-      res
+      res,
+      fetchFn
     );
 
     return response.data || [];
