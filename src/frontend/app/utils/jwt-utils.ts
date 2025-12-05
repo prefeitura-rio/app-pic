@@ -23,6 +23,10 @@ export function getUserInfoFromToken(token: string): {
   name?: string;
   email?: string;
   preferred_username?: string;
+  given_name?: string;
+  family_name?: string;
+  iat?: number;
+  exp?: number;
 } | null {
   try {
     const decoded: any = jwtDecode(token);
@@ -31,6 +35,10 @@ export function getUserInfoFromToken(token: string): {
       name: decoded.name,
       email: decoded.email,
       preferred_username: decoded.preferred_username,
+      given_name: decoded.given_name,
+      family_name: decoded.family_name,
+      iat: decoded.iat,
+      exp: decoded.exp,
     };
   } catch {
     return null;

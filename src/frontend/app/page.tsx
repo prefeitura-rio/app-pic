@@ -10,5 +10,5 @@ export default async function Home() {
   const token = idToken || accessToken;
   const userInfo = token ? getUserInfoFromToken(token) : null;
 
-  return <DashboardClient userName={userInfo?.name} />;
+  return <DashboardClient userInfo={userInfo} />;
 }

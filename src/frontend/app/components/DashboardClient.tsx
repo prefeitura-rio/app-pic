@@ -18,6 +18,17 @@ import {
 } from "@/app/types";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
+interface UserInfo {
+  name?: string;
+  email?: string;
+  preferred_username?: string;
+  given_name?: string;
+  family_name?: string;
+  sub?: string;
+  iat?: number;
+  exp?: number;
+}
+
 /**
  * Main Dashboard Orchestrator Component
  *
@@ -28,7 +39,7 @@ import { Loader2, BarChart3, Search } from "lucide-react";
  * 4. Trocar de aba: NÃO faz chamadas (usa cache)
  * 5. Filtros: Recarrega apenas o endpoint necessário
  */
-export function DashboardClient({ userName }: { userName?: string }) {
+export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const router = useRouter();
 
   // State para filtros e paginação
@@ -137,7 +148,7 @@ export function DashboardClient({ userName }: { userName?: string }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <DashboardHeader userName={userName} />
+      <DashboardHeader userInfo={userInfo} />
 
       <main className="container mx-auto px-4 py-8 flex-1">
         <Tabs
@@ -199,8 +210,8 @@ export function DashboardClient({ userName }: { userName?: string }) {
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>Prefeitura do Rio de Janeiro • Programa Pequenos Cariocas</p>
           <p className="mt-1">Integração Saúde • Educação • Assistência Social</p>
-          {userName && (
-            <p className="mt-2 text-xs">Logado como: {userName}</p>
+          {userInfo?.name && (
+            <p className="mt-2 text-xs">Logado como: {userInfo.name}</p>
           )}
         </div>
       </footer>
