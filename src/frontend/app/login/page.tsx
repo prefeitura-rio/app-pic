@@ -20,6 +20,9 @@ function buildAuthUrl(): string {
     scope: "openid profile email",
     // Skip Identidade Carioca selection page and go directly to GovBR login
     kc_idp_hint: "govbr",
+    // Force re-authentication even if SSO session exists
+    // This ensures users must enter credentials after logout
+    prompt: "login",
   });
 
   return `${baseUrl}?${params.toString()}`;
