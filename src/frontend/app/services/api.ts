@@ -16,20 +16,16 @@ const BASE_URL = "/api/proxy";
  */
 async function tryRefreshToken(): Promise<boolean> {
   try {
-    console.log("[API] Attempting token refresh...");
     const response = await fetch("/api/auth/refresh", {
       method: "POST",
     });
 
     if (response.ok) {
-      console.log("[API] Token refresh successful");
       return true;
     }
 
-    console.warn("[API] Token refresh failed");
     return false;
   } catch (error) {
-    console.error("[API] Token refresh error:", error);
     return false;
   }
 }
@@ -43,19 +39,16 @@ async function handleResponse<T>(
 ): Promise<T> {
   if (response.status === 401) {
     // Token expired - try to refresh
-    console.warn("[API] Received 401, attempting token refresh...");
 
     const refreshed = await tryRefreshToken();
 
     if (refreshed && retryFn) {
       // Token refreshed successfully - retry the original request
-      console.log("[API] Retrying original request after token refresh");
       const retryResponse = await retryFn();
       return handleResponse<T>(retryResponse); // Recursive call without retry to avoid infinite loop
     }
 
     // Refresh failed or no retry function - redirect to login
-    console.warn("[API] Token refresh failed. Redirecting to login...");
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -102,9 +95,6 @@ export const apiService = {
     const params = buildFilterParams(filters);
     const url = `${BASE_URL}/api/v1/dashboard/?${params.toString()}`;
 
-    console.log("[API] getDashboard - Filters:", filters);
-    console.log("[API] getDashboard - URL:", url);
-
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
@@ -131,10 +121,6 @@ export const apiService = {
 
     const url = `${BASE_URL}/api/v1/participants/?${params.toString()}`;
 
-    console.log("[API] getParticipants - Filters:", filters);
-    console.log("[API] getParticipants - Page:", page, "PageSize:", pageSize);
-    console.log("[API] getParticipants - URL:", url);
-
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
@@ -151,9 +137,6 @@ export const apiService = {
     cpf: string
   ): Promise<Participante> {
     const url = `${BASE_URL}/api/v1/participants/${cpf}`;
-
-    console.log("[API] getParticipantDetails - CPF:", cpf);
-    console.log("[API] getParticipantDetails - URL:", url);
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -177,9 +160,6 @@ export const apiService = {
     cpf: string
   ): Promise<ProtocoloDetalhes[]> {
     const url = `${BASE_URL}/api/v1/participants/${cpf}/protocols`;
-
-    console.log("[API] getParticipantProtocols - CPF:", cpf);
-    console.log("[API] getParticipantProtocols - URL:", url);
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();

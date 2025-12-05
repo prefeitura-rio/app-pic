@@ -43,7 +43,6 @@ export async function GET(
   const searchParams = request.nextUrl.searchParams.toString();
   const targetUrl = `${API_URL}/${path}${searchParams ? `?${searchParams}` : ""}`;
 
-  console.log(`[Proxy GET] ${targetUrl}`);
 
   try {
     const response = await fetch(targetUrl, {
@@ -94,7 +93,6 @@ export async function POST(
   const targetUrl = `${API_URL}/${path}`;
   const body = await request.json();
 
-  console.log(`[Proxy POST] ${targetUrl}`);
 
   try {
     const response = await fetch(targetUrl, {
@@ -143,7 +141,6 @@ export async function PUT(
   const targetUrl = `${API_URL}/${path}`;
   const body = await request.json();
 
-  console.log(`[Proxy PUT] ${targetUrl}`);
 
   try {
     const response = await fetch(targetUrl, {
@@ -191,7 +188,6 @@ export async function DELETE(
   const path = params.path.join("/");
   const targetUrl = `${API_URL}/${path}`;
 
-  console.log(`[Proxy DELETE] ${targetUrl}`);
 
   try {
     const response = await fetch(targetUrl, {

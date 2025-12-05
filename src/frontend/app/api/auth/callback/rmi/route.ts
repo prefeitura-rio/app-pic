@@ -27,7 +27,6 @@ export async function GET(req: NextRequest) {
       redirect_uri: `${process.env.NEXTAUTH_URL}/api/auth/callback/rmi`,
     });
 
-    console.log(`[OAuth Callback] Exchanging code for tokens at ${tokenUrl}`);
 
     const response = await fetch(tokenUrl, {
       method: "POST",
@@ -43,8 +42,6 @@ export async function GET(req: NextRequest) {
 
     const data = await response.json();
 
-    console.log("[OAuth Callback] Token exchange successful");
-    console.log("[OAuth Callback] Tokens received:", {
       has_access_token: !!data.access_token,
       has_refresh_token: !!data.refresh_token,
       has_id_token: !!data.id_token,

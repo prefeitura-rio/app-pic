@@ -22,7 +22,6 @@ export async function GET() {
     });
 
     try {
-      console.log("[Logout] Calling Keycloak logout endpoint with refresh_token");
       await fetch(logoutUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -70,7 +69,6 @@ export async function GET() {
     maxAge: 0,
   });
 
-  console.log("[Logout] Redirecting browser to Keycloak logout:", logoutRedirectUrl);
 
   return response;
 }
