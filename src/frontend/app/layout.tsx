@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/app/components/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/app/providers/QueryProvider";
+import { ErrorBoundary } from "@/app/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,19 +30,21 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground`}>
-        <QueryProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <TooltipProvider delayDuration={200}>
-                {children}
-                <Toaster />
-            </TooltipProvider>
-          </ThemeProvider>
-        </QueryProvider>
+        <ErrorBoundary>
+          <QueryProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <TooltipProvider delayDuration={200}>
+                  {children}
+                  <Toaster />
+              </TooltipProvider>
+            </ThemeProvider>
+          </QueryProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
