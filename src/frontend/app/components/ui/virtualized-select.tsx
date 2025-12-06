@@ -76,8 +76,8 @@ export function VirtualizedSelect({
       <div
         style={style}
         className={cn(
-          "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground",
-          isSelected && "bg-accent text-accent-foreground"
+          "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-secondary hover:text-secondary-foreground",
+          isSelected && "bg-secondary text-secondary-foreground"
         )}
         onClick={() => {
           handleSelect(option.id);

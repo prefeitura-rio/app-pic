@@ -121,8 +121,8 @@
   --primary-foreground: hsl(0 0% 100%);
 
   /* Secondary: Cinza médio com contraste */
-  --secondary: hsl(220 15% 20%);         /* Cinza médio para botões secundários */
-  --secondary-foreground: hsl(220 10% 85%);
+  --secondary: hsl(220 20% 40%);         /* Cinza médio para botões secundários - bem mais claro para contraste visível */
+  --secondary-foreground: hsl(0 0% 100%);
 
   /* Muted: Para textos secundários e backgrounds sutis */
   --muted: hsl(220 15% 18%);             /* Background muted */

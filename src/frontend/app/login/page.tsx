@@ -132,7 +132,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right Side - Login Form */}
-      <div className="lg:w-1/2 flex items-center justify-center p-8 bg-background">
+      <div className="lg:w-1/2 flex items-start justify-center p-8 pt-20 bg-background">
         <div className="w-full max-w-md">
           {/* Login Card */}
           <Card className="border-2 shadow-xl">
