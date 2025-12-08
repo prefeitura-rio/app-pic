@@ -7,6 +7,13 @@ import { NextRequest, NextResponse } from "next/server";
  * Based on the working implementation from superapp.
  */
 export async function GET(req: NextRequest) {
+  // DEBUG: Log environment variable to verify it's being loaded correctly
+  console.log("[OAuth Callback] Environment check:", {
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+    NODE_ENV: process.env.NODE_ENV,
+    req_url: req.url
+  });
+
   try {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code");
@@ -14,7 +21,10 @@ export async function GET(req: NextRequest) {
 
     if (!code) {
       console.error("[OAuth Callback] No authorization code received");
-      return NextResponse.redirect(new URL("/login", req.url));
+      if (!process.env.NEXTAUTH_URL) {
+        throw new Error("NEXTAUTH_URL environment variable is required");
+      }
+      return NextResponse.redirect(new URL("/login", process.env.NEXTAUTH_URL));
     }
 
     // Exchange authorization code for tokens
@@ -37,7 +47,10 @@ export async function GET(req: NextRequest) {
     if (!response.ok) {
       const error = await response.text();
       console.error("[OAuth Callback] Token exchange failed:", error);
-      return NextResponse.redirect(new URL("/login", req.url));
+      if (!process.env.NEXTAUTH_URL) {
+        throw new Error("NEXTAUTH_URL environment variable is required");
+      }
+      return NextResponse.redirect(new URL("/login", process.env.NEXTAUTH_URL));
     }
 
     const data = await response.json();
@@ -65,7 +78,17 @@ export async function GET(req: NextRequest) {
     }
 
     // Create response with redirect
-    const res = NextResponse.redirect(new URL(finalRedirectUrl, req.url));
+    // IMPORTANTE: SEMPRE usar NEXTAUTH_URL (URL pública configurada)
+    // req.url contém o endereço interno do container (0.0.0.0:3000) e não deve ser usado
+    if (!process.env.NEXTAUTH_URL) {
+      console.error("[OAuth Callback] CRITICAL: NEXTAUTH_URL not defined!");
+      throw new Error("NEXTAUTH_URL environment variable is required");
+    }
+
+    const fullRedirectUrl = new URL(finalRedirectUrl, process.env.NEXTAUTH_URL).toString();
+    console.log("[OAuth Callback] Redirecting to:", fullRedirectUrl);
+
+    const res = NextResponse.redirect(fullRedirectUrl);
 
     // Store tokens in httpOnly cookies for security
     res.cookies.set("access_token", data.access_token, {
@@ -99,6 +122,7 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (error) {
     console.error("[OAuth Callback] Unexpected error:", error);
-    return NextResponse.redirect(new URL("/login", req.url));
+    const fallbackUrl = process.env.NEXTAUTH_URL || "https://staging.pequenoscariocas.dados.rio";
+    return NextResponse.redirect(new URL("/login", fallbackUrl));
   }
 }
