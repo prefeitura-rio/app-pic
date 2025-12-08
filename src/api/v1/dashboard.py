@@ -53,16 +53,6 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
 }
 
 
-def refresh_participants_cache():
-    """
-    Force refresh da participants cache.
-
-    Usa bypass_cache=True para forçar query no BigQuery e atualizar cache.
-    """
-    DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY, bypass_cache=True)
-    logger.info("🔄 Participants cache refreshed")
-
-
 @router.get(
     "/dashboard",
     summary="Métricas do Dashboard",
@@ -100,11 +90,6 @@ async def get_dashboard_metrics(
     logger.info(f"☰ Filters: {filters.model_dump(exclude_none=True)}")
     logger.info(f"🔄 Bypass Cache: {bypass_cache}")
 
-    # Force refresh do cache se solicitado
-    if bypass_cache:
-        logger.info("🔄 Bypass cache solicitado - forçando refresh")
-        refresh_participants_cache()
-
     try:
         # Converter filtros de API para colunas do DataFrame
         filters_dict = filters.model_dump(exclude_none=True)
@@ -122,6 +107,7 @@ async def get_dashboard_metrics(
         # 2. Aplicar filtros
         # 3. Calcular filter options com cascata inteligente
         # 4. Retornar TODOS os dados filtrados (sem paginação)
+        # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
@@ -129,6 +115,7 @@ async def get_dashboard_metrics(
             page_size=None,  # None = retorna TODOS os dados sem paginação
             filter_columns_config=DASHBOARD_FILTER_OPTIONS_CONFIG,
             user_permissions=permissions,
+            bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
         )
 
         # OTIMIZAÇÃO: Converter Pandas DataFrame para Polars para cálculos eficientes

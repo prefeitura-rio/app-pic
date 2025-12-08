@@ -190,9 +190,17 @@ export default function AdminPage() {
     setCurrentPage(1); // Resetar para primeira página
   };
 
+  // Sanitize search input (remove special chars and trim)
+  const sanitizeSearchInput = (input: string): string => {
+    return input
+      .replace(/[.\-]/g, "") // Remove pontos e hífens (útil para CPF)
+      .trim(); // Remove espaços em branco no início e fim
+  };
+
   // Handle search button click
   const handleSearch = () => {
-    setSearchTerm(searchInput);
+    const sanitized = sanitizeSearchInput(searchInput);
+    setSearchTerm(sanitized);
     setCurrentPage(1); // Reset to page 1
   };
 

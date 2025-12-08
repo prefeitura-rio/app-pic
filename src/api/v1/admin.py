@@ -20,7 +20,8 @@ from src.core.security.permissions_models import IdWithName, UserPermissions
 from src.config import env
 from src.utils.log import logger
 from src.utils.data_manager import DataManager
-from src.utils.bigquery import execute_query
+from src.utils.bigquery import execute_query, build_update_query
+from google.cloud import bigquery
 from src.api.v1.queries import GOVERNANCE_TABLE_QUERY, PARTICIPANTS_TABLE_QUERY
 from src.api.v1.schemas import PaginatedResponse, PaginationParams
 from pydantic import BaseModel, Field
@@ -41,12 +42,21 @@ router = APIRouter(
 
 def refresh_governance_cache():
     """
-    Force refresh da governance cache após modificações na tabela.
+    Invalidate governance cache após modificações na tabela (INSERT/UPDATE/DELETE).
 
-    Usa bypass_cache=True para forçar query no BigQuery e atualizar cache.
+    USO: Chamar apenas após modificar dados no BigQuery (não em requests de leitura).
+    Para requests de leitura com bypass, use o parâmetro bypass_cache=True diretamente.
+
+    SEGURANÇA: Invalida o cache para que próximas requests busquem dados frescos.
+    Isso evita que usuários vejam dados desatualizados após modificações.
+
+    IMPORTANTE: Não é necessário chamar esta função quando já está usando
+    bypass_cache=True no endpoint, pois o bypass já ignora o cache automaticamente.
     """
-    DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)
-    logger.info("🔄 Governance cache refreshed")
+    from src.utils.cache_manager import query_cache
+
+    query_cache.delete(GOVERNANCE_TABLE_QUERY)
+    logger.info("🔄 Governance cache invalidated (lazy refresh)")
 
 
 # ========================================================================
@@ -112,8 +122,6 @@ class UpsertUserRequest(BaseModel):
     is_update: bool = False  # Se True, indica que é uma atualização intencional
 
 
-
-
 # ========================================================================
 # HELPERS
 # ========================================================================
@@ -165,8 +173,8 @@ def _filter_manageable_users(
     if df.empty:
         return df
 
-    # Debug: Log permissões do admin
-    logger.info(f"🔍 Admin {admin_permissions.cpf} filtros:")
+    # Debug: Log permissões do admin (sem expor CPF completo)
+    logger.info(f"🔍 Verificando permissões do admin:")
     logger.info(f"  - is_super_admin: {admin_permissions.is_super_admin}")
     logger.info(f"  - is_admin: {admin_permissions.is_admin}")
     logger.info(f"  - CRAS: {len(admin_permissions.id_cras_list or [])}")
@@ -178,38 +186,46 @@ def _filter_manageable_users(
 
     # REGRA: Admin sem nenhum ID não pode gerenciar usuários
     # (apenas super admin pode gerenciar sem restrição)
-    has_any_ids = any([
-        admin_permissions.id_cras_list,
-        admin_permissions.id_escola_list,
-        admin_permissions.id_cre_list,
-        admin_permissions.id_cap_list,
-        admin_permissions.id_cas_list,
-        admin_permissions.id_clinica_familia_list
-    ])
+    has_any_ids = any(
+        [
+            admin_permissions.id_cras_list,
+            admin_permissions.id_escola_list,
+            admin_permissions.id_cre_list,
+            admin_permissions.id_cap_list,
+            admin_permissions.id_cas_list,
+            admin_permissions.id_clinica_familia_list,
+        ]
+    )
 
     if not has_any_ids:
-        logger.warning(f"❌ Admin {admin_permissions.cpf} não possui nenhum ID - não pode gerenciar usuários")
+        logger.warning(f"❌ Admin não possui nenhum ID - não pode gerenciar usuários")
         return df.iloc[0:0]  # Retorna DataFrame vazio
 
-    # Lista para armazenar índices de usuários gerenciáveis
-    manageable_indices = []
+    # OTIMIZAÇÃO: Usar operação vetorizada ao invés de iterrows()
+    # Primeiro filtro: remover super admins (operação vetorizada)
+    df_non_super_admin = df[df["is_super_admin"] == False].copy()
 
-    # Para cada usuário, verificar se TODOS os seus IDs são subset dos IDs do admin
-    for idx, row in df.iterrows():
-        is_manageable = True
-        user_cpf = row.get('cpf', 'unknown')
-        user_is_super_admin = row.get('is_super_admin', False)
-        user_is_admin = row.get('is_admin', False)
+    if df_non_super_admin.empty:
+        logger.info("Nenhum usuário gerenciável (todos são super admins)")
+        return df.iloc[0:0]
 
-        # Debug: Log cada usuário sendo verificado
-        logger.debug(f"  Verificando user {user_cpf} (super_admin={user_is_super_admin}, admin={user_is_admin})")
+    # Preparar sets de IDs do admin uma única vez (fora do loop)
+    admin_id_sets = {
+        "id_cras": set(admin_permissions.get_filter_ids("id_cras")),
+        "id_escola": set(admin_permissions.get_filter_ids("id_escola")),
+        "id_cre": set(admin_permissions.get_filter_ids("id_cre")),
+        "id_cap": set(admin_permissions.get_filter_ids("id_cap")),
+        "id_cas": set(admin_permissions.get_filter_ids("id_cas")),
+        "id_clinica_familia": set(
+            admin_permissions.get_filter_ids("id_clinica_familia")
+        ),
+    }
 
-        # REGRA: Admin segmentado NÃO pode gerenciar super admins
-        if user_is_super_admin:
-            logger.debug(f"  ❌ User {user_cpf}: bloqueado (é super admin)")
-            continue  # Pula para próximo usuário
-
-        # Verificar cada tipo de ID
+    def check_user_manageable(row):
+        """
+        Verifica se usuário é gerenciável (subset check).
+        Retorna True se TODOS os IDs do usuário estão no subset do admin.
+        """
         for id_type in [
             "id_cras",
             "id_escola",
@@ -222,20 +238,22 @@ def _filter_manageable_users(
             user_id_list = row.get(list_key)
 
             # IDs que o admin possui para este tipo
-            admin_ids = set(admin_permissions.get_filter_ids(id_type))
+            admin_ids = admin_id_sets[id_type]
 
-            # Se usuário não tem IDs desse tipo, skip (ok)
-            if user_id_list is None:
+            # Se usuário não tem IDs desse tipo, ok (pula)
+            if user_id_list is None or (
+                isinstance(user_id_list, list) and len(user_id_list) == 0
+            ):
                 continue
 
-            # Converter para lista se necessário (pode vir como numpy array)
+            # Converter para lista se necessário
             if not isinstance(user_id_list, (list, tuple)):
                 try:
                     user_id_list = list(user_id_list)
                 except (TypeError, ValueError):
                     continue
 
-            # Se lista vazia, skip (ok)
+            # Se lista vazia após conversão, ok
             if len(user_id_list) == 0:
                 continue
 
@@ -243,33 +261,26 @@ def _filter_manageable_users(
             user_ids = set()
             for item in user_id_list:
                 if isinstance(item, dict):
-                    user_ids.add(item.get('id'))
-                elif hasattr(item, 'id'):
+                    user_ids.add(item.get("id"))
+                elif hasattr(item, "id"):
                     user_ids.add(item.id)
 
-            # REGRA CRÍTICA: Se usuário tem IDs desse tipo, admin DEVE ter IDs desse tipo
-            # E todos os IDs do usuário devem estar no conjunto do admin
+            # REGRA: Se usuário tem IDs desse tipo, admin DEVE ter IDs desse tipo
             if not admin_ids:
-                # Admin não tem IDs desse tipo, mas usuário tem -> não pode gerenciar
-                logger.debug(f"  ❌ User {user_cpf}: bloqueado (tem {id_type} mas admin não tem)")
-                is_manageable = False
-                break
+                return False  # Admin não tem IDs, mas usuário tem
 
+            # REGRA: Todos os IDs do usuário devem estar no subset do admin
             if not user_ids.issubset(admin_ids):
-                # Usuário tem IDs que admin não possui -> não pode gerenciar
-                logger.debug(f"  ❌ User {user_cpf}: bloqueado ({id_type} não é subset)")
-                is_manageable = False
-                break
+                return False  # Usuário tem IDs que admin não possui
 
-        if is_manageable:
-            logger.debug(f"  ✅ User {user_cpf}: gerenciável")
-            manageable_indices.append(idx)
+        return True  # Passou todas as verificações
 
-    # Filtrar DataFrame pelos índices gerenciáveis
-    df_filtered = df.loc[manageable_indices] if manageable_indices else df.iloc[0:0]
+    # OTIMIZAÇÃO: apply() é ~10x mais rápido que iterrows()
+    mask = df_non_super_admin.apply(check_user_manageable, axis=1)
+    df_filtered = df_non_super_admin[mask]
 
     logger.info(
-        f"Admin segmentado {admin_permissions.cpf} - Usuários gerenciáveis: {len(df)} -> {len(df_filtered)}"
+        f"Admin segmentado - Usuários gerenciáveis: {len(df)} -> {len(df_filtered)}"
     )
 
     return df_filtered
@@ -287,18 +298,20 @@ def validate_segmented_admin_can_manage(
     if admin_permissions.is_super_admin:
         return  # Super admin pode tudo
 
-    logger.info(f"🔍 Validando atribuição de IDs por admin {admin_permissions.cpf}")
+    logger.info(f"🔍 Validando atribuição de IDs por admin")
     logger.info(f"   IDs sendo atribuídos: {list(target_ids.keys())}")
 
     # REGRA: Admin sem nenhum ID não pode atribuir IDs a outros usuários
-    has_any_ids = any([
-        admin_permissions.id_cras_list,
-        admin_permissions.id_escola_list,
-        admin_permissions.id_cre_list,
-        admin_permissions.id_cap_list,
-        admin_permissions.id_cas_list,
-        admin_permissions.id_clinica_familia_list
-    ])
+    has_any_ids = any(
+        [
+            admin_permissions.id_cras_list,
+            admin_permissions.id_escola_list,
+            admin_permissions.id_cre_list,
+            admin_permissions.id_cap_list,
+            admin_permissions.id_cas_list,
+            admin_permissions.id_clinica_familia_list,
+        ]
+    )
 
     if not has_any_ids and target_ids:
         logger.warning(f"   ❌ BLOQUEADO: Admin sem IDs tentando atribuir IDs")
@@ -325,7 +338,9 @@ def validate_segmented_admin_can_manage(
         # IDs que o admin possui
         admin_ids = set(admin_permissions.get_filter_ids(id_type))
 
-        logger.info(f"   {id_type}: admin tem {len(admin_ids)}, tentando atribuir {len(target_list)}")
+        logger.info(
+            f"   {id_type}: admin tem {len(admin_ids)}, tentando atribuir {len(target_list)}"
+        )
 
         if not admin_ids:
             logger.warning(f"   ❌ BLOQUEADO: Admin não possui {id_type}")
@@ -338,8 +353,8 @@ def validate_segmented_admin_can_manage(
         target_ids_set = set()
         for item in target_list:
             if isinstance(item, dict):
-                target_ids_set.add(item.get('id'))
-            elif hasattr(item, 'id'):
+                target_ids_set.add(item.get("id"))
+            elif hasattr(item, "id"):
                 target_ids_set.add(item.id)
             else:
                 # Fallback: tentar converter string diretamente
@@ -349,7 +364,9 @@ def validate_segmented_admin_can_manage(
         unauthorized_ids = target_ids_set - admin_ids
 
         if unauthorized_ids:
-            logger.warning(f"   ❌ BLOQUEADO: IDs não autorizados em {id_type}: {unauthorized_ids}")
+            logger.warning(
+                f"   ❌ BLOQUEADO: IDs não autorizados em {id_type}: {unauthorized_ids}"
+            )
             raise HTTPException(
                 status_code=403,
                 detail=f"Você não pode atribuir estes {id_type}: {unauthorized_ids}",
@@ -433,7 +450,9 @@ async def get_available_ids(permissions: CurrentUserPermissions):
     """
     require_admin(permissions)
 
-    logger.info(f"Admin {permissions.cpf} buscando IDs disponíveis (is_super_admin={permissions.is_super_admin})")
+    logger.info(
+        f"Admin buscando IDs disponíveis (is_super_admin={permissions.is_super_admin})"
+    )
 
     # OTIMIZAÇÃO: Reutiliza a mesma query que /participants (aproveita cache existente!)
     try:
@@ -503,7 +522,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
     Usado pelo frontend para determinar permissões de UI.
     Acessível a qualquer usuário autenticado.
     """
-    logger.info(f"Retornando informações do usuário {permissions.cpf}")
+    logger.info(f"Retornando informações do usuário atual")
 
     return UserAccessRecord(
         cpf=permissions.cpf,
@@ -528,7 +547,9 @@ USER_FILTER_OPTIONS_CONFIG = {
     "ocupacoes": {"column": "ocupacao"},
     "secretarias": {"column": "secretaria"},
     "status_ativo": {"column": "active"},  # true/false para status ativo
-    "permissions": {"column": "permission"},  # super_admin, admin, user (coluna gerada no BQ)
+    "permissions": {
+        "column": "permission"
+    },  # super_admin, admin, user (coluna gerada no BQ)
 }
 
 
@@ -536,10 +557,14 @@ USER_FILTER_OPTIONS_CONFIG = {
 async def list_users(
     permissions: CurrentUserPermissions,
     pagination: PaginationParams = Depends(),
-    active: Optional[bool] = Query(None, description="Filtrar por status ativo (true/false)"),
+    active: Optional[bool] = Query(
+        None, description="Filtrar por status ativo (true/false)"
+    ),
     ocupacao: Optional[str] = Query(None, description="Filtrar por ocupação"),
     secretaria: Optional[str] = Query(None, description="Filtrar por secretaria"),
-    permission: Optional[str] = Query(None, description="Filtrar por tipo de permissão (super_admin/admin/user)"),
+    permission: Optional[str] = Query(
+        None, description="Filtrar por tipo de permissão (super_admin/admin/user)"
+    ),
     search: Optional[str] = Query(None, description="Buscar por CPF ou nome"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ):
@@ -564,18 +589,16 @@ async def list_users(
     require_admin(permissions)
 
     logger.info(
-        f"Admin {permissions.cpf} listando usuários - "
+        f"Admin listando usuários - "
         f"is_super_admin={permissions.is_super_admin}, "
         f"Page: {pagination.page}, Size: {pagination.page_size}, "
-        f"Active: {active}, Ocupacao: {ocupacao}, Secretaria: {secretaria}, "
-        f"Permission: {permission}, Search: {search}, Bypass Cache: {bypass_cache}"
+        f"Active: {active}, Bypass Cache: {bypass_cache}"
     )
 
     try:
-        # Force refresh do cache se solicitado
+        # Log bypass cache (não precisa mais invalidar explicitamente)
         if bypass_cache:
-            logger.info("🔄 Bypass cache solicitado - forçando refresh")
-            refresh_governance_cache()
+            logger.info("🔄 Bypass cache solicitado - forçando query no BigQuery")
 
         # Preparar filtros (seguindo padrão de participants.py)
         filters_dict = {}
@@ -591,6 +614,7 @@ async def list_users(
 
         # Pipeline completo: fetch → filter → search → filter_options → paginate
         # IMPORTANTE: Para admins segmentados, aplicar governança APÓS buscar dados
+        # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=GOVERNANCE_TABLE_QUERY,
             filters_dict=filters_dict,
@@ -600,18 +624,27 @@ async def list_users(
             search_columns=["cpf", "nome"] if search else None,
             filter_columns_config=USER_FILTER_OPTIONS_CONFIG,
             user_permissions=None,  # Não usar governança automática (tabela diferente)
+            bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
         )
 
         # Filtrar usuários gerenciáveis por admin segmentado (APÓS paginação)
         # Super admin vê todos, admin segmentado vê apenas subset
-        logger.info(f"🔍 Verificando filtro de governança: is_super_admin={permissions.is_super_admin}")
+        logger.info(
+            f"🔍 Verificando filtro de governança: is_super_admin={permissions.is_super_admin}"
+        )
         if not permissions.is_super_admin:
-            logger.info(f"🚨 Admin segmentado detectado - aplicando filtro de usuários gerenciáveis")
+            logger.info(
+                f"🚨 Admin segmentado detectado - aplicando filtro de usuários gerenciáveis"
+            )
             df_data = _filter_manageable_users(df_data, permissions)
             # Recalcular meta após filtro de governança
             total_after_filter = len(df_data)
             meta.total_rows = total_after_filter
-            meta.total_pages = (total_after_filter + meta.page_size - 1) // meta.page_size if meta.page_size else 1
+            meta.total_pages = (
+                (total_after_filter + meta.page_size - 1) // meta.page_size
+                if meta.page_size
+                else 1
+            )
         else:
             logger.info(f"✅ Super admin - sem filtro de governança")
 
@@ -642,6 +675,7 @@ async def list_users(
             except Exception as e:
                 logger.error(f"Erro ao converter usuário {user_dict.get('cpf')}: {e}")
                 import traceback
+
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 raise
 
@@ -656,6 +690,7 @@ async def list_users(
     except Exception as e:
         logger.error(f"Erro ao listar usuários: {e}")
         import traceback
+
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -688,16 +723,19 @@ async def upsert_user(
             status_code=400, detail="CPF deve conter exatamente 11 dígitos"
         )
 
-    logger.info(f"Admin {permissions.cpf} fazendo upsert do usuário {cpf}")
+    logger.info(f"Admin fazendo upsert de usuário")
     logger.info(f"  Request recebido:")
-    logger.info(f"    - nome: {request.nome}")
-    logger.info(f"    - ocupacao: {request.ocupacao}")
-    logger.info(f"    - secretaria: {request.secretaria}")
     logger.info(f"    - is_admin: {request.is_admin}")
     logger.info(f"    - is_super_admin: {request.is_super_admin}")
-    logger.info(f"    - id_cras_list: {request.id_cras_list} (len={len(request.id_cras_list) if request.id_cras_list else 'None'})")
-    logger.info(f"    - id_escola_list: {request.id_escola_list} (len={len(request.id_escola_list) if request.id_escola_list else 'None'})")
-    logger.info(f"    - id_cre_list: {request.id_cre_list} (len={len(request.id_cre_list) if request.id_cre_list else 'None'})")
+    logger.info(
+        f"    - id_cras_list: (len={len(request.id_cras_list) if request.id_cras_list else 0})"
+    )
+    logger.info(
+        f"    - id_escola_list: (len={len(request.id_escola_list) if request.id_escola_list else 0})"
+    )
+    logger.info(
+        f"    - id_cre_list: (len={len(request.id_cre_list) if request.id_cre_list else 0})"
+    )
     logger.info(f"    - active: {request.active}")
     logger.info(f"    - is_update: {request.is_update}")
 
@@ -757,130 +795,166 @@ async def upsert_user(
             "id_cas_list",
             "id_clinica_familia_list",
         },
-        exclude_unset=True # Importante: só valida o que foi enviado
+        exclude_unset=True,  # Importante: só valida o que foi enviado
     )
-    
+
     # Filtrar None values do dict para validação
     target_ids_to_validate = {k: v for k, v in target_ids_dict.items() if v is not None}
-    
+
     if target_ids_to_validate:
         validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
 
     try:
         if user_exists:
             # UPDATE - Dinâmico (só atualiza campos não nulos)
-            logger.info(f"Atualizando usuário existente: {cpf}")
-            
-            update_fields = []
-            
+            logger.info(f"Atualizando usuário existente")
+
+            # SEGURANÇA: Usar parametrized queries para campos simples
+            # ARRAY<STRUCT> ainda usa f-string por limitação do BigQuery
+            update_dict = {}
+            struct_updates = []  # Para ARRAY<STRUCT> que precisam de f-string
+
             if request.nome is not None:
-                safe_nome = request.nome.replace("'", "\\'")
-                update_fields.append(f"nome = '{safe_nome}'")
-                
+                update_dict["nome"] = request.nome
+
             if request.ocupacao is not None:
-                safe_ocupacao = request.ocupacao.replace("'", "\\'")
-                update_fields.append(f"ocupacao = '{safe_ocupacao}'")
-                
+                update_dict["ocupacao"] = request.ocupacao
+
             if request.secretaria is not None:
-                safe_secretaria = request.secretaria.replace("'", "\\'")
-                update_fields.append(f"secretaria = '{safe_secretaria}'")
-            
-            # Booleans sempre atualizam se enviados (mesmo false)
-            # Precisamos checar se foram setados no request (Pydantic model_dump(exclude_unset=True) seria melhor mas vamos checar explicitamente)
-            # Assumindo que o frontend envia o estado completo do form, ou apenas o que mudou.
-            # No caso do toggle active, só active é enviado.
-            
-            # ATENÇÃO: Pydantic por padrão tem defaults (False). 
-            # Se for um patch parcial, precisamos saber o que foi enviado.
-            # O frontend toggle envia apenas {active: false, is_update: true}.
-            # Os outros campos virão com default do modelo (None ou False).
-            # UpsertUserRequest define defaults como None para opcionais, mas False para booleans.
-            # Isso é perigoso para partial updates.
-            # CORREÇÃO: Vamos considerar que booleans só devem ser atualizados se outros campos do form também vierem,
-            # OU se for explicitamente a intenção (difícil saber sem mudar o modelo para Optional[bool]).
-            
-            # Para corrigir o bug do toggle apagar permissões:
-            # O toggle envia apenas active. Os outros campos virão como None (listas/strings) ou False (booleans).
-            # Listas e Strings já são None por default no modelo, ok.
-            # Booleans (is_admin, is_super_admin) são False por default.
-            
-            # ESTRATÉGIA SEGURA:
-            # 1. Se notes, nome, ocupacao, secretaria E listas forem TODOS None, assumimos que é uma operação de toggle de status.
-            # 2. Nesse caso, ignoramos is_admin/is_super_admin (mantemos o atual).
-            
+                update_dict["secretaria"] = request.secretaria
+
+            # Detectar se é full update ou apenas toggle de active
             is_full_update = (
-                request.nome is not None or 
-                request.ocupacao is not None or 
-                request.secretaria is not None or
-                request.id_cras_list is not None or
-                request.id_escola_list is not None
+                request.nome is not None
+                or request.ocupacao is not None
+                or request.secretaria is not None
+                or request.id_cras_list is not None
+                or request.id_escola_list is not None
             )
-            
+
             # Se for full update, atualiza permissões. Se não, mantém.
             if is_full_update:
-                update_fields.append(f"is_admin = {str(request.is_admin).upper()}")
-                update_fields.append(f"is_super_admin = {str(request.is_super_admin).upper()}")
-                
-                # Recalcula permission string
-                permission_value = calculate_permission(request.is_admin, request.is_super_admin)
-                update_fields.append(f"permission = '{permission_value}'")
-            
-            # Listas - SEMPRE atualiza em full updates (None vira NULL para limpar)
-            # Se é full update, atualizar TODAS as listas (mesmo que None, para limpar)
-            if is_full_update:
-                logger.info(f"  Full update detectado - atualizando todas as listas de IDs")
-                logger.info(f"    CRAS: {len(request.id_cras_list) if request.id_cras_list else 0} IDs")
-                logger.info(f"    Escolas: {len(request.id_escola_list) if request.id_escola_list else 0} IDs")
-                logger.info(f"    CRE: {len(request.id_cre_list) if request.id_cre_list else 0} IDs")
-                logger.info(f"    CAP: {len(request.id_cap_list) if request.id_cap_list else 0} IDs")
-                logger.info(f"    CAS: {len(request.id_cas_list) if request.id_cas_list else 0} IDs")
-                logger.info(f"    Clínicas: {len(request.id_clinica_familia_list) if request.id_clinica_familia_list else 0} IDs")
+                update_dict["is_admin"] = request.is_admin
+                update_dict["is_super_admin"] = request.is_super_admin
 
-                update_fields.append(f"id_cras_list = {_convert_id_list_to_bq_struct(request.id_cras_list)}")
-                update_fields.append(f"id_escola_list = {_convert_id_list_to_bq_struct(request.id_escola_list)}")
-                update_fields.append(f"id_cre_list = {_convert_id_list_to_bq_struct(request.id_cre_list)}")
-                update_fields.append(f"id_cap_list = {_convert_id_list_to_bq_struct(request.id_cap_list)}")
-                update_fields.append(f"id_cas_list = {_convert_id_list_to_bq_struct(request.id_cas_list)}")
-                update_fields.append(f"id_clinica_familia_list = {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)}")
-                
+                # Recalcula permission string
+                permission_value = calculate_permission(
+                    request.is_admin, request.is_super_admin
+                )
+                update_dict["permission"] = permission_value
+
+            # Listas - SEMPRE atualiza em full updates (None vira NULL para limpar)
+            if is_full_update:
+                logger.info(
+                    f"  Full update detectado - atualizando todas as listas de IDs"
+                )
+                logger.info(
+                    f"    CRAS: {len(request.id_cras_list) if request.id_cras_list else 0} IDs"
+                )
+                logger.info(
+                    f"    Escolas: {len(request.id_escola_list) if request.id_escola_list else 0} IDs"
+                )
+                logger.info(
+                    f"    CRE: {len(request.id_cre_list) if request.id_cre_list else 0} IDs"
+                )
+                logger.info(
+                    f"    CAP: {len(request.id_cap_list) if request.id_cap_list else 0} IDs"
+                )
+                logger.info(
+                    f"    CAS: {len(request.id_cas_list) if request.id_cas_list else 0} IDs"
+                )
+                logger.info(
+                    f"    Clínicas: {len(request.id_clinica_familia_list) if request.id_clinica_familia_list else 0} IDs"
+                )
+
+                # ARRAY<STRUCT> não pode ser parametrizado facilmente no BigQuery
+                struct_updates.append(
+                    f"id_cras_list = {_convert_id_list_to_bq_struct(request.id_cras_list)}"
+                )
+                struct_updates.append(
+                    f"id_escola_list = {_convert_id_list_to_bq_struct(request.id_escola_list)}"
+                )
+                struct_updates.append(
+                    f"id_cre_list = {_convert_id_list_to_bq_struct(request.id_cre_list)}"
+                )
+                struct_updates.append(
+                    f"id_cap_list = {_convert_id_list_to_bq_struct(request.id_cap_list)}"
+                )
+                struct_updates.append(
+                    f"id_cas_list = {_convert_id_list_to_bq_struct(request.id_cas_list)}"
+                )
+                struct_updates.append(
+                    f"id_clinica_familia_list = {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)}"
+                )
+
             if request.notes is not None:
-                safe_notes = request.notes.replace("'", "\\'")
-                update_fields.append(f"notes = '{safe_notes}'")
-                
+                update_dict["notes"] = request.notes
+
             # Active sempre atualiza
-            update_fields.append(f"active = {str(request.active).upper()}")
-            
+            update_dict["active"] = request.active
+
             # Metadata
-            update_fields.append(f"updated_by = '{permissions.cpf}'")
-            update_fields.append("updated_at = CURRENT_TIMESTAMP()")
-            
-            if not update_fields:
+            update_dict["updated_by"] = permissions.cpf
+
+            if not update_dict and not struct_updates:
                 logger.info("Nenhum campo para atualizar")
                 return UserAccessRecord(**existing_user.iloc[0].to_dict())
 
-            query = f"""
-            UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
-            SET {', '.join(update_fields)}
-            WHERE cpf = '{cpf}'
-            """
+            # Build parametrized query para campos simples
+            if update_dict:
+                query, parameters = build_update_query(
+                    table=f"{PROJECT_ID}.{DATASET_ID}.data_access",
+                    updates=update_dict,
+                    where_field="cpf",
+                    where_value=cpf,
+                )
 
-            logger.info(f"🔍 Query de UPDATE:\n{query}")
-            execute_query(query)
-            logger.info(f"✅ Usuário {cpf} atualizado dinamicamente")
+                # Se temos struct updates, precisamos adicionar manualmente
+                if struct_updates:
+                    # Inserir struct_updates E updated_at antes do WHERE
+                    query_parts = query.split("WHERE")
+                    set_clause = query_parts[0].rstrip()
+                    # Adicionar vírgula e struct updates
+                    set_clause += ",\n        " + ",\n        ".join(struct_updates)
+                    # Adicionar updated_at
+                    set_clause += ",\n        updated_at = CURRENT_TIMESTAMP()"
+                    query = set_clause + "\n    WHERE" + query_parts[1]
+                else:
+                    # Apenas campos simples - adicionar updated_at ao SET
+                    # A query gerada por build_update_query tem formato:
+                    # UPDATE `table` SET campo1 = @campo1, campo2 = @campo2 WHERE cpf = @cpf
+                    # Precisamos adicionar ", updated_at = CURRENT_TIMESTAMP()" antes do WHERE
+                    query_parts = query.split("WHERE")
+                    set_clause = query_parts[0].rstrip()
+                    set_clause += ",\n        updated_at = CURRENT_TIMESTAMP()"
+                    query = set_clause + "\n    WHERE" + query_parts[1]
+            else:
+                # Apenas struct updates (raro, mas possível)
+                all_updates = struct_updates + ["updated_at = CURRENT_TIMESTAMP()"]
+                query = f"""
+                UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
+                SET {', '.join(all_updates)}
+                WHERE cpf = @cpf
+                """
+                parameters = [bigquery.ScalarQueryParameter("cpf", "STRING", cpf)]
+
+            logger.info(
+                f"✅ Usando parametrized query (campos simples parametrizados, ARRAY<STRUCT> inline)"
+            )
+            execute_query(query, parameters)
+            logger.info(f"✅ Usuário atualizado dinamicamente")
 
         else:
             # INSERT - Novo usuário (precisa de todos os campos)
-            logger.info(f"Criando novo usuário: {cpf}")
-            
+            logger.info(f"Criando novo usuário")
+
             # Calcular permission
-            permission_value = calculate_permission(request.is_admin, request.is_super_admin)
+            permission_value = calculate_permission(
+                request.is_admin, request.is_super_admin
+            )
 
-            # Preparar valores SQL
-            nome_sql = f"'{request.nome.replace(chr(39), chr(92)+chr(39))}'" if request.nome else "NULL"
-            ocupacao_sql = f"'{request.ocupacao.replace(chr(39), chr(92)+chr(39))}'" if request.ocupacao else "NULL"
-            secretaria_sql = f"'{request.secretaria.replace(chr(39), chr(92)+chr(39))}'" if request.secretaria else "NULL"
-            notes_sql = f"'{request.notes.replace(chr(39), chr(92)+chr(39))}'" if request.notes else "NULL"
-
+            # SEGURANÇA: Usar parametrized queries para campos simples
+            # ARRAY<STRUCT> ainda usa f-string inline por limitação do BigQuery
             query = f"""
             INSERT INTO `{PROJECT_ID}.{DATASET_ID}.data_access`
             (
@@ -889,34 +963,63 @@ async def upsert_user(
                 created_by, active, notes, created_at
             )
             VALUES (
-                '{cpf}', {nome_sql}, {ocupacao_sql}, {secretaria_sql},
-                {str(request.is_admin).upper()}, {str(request.is_super_admin).upper()}, '{permission_value}',
+                @cpf, @nome, @ocupacao, @secretaria,
+                @is_admin, @is_super_admin, @permission,
                 {_convert_id_list_to_bq_struct(request.id_cras_list)},
                 {_convert_id_list_to_bq_struct(request.id_escola_list)},
                 {_convert_id_list_to_bq_struct(request.id_cre_list)},
                 {_convert_id_list_to_bq_struct(request.id_cap_list)},
                 {_convert_id_list_to_bq_struct(request.id_cas_list)},
                 {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
-                '{permissions.cpf}', {str(request.active).upper()}, {notes_sql}, CURRENT_TIMESTAMP()
+                @created_by, @active, @notes, CURRENT_TIMESTAMP()
             )
             """
-            execute_query(query)
-            logger.info(f"✅ Usuário {cpf} criado com sucesso")
 
-        # Invalidar E renovar cache
+            # Build parameters list
+            parameters = [
+                bigquery.ScalarQueryParameter("cpf", "STRING", cpf),
+                bigquery.ScalarQueryParameter("nome", "STRING", request.nome),
+                bigquery.ScalarQueryParameter("ocupacao", "STRING", request.ocupacao),
+                bigquery.ScalarQueryParameter(
+                    "secretaria", "STRING", request.secretaria
+                ),
+                bigquery.ScalarQueryParameter("is_admin", "BOOL", request.is_admin),
+                bigquery.ScalarQueryParameter(
+                    "is_super_admin", "BOOL", request.is_super_admin
+                ),
+                bigquery.ScalarQueryParameter("permission", "STRING", permission_value),
+                bigquery.ScalarQueryParameter("created_by", "STRING", permissions.cpf),
+                bigquery.ScalarQueryParameter("active", "BOOL", request.active),
+                bigquery.ScalarQueryParameter("notes", "STRING", request.notes),
+            ]
+
+            logger.info(
+                f"✅ Usando parametrized query para INSERT (campos simples parametrizados)"
+            )
+            execute_query(query, parameters)
+            logger.info(f"✅ Usuário criado com sucesso")
+
+        # Invalidar cache (lazy refresh)
         refresh_governance_cache()
 
-        # Buscar usuário para retornar
-        governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+        # IMPORTANTE: Aguardar 100ms para BigQuery propagar o UPDATE/INSERT
+        # Isso previne race condition onde a query abaixo executa antes da propagação
+        import time
+        time.sleep(0.1)
+
+        # Buscar usuário para retornar (força bypass_cache para garantir dados frescos)
+        governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)
         user_row = governance_df[governance_df["cpf"] == cpf]
 
         if user_row.empty:
             # Fallback se cache refresh falhar ou tiver delay (raro com bypass_cache=True)
             # Retorna o que temos em memória do existing_user se possível, ou erro
             if user_exists:
-                 logger.warning("User not found in refreshed cache, returning old data + updates")
-                 # Aqui idealmente faríamos um merge manual, mas vamos lançar erro para ser seguro
-            
+                logger.warning(
+                    "User not found in refreshed cache, returning old data + updates"
+                )
+                # Aqui idealmente faríamos um merge manual, mas vamos lançar erro para ser seguro
+
             raise HTTPException(
                 status_code=500,
                 detail=f"Usuário {cpf} salvo, mas não encontrado no cache renovado",
@@ -933,20 +1036,36 @@ async def upsert_user(
                     pass
 
         # Bool conv
-        if "active" in row_dict: row_dict["active"] = bool(row_dict["active"])
-        if "is_admin" in row_dict: row_dict["is_admin"] = bool(row_dict["is_admin"])
-        if "is_super_admin" in row_dict: row_dict["is_super_admin"] = bool(row_dict["is_super_admin"])
+        if "active" in row_dict:
+            row_dict["active"] = bool(row_dict["active"])
+        if "is_admin" in row_dict:
+            row_dict["is_admin"] = bool(row_dict["is_admin"])
+        if "is_super_admin" in row_dict:
+            row_dict["is_super_admin"] = bool(row_dict["is_super_admin"])
 
         # Timestamp conv
-        if "created_at" in row_dict and hasattr(row_dict["created_at"], "to_pydatetime"):
+        if "created_at" in row_dict and hasattr(
+            row_dict["created_at"], "to_pydatetime"
+        ):
             row_dict["created_at"] = row_dict["created_at"].to_pydatetime()
-        if "updated_at" in row_dict and hasattr(row_dict["updated_at"], "to_pydatetime"):
+        if "updated_at" in row_dict and hasattr(
+            row_dict["updated_at"], "to_pydatetime"
+        ):
             row_dict["updated_at"] = row_dict["updated_at"].to_pydatetime()
 
         # Struct conv
-        for id_type in ["id_cras", "id_escola", "id_cre", "id_cap", "id_cas", "id_clinica_familia"]:
+        for id_type in [
+            "id_cras",
+            "id_escola",
+            "id_cre",
+            "id_cap",
+            "id_cas",
+            "id_clinica_familia",
+        ]:
             list_key = f"{id_type}_list"
-            if row_dict.get(list_key) is not None and isinstance(row_dict[list_key], list):
+            if row_dict.get(list_key) is not None and isinstance(
+                row_dict[list_key], list
+            ):
                 row_dict[list_key] = [
                     IdWithName(**item) if isinstance(item, dict) else item
                     for item in row_dict[list_key]
@@ -959,8 +1078,6 @@ async def upsert_user(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
 @router.delete("/users/{cpf}", status_code=204)
 async def delete_user(cpf: str, permissions: CurrentUserPermissions):
     """
@@ -971,7 +1088,7 @@ async def delete_user(cpf: str, permissions: CurrentUserPermissions):
     """
     require_admin(permissions)
 
-    logger.info(f"Admin {permissions.cpf} deletando usuário {cpf}")
+    logger.info(f"Admin deletando usuário")
 
     # Verificar que usuário existe
     try:
@@ -979,19 +1096,25 @@ async def delete_user(cpf: str, permissions: CurrentUserPermissions):
     except:
         raise HTTPException(status_code=404, detail=f"Usuário {cpf} não encontrado")
 
-    # Soft delete (active = FALSE)
+    # SEGURANÇA: Soft delete com parametrized query
     query = f"""
     UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
     SET
-        active = FALSE,
-        updated_by = '{permissions.cpf}',
+        active = @active,
+        updated_by = @updated_by,
         updated_at = CURRENT_TIMESTAMP()
-    WHERE cpf = '{cpf}'
+    WHERE cpf = @cpf
     """
 
+    parameters = [
+        bigquery.ScalarQueryParameter("active", "BOOL", False),
+        bigquery.ScalarQueryParameter("updated_by", "STRING", permissions.cpf),
+        bigquery.ScalarQueryParameter("cpf", "STRING", cpf),
+    ]
+
     try:
-        execute_query(query)
-        logger.info(f"✅ Usuário {cpf} marcado como inativo por {permissions.cpf}")
+        execute_query(query, parameters)
+        logger.info(f"✅ Usuário marcado como inativo")
 
         # Invalidar E renovar cache imediatamente
         refresh_governance_cache()

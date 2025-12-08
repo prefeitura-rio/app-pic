@@ -68,12 +68,20 @@ const ProfessionalTabComponent = ({
     });
   }, [filters, onFilterChange]);
 
+  // Sanitize search input (remove special chars and trim)
+  const sanitizeSearchInput = useCallback((input: string): string => {
+    return input
+      .replace(/[.\-]/g, "") // Remove pontos e hífens (útil para CPF)
+      .trim(); // Remove espaços em branco no início e fim
+  }, []);
+
   const handleSearch = useCallback(() => {
+    const sanitized = sanitizeSearchInput(searchInput);
     onFilterChange({
       ...filters,
-      search: searchInput,
+      search: sanitized,
     });
-  }, [filters, searchInput, onFilterChange]);
+  }, [filters, searchInput, onFilterChange, sanitizeSearchInput]);
 
   const clearFilters = useCallback(() => {
     setSearchInput("");

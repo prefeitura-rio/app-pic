@@ -101,6 +101,7 @@ class DataManager:
         search_term: Optional[str] = None,
         search_columns: Optional[list[str]] = None,
         user_permissions=None,  # NOVO: Optional[UserPermissions]
+        bypass_cache: bool = False,  # NOVO: Força query no BigQuery
     ) -> tuple[pd.DataFrame, PaginationMeta, Optional[SmartFilterOptions]]:
         """
         Executa pipeline completo de fetch → filter → filter_options → paginate.
@@ -186,7 +187,7 @@ class DataManager:
 
         # 1. GET DATASET (cache + DataFrame conversion)
         get_start = time.perf_counter()
-        df, cache_hit = DataManager.get_dataset(query)
+        df, cache_hit = DataManager.get_dataset(query, bypass_cache=bypass_cache)
         get_time = time.perf_counter() - get_start
         profiling.get_dataset_s = round(get_time, config.PROFILING_DECIMAL_PLACES)
         profiling.cache_hit = cache_hit

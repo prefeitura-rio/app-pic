@@ -110,8 +110,16 @@ function buildFilterParams(
   const params = new URLSearchParams();
 
   Object.entries(filters).forEach(([key, value]) => {
-    if (value && value !== "todos" && value !== "todas" && value !== "") {
-      params.append(key, value);
+    // Skip empty values and defaults
+    if (value === null || value === undefined || value === "" || value === "todos" || value === "todas") {
+      return;
+    }
+
+    // Convert boolean to string explicitly
+    if (typeof value === "boolean") {
+      params.append(key, value.toString());
+    } else if (value) {
+      params.append(key, value.toString());
     }
   });
 

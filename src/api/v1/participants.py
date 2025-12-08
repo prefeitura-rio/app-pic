@@ -49,16 +49,6 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
 }
 
 
-def refresh_participants_cache():
-    """
-    Force refresh da participants cache.
-
-    Usa bypass_cache=True para forçar query no BigQuery e atualizar cache.
-    """
-    DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY, bypass_cache=True)
-    logger.info("🔄 Participants cache refreshed")
-
-
 @router.get(
     "/participants",
     summary="Listar participantes com filtros e paginação",
@@ -90,11 +80,6 @@ async def get_participants(
     logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
     logger.info(f"🔄 Bypass Cache: {bypass_cache}")
 
-    # Force refresh do cache se solicitado
-    if bypass_cache:
-        logger.info("🔄 Bypass cache solicitado - forçando refresh")
-        refresh_participants_cache()
-
     try:
         # Converter filtros de API para colunas do DataFrame
         filters_dict = filters.model_dump(exclude_none=True)
@@ -109,6 +94,7 @@ async def get_participants(
                 column_filters[column_name] = filter_value
 
         # Pipeline completo: fetch -> governance -> filter -> search -> filter_options -> paginate
+        # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
@@ -118,6 +104,7 @@ async def get_participants(
             search_term=search_term,
             search_columns=["nome", "cpf"] if search_term else None,
             user_permissions=permissions,  # NOVO: Pass user permissions
+            bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
         )
 
         # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
