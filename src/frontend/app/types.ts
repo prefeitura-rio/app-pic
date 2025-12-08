@@ -254,6 +254,7 @@ export interface DashboardFilters {
   safra?: string;
   grupo?: string;
   status?: string;
+  bypass_cache?: boolean;
 }
 
 /**
@@ -272,6 +273,7 @@ export interface ParticipantFilters {
   status?: string;
   situacao?: string;
   search?: string; // CPF or name search
+  bypass_cache?: boolean;
 }
 
 /**

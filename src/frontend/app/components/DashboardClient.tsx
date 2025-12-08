@@ -50,6 +50,8 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const [professionalPage, setProfessionalPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
   const [isPending, startTransition] = useTransition();
+  const [bypassCacheDashboard, setBypassCacheDashboard] = useState(false);
+  const [bypassCacheParticipants, setBypassCacheParticipants] = useState(false);
 
   // TanStack Query para Dashboard (Visão Geral)
   const {
@@ -57,8 +59,17 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     isLoading: dashboardLoading,
     error: dashboardError,
   } = useQuery({
-    queryKey: ['dashboard', overviewFilters],
-    queryFn: () => apiService.getDashboard(overviewFilters),
+    queryKey: ['dashboard', overviewFilters, bypassCacheDashboard],
+    queryFn: async () => {
+      const result = await apiService.getDashboard({
+        ...overviewFilters,
+        ...(bypassCacheDashboard && { bypass_cache: true }),
+      });
+      if (bypassCacheDashboard) {
+        setBypassCacheDashboard(false);
+      }
+      return result;
+    },
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
@@ -69,8 +80,21 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     isLoading: participantsLoading,
     error: participantsError,
   } = useQuery({
-    queryKey: ['participants', professionalFilters, professionalPage],
-    queryFn: () => apiService.getParticipants(professionalFilters, professionalPage, 20),
+    queryKey: ['participants', professionalFilters, professionalPage, bypassCacheParticipants],
+    queryFn: async () => {
+      const result = await apiService.getParticipants(
+        {
+          ...professionalFilters,
+          ...(bypassCacheParticipants && { bypass_cache: true }),
+        },
+        professionalPage,
+        20
+      );
+      if (bypassCacheParticipants) {
+        setBypassCacheParticipants(false);
+      }
+      return result;
+    },
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
@@ -118,66 +142,18 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   /**
    * Handle refresh with cache bypass (for Overview tab)
    */
-  const handleOverviewRefresh = useCallback(async () => {
+  const handleOverviewRefresh = useCallback(() => {
     toast.info("Atualizando dados (forçando refresh do cache)...");
-
-    try {
-      // Construir query params com bypass_cache
-      const params = new URLSearchParams();
-      params.append("bypass_cache", "true");
-
-      // Adicionar filtros ativos
-      Object.entries(overviewFilters).forEach(([key, value]) => {
-        if (value && value !== "todos" && value !== "todas") {
-          params.append(key, value);
-        }
-      });
-
-      // Fazer chamada com bypass_cache
-      const url = `/api/proxy/api/v1/dashboard/?${params.toString()}`;
-      await fetch(url, { cache: "no-store" });
-
-      // Invalidar cache do React Query para forçar refetch
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    } catch (error) {
-      toast.error("Erro ao atualizar dados", {
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-      });
-    }
-  }, [overviewFilters, queryClient]);
+    setBypassCacheDashboard(true);
+  }, []);
 
   /**
    * Handle refresh with cache bypass (for Professional tab)
    */
-  const handleProfessionalRefresh = useCallback(async () => {
+  const handleProfessionalRefresh = useCallback(() => {
     toast.info("Atualizando dados (forçando refresh do cache)...");
-
-    try {
-      // Construir query params com bypass_cache
-      const params = new URLSearchParams();
-      params.append("bypass_cache", "true");
-      params.append("page", professionalPage.toString());
-      params.append("page_size", "20");
-
-      // Adicionar filtros ativos
-      Object.entries(professionalFilters).forEach(([key, value]) => {
-        if (value && value !== "todos" && value !== "todas") {
-          params.append(key, value);
-        }
-      });
-
-      // Fazer chamada com bypass_cache
-      const url = `/api/proxy/api/v1/participants/?${params.toString()}`;
-      await fetch(url, { cache: "no-store" });
-
-      // Invalidar cache do React Query para forçar refetch
-      queryClient.invalidateQueries({ queryKey: ["participants"] });
-    } catch (error) {
-      toast.error("Erro ao atualizar dados", {
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-      });
-    }
-  }, [professionalFilters, professionalPage, queryClient]);
+    setBypassCacheParticipants(true);
+  }, []);
 
   /**
    * Memoizar filter options vazias para evitar re-criação

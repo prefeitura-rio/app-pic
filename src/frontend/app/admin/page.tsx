@@ -46,6 +46,9 @@ export default function AdminPage() {
     retry: false,
   });
 
+  // State para controlar bypass de cache
+  const [bypassCache, setBypassCache] = useState(false);
+
   // Fetch users with backend pagination and filtering
   const {
     data: usersResponse,
@@ -53,8 +56,11 @@ export default function AdminPage() {
     error: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm],
+    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm, bypassCache],
     queryFn: async ({ queryKey }) => {
+      // Extrair bypassCache da queryKey
+      const shouldBypassCache = queryKey[queryKey.length - 1] as boolean;
+
       // Construir query params (seguindo padrão de participants)
       const params = new URLSearchParams();
       params.append("page", currentPage.toString());
@@ -85,12 +91,22 @@ export default function AdminPage() {
         params.append("search", searchTerm);
       }
 
+      // Bypass cache se solicitado
+      if (shouldBypassCache) {
+        params.append("bypass_cache", "true");
+      }
+
       const url = `/api/proxy/api/v1/admin/users?${params.toString()}`;
       const response = await fetch(url, { cache: "no-store" });
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`API Error ${response.status}: ${errorText}`);
+      }
+
+      // Reset bypass cache após uso
+      if (shouldBypassCache) {
+        setBypassCache(false);
       }
 
       return response.json();
@@ -221,44 +237,9 @@ export default function AdminPage() {
   };
 
   // Handle refresh with cache bypass
-  const handleRefreshWithBypass = async () => {
+  const handleRefreshWithBypass = () => {
     toast.info("Atualizando lista (forçando refresh do cache)...");
-
-    try {
-      // Construir query params com bypass_cache
-      const params = new URLSearchParams();
-      params.append("page", currentPage.toString());
-      params.append("page_size", pageSize.toString());
-      params.append("bypass_cache", "true");
-
-      // Filtros
-      if (filterStatus) {
-        params.append("active", filterStatus === "active" ? "true" : "false");
-      }
-      if (filterOcupacao) {
-        params.append("ocupacao", filterOcupacao);
-      }
-      if (filterSecretaria) {
-        params.append("secretaria", filterSecretaria);
-      }
-      if (filterPermission) {
-        params.append("permission", filterPermission);
-      }
-      if (searchTerm) {
-        params.append("search", searchTerm);
-      }
-
-      // Fazer chamada com bypass_cache
-      const url = `/api/proxy/api/v1/admin/users?${params.toString()}`;
-      await fetch(url, { cache: "no-store" });
-
-      // Invalidar cache do React Query para forçar refetch
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    } catch (error) {
-      toast.error("Erro ao atualizar lista", {
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-      });
-    }
+    setBypassCache(true);
   };
 
   // Loading state with skeletons
