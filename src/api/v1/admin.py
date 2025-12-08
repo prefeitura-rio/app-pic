@@ -145,6 +145,121 @@ def calculate_permission(is_admin: bool, is_super_admin: bool) -> str:
         return "user"
 
 
+def _filter_manageable_users(
+    df: pd.DataFrame, admin_permissions: UserPermissions
+) -> pd.DataFrame:
+    """
+    Filtra usuários que admin segmentado pode gerenciar.
+
+    Regra: Admin segmentado só pode gerenciar usuários que possuem
+    um subset dos IDs do admin (TODOS os IDs do usuário, de TODOS os tipos,
+    devem estar contidos nos IDs do admin).
+
+    Args:
+        df: DataFrame com todos os usuários
+        admin_permissions: Permissões do admin fazendo a request
+
+    Returns:
+        DataFrame filtrado com apenas usuários gerenciáveis
+    """
+    if df.empty:
+        return df
+
+    # Debug: Log permissões do admin
+    logger.info(f"🔍 Admin {admin_permissions.cpf} filtros:")
+    logger.info(f"  - is_super_admin: {admin_permissions.is_super_admin}")
+    logger.info(f"  - is_admin: {admin_permissions.is_admin}")
+    logger.info(f"  - CRAS: {len(admin_permissions.id_cras_list or [])}")
+    logger.info(f"  - Escolas: {len(admin_permissions.id_escola_list or [])}")
+    logger.info(f"  - CRE: {len(admin_permissions.id_cre_list or [])}")
+    logger.info(f"  - CAP: {len(admin_permissions.id_cap_list or [])}")
+    logger.info(f"  - CAS: {len(admin_permissions.id_cas_list or [])}")
+    logger.info(f"  - Clínicas: {len(admin_permissions.id_clinica_familia_list or [])}")
+
+    # Lista para armazenar índices de usuários gerenciáveis
+    manageable_indices = []
+
+    # Para cada usuário, verificar se TODOS os seus IDs são subset dos IDs do admin
+    for idx, row in df.iterrows():
+        is_manageable = True
+        user_cpf = row.get('cpf', 'unknown')
+        user_is_super_admin = row.get('is_super_admin', False)
+        user_is_admin = row.get('is_admin', False)
+
+        # Debug: Log cada usuário sendo verificado
+        logger.debug(f"  Verificando user {user_cpf} (super_admin={user_is_super_admin}, admin={user_is_admin})")
+
+        # REGRA: Admin segmentado NÃO pode gerenciar super admins
+        if user_is_super_admin:
+            logger.debug(f"  ❌ User {user_cpf}: bloqueado (é super admin)")
+            continue  # Pula para próximo usuário
+
+        # Verificar cada tipo de ID
+        for id_type in [
+            "id_cras",
+            "id_escola",
+            "id_cre",
+            "id_cap",
+            "id_cas",
+            "id_clinica_familia",
+        ]:
+            list_key = f"{id_type}_list"
+            user_id_list = row.get(list_key)
+
+            # IDs que o admin possui para este tipo
+            admin_ids = set(admin_permissions.get_filter_ids(id_type))
+
+            # Se usuário não tem IDs desse tipo, skip (ok)
+            if user_id_list is None:
+                continue
+
+            # Converter para lista se necessário (pode vir como numpy array)
+            if not isinstance(user_id_list, (list, tuple)):
+                try:
+                    user_id_list = list(user_id_list)
+                except (TypeError, ValueError):
+                    continue
+
+            # Se lista vazia, skip (ok)
+            if len(user_id_list) == 0:
+                continue
+
+            # Extrair IDs do usuário
+            user_ids = set()
+            for item in user_id_list:
+                if isinstance(item, dict):
+                    user_ids.add(item.get('id'))
+                elif hasattr(item, 'id'):
+                    user_ids.add(item.id)
+
+            # REGRA CRÍTICA: Se usuário tem IDs desse tipo, admin DEVE ter IDs desse tipo
+            # E todos os IDs do usuário devem estar no conjunto do admin
+            if not admin_ids:
+                # Admin não tem IDs desse tipo, mas usuário tem -> não pode gerenciar
+                logger.debug(f"  ❌ User {user_cpf}: bloqueado (tem {id_type} mas admin não tem)")
+                is_manageable = False
+                break
+
+            if not user_ids.issubset(admin_ids):
+                # Usuário tem IDs que admin não possui -> não pode gerenciar
+                logger.debug(f"  ❌ User {user_cpf}: bloqueado ({id_type} não é subset)")
+                is_manageable = False
+                break
+
+        if is_manageable:
+            logger.debug(f"  ✅ User {user_cpf}: gerenciável")
+            manageable_indices.append(idx)
+
+    # Filtrar DataFrame pelos índices gerenciáveis
+    df_filtered = df.loc[manageable_indices] if manageable_indices else df.iloc[0:0]
+
+    logger.info(
+        f"Admin segmentado {admin_permissions.cpf} - Usuários gerenciáveis: {len(df)} -> {len(df_filtered)}"
+    )
+
+    return df_filtered
+
+
 def validate_segmented_admin_can_manage(
     admin_permissions: UserPermissions, target_ids: Dict[str, List[IdWithName]]
 ):
@@ -156,6 +271,9 @@ def validate_segmented_admin_can_manage(
     """
     if admin_permissions.is_super_admin:
         return  # Super admin pode tudo
+
+    logger.info(f"🔍 Validando atribuição de IDs por admin {admin_permissions.cpf}")
+    logger.info(f"   IDs sendo atribuídos: {list(target_ids.keys())}")
 
     # Validar cada tipo de ID
     for id_type in [
@@ -175,23 +293,37 @@ def validate_segmented_admin_can_manage(
         # IDs que o admin possui
         admin_ids = set(admin_permissions.get_filter_ids(id_type))
 
+        logger.info(f"   {id_type}: admin tem {len(admin_ids)}, tentando atribuir {len(target_list)}")
+
         if not admin_ids:
+            logger.warning(f"   ❌ BLOQUEADO: Admin não possui {id_type}")
             raise HTTPException(
                 status_code=403,
                 detail=f"Você não tem permissão para atribuir {id_type} (você não possui nenhum)",
             )
 
-        # IDs que estão sendo atribuídos
-        target_ids_set = {item.id for item in target_list}
+        # IDs que estão sendo atribuídos (pode vir como dict ou IdWithName)
+        target_ids_set = set()
+        for item in target_list:
+            if isinstance(item, dict):
+                target_ids_set.add(item.get('id'))
+            elif hasattr(item, 'id'):
+                target_ids_set.add(item.id)
+            else:
+                # Fallback: tentar converter string diretamente
+                target_ids_set.add(str(item))
 
         # Verificar se todos os IDs alvo estão no subset do admin
         unauthorized_ids = target_ids_set - admin_ids
 
         if unauthorized_ids:
+            logger.warning(f"   ❌ BLOQUEADO: IDs não autorizados em {id_type}: {unauthorized_ids}")
             raise HTTPException(
                 status_code=403,
                 detail=f"Você não pode atribuir estes {id_type}: {unauthorized_ids}",
             )
+
+    logger.info(f"   ✅ Validação OK - admin pode atribuir esses IDs")
 
 
 def _extract_unique_ids(
@@ -259,46 +391,72 @@ def _convert_id_list_to_bq_struct(id_list: Optional[List[IdWithName]]) -> str:
 @router.get("/available-ids", response_model=AvailableIds)
 async def get_available_ids(permissions: CurrentUserPermissions):
     """
-    Retorna todos os IDs disponíveis para atribuição.
+    Retorna IDs disponíveis para atribuição.
 
-    Busca IDs únicos da tabela endpoint_participante para facilitar
-    atribuição de permissões pelos admins.
+    REGRAS:
+    - Super admin: Vê todos os IDs existentes no sistema
+    - Admin segmentado: Vê apenas os IDs que ele mesmo possui (pode distribuir seus próprios acessos)
 
     OTIMIZAÇÃO: Reutiliza cache da tabela de participantes.
     """
     require_admin(permissions)
 
-    logger.info(f"Admin {permissions.cpf} buscando IDs disponíveis")
+    logger.info(f"Admin {permissions.cpf} buscando IDs disponíveis (is_super_admin={permissions.is_super_admin})")
 
     # OTIMIZAÇÃO: Reutiliza a mesma query que /participants (aproveita cache existente!)
     try:
-        # Buscar dados de participantes (usa cache compartilhado)
-        df, _ = DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY)
+        # Super admin: buscar todos os IDs disponíveis no sistema
+        if permissions.is_super_admin:
+            # Buscar dados de participantes (usa cache compartilhado)
+            df, _ = DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY)
 
-        # Extrair IDs únicos com nomes
-        available_ids = AvailableIds(
-            cras=_extract_unique_ids(df, "id_cras", "nome_cras"),
-            escolas=_extract_unique_ids(df, "id_escola", "nome_escola"),
-            cres=_extract_unique_ids(
-                df, "id_cre", "id_cre"
-            ),  # CRE não tem nome, usa id_cre como nome
-            caps=_extract_unique_ids(df, "id_cap", "nome_cap"),
-            cas=_extract_unique_ids(df, "id_cas", "nome_cas"),
-            clinicas=_extract_unique_ids(
-                df, "id_clinica_familia", "nome_clinica_familia"
-            ),
-        )
+            # Extrair IDs únicos com nomes
+            available_ids = AvailableIds(
+                cras=_extract_unique_ids(df, "id_cras", "nome_cras"),
+                escolas=_extract_unique_ids(df, "id_escola", "nome_escola"),
+                cres=_extract_unique_ids(
+                    df, "id_cre", "id_cre"
+                ),  # CRE não tem nome, usa id_cre como nome
+                caps=_extract_unique_ids(df, "id_cap", "nome_cap"),
+                cas=_extract_unique_ids(df, "id_cas", "nome_cas"),
+                clinicas=_extract_unique_ids(
+                    df, "id_clinica_familia", "nome_clinica_familia"
+                ),
+            )
 
-        logger.info(
-            f"Retornando {len(available_ids.cras)} CRAS, "
-            f"{len(available_ids.escolas)} escolas, "
-            f"{len(available_ids.cres)} CREs, "
-            f"{len(available_ids.caps)} CAPs, "
-            f"{len(available_ids.cas)} CAS, "
-            f"{len(available_ids.clinicas)} clínicas disponíveis"
-        )
+            logger.info(
+                f"Super admin - Retornando {len(available_ids.cras)} CRAS, "
+                f"{len(available_ids.escolas)} escolas, "
+                f"{len(available_ids.cres)} CREs, "
+                f"{len(available_ids.caps)} CAPs, "
+                f"{len(available_ids.cas)} CAS, "
+                f"{len(available_ids.clinicas)} clínicas"
+            )
 
-        return available_ids
+            return available_ids
+
+        # Admin segmentado: retornar apenas IDs que ele possui (pode distribuir seus próprios acessos)
+        else:
+            available_ids = AvailableIds(
+                cras=permissions.id_cras_list or [],
+                escolas=permissions.id_escola_list or [],
+                cres=permissions.id_cre_list or [],
+                caps=permissions.id_cap_list or [],
+                cas=permissions.id_cas_list or [],
+                clinicas=permissions.id_clinica_familia_list or [],
+            )
+
+            logger.info(
+                f"Admin segmentado - Retornando apenas IDs que o admin possui: "
+                f"{len(available_ids.cras)} CRAS, "
+                f"{len(available_ids.escolas)} escolas, "
+                f"{len(available_ids.cres)} CREs, "
+                f"{len(available_ids.caps)} CAPs, "
+                f"{len(available_ids.cas)} CAS, "
+                f"{len(available_ids.clinicas)} clínicas"
+            )
+
+            return available_ids
 
     except Exception as e:
         logger.error(f"Erro ao buscar IDs disponíveis: {e}")
@@ -375,6 +533,7 @@ async def list_users(
 
     logger.info(
         f"Admin {permissions.cpf} listando usuários - "
+        f"is_super_admin={permissions.is_super_admin}, "
         f"Page: {pagination.page}, Size: {pagination.page_size}, "
         f"Active: {active}, Ocupacao: {ocupacao}, Secretaria: {secretaria}, "
         f"Permission: {permission}, Search: {search}, Bypass Cache: {bypass_cache}"
@@ -399,6 +558,7 @@ async def list_users(
             filters_dict["permission"] = permission
 
         # Pipeline completo: fetch → filter → search → filter_options → paginate
+        # IMPORTANTE: Para admins segmentados, aplicar governança APÓS buscar dados
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=GOVERNANCE_TABLE_QUERY,
             filters_dict=filters_dict,
@@ -407,8 +567,21 @@ async def list_users(
             search_term=search,
             search_columns=["cpf", "nome"] if search else None,
             filter_columns_config=USER_FILTER_OPTIONS_CONFIG,
-            user_permissions=None,  # Não aplicar governança (admin vê todos)
+            user_permissions=None,  # Não usar governança automática (tabela diferente)
         )
+
+        # Filtrar usuários gerenciáveis por admin segmentado (APÓS paginação)
+        # Super admin vê todos, admin segmentado vê apenas subset
+        logger.info(f"🔍 Verificando filtro de governança: is_super_admin={permissions.is_super_admin}")
+        if not permissions.is_super_admin:
+            logger.info(f"🚨 Admin segmentado detectado - aplicando filtro de usuários gerenciáveis")
+            df_data = _filter_manageable_users(df_data, permissions)
+            # Recalcular meta após filtro de governança
+            total_after_filter = len(df_data)
+            meta.total_rows = total_after_filter
+            meta.total_pages = (total_after_filter + meta.page_size - 1) // meta.page_size if meta.page_size else 1
+        else:
+            logger.info(f"✅ Super admin - sem filtro de governança")
 
         # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
         users_json = DataManager.df_to_json(df_data)
@@ -484,6 +657,17 @@ async def upsert_user(
         )
 
     logger.info(f"Admin {permissions.cpf} fazendo upsert do usuário {cpf}")
+    logger.info(f"  Request recebido:")
+    logger.info(f"    - nome: {request.nome}")
+    logger.info(f"    - ocupacao: {request.ocupacao}")
+    logger.info(f"    - secretaria: {request.secretaria}")
+    logger.info(f"    - is_admin: {request.is_admin}")
+    logger.info(f"    - is_super_admin: {request.is_super_admin}")
+    logger.info(f"    - id_cras_list: {request.id_cras_list} (len={len(request.id_cras_list) if request.id_cras_list else 'None'})")
+    logger.info(f"    - id_escola_list: {request.id_escola_list} (len={len(request.id_escola_list) if request.id_escola_list else 'None'})")
+    logger.info(f"    - id_cre_list: {request.id_cre_list} (len={len(request.id_cre_list) if request.id_cre_list else 'None'})")
+    logger.info(f"    - active: {request.active}")
+    logger.info(f"    - is_update: {request.is_update}")
 
     # Verificar se CPF já existe (usa cache da tabela de governança)
     governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
@@ -609,18 +793,22 @@ async def upsert_user(
                 permission_value = calculate_permission(request.is_admin, request.is_super_admin)
                 update_fields.append(f"permission = '{permission_value}'")
             
-            # Listas - só atualiza se não for None
-            if request.id_cras_list is not None:
+            # Listas - SEMPRE atualiza em full updates (None vira NULL para limpar)
+            # Se é full update, atualizar TODAS as listas (mesmo que None, para limpar)
+            if is_full_update:
+                logger.info(f"  Full update detectado - atualizando todas as listas de IDs")
+                logger.info(f"    CRAS: {len(request.id_cras_list) if request.id_cras_list else 0} IDs")
+                logger.info(f"    Escolas: {len(request.id_escola_list) if request.id_escola_list else 0} IDs")
+                logger.info(f"    CRE: {len(request.id_cre_list) if request.id_cre_list else 0} IDs")
+                logger.info(f"    CAP: {len(request.id_cap_list) if request.id_cap_list else 0} IDs")
+                logger.info(f"    CAS: {len(request.id_cas_list) if request.id_cas_list else 0} IDs")
+                logger.info(f"    Clínicas: {len(request.id_clinica_familia_list) if request.id_clinica_familia_list else 0} IDs")
+
                 update_fields.append(f"id_cras_list = {_convert_id_list_to_bq_struct(request.id_cras_list)}")
-            if request.id_escola_list is not None:
                 update_fields.append(f"id_escola_list = {_convert_id_list_to_bq_struct(request.id_escola_list)}")
-            if request.id_cre_list is not None:
                 update_fields.append(f"id_cre_list = {_convert_id_list_to_bq_struct(request.id_cre_list)}")
-            if request.id_cap_list is not None:
                 update_fields.append(f"id_cap_list = {_convert_id_list_to_bq_struct(request.id_cap_list)}")
-            if request.id_cas_list is not None:
                 update_fields.append(f"id_cas_list = {_convert_id_list_to_bq_struct(request.id_cas_list)}")
-            if request.id_clinica_familia_list is not None:
                 update_fields.append(f"id_clinica_familia_list = {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)}")
                 
             if request.notes is not None:
@@ -643,7 +831,8 @@ async def upsert_user(
             SET {', '.join(update_fields)}
             WHERE cpf = '{cpf}'
             """
-            
+
+            logger.info(f"🔍 Query de UPDATE:\n{query}")
             execute_query(query)
             logger.info(f"✅ Usuário {cpf} atualizado dinamicamente")
 
