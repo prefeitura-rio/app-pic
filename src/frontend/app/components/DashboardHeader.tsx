@@ -37,8 +37,9 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
   const isAdminPage = pathname?.startsWith("/admin");
 
   // Fetch complete user info (including permissions) from backend
+  // IMPORTANTE: Usa mesma queryKey que DashboardClient para compartilhar cache
   const { data: currentUserAccess } = useQuery({
-    queryKey: ["admin", "me"],
+    queryKey: ['currentUser'], // Mesma key que DashboardClient
     queryFn: async () => {
       try {
         return await apiService.getCurrentUser();
@@ -47,7 +48,7 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
       }
     },
     retry: false,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes (mesmo que DashboardClient)
   });
 
   // Merge basic userInfo (from JWT) with detailed access info (from API)
