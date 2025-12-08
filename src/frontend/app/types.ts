@@ -293,3 +293,86 @@ export interface ApiError {
  * Loading state for async operations
  */
 export type LoadingState = "idle" | "loading" | "success" | "error";
+
+// ============================================================================
+// ADMIN / GOVERNANCE TYPES
+// ============================================================================
+
+/**
+ * ID with name for UI display
+ */
+export interface IdWithName {
+  id: string;
+  nome: string;
+}
+
+/**
+ * Available IDs for assignment (from /admin/available-ids endpoint)
+ */
+export interface AvailableIds {
+  cras: IdWithName[];
+  escolas: IdWithName[];
+  cres: IdWithName[];
+  caps: IdWithName[];
+  cas: IdWithName[];
+  clinicas: IdWithName[];
+}
+
+/**
+ * User access record (from /admin/users endpoint)
+ */
+export interface UserAccessRecord {
+  cpf: string;
+  is_admin: boolean;
+  is_super_admin: boolean;
+
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+
+  active: boolean;
+  notes?: string | null;
+  created_by: string;
+  created_at: string; // ISO datetime string
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+/**
+ * Create user request payload
+ */
+export interface CreateUserRequest {
+  cpf: string;
+  is_admin?: boolean;
+  is_super_admin?: boolean;
+
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+
+  notes?: string | null;
+}
+
+/**
+ * Update user request payload
+ */
+export interface UpdateUserRequest {
+  is_admin?: boolean | null;
+  is_super_admin?: boolean | null;
+
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+
+  notes?: string | null;
+  active?: boolean | null;
+}

@@ -5,6 +5,10 @@ import {
   SmartFilterOptions,
   DashboardFilters,
   ParticipantFilters,
+  AvailableIds,
+  UserAccessRecord,
+  CreateUserRequest,
+  UpdateUserRequest,
 } from "../types";
 
 // Use server-side proxy to access backend API
@@ -170,5 +174,161 @@ export const apiService = {
     );
 
     return response.data || [];
+  },
+
+  // ========================================================================
+  // ADMIN ENDPOINTS
+  // ========================================================================
+
+  /**
+   * Get all available IDs for assignment (CRAS, schools, CRE, etc)
+   * Requires admin permission
+   *
+   * @returns Available IDs grouped by type
+   */
+  async getCurrentUser(): Promise<UserAccessRecord> {
+    const url = `${BASE_URL}/api/v1/admin/me`;
+
+    const fetchFn = () => fetch(url);
+    const res = await fetchFn();
+
+    return handleResponse<UserAccessRecord>(res, fetchFn);
+  },
+
+  async getAvailableIds(): Promise<AvailableIds> {
+    const url = `${BASE_URL}/api/v1/admin/available-ids`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<AvailableIds>(res, fetchFn);
+  },
+
+  /**
+   * Get list of users the admin can manage
+   * Requires admin permission
+   *
+   * @param activeOnly - Filter only active users (default: true)
+   * @returns List of user access records
+   */
+  async getUsers(activeOnly: boolean = true): Promise<UserAccessRecord[]> {
+    const params = new URLSearchParams();
+    params.append("active_only", activeOnly.toString());
+
+    const url = `${BASE_URL}/api/v1/admin/users?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<UserAccessRecord[]>(res, fetchFn);
+  },
+
+  /**
+   * Create or update a user (UPSERT)
+   * Requires admin permission
+   *
+   * If CPF exists: updates permissions
+   * If CPF doesn't exist: creates new user
+   *
+   * @param cpf - User CPF (11 digits)
+   * @param userData - User data
+   * @returns User record
+   */
+  async upsertUser(
+    cpf: string,
+    userData: Omit<CreateUserRequest, "cpf">
+  ): Promise<UserAccessRecord> {
+    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
+
+    const res = await fetchFn();
+
+    return handleResponse<UserAccessRecord>(res, fetchFn);
+  },
+
+  /**
+   * Create a new user with permissions
+   * Requires admin permission
+   *
+   * @deprecated Use upsertUser instead
+   * @param userData - User creation data
+   * @returns Created user record
+   */
+  async createUser(userData: CreateUserRequest): Promise<UserAccessRecord> {
+    const url = `${BASE_URL}/api/v1/admin/users`;
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
+
+    const res = await fetchFn();
+
+    return handleResponse<UserAccessRecord>(res, fetchFn);
+  },
+
+  /**
+   * Update an existing user's permissions
+   * Requires admin permission
+   *
+   * @deprecated Use upsertUser instead
+   * @param cpf - User CPF
+   * @param userData - User update data
+   * @returns Updated user record
+   */
+  async updateUser(
+    cpf: string,
+    userData: UpdateUserRequest
+  ): Promise<UserAccessRecord> {
+    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
+
+    const res = await fetchFn();
+
+    return handleResponse<UserAccessRecord>(res, fetchFn);
+  },
+
+  /**
+   * Delete (soft-delete) a user
+   * Requires admin permission
+   *
+   * @param cpf - User CPF
+   */
+  async deleteUser(cpf: string): Promise<void> {
+    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "DELETE",
+      });
+
+    const res = await fetchFn();
+
+    if (res.status === 204) {
+      return; // Success - no content
+    }
+
+    // Handle other responses
+    await handleResponse<void>(res, fetchFn);
   },
 };

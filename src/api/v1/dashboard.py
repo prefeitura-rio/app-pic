@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Any
 import polars as pl
 
-from src.core.security.jwt import verify_jwt
-from src.config import env
+from src.core.security.jwt import verify_jwt, CurrentUserPermissions
 from src.utils.log import logger
 from src.api.v1.schemas import (
     Dashboard,
@@ -16,9 +15,7 @@ from src.api.v1.schemas import (
     ResultadoProgramaPoint,
 )
 from src.utils.data_manager import DataManager
-
-PROJECT_ID = env.BQ_PROJECT_ID
-DATASET_ID = env.BQ_DATASET_ID
+from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
 
 router = APIRouter(
     dependencies=[Depends(verify_jwt)],
@@ -61,7 +58,9 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
 @router.get(
     "/", summary="Métricas do Dashboard", response_model=PaginatedResponse[Dashboard]
 )
-async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
+async def get_dashboard_metrics(
+    permissions: CurrentUserPermissions, filters: CommonFilters = Depends()
+) -> Any:
     """
     Retorna métricas agregadas para o dashboard principal com suporte a filtros.
 
@@ -76,15 +75,11 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
     """
 
     # MESMA QUERY que /participants - CRÍTICO para cache sharing
-    query = f"""
-    SELECT
-        *
-    FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    ORDER BY nome ASC
-    """
+    query = PARTICIPANTS_TABLE_QUERY
 
     logger.info("Fetching dashboard metrics with filters (using participants cache)")
-    logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"🔑 Permissions: {permissions.model_dump(exclude_none=True)}")
+    logger.info(f"☰ Filters: {filters.model_dump(exclude_none=True)}")
 
     try:
         # Converter filtros de API para colunas do DataFrame
@@ -109,6 +104,7 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
             page=1,
             page_size=None,  # None = retorna TODOS os dados sem paginação
             filter_columns_config=DASHBOARD_FILTER_OPTIONS_CONFIG,
+            user_permissions=permissions,
         )
 
         # OTIMIZAÇÃO: Converter Pandas DataFrame para Polars para cálculos eficientes
