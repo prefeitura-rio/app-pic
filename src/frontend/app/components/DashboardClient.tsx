@@ -53,6 +53,32 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
   const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
 
+  // Verificação prévia de permissões (evita chamadas desnecessárias)
+  const {
+    data: currentUser,
+    isLoading: currentUserLoading,
+    error: currentUserError,
+  } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => apiService.getCurrentUser(),
+    staleTime: 10 * 60 * 1000, // 10 minutos
+    retry: false, // Não retry em caso de 403/401
+  });
+
+  // Redirect se usuário não autorizado
+  useEffect(() => {
+    if (currentUserError) {
+      // Erro já foi tratado por handleResponse() que faz redirect
+      return;
+    }
+
+    // Se usuário carregou mas está inativo, o backend vai retornar 403
+    // e handleResponse() vai redirecionar para /login?error=InactiveUser
+    if (currentUser && !currentUser.active) {
+      router.push("/login?error=InactiveUser");
+    }
+  }, [currentUser, currentUserError, router]);
+
   // TanStack Query para Dashboard (Visão Geral)
   const {
     data: dashboardResponse,
@@ -76,6 +102,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
 
       return result;
     },
+    enabled: !!currentUser && currentUser.active, // Só executa se usuário está ativo
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
@@ -107,6 +134,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
 
       return result;
     },
+    enabled: !!currentUser && currentUser.active, // Só executa se usuário está ativo
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
@@ -185,6 +213,22 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   }), []);
 
   /**
+   * Show loading screen while verifying permissions
+   */
+  if (currentUserLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground">
+            Verificando permissões...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /**
    * Show loading screen while loading data
    */
   if (dashboardLoading && participantsLoading) {
@@ -193,7 +237,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
           <p className="text-lg text-muted-foreground">
-            Autenticando...
+            Carregando dados...
           </p>
         </div>
       </div>

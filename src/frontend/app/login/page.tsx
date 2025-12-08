@@ -37,6 +37,7 @@ export default async function LoginPage({
 }) {
   const resolvedParams = await searchParams;
   const error = resolvedParams.error;
+  const details = resolvedParams.details;
 
   async function handleLogin() {
     "use server";
@@ -46,6 +47,9 @@ export default async function LoginPage({
   let errorMessage = null;
   if (error === "AccessDenied") {
     errorMessage = "Seu CPF não possui permissão de acesso ao sistema. Entre em contato com o administrador.";
+    if (details) {
+      errorMessage += ` (Detalhe: ${decodeURIComponent(details as string)})`;
+    }
   } else if (error === "InactiveUser") {
     errorMessage = "Seu usuário está inativo. Entre em contato com o administrador para reativar seu acesso.";
   } else if (error) {

@@ -145,10 +145,11 @@ async def get_current_user_permissions(
         return permissions
 
     except PermissionDeniedError as e:
-        logger.warning(f"Permission denied for CPF {cpf}: {e}")
+        error_msg = str(e)
+        logger.warning(f"Permission denied for CPF {cpf}: {error_msg}")
         raise HTTPException(
             status_code=403,
-            detail=str(e) # Passar a mensagem específica da PermissionDeniedError
+            detail=error_msg # Passar a mensagem específica da PermissionDeniedError
         )
     except Exception as e:
         logger.error(f"Error loading permissions for CPF {cpf}: {e}")

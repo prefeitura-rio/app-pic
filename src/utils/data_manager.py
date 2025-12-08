@@ -275,7 +275,9 @@ class DataManager:
             # Replace apenas em colunas seguras
             if safe_cols:
                 df_clean = df_page.copy()
-                df_clean[safe_cols] = df_clean[safe_cols].replace([np.inf, -np.inf, np.nan], None)
+                df_clean[safe_cols] = df_clean[safe_cols].replace(
+                    [np.inf, -np.inf, np.nan], None
+                )
             else:
                 df_clean = df_page.copy()
 
@@ -330,7 +332,9 @@ class DataManager:
         )
 
     @staticmethod
-    def get_dataset(query: str, bypass_cache: bool = False) -> tuple[pd.DataFrame, bool]:
+    def get_dataset(
+        query: str, bypass_cache: bool = False
+    ) -> tuple[pd.DataFrame, bool]:
         """
         Busca dataset completo do cache ou BigQuery.
 
@@ -765,11 +769,10 @@ class DataManager:
         # DEBUG LOGGING START
         logger.info(f"Auth Check for CPF: '{cpf}'")
         if not governance_df.empty:
-            logger.info(f"Governance Table Stats: {len(governance_df)} rows. CPF Col Type: {governance_df['cpf'].dtype}")
+            logger.info(
+                f"Governance Table Stats: {len(governance_df)} rows. CPF Col Type: {governance_df['cpf'].dtype}"
+            )
             # Log sample CPFs to check format (masked for security logs if needed, but safe here for debug)
-            sample_cpfs = governance_df['cpf'].head(3).tolist()
-            logger.info(f"Sample CPFs in DB: {sample_cpfs}")
-            
             # Check for exact match count
             match_count = len(governance_df[governance_df["cpf"] == cpf])
             logger.info(f"Exact matches found: {match_count}")
@@ -787,7 +790,9 @@ class DataManager:
         else:
             # Se não tiver coluna active, assumir True (ou False dependendo da regra de negócio)
             # Por segurança, melhor assumir False ou logar erro
-            logger.warning("Column 'active' not found in governance table. Defaulting to False.")
+            logger.warning(
+                "Column 'active' not found in governance table. Defaulting to False."
+            )
             governance_df["_active_bool"] = False
 
         # Filter by CPF only first
@@ -797,11 +802,11 @@ class DataManager:
             # Tentar limpar CPF (remover pontuação) caso o token venha limpo e o banco sujo, ou vice-versa
             # Mas idealmente ambos devem ser apenas números string
             raise PermissionDeniedError(f"CPF {cpf} não cadastrado na base de acessos")
-        
+
         # Check active status
         user_row = user_rows.iloc[0]
         if not user_row["_active_bool"]:
-             raise PermissionDeniedError(f"Usuário {cpf} está inativo")
+            raise PermissionDeniedError(f"Usuário {cpf} está inativo")
 
         # Convert to UserPermissions
         row_dict = user_row.to_dict()
@@ -814,7 +819,7 @@ class DataManager:
                         row_dict[key] = None
                 except (ValueError, TypeError):
                     pass
-        
+
         # Garantir que active no objeto final seja bool limpo
         row_dict["active"] = bool(row_dict["_active_bool"])
 

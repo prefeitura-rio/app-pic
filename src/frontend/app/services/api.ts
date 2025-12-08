@@ -58,20 +58,29 @@ async function handleResponse<T>(
 
   // Handle Forbidden (403) - User logged in but no permission
   if (response.status === 403) {
-    try {
-      const errorData = await response.clone().json();
-      const detail = errorData.detail || "";
-      
-      if (detail.toLowerCase().includes("inativo")) {
-        window.location.href = "/login?error=InactiveUser";
-        throw new Error("User Inactive");
-      }
-    } catch (e) {
-      // Ignore json parse errors or other issues reading body
+    const errorData = await response.json();
+    const detail = errorData.detail || JSON.stringify(errorData);
+    const detailStr = String(detail).toLowerCase();
+
+    // Persistir log no localStorage para debug
+    localStorage.setItem('last_403_error', JSON.stringify({
+      detail: detail,
+      detailStr: detailStr,
+      timestamp: new Date().toISOString()
+    }));
+
+    // Check for inactive user (support both "inativo" and "está inativo")
+    const isInactive = detailStr.includes("inativo");
+
+    if (isInactive) {
+      window.location.href = "/login?error=InactiveUser";
+      throw new Error("User Inactive");
     }
-    
-    window.location.href = "/login?error=AccessDenied";
-    throw new Error("Access Denied");
+
+    // Se não for inativo, passar o detalhe para debug/exibição
+    const safeDetail = encodeURIComponent(detailStr.substring(0, 200));
+    window.location.href = `/login?error=AccessDenied&details=${safeDetail}`;
+    throw new Error(`Access Denied: ${detail}`);
   }
 
   if (!response.ok) {
