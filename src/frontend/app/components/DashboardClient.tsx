@@ -53,24 +53,6 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
   const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
 
-  // Verificar se foi redirecionado de /admin por não ser admin
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get('error');
-
-    if (error === 'NotAdmin') {
-      // Garantir que o toast apareça depois que a página carregar
-      setTimeout(() => {
-        toast.error('Acesso Negado', {
-          description: 'Você não possui permissões de administrador. Apenas administradores podem acessar esta área.',
-          duration: 6000,
-        });
-      }, 100);
-
-      // Limpar URL sem reload
-      window.history.replaceState({}, '', '/');
-    }
-  }, []);
 
   // Verificação prévia de permissões (evita chamadas desnecessárias)
   const {

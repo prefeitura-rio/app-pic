@@ -77,8 +77,13 @@ async function handleResponse<T>(
 
     // 2. Check for non-admin trying to access admin endpoints
     if (detailStr.includes("apenas admins podem") || detailStr.includes("apenas admins") || detailStr.includes("admin")) {
-      // Redireciona para home com mensagem de erro
-      window.location.href = "/?error=NotAdmin";
+      // Importar toast dinamicamente
+      import('sonner').then(({ toast }) => {
+        toast.error('Acesso Negado', {
+          description: 'Você não possui permissões de administrador. Apenas administradores podem acessar esta área.',
+          duration: 6000,
+        });
+      });
       throw new Error("Not Admin");
     }
 
