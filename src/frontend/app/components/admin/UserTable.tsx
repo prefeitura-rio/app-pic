@@ -34,7 +34,7 @@ export function UserTable({
   isToggling,
 }: UserTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 100;
 
   // Paginação client-side
   const totalPages = Math.ceil(users.length / pageSize);
@@ -80,146 +80,153 @@ export function UserTable({
 
   return (
     <div className="space-y-4">
-      {/* Tabela com altura fixa e scroll */}
-      <div className="rounded-lg border">
-        <div className="max-h-[600px] overflow-y-auto">
+      {/* Tabela com altura fixa e scroll - mesmo estilo da VirtualizedParticipantTable */}
+      <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col">
+        {/* Header Estático */}
+        <div className="bg-muted border-b shrink-0">
           <Table>
-            <TableHeader className="sticky top-0 bg-background z-10">
+            <TableHeader>
               <TableRow>
-                <TableHead>CPF</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>Ocupação</TableHead>
-                <TableHead>Secretaria</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Permissões</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Criado</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead className="w-[12%]">CPF</TableHead>
+                <TableHead className="w-[15%]">Nome</TableHead>
+                <TableHead className="w-[12%]">Ocupação</TableHead>
+                <TableHead className="w-[12%]">Secretaria</TableHead>
+                <TableHead className="w-[10%]">Tipo</TableHead>
+                <TableHead className="w-[15%]">Permissões</TableHead>
+                <TableHead className="w-[8%]">Status</TableHead>
+                <TableHead className="w-[10%]">Criado</TableHead>
+                <TableHead className="w-[6%] text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
+          </Table>
+        </div>
+
+        {/* Área com Scroll */}
+        <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+          <Table>
             <TableBody>
               {paginatedUsers.map((user) => (
-            <TableRow key={user.cpf}>
-              {/* CPF */}
-              <TableCell className="font-mono text-sm">
-                {formatCPF(user.cpf)}
-              </TableCell>
+                <TableRow key={user.cpf} className="hover:bg-muted/50">
+                  {/* CPF */}
+                  <TableCell className="w-[12%] font-mono text-sm">
+                    {formatCPF(user.cpf)}
+                  </TableCell>
 
-              {/* Nome */}
-              <TableCell>
-                <div className="max-w-xs truncate">
-                  {user.nome || "—"}
-                </div>
-              </TableCell>
+                  {/* Nome */}
+                  <TableCell className="w-[15%]">
+                    <div className="truncate">
+                      {user.nome || "—"}
+                    </div>
+                  </TableCell>
 
-              {/* Ocupação */}
-              <TableCell>
-                <div className="text-sm text-muted-foreground max-w-xs truncate">
-                  {user.ocupacao || "—"}
-                </div>
-              </TableCell>
+                  {/* Ocupação */}
+                  <TableCell className="w-[12%]">
+                    <div className="text-sm text-muted-foreground truncate">
+                      {user.ocupacao || "—"}
+                    </div>
+                  </TableCell>
 
-              {/* Secretaria */}
-              <TableCell>
-                <div className="text-sm text-muted-foreground max-w-xs truncate">
-                  {user.secretaria || "—"}
-                </div>
-              </TableCell>
+                  {/* Secretaria */}
+                  <TableCell className="w-[12%]">
+                    <div className="text-sm text-muted-foreground truncate">
+                      {user.secretaria || "—"}
+                    </div>
+                  </TableCell>
 
-              {/* Type */}
-              <TableCell>
-                <div className="flex gap-1">
-                  {user.is_super_admin && (
-                    <Badge variant="destructive" className="gap-1">
-                      <Crown className="h-3 w-3" />
-                      Super Admin
-                    </Badge>
-                  )}
-                  {user.is_admin && !user.is_super_admin && (
-                    <Badge variant="default" className="gap-1">
-                      <Shield className="h-3 w-3" />
-                      Admin
-                    </Badge>
-                  )}
-                  {!user.is_admin && !user.is_super_admin && (
-                    <Badge variant="secondary">Usuário</Badge>
-                  )}
-                </div>
-              </TableCell>
+                  {/* Type */}
+                  <TableCell className="w-[10%]">
+                    <div className="flex gap-1">
+                      {user.is_super_admin && (
+                        <Badge variant="destructive" className="gap-1">
+                          <Crown className="h-3 w-3" />
+                          Super Admin
+                        </Badge>
+                      )}
+                      {user.is_admin && !user.is_super_admin && (
+                        <Badge variant="default" className="gap-1">
+                          <Shield className="h-3 w-3" />
+                          Admin
+                        </Badge>
+                      )}
+                      {!user.is_admin && !user.is_super_admin && (
+                        <Badge variant="secondary">Usuário</Badge>
+                      )}
+                    </div>
+                  </TableCell>
 
-              {/* Permissions summary */}
-              <TableCell>
-                <div className="text-sm text-muted-foreground max-w-xs truncate">
-                  {getPermissionsSummary(user)}
-                </div>
-              </TableCell>
+                  {/* Permissions summary */}
+                  <TableCell className="w-[15%]">
+                    <div className="text-sm text-muted-foreground truncate">
+                      {getPermissionsSummary(user)}
+                    </div>
+                  </TableCell>
 
-              {/* Status */}
-              <TableCell>
-                {user.active ? (
-                  <Badge variant="outline" className="gap-1 text-green-600">
-                    <CheckCircle className="h-3 w-3" />
-                    Ativo
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="gap-1 text-red-600">
-                    <XCircle className="h-3 w-3" />
-                    Inativo
-                  </Badge>
-                )}
-              </TableCell>
+                  {/* Status */}
+                  <TableCell className="w-[8%]">
+                    {user.active ? (
+                      <Badge variant="outline" className="gap-1 text-green-600">
+                        <CheckCircle className="h-3 w-3" />
+                        Ativo
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="gap-1 text-red-600">
+                        <XCircle className="h-3 w-3" />
+                        Inativo
+                      </Badge>
+                    )}
+                  </TableCell>
 
-              {/* Created */}
-              <TableCell className="text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(user.created_at), {
-                  addSuffix: true,
-                  locale: ptBR,
-                })}
-              </TableCell>
+                  {/* Created */}
+                  <TableCell className="w-[10%] text-sm text-muted-foreground">
+                    {formatDistanceToNow(new Date(user.created_at), {
+                      addSuffix: true,
+                      locale: ptBR,
+                    })}
+                  </TableCell>
 
-              {/* Actions */}
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onEdit(user)}
-                    disabled={user.is_super_admin || user.cpf === currentUserCpf}
-                    title={
-                      user.is_super_admin
-                        ? "Super admins não podem ser editados"
-                        : user.cpf === currentUserCpf
-                        ? "Você não pode editar suas próprias permissões"
-                        : "Editar usuário"
-                    }
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onToggleActive(user.cpf, user.active)}
-                    disabled={isToggling || user.is_super_admin || user.cpf === currentUserCpf}
-                    title={
-                      user.is_super_admin
-                        ? "Super admins não podem ser desativados"
-                        : user.cpf === currentUserCpf
-                        ? "Você não pode alterar seu próprio status"
-                        : user.active
-                        ? "Desativar usuário"
-                        : "Ativar usuário"
-                    }
-                  >
-                    <Power className={`h-4 w-4 ${user.active ? "text-orange-600" : "text-green-600"}`} />
-                  </Button>
-                </div>
-              </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                  {/* Actions */}
+                  <TableCell className="w-[6%] text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(user)}
+                        disabled={user.is_super_admin || user.cpf === currentUserCpf}
+                        title={
+                          user.is_super_admin
+                            ? "Super admins não podem ser editados"
+                            : user.cpf === currentUserCpf
+                            ? "Você não pode editar suas próprias permissões"
+                            : "Editar usuário"
+                        }
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onToggleActive(user.cpf, user.active)}
+                        disabled={isToggling || user.is_super_admin || user.cpf === currentUserCpf}
+                        title={
+                          user.is_super_admin
+                            ? "Super admins não podem ser desativados"
+                            : user.cpf === currentUserCpf
+                            ? "Você não pode alterar seu próprio status"
+                            : user.active
+                            ? "Desativar usuário"
+                            : "Ativar usuário"
+                        }
+                      >
+                        <Power className={`h-4 w-4 ${user.active ? "text-orange-600" : "text-green-600"}`} />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
-    </div>
 
       {/* Paginação */}
       {totalPages > 1 && (
