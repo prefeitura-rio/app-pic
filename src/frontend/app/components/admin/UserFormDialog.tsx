@@ -138,20 +138,24 @@ export function UserFormDialog({
   const isValid = isEditMode || (cpf.length === 11);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditMode ? "Editar Usuário" : "Novo Usuário"}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditMode
-              ? "Atualize as permissões e informações do usuário"
-              : "Adicione um novo usuário ao sistema com permissões específicas"}
-          </DialogDescription>
-        </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={true}>
+      <DialogContent className="max-w-3xl h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b shrink-0">
+          <DialogHeader>
+            <DialogTitle>
+              {isEditMode ? "Editar Usuário" : "Novo Usuário"}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditMode
+                ? "Atualize as permissões e informações do usuário"
+                : "Adicione um novo usuário ao sistema com permissões específicas"}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-scroll px-6 py-4 space-y-6"
+               style={{ overscrollBehavior: 'contain' }}>
           {/* Error message */}
           {error && (
             <Alert variant="destructive">
@@ -306,8 +310,10 @@ export function UserFormDialog({
               rows={3}
             />
           </div>
+          </div>
 
-          <DialogFooter>
+          {/* Footer - fixed at bottom */}
+          <DialogFooter className="px-6 py-4 border-t bg-background shrink-0">
             <Button
               type="button"
               variant="outline"

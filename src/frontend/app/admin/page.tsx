@@ -7,17 +7,18 @@ import { toast } from "sonner";
 import { apiService } from "@/app/services/api";
 import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest } from "@/app/types";
 import { UserTable } from "@/app/components/admin/UserTable";
-import { UserFormDialog } from "@/app/components/admin/UserFormDialog";
+import { UserForm } from "@/app/components/admin/UserForm";
 import { UserTableSkeleton } from "@/app/components/admin/UserTableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, RefreshCw, AlertCircle, ArrowLeft, Home } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import { Plus, RefreshCw, AlertCircle, Users, UserCog } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AdminPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"users" | "form">("users");
   const [editingUser, setEditingUser] = useState<UserAccessRecord | null>(null);
   const [showInactive, setShowInactive] = useState(false);
 
@@ -59,13 +60,15 @@ export default function AdminPage() {
       apiService.upsertUser(cpf, data),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-      setIsCreateDialogOpen(false);
-      setEditingUser(null);
 
       const isUpdate = editingUser !== null;
       toast.success(isUpdate ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!", {
         description: `CPF ${data.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")} ${isUpdate ? "foi atualizado" : "adicionado ao sistema"}`,
       });
+
+      // Voltar para tab de usuários
+      setActiveTab("users");
+      setEditingUser(null);
     },
     onError: (error: Error) => {
       toast.error("Erro ao salvar usuário", {
@@ -99,10 +102,35 @@ export default function AdminPage() {
     }
   }, [usersError, router]);
 
+  // Handle edit - switch to form tab
+  const handleEdit = (user: UserAccessRecord) => {
+    setEditingUser(user);
+    setActiveTab("form");
+  };
+
+  // Handle create - switch to form tab
+  const handleCreate = () => {
+    setEditingUser(null);
+    setActiveTab("form");
+  };
+
+  // Handle cancel - go back to users tab
+  const handleCancel = () => {
+    setEditingUser(null);
+    setActiveTab("users");
+  };
+
+  // Handle submit
+  const handleSubmit = (data: CreateUserRequest | UpdateUserRequest) => {
+    const cpf = editingUser ? editingUser.cpf : (data as CreateUserRequest).cpf;
+    const userData = editingUser ? data : { ...data, cpf: undefined };
+    upsertUserMutation.mutate({ cpf, data: userData as Omit<CreateUserRequest, "cpf"> });
+  };
+
   // Loading state with skeletons
   if (usersLoading || idsLoading || currentUserLoading) {
     return (
-      <div className="container mx-auto py-8 space-y-6">
+      <div className="space-y-6">
         {/* Header skeleton */}
         <div className="flex items-center justify-between">
           <div>
@@ -137,14 +165,12 @@ export default function AdminPage() {
   // Error state (other than 403)
   if (usersError && !usersError.message.includes("403")) {
     return (
-      <div className="container mx-auto py-8">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Erro ao carregar dados: {usersError.message}
-          </AlertDescription>
-        </Alert>
-      </div>
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          Erro ao carregar dados: {usersError.message}
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -154,126 +180,126 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push("/")}
-          className="gap-2 h-8 px-2"
-        >
-          <Home className="h-4 w-4" />
-          Dashboard
-        </Button>
-        <span>/</span>
-        <span className="text-foreground font-medium">Admin</span>
-      </div>
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Gerenciamento de Acessos
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Gerencie permissões de acesso dos usuários ao sistema
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              refetchUsers();
-              toast.info("Atualizando lista de usuários...");
-            }}
-            disabled={usersLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${usersLoading ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
-          <Button
-            onClick={() => setIsCreateDialogOpen(true)}
-            size="sm"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Usuário
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            Total de Usuários
-          </div>
-          <div className="text-2xl font-bold mt-2">{users.length}</div>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            Admins
-          </div>
-          <div className="text-2xl font-bold mt-2">
-            {users.filter((u) => u.is_admin).length}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-medium text-muted-foreground">
-            Super Admins
-          </div>
-          <div className="text-2xl font-bold mt-2">
-            {users.filter((u) => u.is_super_admin).length}
-          </div>
-        </div>
-      </div>
-
-      {/* Filter toggle */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant={showInactive ? "default" : "outline"}
-          size="sm"
-          onClick={() => setShowInactive(!showInactive)}
-        >
-          {showInactive ? "Exibir apenas ativos" : "Exibir inativos também"}
-        </Button>
-      </div>
-
-      {/* Users table */}
-      <UserTable
-        users={users}
-        availableIds={availableIds}
-        onEdit={setEditingUser}
-        onToggleActive={(cpf, currentActive) => {
-          const action = currentActive ? "desativar" : "ativar";
-          if (confirm(`Tem certeza que deseja ${action} este usuário?\n\nEsta ação pode ser revertida posteriormente.`)) {
-            toggleActiveMutation.mutate({ cpf, active: !currentActive });
-          }
-        }}
-        isToggling={toggleActiveMutation.isPending}
-      />
-
-      {/* Create/Edit user dialog */}
-      <UserFormDialog
-        open={isCreateDialogOpen || !!editingUser}
-        onOpenChange={(open) => {
-          if (!open) {
-            setIsCreateDialogOpen(false);
+    <div className="space-y-6">
+      {/* Tabs */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          setActiveTab(value as "users" | "form");
+          // Limpar estado de edição quando voltar para tab de usuários
+          if (value === "users") {
             setEditingUser(null);
           }
         }}
-        availableIds={availableIds}
-        currentUser={currentUser}
-        user={editingUser}
-        onSubmit={(data) => {
-          const cpf = editingUser ? editingUser.cpf : (data as CreateUserRequest).cpf;
-          const userData = editingUser ? data : { ...data, cpf: undefined };
-          upsertUserMutation.mutate({ cpf, data: userData as Omit<CreateUserRequest, "cpf"> });
-        }}
-        isLoading={upsertUserMutation.isPending}
-        error={upsertUserMutation.error?.message}
-      />
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted">
+          <TabsTrigger
+            value="users"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-3"
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Usuários
+          </TabsTrigger>
+          <TabsTrigger
+            value="form"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-3"
+          >
+            <UserCog className="h-4 w-4 mr-2" />
+            {editingUser ? "Editar Usuário" : "Novo Usuário"}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Users Tab */}
+        <TabsContent value="users" className="space-y-6">
+          {/* Action buttons */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showInactive ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowInactive(!showInactive)}
+              >
+                {showInactive ? "Exibir apenas ativos" : "Exibir inativos também"}
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  refetchUsers();
+                  toast.info("Atualizando lista de usuários...");
+                }}
+                disabled={usersLoading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${usersLoading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+              <Button
+                onClick={handleCreate}
+                size="sm"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Usuário
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-lg border bg-card p-4">
+              <div className="text-sm font-medium text-muted-foreground">
+                Total de Usuários
+              </div>
+              <div className="text-2xl font-bold mt-2">{users.length}</div>
+            </div>
+            <div className="rounded-lg border bg-card p-4">
+              <div className="text-sm font-medium text-muted-foreground">
+                Admins
+              </div>
+              <div className="text-2xl font-bold mt-2">
+                {users.filter((u) => u.is_admin).length}
+              </div>
+            </div>
+            <div className="rounded-lg border bg-card p-4">
+              <div className="text-sm font-medium text-muted-foreground">
+                Super Admins
+              </div>
+              <div className="text-2xl font-bold mt-2">
+                {users.filter((u) => u.is_super_admin).length}
+              </div>
+            </div>
+          </div>
+
+          {/* Users table */}
+          <UserTable
+            users={users}
+            availableIds={availableIds}
+            onEdit={handleEdit}
+            onToggleActive={(cpf, currentActive) => {
+              const action = currentActive ? "desativar" : "ativar";
+              if (confirm(`Tem certeza que deseja ${action} este usuário?\n\nEsta ação pode ser revertida posteriormente.`)) {
+                toggleActiveMutation.mutate({ cpf, active: !currentActive });
+              }
+            }}
+            isToggling={toggleActiveMutation.isPending}
+          />
+        </TabsContent>
+
+        {/* Form Tab */}
+        <TabsContent value="form" className="space-y-6">
+          <UserForm
+            availableIds={availableIds}
+            currentUser={currentUser}
+            user={editingUser}
+            onSubmit={handleSubmit}
+            onCancel={handleCancel}
+            isLoading={upsertUserMutation.isPending}
+            error={upsertUserMutation.error?.message}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
