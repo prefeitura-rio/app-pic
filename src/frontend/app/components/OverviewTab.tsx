@@ -111,17 +111,10 @@ const OverviewTabComponent = ({
       {/* Espaçamento vertical consistente: 32px entre seções principais */}
       {/* Filters */}
       <Card className="relative">
-        {/* Indicador de loading nos filtros */}
-        {loading && (
-          <div className="absolute top-3 right-3 z-10">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          </div>
-        )}
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Filter className="h-4 w-4" />
             Filtros
-            {loading && <span className="text-xs text-muted-foreground ml-2">(carregando...)</span>}
           </CardTitle>
           <div className="flex gap-2">
             <Button
@@ -338,19 +331,15 @@ const OverviewTabComponent = ({
             </p>
           </div>
 
-          {/* Métricas Principais - com overlay se loading */}
-          <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
+          {/* Métricas Principais */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StatCard
               title="Total de Participantes"
               value={data.total_participantes_geral || 0}
               description={`${data.total_participantes_ativos || 0} ativos • ${data.total_participantes_inativos || 0} inativos`}
               icon={<Users className="h-6 w-6" />}
               variant="default"
+              isLoading={loading}
             />
             <StatCard
               title="% Regular"
@@ -358,6 +347,7 @@ const OverviewTabComponent = ({
               description="Cumprindo todos os protocolos"
               icon={<CheckCircle className="h-6 w-6" />}
               variant="success"
+              isLoading={loading}
             />
             <StatCard
               title="% Irregular"
@@ -365,21 +355,20 @@ const OverviewTabComponent = ({
               description="Com protocolos violados"
               icon={<AlertTriangle className="h-6 w-6" />}
               variant="destructive"
+              isLoading={loading}
             />
           </div>
 
           {/* Dimensão Assistência Social */}
-          <div className={`space-y-3 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
+          <div className="space-y-3">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               🏠 Dimensão Assistência Social
             </h3>
             <div className="grid gap-3 md:grid-cols-3">
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">💰 Bolsa Família</p>
                   <p className="text-2xl font-bold mt-1">
@@ -391,7 +380,10 @@ const OverviewTabComponent = ({
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">📋 CadÚnico Atualizado</p>
                   <p className="text-2xl font-bold mt-1">
@@ -403,7 +395,10 @@ const OverviewTabComponent = ({
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">👥 Equipe de Referência</p>
                   <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
@@ -416,17 +411,15 @@ const OverviewTabComponent = ({
           </div>
 
           {/* Dimensão Educação */}
-          <div className={`space-y-3 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
+          <div className="space-y-3">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               📚 Dimensão Educação
             </h3>
             <div className="grid gap-3 md:grid-cols-2">
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">🎒 Frequência Escolar</p>
                   <p className="text-2xl font-bold mt-1">
@@ -438,7 +431,10 @@ const OverviewTabComponent = ({
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">🏫 Matrícula em Creche</p>
                   <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
@@ -451,17 +447,15 @@ const OverviewTabComponent = ({
           </div>
 
           {/* Dimensão Saúde */}
-          <div className={`space-y-3 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
+          <div className="space-y-3">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               ❤️ Dimensão Saúde
             </h3>
             <div className="grid gap-3 md:grid-cols-3">
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">👶 Consultas Infantis</p>
                   <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
@@ -471,7 +465,10 @@ const OverviewTabComponent = ({
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">🤰 Consultas Pré-natal</p>
                   <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
@@ -481,7 +478,10 @@ const OverviewTabComponent = ({
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted">
+              <Card className="bg-muted relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardContent className="p-4">
                   <p className="text-sm font-medium">💉 Vacinação</p>
                   <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
@@ -495,11 +495,9 @@ const OverviewTabComponent = ({
 
           {/* Resultado do Programa */}
           {data.resultado_programa && data.resultado_programa.length > 0 && (
-            <Card className={`border-2 hover:shadow-lg transition-shadow relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Card className="border-2 hover:shadow-lg transition-shadow relative">
               {loading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
+                <div className="loading-overlay"></div>
               )}
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
@@ -559,12 +557,7 @@ const OverviewTabComponent = ({
           )}
 
           {/* Protocol Statistics - com overlay se loading */}
-          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               title="Protocolos Totais"
               value={data.total_protocolos || 0}
@@ -573,6 +566,7 @@ const OverviewTabComponent = ({
                 value: `${(data.percentual_protocolos_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
+              isLoading={loading}
             />
             <StatCard
               title="Assistência Social"
@@ -582,6 +576,7 @@ const OverviewTabComponent = ({
                 value: `${(data.percentual_smas_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
+              isLoading={loading}
             />
             <StatCard
               title="Educação"
@@ -591,6 +586,7 @@ const OverviewTabComponent = ({
                 value: `${(data.percentual_sme_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
+              isLoading={loading}
             />
             <StatCard
               title="Saúde"
@@ -600,19 +596,18 @@ const OverviewTabComponent = ({
                 value: `${(data.percentual_sms_violados || 0).toFixed(1)}% violados`,
                 isPositive: false,
               }}
+              isLoading={loading}
             />
           </div>
 
-          {/* Charts - com overlay se loading */}
-          <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 relative ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Group Distribution */}
             {chartData.grupoDistribution.length > 0 && (
-              <Card className="border-2 hover:shadow-lg transition-shadow">
+              <Card className="border-2 hover:shadow-lg transition-shadow relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg font-semibold flex items-center gap-2">
                     <Users className="h-5 w-5 text-primary" />
@@ -643,7 +638,10 @@ const OverviewTabComponent = ({
 
             {/* Top Bairros */}
             {chartData.topBairros.length > 0 && (
-              <Card className="border-2 hover:shadow-lg transition-shadow">
+              <Card className="border-2 hover:shadow-lg transition-shadow relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg font-semibold flex items-center gap-2">
                     <Home className="h-5 w-5 text-primary" />
@@ -667,7 +665,10 @@ const OverviewTabComponent = ({
 
             {/* Safra Distribution - Participantes por Safra */}
             {chartData.safraDistribution.length > 0 && (
-              <Card className="border-2 hover:shadow-lg transition-shadow">
+              <Card className="border-2 hover:shadow-lg transition-shadow relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg font-semibold flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-primary" />
@@ -693,7 +694,10 @@ const OverviewTabComponent = ({
 
             {/* Motivos de Saída */}
             {chartData.motivosSaida.length > 0 && (
-              <Card className="border-2 hover:shadow-lg transition-shadow">
+              <Card className="border-2 hover:shadow-lg transition-shadow relative">
+                {loading && (
+                  <div className="loading-overlay"></div>
+                )}
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg font-semibold flex items-center gap-2">
                     <Activity className="h-5 w-5 text-primary" />

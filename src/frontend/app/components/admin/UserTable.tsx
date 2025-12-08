@@ -24,6 +24,7 @@ interface UserTableProps {
   onToggleActive: (cpf: string, currentActive: boolean) => void;
   onPageChange: (page: number) => void; // Callback para mudança de página
   isToggling: boolean;
+  isLoading?: boolean;
 }
 
 export function UserTable({
@@ -35,6 +36,7 @@ export function UserTable({
   onToggleActive,
   onPageChange,
   isToggling,
+  isLoading = false,
 }: UserTableProps) {
   const formatCPF = (cpf: string) => {
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -76,7 +78,9 @@ export function UserTable({
   return (
     <div className="space-y-4">
       {/* Tabela com altura fixa e scroll - mesmo estilo da VirtualizedParticipantTable */}
-      <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col">
+      <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col relative">
+        {/* Loading overlay */}
+        {isLoading && <div className="loading-overlay" />}
         {/* Header Estático */}
         <div className="bg-muted border-b shrink-0">
           <Table>
@@ -228,7 +232,6 @@ export function UserTable({
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             Mostrando {((meta.page - 1) * (meta.page_size || 0)) + 1} - {Math.min(meta.page * (meta.page_size || 0), meta.total_rows)} de {meta.total_rows} usuários
-            {meta.cache_hit && <span className="ml-2 text-xs text-muted-foreground">(cache)</span>}
           </p>
           <div className="flex items-center gap-2">
             <Button

@@ -24,13 +24,13 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
 
-  // Check if user is admin by trying to fetch users
+  // Check if user is admin by trying to fetch current user info from admin endpoint
   // If 403, user is not admin, so we hide the button
   const { data: isAdmin } = useQuery({
     queryKey: ["admin", "check"],
     queryFn: async () => {
       try {
-        await apiService.getUsers(true);
+        await apiService.getCurrentUser();
         return true;
       } catch (error) {
         return false;

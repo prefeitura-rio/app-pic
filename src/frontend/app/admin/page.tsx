@@ -46,20 +46,22 @@ export default function AdminPage() {
     retry: false,
   });
 
-  // State para controlar bypass de cache
-  const [bypassCache, setBypassCache] = useState(false);
+  // State para controlar bypass de cache (timestamp para forçar refetch)
+  const [bypassCacheTimestamp, setBypassCacheTimestamp] = useState<number | null>(null);
 
   // Fetch users with backend pagination and filtering
   const {
     data: usersResponse,
     isLoading: usersLoading,
+    isFetching: usersFetching,
     error: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm, bypassCache],
+    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm, bypassCacheTimestamp],
     queryFn: async ({ queryKey }) => {
-      // Extrair bypassCache da queryKey
-      const shouldBypassCache = queryKey[queryKey.length - 1] as boolean;
+      // Extrair timestamp da queryKey para saber se deve fazer bypass
+      const timestamp = queryKey[queryKey.length - 1] as number | null;
+      const shouldBypassCache = timestamp !== null;
 
       // Construir query params (seguindo padrão de participants)
       const params = new URLSearchParams();
@@ -106,7 +108,7 @@ export default function AdminPage() {
 
       // Reset bypass cache após uso
       if (shouldBypassCache) {
-        setBypassCache(false);
+        setBypassCacheTimestamp(null);
       }
 
       return response.json();
@@ -239,7 +241,7 @@ export default function AdminPage() {
   // Handle refresh with cache bypass
   const handleRefreshWithBypass = () => {
     toast.info("Atualizando lista (forçando refresh do cache)...");
-    setBypassCache(true);
+    setBypassCacheTimestamp(Date.now());
   };
 
   // Loading state with skeletons
@@ -361,16 +363,10 @@ export default function AdminPage() {
 
           {/* Filters */}
           <Card className="relative">
-            {usersLoading && (
-              <div className="absolute top-3 right-3 z-10">
-                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-              </div>
-            )}
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Filter className="h-4 w-4" />
                 Filtros
-                {usersLoading && <span className="text-xs text-muted-foreground ml-2">(carregando...)</span>}
               </CardTitle>
               <div className="flex gap-2">
                 <Button
@@ -386,7 +382,7 @@ export default function AdminPage() {
                     handleFilterChange();
                   }}
                   className="h-8 text-xs"
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                 >
                   Limpar Filtros
                 </Button>
@@ -394,10 +390,10 @@ export default function AdminPage() {
                   variant="ghost"
                   size="sm"
                   onClick={handleRefreshWithBypass}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   className="h-8 text-xs"
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${usersLoading ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`h-4 w-4 mr-2 ${usersFetching ? "animate-spin" : ""}`} />
                   Atualizar
                 </Button>
               </div>
@@ -410,12 +406,12 @@ export default function AdminPage() {
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyPress={handleSearchKeyPress}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   className="flex-1"
                 />
                 <Button
                   onClick={handleSearch}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   size="default"
                 >
                   <Search className="h-4 w-4 mr-2" />
@@ -432,7 +428,7 @@ export default function AdminPage() {
                     setFilterOcupacao(value === "todas" ? "" : value);
                     handleFilterChange();
                   }}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   placeholder="Ocupação"
                   defaultLabel="Todas as Ocupações"
                   options={filterOptions?.ocupacoes || []}
@@ -445,7 +441,7 @@ export default function AdminPage() {
                     setFilterSecretaria(value === "todas" ? "" : value);
                     handleFilterChange();
                   }}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   placeholder="Secretaria"
                   defaultLabel="Todas as Secretarias"
                   options={filterOptions?.secretarias || []}
@@ -458,7 +454,7 @@ export default function AdminPage() {
                     setFilterPermission(value === "todas" ? "" : value);
                     handleFilterChange();
                   }}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   placeholder="Permissão"
                   defaultLabel="Todas as Permissões"
                   options={filterOptions?.permissions || []}
@@ -471,7 +467,7 @@ export default function AdminPage() {
                     setFilterStatus(value === "todos" ? "" : value);
                     handleFilterChange();
                   }}
-                  disabled={usersLoading}
+                  disabled={usersFetching}
                   placeholder="Status"
                   defaultLabel="Todos os Status"
                   options={
@@ -486,7 +482,6 @@ export default function AdminPage() {
               {/* Results count */}
               <div className="text-sm text-muted-foreground">
                 Mostrando {users.length} de {meta.total_rows || 0} usuários
-                {meta.cache_hit && <span className="ml-2 text-green-600">(cache)</span>}
               </div>
             </CardContent>
           </Card>
@@ -506,6 +501,7 @@ export default function AdminPage() {
             }}
             onPageChange={handlePageChange}
             isToggling={toggleActiveMutation.isPending}
+            isLoading={usersFetching}
           />
         </TabsContent>
 

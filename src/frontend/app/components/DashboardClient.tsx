@@ -50,24 +50,30 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const [professionalPage, setProfessionalPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
   const [isPending, startTransition] = useTransition();
-  const [bypassCacheDashboard, setBypassCacheDashboard] = useState(false);
-  const [bypassCacheParticipants, setBypassCacheParticipants] = useState(false);
+  const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
+  const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
 
   // TanStack Query para Dashboard (Visão Geral)
   const {
     data: dashboardResponse,
     isLoading: dashboardLoading,
+    isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
-    queryKey: ['dashboard', overviewFilters, bypassCacheDashboard],
-    queryFn: async () => {
+    queryKey: ['dashboard', overviewFilters, bypassCacheDashboardTimestamp],
+    queryFn: async ({ queryKey }) => {
+      const timestamp = queryKey[queryKey.length - 1] as number | null;
+      const shouldBypassCache = timestamp !== null;
+
       const result = await apiService.getDashboard({
         ...overviewFilters,
-        ...(bypassCacheDashboard && { bypass_cache: true }),
+        ...(shouldBypassCache && { bypass_cache: true }),
       });
-      if (bypassCacheDashboard) {
-        setBypassCacheDashboard(false);
+
+      if (shouldBypassCache) {
+        setBypassCacheDashboardTimestamp(null);
       }
+
       return result;
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
@@ -78,21 +84,27 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const {
     data: participantsResponse,
     isLoading: participantsLoading,
+    isFetching: participantsFetching,
     error: participantsError,
   } = useQuery({
-    queryKey: ['participants', professionalFilters, professionalPage, bypassCacheParticipants],
-    queryFn: async () => {
+    queryKey: ['participants', professionalFilters, professionalPage, bypassCacheParticipantsTimestamp],
+    queryFn: async ({ queryKey }) => {
+      const timestamp = queryKey[queryKey.length - 1] as number | null;
+      const shouldBypassCache = timestamp !== null;
+
       const result = await apiService.getParticipants(
         {
           ...professionalFilters,
-          ...(bypassCacheParticipants && { bypass_cache: true }),
+          ...(shouldBypassCache && { bypass_cache: true }),
         },
         professionalPage,
         20
       );
-      if (bypassCacheParticipants) {
-        setBypassCacheParticipants(false);
+
+      if (shouldBypassCache) {
+        setBypassCacheParticipantsTimestamp(null);
       }
+
       return result;
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
@@ -144,7 +156,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    */
   const handleOverviewRefresh = useCallback(() => {
     toast.info("Atualizando dados (forçando refresh do cache)...");
-    setBypassCacheDashboard(true);
+    setBypassCacheDashboardTimestamp(Date.now());
   }, []);
 
   /**
@@ -152,7 +164,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    */
   const handleProfessionalRefresh = useCallback(() => {
     toast.info("Atualizando dados (forçando refresh do cache)...");
-    setBypassCacheParticipants(true);
+    setBypassCacheParticipantsTimestamp(Date.now());
   }, []);
 
   /**
@@ -228,7 +240,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
                 onRefresh={handleOverviewRefresh}
-                loading={dashboardLoading}
+                loading={dashboardFetching}
               />
             </TabsContent>
           )}
@@ -243,7 +255,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
                 onRefresh={handleProfessionalRefresh}
-                loading={participantsLoading}
+                loading={participantsFetching}
               />
             </TabsContent>
           )}

@@ -220,7 +220,12 @@ export const apiService = {
     search?: string
   ): Promise<PaginatedResponse<UserAccessRecord>> {
     const params = new URLSearchParams();
-    params.append("page", page.toString());
+    
+    // Defensive programming: ensure page is a number
+    // This handles cases where page might be passed as "true" or boolean by mistake
+    const pageNum = typeof page === 'number' ? page : 1;
+    
+    params.append("page", pageNum.toString());
     params.append("page_size", pageSize.toString());
 
     if (activeOnly !== undefined) {
