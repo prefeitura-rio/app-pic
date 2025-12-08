@@ -36,14 +36,15 @@ export default function AdminPage() {
   const [searchInput, setSearchInput] = useState(""); // Input do usuário
   const [searchTerm, setSearchTerm] = useState(""); // Termo de busca ativo (enviado ao backend)
 
-  // Fetch current user
+  // Fetch current user (compartilha cache com DashboardHeader via queryKey)
   const {
     data: currentUser,
     isLoading: currentUserLoading,
   } = useQuery({
-    queryKey: ["admin", "me"],
+    queryKey: ['currentUser'], // Mesma key que DashboardHeader/DashboardClient
     queryFn: () => apiService.getCurrentUser(),
     retry: false,
+    staleTime: 10 * 60 * 1000, // 10 minutos (mesmo que DashboardHeader)
   });
 
   // State para controlar bypass de cache (timestamp para forçar refetch)

@@ -48,9 +48,6 @@ export class ErrorBoundary extends Component<Props, State> {
       console.error("Error Info:", errorInfo);
     }
 
-    // TODO: Send to error tracking service (Sentry, LogRocket, etc)
-    // logErrorToService(error, errorInfo);
-
     this.setState({
       error,
       errorInfo,

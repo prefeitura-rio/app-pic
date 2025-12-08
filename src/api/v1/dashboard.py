@@ -17,9 +17,7 @@ from src.api.v1.schemas import (
 from src.utils.data_manager import DataManager
 from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
 
-router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
-)
+router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Dashboard"])
 
 # Configuração de filtros para dashboard (IDÊNTICA ao participants para cache sharing)
 DASHBOARD_FILTER_COLUMN_MAP = {
@@ -66,7 +64,9 @@ def refresh_participants_cache():
 
 
 @router.get(
-    "/", summary="Métricas do Dashboard", response_model=PaginatedResponse[Dashboard]
+    "/dashboard",
+    summary="Métricas do Dashboard",
+    response_model=PaginatedResponse[Dashboard],
 )
 async def get_dashboard_metrics(
     permissions: CurrentUserPermissions,

@@ -69,15 +69,20 @@ async function handleResponse<T>(
       timestamp: new Date().toISOString()
     }));
 
-    // Check for inactive user (support both "inativo" and "está inativo")
-    const isInactive = detailStr.includes("inativo");
-
-    if (isInactive) {
+    // 1. Check for inactive user
+    if (detailStr.includes("inativo")) {
       window.location.href = "/login?error=InactiveUser";
       throw new Error("User Inactive");
     }
 
-    // Se não for inativo, passar o detalhe para debug/exibição
+    // 2. Check for non-admin trying to access admin endpoints
+    if (detailStr.includes("apenas admins podem") || detailStr.includes("apenas admins") || detailStr.includes("admin")) {
+      // Redireciona para home com mensagem de erro
+      window.location.href = "/?error=NotAdmin";
+      throw new Error("Not Admin");
+    }
+
+    // 3. CPF não cadastrado ou outro erro de acesso
     const safeDetail = encodeURIComponent(detailStr.substring(0, 200));
     window.location.href = `/login?error=AccessDenied&details=${safeDetail}`;
     throw new Error(`Access Denied: ${detail}`);
@@ -123,7 +128,7 @@ export const apiService = {
     filters: DashboardFilters = {}
   ): Promise<PaginatedResponse<any>> {
     const params = buildFilterParams(filters);
-    const url = `${BASE_URL}/api/v1/dashboard/?${params.toString()}`;
+    const url = `${BASE_URL}/api/v1/dashboard?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -149,7 +154,7 @@ export const apiService = {
     params.append("page", page.toString());
     params.append("page_size", pageSize.toString());
 
-    const url = `${BASE_URL}/api/v1/participants/?${params.toString()}`;
+    const url = `${BASE_URL}/api/v1/participants?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();

@@ -14,9 +14,7 @@ from src.utils.data_manager import DataManager
 from src.utils.data_manager_config import DataManagerConfig as config
 from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
 
-router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
-)
+router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 
 # Configuração de filtros para participantes (definido no endpoint, não no DataManager)
 PARTICIPANT_FILTER_COLUMN_MAP = {
@@ -62,7 +60,7 @@ def refresh_participants_cache():
 
 
 @router.get(
-    "/",
+    "/participants",
     summary="Listar participantes com filtros e paginação",
     response_model=PaginatedResponse[Participante],
 )
