@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiService } from "../services/api";
 
 interface UserInfo {
+  // JWT standard fields
   name?: string;
   email?: string;
   preferred_username?: string;
@@ -17,6 +18,17 @@ interface UserInfo {
   sub?: string;
   iat?: number;
   exp?: number;
+  
+  // Application specific fields (merged from /me endpoint)
+  permission?: string | null;
+  is_admin?: boolean;
+  is_super_admin?: boolean;
+  id_cras_list?: any[];
+  id_escola_list?: any[];
+  id_cre_list?: any[];
+  id_cap_list?: any[];
+  id_cas_list?: any[];
+  id_clinica_familia_list?: any[];
 }
 
 export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
@@ -24,21 +36,27 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
 
-  // Check if user is admin by trying to fetch current user info from admin endpoint
-  // If 403, user is not admin, so we hide the button
-  const { data: isAdmin } = useQuery({
-    queryKey: ["admin", "check"],
+  // Fetch complete user info (including permissions) from backend
+  const { data: currentUserAccess } = useQuery({
+    queryKey: ["admin", "me"],
     queryFn: async () => {
       try {
-        await apiService.getCurrentUser();
-        return true;
+        return await apiService.getCurrentUser();
       } catch (error) {
-        return false;
+        return null;
       }
     },
     retry: false,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
+
+  // Merge basic userInfo (from JWT) with detailed access info (from API)
+  const effectiveUserInfo: UserInfo | null = userInfo ? {
+    ...userInfo,
+    ...(currentUserAccess || {}),
+  } : null;
+
+  const isAdmin = currentUserAccess?.is_admin || false;
 
   return (
     <header className="bg-primary text-primary-foreground shadow-lg">
@@ -87,7 +105,7 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
             )}
 
             <ThemeToggle />
-            <UserAreaDialog userInfo={userInfo}>
+            <UserAreaDialog userInfo={effectiveUserInfo}>
               <Button variant="secondary" size="icon" className="rounded-full">
                 <User className="h-5 w-5" />
               </Button>

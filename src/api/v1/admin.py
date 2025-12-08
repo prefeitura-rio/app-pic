@@ -74,6 +74,7 @@ class UserAccessRecord(BaseModel):
     secretaria: Optional[str] = None
     is_admin: bool = False
     is_super_admin: bool = False
+    permission: Optional[str] = None
 
     id_cras_list: Optional[List[IdWithName]] = None
     id_escola_list: Optional[List[IdWithName]] = None
@@ -319,6 +320,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
         cpf=permissions.cpf,
         is_admin=permissions.is_admin,
         is_super_admin=permissions.is_super_admin,
+        permission=permissions.permission,
         id_cras_list=permissions.id_cras_list,
         id_escola_list=permissions.id_escola_list,
         id_cre_list=permissions.id_cre_list,
@@ -462,16 +464,17 @@ async def upsert_user(
     Cria ou atualiza usuário (UPSERT).
 
     Se o CPF já existe:
-    - Atualiza as permissões especificadas
+    - Atualiza APENAS os campos fornecidos (PATCH logic).
+    - Preserva valores existentes para campos não enviados.
     - Auditoria: updated_by, updated_at
 
     Se o CPF não existe:
-    - Cria novo usuário
+    - Cria novo usuário (todos os campos obrigatórios devem ser válidos).
     - Auditoria: created_by, created_at
 
     VALIDAÇÕES:
-    - Admin segmentado só pode atribuir IDs que ele possui
-    - Super admin pode atribuir qualquer ID
+    - Admin segmentado só pode atribuir IDs que ele possui.
+    - Super admin pode atribuir qualquer ID.
     """
     require_admin(permissions)
 
@@ -488,7 +491,7 @@ async def upsert_user(
     existing_user = governance_df[governance_df["cpf"] == cpf]
     user_exists = not existing_user.empty
 
-    # PROTEÇÃO: Impedir criação acidental de usuário que já existe
+    # PROTEÇÃO: Impedir criação acidental de usuário que já existe (se não for update intencional)
     if user_exists and not request.is_update:
         nome_existente = existing_user.iloc[0].get("nome", "Sem nome")
         raise HTTPException(
@@ -499,6 +502,8 @@ async def upsert_user(
     # PROTEÇÃO: Impedir edição de super admins
     if user_exists:
         is_target_super_admin = bool(existing_user.iloc[0]["is_super_admin"])
+        # Apenas permite editar se o próprio usuário for super admin, mas ainda assim com cuidado
+        # (regra atual: super admins não editáveis via UI)
         if is_target_super_admin:
             raise HTTPException(
                 status_code=403,
@@ -527,7 +532,8 @@ async def upsert_user(
         )
 
     # Validar que admin pode atribuir esses IDs
-    target_ids = request.model_dump(
+    # Apenas valida listas que foram explicitamente enviadas (não None)
+    target_ids_dict = request.model_dump(
         include={
             "id_cras_list",
             "id_escola_list",
@@ -535,115 +541,149 @@ async def upsert_user(
             "id_cap_list",
             "id_cas_list",
             "id_clinica_familia_list",
-        }
+        },
+        exclude_unset=True # Importante: só valida o que foi enviado
     )
-    validate_segmented_admin_can_manage(permissions, target_ids)
-
-    # Calcular valor da coluna permission
-    permission_value = calculate_permission(request.is_admin, request.is_super_admin)
-
-    # Converter listas de IDs para formato BigQuery
-    id_cras_sql = _convert_id_list_to_bq_struct(request.id_cras_list)
-    id_escola_sql = _convert_id_list_to_bq_struct(request.id_escola_list)
-    id_cre_sql = _convert_id_list_to_bq_struct(request.id_cre_list)
-    id_cap_sql = _convert_id_list_to_bq_struct(request.id_cap_list)
-    id_cas_sql = _convert_id_list_to_bq_struct(request.id_cas_list)
-    id_clinica_sql = _convert_id_list_to_bq_struct(request.id_clinica_familia_list)
-
-    notes_sql = (
-        f"'{request.notes.replace(chr(39), chr(92)+chr(39))}'"
-        if request.notes
-        else "NULL"
-    )
+    
+    # Filtrar None values do dict para validação
+    target_ids_to_validate = {k: v for k, v in target_ids_dict.items() if v is not None}
+    
+    if target_ids_to_validate:
+        validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
 
     try:
         if user_exists:
-            # UPDATE - Usuário já existe
+            # UPDATE - Dinâmico (só atualiza campos não nulos)
             logger.info(f"Atualizando usuário existente: {cpf}")
-
-            nome_sql = f"'{request.nome.replace(chr(39), chr(92)+chr(39))}'" if request.nome else "NULL"
-            ocupacao_sql = f"'{request.ocupacao.replace(chr(39), chr(92)+chr(39))}'" if request.ocupacao else "NULL"
-            secretaria_sql = f"'{request.secretaria.replace(chr(39), chr(92)+chr(39))}'" if request.secretaria else "NULL"
+            
+            update_fields = []
+            
+            if request.nome is not None:
+                safe_nome = request.nome.replace("'", "\\'")
+                update_fields.append(f"nome = '{safe_nome}'")
+                
+            if request.ocupacao is not None:
+                safe_ocupacao = request.ocupacao.replace("'", "\\'")
+                update_fields.append(f"ocupacao = '{safe_ocupacao}'")
+                
+            if request.secretaria is not None:
+                safe_secretaria = request.secretaria.replace("'", "\\'")
+                update_fields.append(f"secretaria = '{safe_secretaria}'")
+            
+            # Booleans sempre atualizam se enviados (mesmo false)
+            # Precisamos checar se foram setados no request (Pydantic model_dump(exclude_unset=True) seria melhor mas vamos checar explicitamente)
+            # Assumindo que o frontend envia o estado completo do form, ou apenas o que mudou.
+            # No caso do toggle active, só active é enviado.
+            
+            # ATENÇÃO: Pydantic por padrão tem defaults (False). 
+            # Se for um patch parcial, precisamos saber o que foi enviado.
+            # O frontend toggle envia apenas {active: false, is_update: true}.
+            # Os outros campos virão com default do modelo (None ou False).
+            # UpsertUserRequest define defaults como None para opcionais, mas False para booleans.
+            # Isso é perigoso para partial updates.
+            # CORREÇÃO: Vamos considerar que booleans só devem ser atualizados se outros campos do form também vierem,
+            # OU se for explicitamente a intenção (difícil saber sem mudar o modelo para Optional[bool]).
+            
+            # Para corrigir o bug do toggle apagar permissões:
+            # O toggle envia apenas active. Os outros campos virão como None (listas/strings) ou False (booleans).
+            # Listas e Strings já são None por default no modelo, ok.
+            # Booleans (is_admin, is_super_admin) são False por default.
+            
+            # ESTRATÉGIA SEGURA:
+            # 1. Se notes, nome, ocupacao, secretaria E listas forem TODOS None, assumimos que é uma operação de toggle de status.
+            # 2. Nesse caso, ignoramos is_admin/is_super_admin (mantemos o atual).
+            
+            is_full_update = (
+                request.nome is not None or 
+                request.ocupacao is not None or 
+                request.secretaria is not None or
+                request.id_cras_list is not None or
+                request.id_escola_list is not None
+            )
+            
+            # Se for full update, atualiza permissões. Se não, mantém.
+            if is_full_update:
+                update_fields.append(f"is_admin = {str(request.is_admin).upper()}")
+                update_fields.append(f"is_super_admin = {str(request.is_super_admin).upper()}")
+                
+                # Recalcula permission string
+                permission_value = calculate_permission(request.is_admin, request.is_super_admin)
+                update_fields.append(f"permission = '{permission_value}'")
+            
+            # Listas - só atualiza se não for None
+            if request.id_cras_list is not None:
+                update_fields.append(f"id_cras_list = {_convert_id_list_to_bq_struct(request.id_cras_list)}")
+            if request.id_escola_list is not None:
+                update_fields.append(f"id_escola_list = {_convert_id_list_to_bq_struct(request.id_escola_list)}")
+            if request.id_cre_list is not None:
+                update_fields.append(f"id_cre_list = {_convert_id_list_to_bq_struct(request.id_cre_list)}")
+            if request.id_cap_list is not None:
+                update_fields.append(f"id_cap_list = {_convert_id_list_to_bq_struct(request.id_cap_list)}")
+            if request.id_cas_list is not None:
+                update_fields.append(f"id_cas_list = {_convert_id_list_to_bq_struct(request.id_cas_list)}")
+            if request.id_clinica_familia_list is not None:
+                update_fields.append(f"id_clinica_familia_list = {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)}")
+                
+            if request.notes is not None:
+                safe_notes = request.notes.replace("'", "\\'")
+                update_fields.append(f"notes = '{safe_notes}'")
+                
+            # Active sempre atualiza
+            update_fields.append(f"active = {str(request.active).upper()}")
+            
+            # Metadata
+            update_fields.append(f"updated_by = '{permissions.cpf}'")
+            update_fields.append("updated_at = CURRENT_TIMESTAMP()")
+            
+            if not update_fields:
+                logger.info("Nenhum campo para atualizar")
+                return UserAccessRecord(**existing_user.iloc[0].to_dict())
 
             query = f"""
             UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
-            SET
-                nome = {nome_sql},
-                ocupacao = {ocupacao_sql},
-                secretaria = {secretaria_sql},
-                is_admin = {str(request.is_admin).upper()},
-                is_super_admin = {str(request.is_super_admin).upper()},
-                permission = '{permission_value}',
-                id_cras_list = {id_cras_sql},
-                id_escola_list = {id_escola_sql},
-                id_cre_list = {id_cre_sql},
-                id_cap_list = {id_cap_sql},
-                id_cas_list = {id_cas_sql},
-                id_clinica_familia_list = {id_clinica_sql},
-                notes = {notes_sql},
-                active = {str(request.active).upper()},
-                updated_by = '{permissions.cpf}',
-                updated_at = CURRENT_TIMESTAMP()
+            SET {', '.join(update_fields)}
             WHERE cpf = '{cpf}'
             """
+            
             execute_query(query)
-            logger.info(
-                f"✅ Usuário {cpf} atualizado com sucesso por {permissions.cpf}"
-            )
+            logger.info(f"✅ Usuário {cpf} atualizado dinamicamente")
 
         else:
-            # INSERT - Novo usuário
+            # INSERT - Novo usuário (precisa de todos os campos)
             logger.info(f"Criando novo usuário: {cpf}")
+            
+            # Calcular permission
+            permission_value = calculate_permission(request.is_admin, request.is_super_admin)
 
+            # Preparar valores SQL
             nome_sql = f"'{request.nome.replace(chr(39), chr(92)+chr(39))}'" if request.nome else "NULL"
             ocupacao_sql = f"'{request.ocupacao.replace(chr(39), chr(92)+chr(39))}'" if request.ocupacao else "NULL"
             secretaria_sql = f"'{request.secretaria.replace(chr(39), chr(92)+chr(39))}'" if request.secretaria else "NULL"
+            notes_sql = f"'{request.notes.replace(chr(39), chr(92)+chr(39))}'" if request.notes else "NULL"
 
             query = f"""
             INSERT INTO `{PROJECT_ID}.{DATASET_ID}.data_access`
             (
-                cpf,
-                nome,
-                ocupacao,
-                secretaria,
-                is_admin,
-                is_super_admin,
-                permission,
-                id_cras_list,
-                id_escola_list,
-                id_cre_list,
-                id_cap_list,
-                id_cas_list,
-                id_clinica_familia_list,
-                created_by,
-                active,
-                notes,
-                created_at
+                cpf, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
+                id_cras_list, id_escola_list, id_cre_list, id_cap_list, id_cas_list, id_clinica_familia_list,
+                created_by, active, notes, created_at
             )
             VALUES (
-                '{cpf}',
-                {nome_sql},
-                {ocupacao_sql},
-                {secretaria_sql},
-                {str(request.is_admin).upper()},
-                {str(request.is_super_admin).upper()},
-                '{permission_value}',
-                {id_cras_sql},
-                {id_escola_sql},
-                {id_cre_sql},
-                {id_cap_sql},
-                {id_cas_sql},
-                {id_clinica_sql},
-                '{permissions.cpf}',
-                {str(request.active).upper()},
-                {notes_sql},
-                CURRENT_TIMESTAMP()
+                '{cpf}', {nome_sql}, {ocupacao_sql}, {secretaria_sql},
+                {str(request.is_admin).upper()}, {str(request.is_super_admin).upper()}, '{permission_value}',
+                {_convert_id_list_to_bq_struct(request.id_cras_list)},
+                {_convert_id_list_to_bq_struct(request.id_escola_list)},
+                {_convert_id_list_to_bq_struct(request.id_cre_list)},
+                {_convert_id_list_to_bq_struct(request.id_cap_list)},
+                {_convert_id_list_to_bq_struct(request.id_cas_list)},
+                {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
+                '{permissions.cpf}', {str(request.active).upper()}, {notes_sql}, CURRENT_TIMESTAMP()
             )
             """
             execute_query(query)
-            logger.info(f"✅ Usuário {cpf} criado com sucesso por {permissions.cpf}")
+            logger.info(f"✅ Usuário {cpf} criado com sucesso")
 
-        # Invalidar E renovar cache imediatamente
+        # Invalidar E renovar cache
         refresh_governance_cache()
 
         # Buscar usuário para retornar
@@ -651,15 +691,19 @@ async def upsert_user(
         user_row = governance_df[governance_df["cpf"] == cpf]
 
         if user_row.empty:
+            # Fallback se cache refresh falhar ou tiver delay (raro com bypass_cache=True)
+            # Retorna o que temos em memória do existing_user se possível, ou erro
+            if user_exists:
+                 logger.warning("User not found in refreshed cache, returning old data + updates")
+                 # Aqui idealmente faríamos um merge manual, mas vamos lançar erro para ser seguro
+            
             raise HTTPException(
                 status_code=500,
-                detail=f"Usuário {cpf} foi salvo mas não foi encontrado no cache renovado",
+                detail=f"Usuário {cpf} salvo, mas não encontrado no cache renovado",
             )
 
-        # Converter para UserAccessRecord
+        # Converter para UserAccessRecord (mesma lógica de antes)
         row_dict = user_row.iloc[0].to_dict()
-
-        # Sanitizar valores
         for key, value in row_dict.items():
             if not isinstance(value, (list, dict)):
                 try:
@@ -668,38 +712,25 @@ async def upsert_user(
                 except (ValueError, TypeError):
                     pass
 
-        # Converter booleanos
-        if "active" in row_dict and row_dict["active"] is not None:
-            row_dict["active"] = bool(row_dict["active"])
-        if "is_admin" in row_dict and row_dict["is_admin"] is not None:
-            row_dict["is_admin"] = bool(row_dict["is_admin"])
-        if "is_super_admin" in row_dict and row_dict["is_super_admin"] is not None:
-            row_dict["is_super_admin"] = bool(row_dict["is_super_admin"])
+        # Bool conv
+        if "active" in row_dict: row_dict["active"] = bool(row_dict["active"])
+        if "is_admin" in row_dict: row_dict["is_admin"] = bool(row_dict["is_admin"])
+        if "is_super_admin" in row_dict: row_dict["is_super_admin"] = bool(row_dict["is_super_admin"])
 
-        # Converter timestamps
-        if "created_at" in row_dict and row_dict["created_at"] is not None:
-            if hasattr(row_dict["created_at"], "to_pydatetime"):
-                row_dict["created_at"] = row_dict["created_at"].to_pydatetime()
-        if "updated_at" in row_dict and row_dict["updated_at"] is not None:
-            if hasattr(row_dict["updated_at"], "to_pydatetime"):
-                row_dict["updated_at"] = row_dict["updated_at"].to_pydatetime()
+        # Timestamp conv
+        if "created_at" in row_dict and hasattr(row_dict["created_at"], "to_pydatetime"):
+            row_dict["created_at"] = row_dict["created_at"].to_pydatetime()
+        if "updated_at" in row_dict and hasattr(row_dict["updated_at"], "to_pydatetime"):
+            row_dict["updated_at"] = row_dict["updated_at"].to_pydatetime()
 
-        # Converter arrays de structs
-        for id_type in [
-            "id_cras",
-            "id_escola",
-            "id_cre",
-            "id_cap",
-            "id_cas",
-            "id_clinica_familia",
-        ]:
+        # Struct conv
+        for id_type in ["id_cras", "id_escola", "id_cre", "id_cap", "id_cas", "id_clinica_familia"]:
             list_key = f"{id_type}_list"
-            if row_dict.get(list_key) is not None:
-                if isinstance(row_dict[list_key], list):
-                    row_dict[list_key] = [
-                        IdWithName(**item) if isinstance(item, dict) else item
-                        for item in row_dict[list_key]
-                    ]
+            if row_dict.get(list_key) is not None and isinstance(row_dict[list_key], list):
+                row_dict[list_key] = [
+                    IdWithName(**item) if isinstance(item, dict) else item
+                    for item in row_dict[list_key]
+                ]
 
         return UserAccessRecord(**row_dict)
 

@@ -337,6 +337,7 @@ export interface UserAccessRecord {
   secretaria?: string | null;
   is_admin: boolean;
   is_super_admin: boolean;
+  permission?: string | null;
 
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;

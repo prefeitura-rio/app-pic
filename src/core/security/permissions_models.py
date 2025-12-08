@@ -28,6 +28,7 @@ class UserPermissions(BaseModel):
     cpf: str
     is_admin: bool = False
     is_super_admin: bool = False
+    permission: Optional[str] = None
 
     # Segmentation lists (None = no restriction for that category)
     id_cras_list: Optional[List[IdWithName]] = None
