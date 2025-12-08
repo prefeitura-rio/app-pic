@@ -38,7 +38,7 @@ from src.utils.log import logger
 
 # CPF do super admin inicial (sem pontos ou traços)
 # Este CPF deve corresponder ao campo 'preferred_username' do JWT após login gov.br
-SUPER_ADMIN_CPF = "12345678900"  # Ex: "12345678900"
+SUPER_ADMIN_CPF = "00420153241"  # Ex: "12345678900"
 
 # Nome do super admin (opcional, apenas para auditoria)
 SUPER_ADMIN_NAME = "Sistema (Bootstrap)"
@@ -87,6 +87,9 @@ def create_table():
       secretaria STRING,
       is_admin BOOLEAN NOT NULL,
       is_super_admin BOOLEAN NOT NULL,
+
+      -- Tipo de permissão (preenchido pelo código: super_admin, admin, user)
+      permission STRING NOT NULL,
 
       -- IDs autorizados com nomes (arrays de STRUCT)
       id_cras_list ARRAY<STRUCT<id STRING, nome STRING>>,
@@ -200,11 +203,12 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
     query = f"""
     INSERT INTO `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.data_access`
-    (cpf, is_admin, is_super_admin, created_by, active, notes, created_at)
+    (cpf, is_admin, is_super_admin, permission, created_by, active, notes, created_at)
     VALUES (
         '{SUPER_ADMIN_CPF}',
         TRUE,
         TRUE,
+        'super_admin',
         'SYSTEM_BOOTSTRAP',
         TRUE,
         'Super admin criado via bootstrap script - {SUPER_ADMIN_NAME}',

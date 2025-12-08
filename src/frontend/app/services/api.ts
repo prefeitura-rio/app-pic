@@ -8,7 +8,6 @@ import {
   AvailableIds,
   UserAccessRecord,
   CreateUserRequest,
-  UpdateUserRequest,
 } from "../types";
 
 // Use server-side proxy to access backend API
@@ -205,24 +204,39 @@ export const apiService = {
   },
 
   /**
-   * Get list of users the admin can manage
+   * Get list of users the admin can manage (with pagination)
    * Requires admin permission
    *
-   * @param activeOnly - Filter only active users (default: true)
-   * @param forceRefresh - Force cache refresh (default: false)
-   * @returns List of user access records
+   * @param page - Page number (1-indexed)
+   * @param pageSize - Items per page
+   * @param activeOnly - Filter only active users (true/false/null for all)
+   * @param search - Search by CPF or name
+   * @returns Paginated response with user access records
    */
-  async getUsers(activeOnly: boolean = true, forceRefresh: boolean = false): Promise<UserAccessRecord[]> {
+  async getUsers(
+    page: number = 1,
+    pageSize: number = 100,
+    activeOnly?: boolean,
+    search?: string
+  ): Promise<PaginatedResponse<UserAccessRecord>> {
     const params = new URLSearchParams();
-    params.append("active_only", activeOnly.toString());
-    params.append("force_refresh", forceRefresh.toString());
+    params.append("page", page.toString());
+    params.append("page_size", pageSize.toString());
+
+    if (activeOnly !== undefined) {
+      params.append("active_only", activeOnly.toString());
+    }
+
+    if (search) {
+      params.append("search", search);
+    }
 
     const url = `${BASE_URL}/api/v1/admin/users?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<UserAccessRecord[]>(res, fetchFn);
+    return handleResponse<PaginatedResponse<UserAccessRecord>>(res, fetchFn);
   },
 
   /**
@@ -256,59 +270,6 @@ export const apiService = {
     return handleResponse<UserAccessRecord>(res, fetchFn);
   },
 
-  /**
-   * Create a new user with permissions
-   * Requires admin permission
-   *
-   * @deprecated Use upsertUser instead
-   * @param userData - User creation data
-   * @returns Created user record
-   */
-  async createUser(userData: CreateUserRequest): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v1/admin/users`;
-
-    const fetchFn = () =>
-      fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
-      });
-
-    const res = await fetchFn();
-
-    return handleResponse<UserAccessRecord>(res, fetchFn);
-  },
-
-  /**
-   * Update an existing user's permissions
-   * Requires admin permission
-   *
-   * @deprecated Use upsertUser instead
-   * @param cpf - User CPF
-   * @param userData - User update data
-   * @returns Updated user record
-   */
-  async updateUser(
-    cpf: string,
-    userData: UpdateUserRequest
-  ): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
-
-    const fetchFn = () =>
-      fetch(url, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
-      });
-
-    const res = await fetchFn();
-
-    return handleResponse<UserAccessRecord>(res, fetchFn);
-  },
 
   /**
    * Delete (soft-delete) a user

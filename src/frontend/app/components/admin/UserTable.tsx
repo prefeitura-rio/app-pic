@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { UserAccessRecord, AvailableIds } from "@/app/types";
+import { UserAccessRecord, AvailableIds, PaginationMeta } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -20,8 +19,10 @@ interface UserTableProps {
   users: UserAccessRecord[];
   availableIds: AvailableIds;
   currentUserCpf: string; // CPF do usuário logado
+  meta: PaginationMeta; // Metadados de paginação do backend
   onEdit: (user: UserAccessRecord) => void;
   onToggleActive: (cpf: string, currentActive: boolean) => void;
+  onPageChange: (page: number) => void; // Callback para mudança de página
   isToggling: boolean;
 }
 
@@ -29,18 +30,12 @@ export function UserTable({
   users,
   availableIds,
   currentUserCpf,
+  meta,
   onEdit,
   onToggleActive,
+  onPageChange,
   isToggling,
 }: UserTableProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 100;
-
-  // Paginação client-side
-  const totalPages = Math.ceil(users.length / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const paginatedUsers = users.slice(startIndex, endIndex);
   const formatCPF = (cpf: string) => {
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   };
@@ -105,7 +100,7 @@ export function UserTable({
         <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
           <Table>
             <TableBody>
-              {paginatedUsers.map((user) => (
+              {users.map((user) => (
                 <TableRow key={user.cpf} className="hover:bg-muted/50">
                   {/* CPF */}
                   <TableCell className="w-[12%] font-mono text-sm">
@@ -228,32 +223,33 @@ export function UserTable({
         </div>
       </div>
 
-      {/* Paginação */}
-      {totalPages > 1 && (
+      {/* Paginação do Backend */}
+      {meta.total_pages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Mostrando {startIndex + 1} - {Math.min(endIndex, users.length)} de {users.length} usuários
+            Mostrando {((meta.page - 1) * (meta.page_size || 0)) + 1} - {Math.min(meta.page * (meta.page_size || 0), meta.total_rows)} de {meta.total_rows} usuários
+            {meta.cache_hit && <span className="ml-2 text-xs text-muted-foreground">(cache)</span>}
           </p>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
+              onClick={() => onPageChange(Math.max(1, meta.page - 1))}
+              disabled={meta.page === 1}
             >
               <ChevronLeft className="h-4 w-4" />
               Anterior
             </Button>
 
             <span className="text-sm px-2">
-              Página {currentPage} de {totalPages}
+              Página {meta.page} de {meta.total_pages}
             </span>
 
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => onPageChange(Math.min(meta.total_pages, meta.page + 1))}
+              disabled={meta.page === meta.total_pages}
             >
               Próxima
               <ChevronRight className="h-4 w-4" />

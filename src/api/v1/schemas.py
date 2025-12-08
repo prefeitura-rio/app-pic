@@ -66,6 +66,7 @@ class FilterOptionItem(BaseModel):
 class SmartFilterOptions(BaseModel):
     """Opções de filtros disponíveis baseadas nos dados filtrados"""
 
+    # Filtros de participantes
     bairros: List[FilterOptionItem] = []
     grupos: List[FilterOptionItem] = []
     cohorts: List[FilterOptionItem] = []
@@ -77,6 +78,12 @@ class SmartFilterOptions(BaseModel):
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
     clinicas: List[FilterOptionItem] = []
+
+    # Filtros de usuários (admin)
+    ocupacoes: List[FilterOptionItem] = []
+    secretarias: List[FilterOptionItem] = []
+    status_ativo: List[FilterOptionItem] = []
+    permissions: List[FilterOptionItem] = []
 
 
 # Shared / Nested Models

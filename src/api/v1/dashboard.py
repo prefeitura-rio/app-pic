@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Any
 import polars as pl
 
@@ -55,11 +55,23 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
 }
 
 
+def refresh_participants_cache():
+    """
+    Force refresh da participants cache.
+
+    Usa bypass_cache=True para forçar query no BigQuery e atualizar cache.
+    """
+    DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY, bypass_cache=True)
+    logger.info("🔄 Participants cache refreshed")
+
+
 @router.get(
     "/", summary="Métricas do Dashboard", response_model=PaginatedResponse[Dashboard]
 )
 async def get_dashboard_metrics(
-    permissions: CurrentUserPermissions, filters: CommonFilters = Depends()
+    permissions: CurrentUserPermissions,
+    filters: CommonFilters = Depends(),
+    bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ) -> Any:
     """
     Retorna métricas agregadas para o dashboard principal com suporte a filtros.
@@ -80,6 +92,12 @@ async def get_dashboard_metrics(
     logger.info("Fetching dashboard metrics with filters (using participants cache)")
     logger.info(f"🔑 Permissions: {permissions.model_dump(exclude_none=True)}")
     logger.info(f"☰ Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"🔄 Bypass Cache: {bypass_cache}")
+
+    # Force refresh do cache se solicitado
+    if bypass_cache:
+        logger.info("🔄 Bypass cache solicitado - forçando refresh")
+        refresh_participants_cache()
 
     try:
         # Converter filtros de API para colunas do DataFrame

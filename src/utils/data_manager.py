@@ -257,7 +257,28 @@ class DataManager:
 
             # Clean (NaN/Inf)
             clean_start = time.perf_counter()
-            df_clean = df_page.replace([np.inf, -np.inf, np.nan], None)
+
+            # IMPORTANTE: replace() falha em colunas com arrays (object dtype com listas)
+            # Precisamos processar apenas colunas sem arrays
+            object_cols = df_page.select_dtypes(include=["object"]).columns.tolist()
+            array_cols = []
+
+            # Identificar colunas que contêm arrays/listas
+            for col in object_cols:
+                sample = df_page[col].iloc[0] if len(df_page) > 0 else None
+                if sample is not None and isinstance(sample, (list, np.ndarray)):
+                    array_cols.append(col)
+
+            # Colunas seguras para replace (não arrays)
+            safe_cols = [c for c in df_page.columns if c not in array_cols]
+
+            # Replace apenas em colunas seguras
+            if safe_cols:
+                df_clean = df_page.copy()
+                df_clean[safe_cols] = df_clean[safe_cols].replace([np.inf, -np.inf, np.nan], None)
+            else:
+                df_clean = df_page.copy()
+
             df_clean.columns = df_clean.columns.astype(str)
             clean_time = time.perf_counter() - clean_start
 

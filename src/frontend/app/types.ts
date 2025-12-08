@@ -96,6 +96,7 @@ export interface FilterOptionItem {
 }
 
 export interface SmartFilterOptions {
+  // Filtros de participantes
   bairros: FilterOptionItem[];
   grupos: FilterOptionItem[];
   cohorts: FilterOptionItem[];
@@ -107,6 +108,12 @@ export interface SmartFilterOptions {
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
+
+  // Filtros de usuários (admin)
+  ocupacoes: FilterOptionItem[];
+  secretarias: FilterOptionItem[];
+  status_ativo: FilterOptionItem[];
+  permissions: FilterOptionItem[];
 }
 
 // ============================================================================

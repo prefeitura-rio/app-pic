@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useMemo, useTransition, startTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { OverviewTab } from "@/app/components/OverviewTab";
@@ -41,6 +42,7 @@ interface UserInfo {
  */
 export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // State para filtros e paginação
   const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
@@ -114,6 +116,70 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   }, []);
 
   /**
+   * Handle refresh with cache bypass (for Overview tab)
+   */
+  const handleOverviewRefresh = useCallback(async () => {
+    toast.info("Atualizando dados (forçando refresh do cache)...");
+
+    try {
+      // Construir query params com bypass_cache
+      const params = new URLSearchParams();
+      params.append("bypass_cache", "true");
+
+      // Adicionar filtros ativos
+      Object.entries(overviewFilters).forEach(([key, value]) => {
+        if (value && value !== "todos" && value !== "todas") {
+          params.append(key, value);
+        }
+      });
+
+      // Fazer chamada com bypass_cache
+      const url = `/api/proxy/api/v1/dashboard/?${params.toString()}`;
+      await fetch(url, { cache: "no-store" });
+
+      // Invalidar cache do React Query para forçar refetch
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch (error) {
+      toast.error("Erro ao atualizar dados", {
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+      });
+    }
+  }, [overviewFilters, queryClient]);
+
+  /**
+   * Handle refresh with cache bypass (for Professional tab)
+   */
+  const handleProfessionalRefresh = useCallback(async () => {
+    toast.info("Atualizando dados (forçando refresh do cache)...");
+
+    try {
+      // Construir query params com bypass_cache
+      const params = new URLSearchParams();
+      params.append("bypass_cache", "true");
+      params.append("page", professionalPage.toString());
+      params.append("page_size", "20");
+
+      // Adicionar filtros ativos
+      Object.entries(professionalFilters).forEach(([key, value]) => {
+        if (value && value !== "todos" && value !== "todas") {
+          params.append(key, value);
+        }
+      });
+
+      // Fazer chamada com bypass_cache
+      const url = `/api/proxy/api/v1/participants/?${params.toString()}`;
+      await fetch(url, { cache: "no-store" });
+
+      // Invalidar cache do React Query para forçar refetch
+      queryClient.invalidateQueries({ queryKey: ["participants"] });
+    } catch (error) {
+      toast.error("Erro ao atualizar dados", {
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+      });
+    }
+  }, [professionalFilters, professionalPage, queryClient]);
+
+  /**
    * Memoizar filter options vazias para evitar re-criação
    */
   const emptyFilterOptions = useMemo(() => ({
@@ -185,6 +251,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 filterOptions={dashboardResponse?.filters || emptyFilterOptions}
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
+                onRefresh={handleOverviewRefresh}
                 loading={dashboardLoading}
               />
             </TabsContent>
@@ -199,6 +266,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 filters={professionalFilters}
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
+                onRefresh={handleProfessionalRefresh}
                 loading={participantsLoading}
               />
             </TabsContent>

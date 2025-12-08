@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -12,17 +12,11 @@ import { UserTableSkeleton } from "@/app/components/admin/UserTableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { AlertCircle, Users, UserCog, Search, X, RefreshCw } from "lucide-react";
+import { AlertCircle, Users, UserCog, Search, X, RefreshCw, Filter } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -30,13 +24,17 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<"users" | "form">("users");
   const [editingUser, setEditingUser] = useState<UserAccessRecord | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
+
   // Filter states
-  const [filterCpf, setFilterCpf] = useState("");
-  const [filterNome, setFilterNome] = useState("");
   const [filterOcupacao, setFilterOcupacao] = useState("");
   const [filterSecretaria, setFilterSecretaria] = useState("");
-  const [filterPermission, setFilterPermission] = useState<string>("all"); // all, admin, super_admin, user
-  const [filterStatus, setFilterStatus] = useState<string>("all"); // all, active, inactive
+  const [filterPermission, setFilterPermission] = useState<string>(""); // empty = all (super_admin/admin/user)
+  const [filterStatus, setFilterStatus] = useState<string>(""); // empty = all
+  const [searchInput, setSearchInput] = useState(""); // Input do usuário
+  const [searchTerm, setSearchTerm] = useState(""); // Termo de busca ativo (enviado ao backend)
 
   // Fetch current user
   const {
@@ -48,57 +46,69 @@ export default function AdminPage() {
     retry: false,
   });
 
-  // Fetch users (always fetch all users, filter client-side)
+  // Fetch users with backend pagination and filtering
   const {
-    data: allUsers,
+    data: usersResponse,
     isLoading: usersLoading,
     error: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["admin", "users"],
-    queryFn: () => apiService.getUsers(false, false), // active_only = false, forceRefresh = false
+    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm],
+    queryFn: async ({ queryKey }) => {
+      // Construir query params (seguindo padrão de participants)
+      const params = new URLSearchParams();
+      params.append("page", currentPage.toString());
+      params.append("page_size", pageSize.toString());
+
+      // Filtro de status ativo/inativo
+      if (filterStatus && filterStatus !== "todos") {
+        params.append("active", filterStatus === "active" ? "true" : "false");
+      }
+
+      // Filtro de ocupação (valor direto do backend)
+      if (filterOcupacao && filterOcupacao !== "todas") {
+        params.append("ocupacao", filterOcupacao);
+      }
+
+      // Filtro de secretaria (valor direto do backend)
+      if (filterSecretaria && filterSecretaria !== "todas") {
+        params.append("secretaria", filterSecretaria);
+      }
+
+      // Filtro de permissão (valor direto: super_admin/admin/user)
+      if (filterPermission && filterPermission !== "todas") {
+        params.append("permission", filterPermission);
+      }
+
+      // Busca por CPF ou nome
+      if (searchTerm) {
+        params.append("search", searchTerm);
+      }
+
+      const url = `/api/proxy/api/v1/admin/users?${params.toString()}`;
+      const response = await fetch(url, { cache: "no-store" });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errorText}`);
+      }
+
+      return response.json();
+    },
     retry: false, // Don't retry on 403
+    staleTime: 5 * 60 * 1000, // 5 minutos (igual ao padrão da página principal)
+    placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (evita piscar)
   });
 
-  // Client-side filtering
-  const filteredUsers = allUsers?.filter((user) => {
-    // CPF filter
-    if (filterCpf && !user.cpf.includes(filterCpf.replace(/\D/g, ""))) {
-      return false;
-    }
-
-    // Nome filter
-    if (filterNome && !user.nome?.toLowerCase().includes(filterNome.toLowerCase())) {
-      return false;
-    }
-
-    // Ocupação filter
-    if (filterOcupacao && !user.ocupacao?.toLowerCase().includes(filterOcupacao.toLowerCase())) {
-      return false;
-    }
-
-    // Secretaria filter
-    if (filterSecretaria && !user.secretaria?.toLowerCase().includes(filterSecretaria.toLowerCase())) {
-      return false;
-    }
-
-    // Permission filter
-    if (filterPermission !== "all") {
-      if (filterPermission === "super_admin" && !user.is_super_admin) return false;
-      if (filterPermission === "admin" && (!user.is_admin || user.is_super_admin)) return false;
-      if (filterPermission === "user" && (user.is_admin || user.is_super_admin)) return false;
-    }
-
-    // Status filter
-    if (filterStatus !== "all") {
-      if (filterStatus === "active" && !user.active) return false;
-      if (filterStatus === "inactive" && user.active) return false;
-    }
-
-    return true;
-  }) || [];
-
-  const users = filteredUsers;
+  const users = Array.isArray(usersResponse?.data) ? usersResponse.data : [];
+  const meta = usersResponse?.meta ?? {
+    page: 1,
+    page_size: pageSize,
+    total_pages: 1,
+    total_rows: 0,
+    cache_hit: false,
+  };
+  const filterOptions = usersResponse?.filters ?? null;
 
   // Fetch available IDs
   const {
@@ -136,7 +146,7 @@ export default function AdminPage() {
   // Toggle user active status mutation
   const toggleActiveMutation = useMutation({
     mutationFn: ({ cpf, active }: { cpf: string; active: boolean }) =>
-      apiService.upsertUser(cpf, { active }),
+      apiService.upsertUser(cpf, { active, is_update: true } as any),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       const action = variables.active ? "ativado" : "desativado";
@@ -151,19 +161,28 @@ export default function AdminPage() {
     },
   });
 
-  // Force refresh mutation
-  const forceRefreshMutation = useMutation({
-    mutationFn: () => apiService.getUsers(false, true), // force_refresh = true
-    onSuccess: (data) => {
-      queryClient.setQueryData(["admin", "users"], data);
-      toast.success("Cache atualizado com sucesso!");
-    },
-    onError: (error: Error) => {
-      toast.error("Erro ao atualizar cache", {
-        description: error.message,
-      });
-    },
-  });
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  // Reset page when filters change
+  const handleFilterChange = () => {
+    setCurrentPage(1); // Resetar para primeira página
+  };
+
+  // Handle search button click
+  const handleSearch = () => {
+    setSearchTerm(searchInput);
+    setCurrentPage(1); // Reset to page 1
+  };
+
+  // Handle search input keypress (Enter to search)
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
 
   // Redirect if not admin (403 error)
   useEffect(() => {
@@ -199,6 +218,47 @@ export default function AdminPage() {
       is_update: isUpdate, // Indica ao backend se é atualização intencional
     };
     upsertUserMutation.mutate({ cpf, data: userData as Omit<CreateUserRequest, "cpf"> });
+  };
+
+  // Handle refresh with cache bypass
+  const handleRefreshWithBypass = async () => {
+    toast.info("Atualizando lista (forçando refresh do cache)...");
+
+    try {
+      // Construir query params com bypass_cache
+      const params = new URLSearchParams();
+      params.append("page", currentPage.toString());
+      params.append("page_size", pageSize.toString());
+      params.append("bypass_cache", "true");
+
+      // Filtros
+      if (filterStatus) {
+        params.append("active", filterStatus === "active" ? "true" : "false");
+      }
+      if (filterOcupacao) {
+        params.append("ocupacao", filterOcupacao);
+      }
+      if (filterSecretaria) {
+        params.append("secretaria", filterSecretaria);
+      }
+      if (filterPermission) {
+        params.append("permission", filterPermission);
+      }
+      if (searchTerm) {
+        params.append("search", searchTerm);
+      }
+
+      // Fazer chamada com bypass_cache
+      const url = `/api/proxy/api/v1/admin/users?${params.toString()}`;
+      await fetch(url, { cache: "no-store" });
+
+      // Invalidar cache do React Query para forçar refetch
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    } catch (error) {
+      toast.error("Erro ao atualizar lista", {
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+      });
+    }
   };
 
   // Loading state with skeletons
@@ -249,7 +309,7 @@ export default function AdminPage() {
   }
 
   // No data state
-  if (!users || !availableIds || !currentUser) {
+  if (!availableIds || !currentUser || !meta) {
     return null;
   }
 
@@ -292,14 +352,17 @@ export default function AdminPage() {
               <div className="text-sm font-medium text-muted-foreground">
                 Total de Usuários
               </div>
-              <div className="text-2xl font-bold mt-2">{allUsers?.length || 0}</div>
+              <div className="text-2xl font-bold mt-2">{meta.total_rows || 0}</div>
             </div>
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-medium text-muted-foreground">
                 Admins
               </div>
               <div className="text-2xl font-bold mt-2">
-                {allUsers?.filter((u) => u.is_admin).length || 0}
+                {users.filter((u) => u.is_admin).length || 0}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                (nesta página)
               </div>
             </div>
             <div className="rounded-lg border bg-card p-4">
@@ -307,143 +370,152 @@ export default function AdminPage() {
                 Super Admins
               </div>
               <div className="text-2xl font-bold mt-2">
-                {allUsers?.filter((u) => u.is_super_admin).length || 0}
+                {users.filter((u) => u.is_super_admin).length || 0}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                (nesta página)
               </div>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Search className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Filtros</h3>
+          <Card className="relative">
+            {usersLoading && (
+              <div className="absolute top-3 right-3 z-10">
+                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
               </div>
+            )}
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Filtros
+                {usersLoading && <span className="text-xs text-muted-foreground ml-2">(carregando...)</span>}
+              </CardTitle>
               <div className="flex gap-2">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => {
-                    toast.info("Forçando atualização do cache...");
-                    forceRefreshMutation.mutate();
+                    setFilterOcupacao("");
+                    setFilterSecretaria("");
+                    setFilterPermission("");
+                    setFilterStatus("");
+                    setSearchInput("");
+                    setSearchTerm("");
+                    handleFilterChange();
                   }}
-                  disabled={forceRefreshMutation.isPending}
+                  className="h-8 text-xs"
+                  disabled={usersLoading}
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${forceRefreshMutation.isPending ? "animate-spin" : ""}`} />
+                  Limpar Filtros
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefreshWithBypass}
+                  disabled={usersLoading}
+                  className="h-8 text-xs"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${usersLoading ? "animate-spin" : ""}`} />
                   Atualizar
                 </Button>
-                {(filterCpf || filterNome || filterOcupacao || filterSecretaria || filterPermission !== "all" || filterStatus !== "all") && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setFilterCpf("");
-                      setFilterNome("");
-                      setFilterOcupacao("");
-                      setFilterSecretaria("");
-                      setFilterPermission("all");
-                      setFilterStatus("all");
-                    }}
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Limpar filtros
-                  </Button>
-                )}
               </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              {/* CPF Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="filter-cpf" className="text-xs">CPF</Label>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-4">
+              {/* Busca */}
+              <div className="flex gap-2">
                 <Input
-                  id="filter-cpf"
-                  placeholder="000.000.000-00"
-                  value={filterCpf}
-                  onChange={(e) => setFilterCpf(e.target.value)}
-                  className="h-9"
+                  placeholder="Buscar por CPF ou nome..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyPress={handleSearchKeyPress}
+                  disabled={usersLoading}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSearch}
+                  disabled={usersLoading}
+                  size="default"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Buscar
+                </Button>
+              </div>
+
+              {/* Filtros */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                {/* Ocupação */}
+                <VirtualizedSelect
+                  value={filterOcupacao || "todas"}
+                  onSelect={(value) => {
+                    setFilterOcupacao(value === "todas" ? "" : value);
+                    handleFilterChange();
+                  }}
+                  disabled={usersLoading}
+                  placeholder="Ocupação"
+                  defaultLabel="Todas as Ocupações"
+                  options={filterOptions?.ocupacoes || []}
+                />
+
+                {/* Secretaria */}
+                <VirtualizedSelect
+                  value={filterSecretaria || "todas"}
+                  onSelect={(value) => {
+                    setFilterSecretaria(value === "todas" ? "" : value);
+                    handleFilterChange();
+                  }}
+                  disabled={usersLoading}
+                  placeholder="Secretaria"
+                  defaultLabel="Todas as Secretarias"
+                  options={filterOptions?.secretarias || []}
+                />
+
+                {/* Permissão */}
+                <VirtualizedSelect
+                  value={filterPermission || "todas"}
+                  onSelect={(value) => {
+                    setFilterPermission(value === "todas" ? "" : value);
+                    handleFilterChange();
+                  }}
+                  disabled={usersLoading}
+                  placeholder="Permissão"
+                  defaultLabel="Todas as Permissões"
+                  options={filterOptions?.permissions || []}
+                />
+
+                {/* Status */}
+                <VirtualizedSelect
+                  value={filterStatus || "todos"}
+                  onSelect={(value) => {
+                    setFilterStatus(value === "todos" ? "" : value);
+                    handleFilterChange();
+                  }}
+                  disabled={usersLoading}
+                  placeholder="Status"
+                  defaultLabel="Todos os Status"
+                  options={
+                    filterOptions?.status_ativo?.map((opt: any) => ({
+                      id: opt.id === "True" ? "active" : "inactive",
+                      label: opt.id === "True" ? "Ativo" : "Inativo",
+                    })) || []
+                  }
                 />
               </div>
 
-              {/* Nome Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="filter-nome" className="text-xs">Nome</Label>
-                <Input
-                  id="filter-nome"
-                  placeholder="Buscar por nome..."
-                  value={filterNome}
-                  onChange={(e) => setFilterNome(e.target.value)}
-                  className="h-9"
-                />
+              {/* Results count */}
+              <div className="text-sm text-muted-foreground">
+                Mostrando {users.length} de {meta.total_rows || 0} usuários
+                {meta.cache_hit && <span className="ml-2 text-green-600">(cache)</span>}
               </div>
-
-              {/* Ocupação Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="filter-ocupacao" className="text-xs">Ocupação</Label>
-                <Input
-                  id="filter-ocupacao"
-                  placeholder="Buscar por ocupação..."
-                  value={filterOcupacao}
-                  onChange={(e) => setFilterOcupacao(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-
-              {/* Secretaria Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="filter-secretaria" className="text-xs">Secretaria</Label>
-                <Input
-                  id="filter-secretaria"
-                  placeholder="Buscar por secretaria..."
-                  value={filterSecretaria}
-                  onChange={(e) => setFilterSecretaria(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-
-              {/* Permission Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="filter-permission" className="text-xs">Permissão</Label>
-                <Select value={filterPermission} onValueChange={setFilterPermission}>
-                  <SelectTrigger id="filter-permission" className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="user">Usuário</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Status Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="filter-status" className="text-xs">Status</Label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger id="filter-status" className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="active">Ativo</SelectItem>
-                    <SelectItem value="inactive">Inativo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Results count */}
-            <div className="mt-4 text-sm text-muted-foreground">
-              Mostrando {users.length} de {allUsers?.length || 0} usuários
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Users table */}
           <UserTable
             users={users}
             availableIds={availableIds}
             currentUserCpf={currentUser.cpf}
+            meta={meta}
             onEdit={handleEdit}
             onToggleActive={(cpf, currentActive) => {
               const action = currentActive ? "desativar" : "ativar";
@@ -451,6 +523,7 @@ export default function AdminPage() {
                 toggleActiveMutation.mutate({ cpf, active: !currentActive });
               }
             }}
+            onPageChange={handlePageChange}
             isToggling={toggleActiveMutation.isPending}
           />
         </TabsContent>
@@ -460,7 +533,7 @@ export default function AdminPage() {
           <UserForm
             availableIds={availableIds}
             currentUser={currentUser}
-            user={editingUser}
+            user={editingUser ?? undefined}
             onSubmit={handleSubmit}
             onCancel={handleCancel}
             isLoading={upsertUserMutation.isPending}

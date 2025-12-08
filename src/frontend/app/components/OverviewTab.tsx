@@ -1,5 +1,5 @@
 import { memo, useMemo, useCallback } from "react";
-import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home, Loader2, AlertTriangle, CheckCircle } from "lucide-react";
+import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home, Loader2, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
   Dashboard,
@@ -32,6 +32,7 @@ interface OverviewTabProps {
   filterOptions: SmartFilterOptions;
   filters: DashboardFilters;
   onFilterChange: (filters: DashboardFilters) => void;
+  onRefresh?: () => void;
   loading?: boolean;
 }
 
@@ -42,6 +43,7 @@ const OverviewTabComponent = ({
   filterOptions,
   filters,
   onFilterChange,
+  onRefresh,
   loading = false,
 }: OverviewTabProps) => {
 
@@ -121,15 +123,29 @@ const OverviewTabComponent = ({
             Filtros
             {loading && <span className="text-xs text-muted-foreground ml-2">(carregando...)</span>}
           </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearFilters}
-            className="h-8 text-xs"
-            disabled={loading}
-          >
-            Limpar Filtros
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-8 text-xs"
+              disabled={loading}
+            >
+              Limpar Filtros
+            </Button>
+            {onRefresh && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRefresh}
+                className="h-8 text-xs"
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-4">
           {/* Primeiro Nível - Filtros Principais */}
