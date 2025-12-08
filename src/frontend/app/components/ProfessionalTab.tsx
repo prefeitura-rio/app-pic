@@ -206,17 +206,18 @@ const ProfessionalTabComponent = ({
               Filtros Regionais
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* CAP */}
+              {/* EDUCAÇÃO */}
+              {/* Escolas */}
               <VirtualizedSelect
-                value={filters.cap || "todas"}
-                onSelect={(v) => handleFilterUpdate("cap", v)}
+                value={filters.escola || "todas"}
+                onSelect={(v) => handleFilterUpdate("escola", v)}
                 disabled={loading}
-                placeholder="CAP"
-                defaultLabel="Todas as CAPs"
-                options={filteredOptions.caps}
+                placeholder="Escola"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
               />
 
-              {/* CRE */}
+              {/* CRE (Coordenadoria Regional de Educação) */}
               <VirtualizedSelect
                 value={filters.cre || "todas"}
                 onSelect={(v) => handleFilterUpdate("cre", v)}
@@ -224,6 +225,17 @@ const ProfessionalTabComponent = ({
                 placeholder="CRE"
                 defaultLabel="Todas as CREs"
                 options={filteredOptions.cres}
+              />
+
+              {/* ASSISTÊNCIA SOCIAL */}
+              {/* CRAS */}
+              <VirtualizedSelect
+                value={filters.cras || "todas"}
+                onSelect={(v) => handleFilterUpdate("cras", v)}
+                disabled={loading}
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
               />
 
               {/* CAS */}
@@ -236,26 +248,17 @@ const ProfessionalTabComponent = ({
                 options={filteredOptions.cas_list}
               />
 
-              {/* Bairro */}
+              {/* CAP (Centro de Atenção Psicossocial) */}
               <VirtualizedSelect
-                value={filters.bairro || "todos"}
-                onSelect={(v) => handleFilterUpdate("bairro", v)}
+                value={filters.cap || "todas"}
+                onSelect={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
-                placeholder="Bairro"
-                defaultLabel="Todos os Bairros"
-                options={filteredOptions.bairros}
+                placeholder="CAP"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.caps}
               />
 
-              {/* Escolas */}
-              <VirtualizedSelect
-                value={filters.escola || "todas"}
-                onSelect={(v) => handleFilterUpdate("escola", v)}
-                disabled={loading}
-                placeholder="Escola"
-                defaultLabel="Todas as Escolas"
-                options={filteredOptions.escolas}
-              />
-
+              {/* SAÚDE */}
               {/* Clínicas da Família */}
               <VirtualizedSelect
                 value={filters.clinica || "todas"}
@@ -266,14 +269,15 @@ const ProfessionalTabComponent = ({
                 options={filteredOptions.clinicas}
               />
 
-              {/* CRAS */}
+              {/* LOCALIZAÇÃO */}
+              {/* Bairro */}
               <VirtualizedSelect
-                value={filters.cras || "todas"}
-                onSelect={(v) => handleFilterUpdate("cras", v)}
+                value={filters.bairro || "todos"}
+                onSelect={(v) => handleFilterUpdate("bairro", v)}
                 disabled={loading}
-                placeholder="CRAS"
-                defaultLabel="Todos os CRAS"
-                options={filteredOptions.cras}
+                placeholder="Bairro"
+                defaultLabel="Todos os Bairros"
+                options={filteredOptions.bairros}
               />
             </div>
           </div>

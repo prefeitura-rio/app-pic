@@ -77,6 +77,7 @@ const OverviewTabComponent = ({
   const filteredOptions = useMemo(() => ({
     grupos: filterOptions.grupos.filter((item) => item.id && item.id.trim() !== ""),
     status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
+    situacoes: filterOptions.situacoes.filter((item) => item.id && item.id.trim() !== ""),
     cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
     caps: filterOptions.caps.filter((item) => item.id && item.id.trim() !== ""),
     cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
@@ -136,7 +137,7 @@ const OverviewTabComponent = ({
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Filtros Principais
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               {/* Grupo */}
               <VirtualizedSelect
                 value={filters.grupo || "todos"}
@@ -145,16 +146,6 @@ const OverviewTabComponent = ({
                 placeholder="Grupo"
                 defaultLabel="Todos os Grupos"
                 options={filteredOptions.grupos}
-              />
-
-              {/* Safra */}
-              <VirtualizedSelect
-                value={filters.safra || "todas"}
-                onSelect={(v) => handleFilterUpdate("safra", v)}
-                disabled={loading}
-                placeholder="Safra"
-                defaultLabel="Todas as Safras"
-                options={filteredOptions.cohorts}
               />
 
               {/* Status */}
@@ -166,6 +157,26 @@ const OverviewTabComponent = ({
                 defaultLabel="Todos os Status"
                 options={filteredOptions.status_list}
               />
+
+              {/* Situação */}
+              <VirtualizedSelect
+                value={filters.situacao || "todas"}
+                onSelect={(v) => handleFilterUpdate("situacao", v)}
+                disabled={loading}
+                placeholder="Situação"
+                defaultLabel="Todas as Situações"
+                options={filteredOptions.situacoes}
+              />
+
+              {/* Safra */}
+              <VirtualizedSelect
+                value={filters.safra || "todas"}
+                onSelect={(v) => handleFilterUpdate("safra", v)}
+                disabled={loading}
+                placeholder="Safra"
+                defaultLabel="Todas as Safras"
+                options={filteredOptions.cohorts}
+              />
             </div>
           </div>
 
@@ -175,17 +186,18 @@ const OverviewTabComponent = ({
               Filtros Regionais
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {/* CAP */}
+              {/* EDUCAÇÃO */}
+              {/* Escolas */}
               <VirtualizedSelect
-                value={filters.cap || "todas"}
-                onSelect={(v) => handleFilterUpdate("cap", v)}
+                value={filters.escola || "todas"}
+                onSelect={(v) => handleFilterUpdate("escola", v)}
                 disabled={loading}
-                placeholder="CAP"
-                defaultLabel="Todas as CAPs"
-                options={filteredOptions.caps}
+                placeholder="Escola"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
               />
 
-              {/* CRE (Educação) */}
+              {/* CRE (Coordenadoria Regional de Educação) */}
               <VirtualizedSelect
                 value={filters.cre || "todas"}
                 onSelect={(v) => handleFilterUpdate("cre", v)}
@@ -193,6 +205,17 @@ const OverviewTabComponent = ({
                 placeholder="CRE"
                 defaultLabel="Todas as CREs"
                 options={filteredOptions.cres}
+              />
+
+              {/* ASSISTÊNCIA SOCIAL */}
+              {/* CRAS */}
+              <VirtualizedSelect
+                value={filters.cras || "todas"}
+                onSelect={(v) => handleFilterUpdate("cras", v)}
+                disabled={loading}
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
               />
 
               {/* CAS */}
@@ -205,26 +228,17 @@ const OverviewTabComponent = ({
                 options={filteredOptions.cas_list}
               />
 
-              {/* Bairro */}
+              {/* CAP (Centro de Atenção Psicossocial) */}
               <VirtualizedSelect
-                value={filters.bairro || "todos"}
-                onSelect={(v) => handleFilterUpdate("bairro", v)}
+                value={filters.cap || "todas"}
+                onSelect={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
-                placeholder="Bairro"
-                defaultLabel="Todos os Bairros"
-                options={filteredOptions.bairros}
+                placeholder="CAP"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.caps}
               />
 
-              {/* Escolas */}
-              <VirtualizedSelect
-                value={filters.escola || "todas"}
-                onSelect={(v) => handleFilterUpdate("escola", v)}
-                disabled={loading}
-                placeholder="Escola"
-                defaultLabel="Todas as Escolas"
-                options={filteredOptions.escolas}
-              />
-
+              {/* SAÚDE */}
               {/* Clínicas da Família */}
               <VirtualizedSelect
                 value={filters.clinica || "todas"}
@@ -235,14 +249,15 @@ const OverviewTabComponent = ({
                 options={filteredOptions.clinicas}
               />
 
-              {/* CRAS */}
+              {/* LOCALIZAÇÃO */}
+              {/* Bairro */}
               <VirtualizedSelect
-                value={filters.cras || "todas"}
-                onSelect={(v) => handleFilterUpdate("cras", v)}
+                value={filters.bairro || "todos"}
+                onSelect={(v) => handleFilterUpdate("bairro", v)}
                 disabled={loading}
-                placeholder="CRAS"
-                defaultLabel="Todos os CRAS"
-                options={filteredOptions.cras}
+                placeholder="Bairro"
+                defaultLabel="Todos os Bairros"
+                options={filteredOptions.bairros}
               />
             </div>
           </div>

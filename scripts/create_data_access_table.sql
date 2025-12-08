@@ -1,12 +1,21 @@
--- ============================================================================
--- Script para criar a tabela data_access (STANDALONE)
--- ============================================================================
--- Execute este script no BigQuery Console se preferir criar manualmente
--- NOTA: O script bootstrap_super_admin.py já cria a tabela automaticamente
--- ============================================================================
+-- Tabela de governança para controle de acesso por CPF
+--
+-- Para criar:
+--   Execute este SQL no console do BigQuery
+--   Ou use: bq query --use_legacy_sql=false < scripts/create_data_access_table.sql
+--
+-- Para dropar e recriar:
+--   DROP TABLE IF EXISTS `rj-pic-dev.app_pequenos_cariocas.data_access`;
+--   Depois execute este arquivo
 
-CREATE TABLE `rj-pic-dev.app_pequenos_cariocas.data_access` (
+CREATE TABLE IF NOT EXISTS `rj-pic-dev.app_pequenos_cariocas.data_access` (
+  -- Identificação do usuário
   cpf STRING NOT NULL,
+  nome STRING,
+  ocupacao STRING,  -- Ex: Coordenador, Assistente Social, Diretor
+  secretaria STRING,  -- Ex: SMAS, SME, SMS
+
+  -- Permissões administrativas
   is_admin BOOLEAN NOT NULL,
   is_super_admin BOOLEAN NOT NULL,
 
@@ -31,16 +40,5 @@ CREATE TABLE `rj-pic-dev.app_pequenos_cariocas.data_access` (
 PARTITION BY DATE(created_at)
 CLUSTER BY cpf, active
 OPTIONS(
-  description="Tabela de governança - controle de acesso por CPF"
+  description="Tabela de governança - controle de acesso por CPF com informações do usuário"
 );
-
--- ============================================================================
--- NOTA SOBRE DEFAULT VALUES
--- ============================================================================
--- BigQuery não suporta DEFAULT na definição de colunas via DDL
--- Os valores padrão são aplicados no código da aplicação:
--- - is_admin: FALSE (aplicado no backend)
--- - is_super_admin: FALSE (aplicado no backend)
--- - active: TRUE (aplicado no backend)
--- - created_at: CURRENT_TIMESTAMP() (aplicado no INSERT)
--- ============================================================================

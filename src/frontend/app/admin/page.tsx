@@ -12,15 +12,31 @@ import { UserTableSkeleton } from "@/app/components/admin/UserTableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { Plus, RefreshCw, AlertCircle, Users, UserCog } from "lucide-react";
+import { AlertCircle, Users, UserCog, Search, X, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function AdminPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"users" | "form">("users");
   const [editingUser, setEditingUser] = useState<UserAccessRecord | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
+
+  // Filter states
+  const [filterCpf, setFilterCpf] = useState("");
+  const [filterNome, setFilterNome] = useState("");
+  const [filterOcupacao, setFilterOcupacao] = useState("");
+  const [filterSecretaria, setFilterSecretaria] = useState("");
+  const [filterPermission, setFilterPermission] = useState<string>("all"); // all, admin, super_admin, user
+  const [filterStatus, setFilterStatus] = useState<string>("all"); // all, active, inactive
 
   // Fetch current user
   const {
@@ -32,17 +48,57 @@ export default function AdminPage() {
     retry: false,
   });
 
-  // Fetch users
+  // Fetch users (always fetch all users, filter client-side)
   const {
-    data: users,
+    data: allUsers,
     isLoading: usersLoading,
     error: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["admin", "users", showInactive],
-    queryFn: () => apiService.getUsers(showInactive ? false : true), // active_only parameter
+    queryKey: ["admin", "users"],
+    queryFn: () => apiService.getUsers(false, false), // active_only = false, forceRefresh = false
     retry: false, // Don't retry on 403
   });
+
+  // Client-side filtering
+  const filteredUsers = allUsers?.filter((user) => {
+    // CPF filter
+    if (filterCpf && !user.cpf.includes(filterCpf.replace(/\D/g, ""))) {
+      return false;
+    }
+
+    // Nome filter
+    if (filterNome && !user.nome?.toLowerCase().includes(filterNome.toLowerCase())) {
+      return false;
+    }
+
+    // Ocupação filter
+    if (filterOcupacao && !user.ocupacao?.toLowerCase().includes(filterOcupacao.toLowerCase())) {
+      return false;
+    }
+
+    // Secretaria filter
+    if (filterSecretaria && !user.secretaria?.toLowerCase().includes(filterSecretaria.toLowerCase())) {
+      return false;
+    }
+
+    // Permission filter
+    if (filterPermission !== "all") {
+      if (filterPermission === "super_admin" && !user.is_super_admin) return false;
+      if (filterPermission === "admin" && (!user.is_admin || user.is_super_admin)) return false;
+      if (filterPermission === "user" && (user.is_admin || user.is_super_admin)) return false;
+    }
+
+    // Status filter
+    if (filterStatus !== "all") {
+      if (filterStatus === "active" && !user.active) return false;
+      if (filterStatus === "inactive" && user.active) return false;
+    }
+
+    return true;
+  }) || [];
+
+  const users = filteredUsers;
 
   // Fetch available IDs
   const {
@@ -95,6 +151,20 @@ export default function AdminPage() {
     },
   });
 
+  // Force refresh mutation
+  const forceRefreshMutation = useMutation({
+    mutationFn: () => apiService.getUsers(false, true), // force_refresh = true
+    onSuccess: (data) => {
+      queryClient.setQueryData(["admin", "users"], data);
+      toast.success("Cache atualizado com sucesso!");
+    },
+    onError: (error: Error) => {
+      toast.error("Erro ao atualizar cache", {
+        description: error.message,
+      });
+    },
+  });
+
   // Redirect if not admin (403 error)
   useEffect(() => {
     if (usersError && usersError.message.includes("403")) {
@@ -122,8 +192,12 @@ export default function AdminPage() {
 
   // Handle submit
   const handleSubmit = (data: CreateUserRequest | UpdateUserRequest) => {
-    const cpf = editingUser ? editingUser.cpf : (data as CreateUserRequest).cpf;
-    const userData = editingUser ? data : { ...data, cpf: undefined };
+    const isUpdate = editingUser !== null;
+    const cpf = isUpdate ? editingUser.cpf : (data as CreateUserRequest).cpf;
+    const userData = {
+      ...(isUpdate ? data : { ...data, cpf: undefined }),
+      is_update: isUpdate, // Indica ao backend se é atualização intencional
+    };
     upsertUserMutation.mutate({ cpf, data: userData as Omit<CreateUserRequest, "cpf"> });
   };
 
@@ -212,54 +286,20 @@ export default function AdminPage() {
 
         {/* Users Tab */}
         <TabsContent value="users" className="space-y-6">
-          {/* Action buttons */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button
-                variant={showInactive ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowInactive(!showInactive)}
-              >
-                {showInactive ? "Exibir apenas ativos" : "Exibir inativos também"}
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  refetchUsers();
-                  toast.info("Atualizando lista de usuários...");
-                }}
-                disabled={usersLoading}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${usersLoading ? "animate-spin" : ""}`} />
-                Atualizar
-              </Button>
-              <Button
-                onClick={handleCreate}
-                size="sm"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Usuário
-              </Button>
-            </div>
-          </div>
-
           {/* Stats */}
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-medium text-muted-foreground">
                 Total de Usuários
               </div>
-              <div className="text-2xl font-bold mt-2">{users.length}</div>
+              <div className="text-2xl font-bold mt-2">{allUsers?.length || 0}</div>
             </div>
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-medium text-muted-foreground">
                 Admins
               </div>
               <div className="text-2xl font-bold mt-2">
-                {users.filter((u) => u.is_admin).length}
+                {allUsers?.filter((u) => u.is_admin).length || 0}
               </div>
             </div>
             <div className="rounded-lg border bg-card p-4">
@@ -267,8 +307,135 @@ export default function AdminPage() {
                 Super Admins
               </div>
               <div className="text-2xl font-bold mt-2">
-                {users.filter((u) => u.is_super_admin).length}
+                {allUsers?.filter((u) => u.is_super_admin).length || 0}
               </div>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Filtros</h3>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    toast.info("Forçando atualização do cache...");
+                    forceRefreshMutation.mutate();
+                  }}
+                  disabled={forceRefreshMutation.isPending}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${forceRefreshMutation.isPending ? "animate-spin" : ""}`} />
+                  Atualizar
+                </Button>
+                {(filterCpf || filterNome || filterOcupacao || filterSecretaria || filterPermission !== "all" || filterStatus !== "all") && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFilterCpf("");
+                      setFilterNome("");
+                      setFilterOcupacao("");
+                      setFilterSecretaria("");
+                      setFilterPermission("all");
+                      setFilterStatus("all");
+                    }}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Limpar filtros
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* CPF Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-cpf" className="text-xs">CPF</Label>
+                <Input
+                  id="filter-cpf"
+                  placeholder="000.000.000-00"
+                  value={filterCpf}
+                  onChange={(e) => setFilterCpf(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              {/* Nome Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-nome" className="text-xs">Nome</Label>
+                <Input
+                  id="filter-nome"
+                  placeholder="Buscar por nome..."
+                  value={filterNome}
+                  onChange={(e) => setFilterNome(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              {/* Ocupação Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-ocupacao" className="text-xs">Ocupação</Label>
+                <Input
+                  id="filter-ocupacao"
+                  placeholder="Buscar por ocupação..."
+                  value={filterOcupacao}
+                  onChange={(e) => setFilterOcupacao(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              {/* Secretaria Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-secretaria" className="text-xs">Secretaria</Label>
+                <Input
+                  id="filter-secretaria"
+                  placeholder="Buscar por secretaria..."
+                  value={filterSecretaria}
+                  onChange={(e) => setFilterSecretaria(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              {/* Permission Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-permission" className="text-xs">Permissão</Label>
+                <Select value={filterPermission} onValueChange={setFilterPermission}>
+                  <SelectTrigger id="filter-permission" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="user">Usuário</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-status" className="text-xs">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger id="filter-status" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Results count */}
+            <div className="mt-4 text-sm text-muted-foreground">
+              Mostrando {users.length} de {allUsers?.length || 0} usuários
             </div>
           </div>
 
@@ -276,6 +443,7 @@ export default function AdminPage() {
           <UserTable
             users={users}
             availableIds={availableIds}
+            currentUserCpf={currentUser.cpf}
             onEdit={handleEdit}
             onToggleActive={(cpf, currentActive) => {
               const action = currentActive ? "desativar" : "ativar";

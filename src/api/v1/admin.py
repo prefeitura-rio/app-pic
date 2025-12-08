@@ -68,6 +68,9 @@ class UserAccessRecord(BaseModel):
     """Registro de acesso de um usuário (usado em GET /users)"""
 
     cpf: str
+    nome: Optional[str] = None
+    ocupacao: Optional[str] = None
+    secretaria: Optional[str] = None
     is_admin: bool = False
     is_super_admin: bool = False
 
@@ -89,6 +92,9 @@ class UserAccessRecord(BaseModel):
 class UpsertUserRequest(BaseModel):
     """Request para criar ou atualizar usuário (UPSERT)"""
 
+    nome: Optional[str] = None
+    ocupacao: Optional[str] = None
+    secretaria: Optional[str] = None
     is_admin: bool = False
     is_super_admin: bool = False  # Apenas super admins podem definir isso
 
@@ -101,6 +107,7 @@ class UpsertUserRequest(BaseModel):
 
     notes: Optional[str] = None
     active: bool = True
+    is_update: bool = False  # Se True, indica que é uma atualização intencional
 
 
 # Mantidos para compatibilidade (deprecated)
@@ -334,6 +341,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
 async def list_users(
     permissions: CurrentUserPermissions,
     active_only: bool = Query(True, description="Filtrar apenas usuários ativos"),
+    force_refresh: bool = Query(False, description="Forçar atualização do cache"),
 ):
     """
     Lista usuários que o admin pode gerenciar.
@@ -351,9 +359,13 @@ async def list_users(
     )
 
     try:
-        # Query da tabela de governança (usa cache do DataManager)
-        users_df, cache_hit = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
-        logger.info(f"Governance table fetched (cache_hit={cache_hit})")
+        # Query da tabela de governança (usa cache do DataManager, ou força refresh)
+        users_df, cache_hit = DataManager.get_dataset(
+            GOVERNANCE_TABLE_QUERY, bypass_cache=force_refresh
+        )
+        logger.info(
+            f"Governance table fetched (cache_hit={cache_hit}, force_refresh={force_refresh})"
+        )
 
         # Filtrar por status ativo se solicitado (em memória)
         if active_only:
@@ -466,11 +478,47 @@ async def upsert_user(
 
     logger.info(f"Admin {permissions.cpf} fazendo upsert do usuário {cpf}")
 
+    # Verificar se CPF já existe (usa cache da tabela de governança)
+    governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+    existing_user = governance_df[governance_df["cpf"] == cpf]
+    user_exists = not existing_user.empty
+
+    # PROTEÇÃO: Impedir criação acidental de usuário que já existe
+    if user_exists and not request.is_update:
+        nome_existente = existing_user.iloc[0].get("nome", "Sem nome")
+        raise HTTPException(
+            status_code=409,  # Conflict
+            detail=f"CPF {cpf} já está cadastrado no sistema (Usuário: {nome_existente}). Use a função de edição para atualizar este usuário.",
+        )
+
+    # PROTEÇÃO: Impedir edição de super admins
+    if user_exists:
+        is_target_super_admin = bool(existing_user.iloc[0]["is_super_admin"])
+        if is_target_super_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Super admins não podem ser editados via interface",
+            )
+
+    # PROTEÇÃO: Impedir que admin edite a si mesmo
+    if cpf == permissions.cpf:
+        raise HTTPException(
+            status_code=403,
+            detail="Você não pode editar suas próprias permissões",
+        )
+
     # Validar que apenas super admin pode definir is_super_admin
     if request.is_super_admin and not permissions.is_super_admin:
         raise HTTPException(
             status_code=403,
             detail="Apenas super admins podem criar ou promover outros super admins",
+        )
+
+    # PROTEÇÃO: Impedir criação de novos super admins
+    if request.is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Criação de super admins não é permitida via interface",
         )
 
     # Validar que admin pode atribuir esses IDs
@@ -485,10 +533,6 @@ async def upsert_user(
         }
     )
     validate_segmented_admin_can_manage(permissions, target_ids)
-
-    # Verificar se CPF já existe (usa cache da tabela de governança)
-    governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
-    user_exists = not governance_df[governance_df["cpf"] == cpf].empty
 
     # Converter listas de IDs para formato BigQuery
     id_cras_sql = _convert_id_list_to_bq_struct(request.id_cras_list)
@@ -509,9 +553,16 @@ async def upsert_user(
             # UPDATE - Usuário já existe
             logger.info(f"Atualizando usuário existente: {cpf}")
 
+            nome_sql = f"'{request.nome.replace(chr(39), chr(92)+chr(39))}'" if request.nome else "NULL"
+            ocupacao_sql = f"'{request.ocupacao.replace(chr(39), chr(92)+chr(39))}'" if request.ocupacao else "NULL"
+            secretaria_sql = f"'{request.secretaria.replace(chr(39), chr(92)+chr(39))}'" if request.secretaria else "NULL"
+
             query = f"""
             UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
             SET
+                nome = {nome_sql},
+                ocupacao = {ocupacao_sql},
+                secretaria = {secretaria_sql},
                 is_admin = {str(request.is_admin).upper()},
                 is_super_admin = {str(request.is_super_admin).upper()},
                 id_cras_list = {id_cras_sql},
@@ -535,10 +586,17 @@ async def upsert_user(
             # INSERT - Novo usuário
             logger.info(f"Criando novo usuário: {cpf}")
 
+            nome_sql = f"'{request.nome.replace(chr(39), chr(92)+chr(39))}'" if request.nome else "NULL"
+            ocupacao_sql = f"'{request.ocupacao.replace(chr(39), chr(92)+chr(39))}'" if request.ocupacao else "NULL"
+            secretaria_sql = f"'{request.secretaria.replace(chr(39), chr(92)+chr(39))}'" if request.secretaria else "NULL"
+
             query = f"""
             INSERT INTO `{PROJECT_ID}.{DATASET_ID}.data_access`
             (
                 cpf,
+                nome,
+                ocupacao,
+                secretaria,
                 is_admin,
                 is_super_admin,
                 id_cras_list,
@@ -554,6 +612,9 @@ async def upsert_user(
             )
             VALUES (
                 '{cpf}',
+                {nome_sql},
+                {ocupacao_sql},
+                {secretaria_sql},
                 {str(request.is_admin).upper()},
                 {str(request.is_super_admin).upper()},
                 {id_cras_sql},

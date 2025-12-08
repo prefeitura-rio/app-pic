@@ -323,6 +323,9 @@ export interface AvailableIds {
  */
 export interface UserAccessRecord {
   cpf: string;
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
   is_admin: boolean;
   is_super_admin: boolean;
 
@@ -346,6 +349,9 @@ export interface UserAccessRecord {
  */
 export interface CreateUserRequest {
   cpf: string;
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
 
@@ -357,12 +363,16 @@ export interface CreateUserRequest {
   id_clinica_familia_list?: IdWithName[] | null;
 
   notes?: string | null;
+  is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
 }
 
 /**
  * Update user request payload
  */
 export interface UpdateUserRequest {
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
   is_admin?: boolean | null;
   is_super_admin?: boolean | null;
 
@@ -375,4 +385,5 @@ export interface UpdateUserRequest {
 
   notes?: string | null;
   active?: boolean | null;
+  is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
 }

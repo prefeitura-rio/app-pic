@@ -76,6 +76,11 @@ export function VirtualizedIdMultiSelect({
     onChange([]);
   };
 
+  // Select all
+  const selectAll = () => {
+    onChange([...options]);
+  };
+
   // Virtualized row component
   interface CustomRowProps {
     options: IdWithName[];
@@ -121,38 +126,83 @@ export function VirtualizedIdMultiSelect({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
-        {selected.length > 0 && !disabled && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearAll}
-            className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Limpar todos
-          </Button>
+        {!disabled && (
+          <div className="flex gap-2">
+            {selected.length < options.length && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={selectAll}
+                className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Selecionar todos
+              </Button>
+            )}
+            {selected.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAll}
+                className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Limpar todos
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Selected items */}
+      {/* Selected items - Show summary for large selections */}
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/50 min-h-[2.5rem]">
-          {selected.map((item) => (
-            <Badge
-              key={item.id}
-              variant="secondary"
-              className="gap-1"
-            >
-              {item.nome}
-              {!disabled && (
-                <button
-                  onClick={() => removeItem(item)}
-                  className="ml-1 hover:text-destructive"
+        <div className="p-2 border rounded-md bg-muted/50">
+          {selected.length <= 10 ? (
+            // Show all badges if 10 or less
+            <div className="flex flex-wrap gap-1">
+              {selected.map((item) => (
+                <Badge
+                  key={item.id}
+                  variant="secondary"
+                  className="gap-1"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </Badge>
-          ))}
+                  {item.nome}
+                  {!disabled && (
+                    <button
+                      onClick={() => removeItem(item)}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            // Show summary for more than 10
+            <div className="flex items-center justify-between">
+              <div className="flex flex-wrap gap-1 flex-1">
+                {selected.slice(0, 5).map((item) => (
+                  <Badge
+                    key={item.id}
+                    variant="secondary"
+                    className="gap-1"
+                  >
+                    {item.nome}
+                    {!disabled && (
+                      <button
+                        onClick={() => removeItem(item)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </Badge>
+                ))}
+                <Badge variant="outline" className="bg-background">
+                  +{selected.length - 5} mais
+                </Badge>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

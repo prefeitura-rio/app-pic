@@ -209,11 +209,13 @@ export const apiService = {
    * Requires admin permission
    *
    * @param activeOnly - Filter only active users (default: true)
+   * @param forceRefresh - Force cache refresh (default: false)
    * @returns List of user access records
    */
-  async getUsers(activeOnly: boolean = true): Promise<UserAccessRecord[]> {
+  async getUsers(activeOnly: boolean = true, forceRefresh: boolean = false): Promise<UserAccessRecord[]> {
     const params = new URLSearchParams();
     params.append("active_only", activeOnly.toString());
+    params.append("force_refresh", forceRefresh.toString());
 
     const url = `${BASE_URL}/api/v1/admin/users?${params.toString()}`;
 

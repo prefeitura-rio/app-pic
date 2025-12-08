@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Loader2, ArrowLeft } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
 
 interface UserFormProps {
@@ -35,6 +35,9 @@ export function UserForm({
 
   // Form state
   const [cpf, setCpf] = useState("");
+  const [nome, setNome] = useState("");
+  const [ocupacao, setOcupacao] = useState("");
+  const [secretaria, setSecretaria] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [notes, setNotes] = useState("");
@@ -50,6 +53,9 @@ export function UserForm({
   useEffect(() => {
     if (user) {
       setCpf(user.cpf);
+      setNome(user.nome || "");
+      setOcupacao(user.ocupacao || "");
+      setSecretaria(user.secretaria || "");
       setIsAdmin(user.is_admin);
       setIsSuperAdmin(user.is_super_admin);
       setNotes(user.notes || "");
@@ -63,6 +69,9 @@ export function UserForm({
     } else {
       // Reset form
       setCpf("");
+      setNome("");
+      setOcupacao("");
+      setSecretaria("");
       setIsAdmin(false);
       setIsSuperAdmin(false);
       setNotes("");
@@ -95,6 +104,9 @@ export function UserForm({
     if (isEditMode) {
       // Update mode
       const updateData: UpdateUserRequest = {
+        nome: nome || null,
+        ocupacao: ocupacao || null,
+        secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
         id_cras_list: selectedCras.length > 0 ? selectedCras : null,
@@ -110,6 +122,9 @@ export function UserForm({
       // Create mode
       const createData: CreateUserRequest = {
         cpf,
+        nome: nome || null,
+        ocupacao: ocupacao || null,
+        secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
         id_cras_list: selectedCras.length > 0 ? selectedCras : null,
@@ -131,15 +146,6 @@ export function UserForm({
     <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          className="mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar para lista
-        </Button>
         <h2 className="text-2xl font-bold">
           {isEditMode ? "Editar Usuário" : "Novo Usuário"}
         </h2>
@@ -159,22 +165,64 @@ export function UserForm({
           </Alert>
         )}
 
-        {/* CPF */}
-        <div className="space-y-2">
-          <Label htmlFor="cpf">CPF</Label>
-          <Input
-            id="cpf"
-            placeholder="00000000000"
-            value={cpf.length === 11 ? formatCpf(cpf) : cpf}
-            onChange={(e) => handleCpfChange(e.target.value)}
-            disabled={isEditMode || isLoading}
-            required
-          />
-          <p className="text-xs text-muted-foreground">
-            {isEditMode
-              ? "O CPF não pode ser alterado"
-              : "Digite apenas números (11 dígitos)"}
-          </p>
+        {/* Informações do Usuário */}
+        <div className="space-y-4 rounded-lg border p-4">
+          <h3 className="text-sm font-medium mb-4">Informações do Usuário</h3>
+
+          {/* CPF */}
+          <div className="space-y-2">
+            <Label htmlFor="cpf">CPF *</Label>
+            <Input
+              id="cpf"
+              placeholder="00000000000"
+              value={cpf.length === 11 ? formatCpf(cpf) : cpf}
+              onChange={(e) => handleCpfChange(e.target.value)}
+              disabled={isEditMode || isLoading}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              {isEditMode
+                ? "O CPF não pode ser alterado"
+                : "Digite apenas números (11 dígitos)"}
+            </p>
+          </div>
+
+          {/* Nome */}
+          <div className="space-y-2">
+            <Label htmlFor="nome">Nome Completo</Label>
+            <Input
+              id="nome"
+              placeholder="Ex: Maria da Silva Santos"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+
+          {/* Ocupação e Secretaria */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="ocupacao">Ocupação</Label>
+              <Input
+                id="ocupacao"
+                placeholder="Ex: Coordenador, Assistente Social"
+                value={ocupacao}
+                onChange={(e) => setOcupacao(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="secretaria">Secretaria</Label>
+              <Input
+                id="secretaria"
+                placeholder="Ex: SMAS, SME, SMS"
+                value={secretaria}
+                onChange={(e) => setSecretaria(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Admin Permissions */}
@@ -203,34 +251,6 @@ export function UserForm({
             </div>
           </div>
 
-          {/* Is Super Admin Checkbox - Only visible to super admins */}
-          {canEditSuperAdmin && (
-            <div className="flex items-start gap-3 p-3 rounded-md bg-destructive/5 border border-destructive/20">
-              <Checkbox
-                id="is_super_admin"
-                checked={isSuperAdmin}
-                onCheckedChange={(checked) => {
-                  setIsSuperAdmin(checked as boolean);
-                  if (checked) {
-                    setIsAdmin(true); // Super admin é sempre admin também
-                  }
-                }}
-                disabled={isLoading}
-                className="mt-1"
-              />
-              <div className="flex-1 space-y-1">
-                <Label
-                  htmlFor="is_super_admin"
-                  className="text-sm font-medium leading-none text-destructive cursor-pointer"
-                >
-                  Super Admin
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Acesso total ao sistema e pode gerenciar qualquer usuário
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ID Selections */}
@@ -243,14 +263,8 @@ export function UserForm({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <VirtualizedIdMultiSelect
-              label="CRAS"
-              options={availableIds.cras}
-              selected={selectedCras}
-              onChange={setSelectedCras}
-              disabled={isLoading}
-            />
-
+            {/* EDUCAÇÃO */}
+            {/* Escolas */}
             <VirtualizedIdMultiSelect
               label="Escolas"
               options={availableIds.escolas}
@@ -259,6 +273,7 @@ export function UserForm({
               disabled={isLoading}
             />
 
+            {/* CRE (Coordenadoria Regional de Educação) */}
             <VirtualizedIdMultiSelect
               label="CRE (Coordenadoria Regional de Educação)"
               options={availableIds.cres}
@@ -267,14 +282,17 @@ export function UserForm({
               disabled={isLoading}
             />
 
+            {/* ASSISTÊNCIA SOCIAL */}
+            {/* CRAS */}
             <VirtualizedIdMultiSelect
-              label="CAP (Centro de Atenção Psicossocial)"
-              options={availableIds.caps}
-              selected={selectedCaps}
-              onChange={setSelectedCaps}
+              label="CRAS"
+              options={availableIds.cras}
+              selected={selectedCras}
+              onChange={setSelectedCras}
               disabled={isLoading}
             />
 
+            {/* CAS */}
             <VirtualizedIdMultiSelect
               label="CAS (Centros de Assistência Social)"
               options={availableIds.cas}
@@ -283,6 +301,17 @@ export function UserForm({
               disabled={isLoading}
             />
 
+            {/* CAP (Centro de Atenção Psicossocial) */}
+            <VirtualizedIdMultiSelect
+              label="CAP (Centro de Atenção Psicossocial)"
+              options={availableIds.caps}
+              selected={selectedCaps}
+              onChange={setSelectedCaps}
+              disabled={isLoading}
+            />
+
+            {/* SAÚDE */}
+            {/* Clínicas da Família */}
             <VirtualizedIdMultiSelect
               label="Clínicas da Família"
               options={availableIds.clinicas}
