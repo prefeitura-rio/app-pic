@@ -55,7 +55,7 @@ export default async function LoginPage({
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Left Side - Branding & Info */}
-      <div className="lg:w-1/2 bg-gradient-to-br from-primary via-primary to-primary-dark text-primary-foreground p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
+      <div className="lg:w-1/2 bg-primary text-primary-foreground p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
         {/* Decorative background elements */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
