@@ -176,6 +176,21 @@ def _filter_manageable_users(
     logger.info(f"  - CAS: {len(admin_permissions.id_cas_list or [])}")
     logger.info(f"  - Clínicas: {len(admin_permissions.id_clinica_familia_list or [])}")
 
+    # REGRA: Admin sem nenhum ID não pode gerenciar usuários
+    # (apenas super admin pode gerenciar sem restrição)
+    has_any_ids = any([
+        admin_permissions.id_cras_list,
+        admin_permissions.id_escola_list,
+        admin_permissions.id_cre_list,
+        admin_permissions.id_cap_list,
+        admin_permissions.id_cas_list,
+        admin_permissions.id_clinica_familia_list
+    ])
+
+    if not has_any_ids:
+        logger.warning(f"❌ Admin {admin_permissions.cpf} não possui nenhum ID - não pode gerenciar usuários")
+        return df.iloc[0:0]  # Retorna DataFrame vazio
+
     # Lista para armazenar índices de usuários gerenciáveis
     manageable_indices = []
 
@@ -274,6 +289,23 @@ def validate_segmented_admin_can_manage(
 
     logger.info(f"🔍 Validando atribuição de IDs por admin {admin_permissions.cpf}")
     logger.info(f"   IDs sendo atribuídos: {list(target_ids.keys())}")
+
+    # REGRA: Admin sem nenhum ID não pode atribuir IDs a outros usuários
+    has_any_ids = any([
+        admin_permissions.id_cras_list,
+        admin_permissions.id_escola_list,
+        admin_permissions.id_cre_list,
+        admin_permissions.id_cap_list,
+        admin_permissions.id_cas_list,
+        admin_permissions.id_clinica_familia_list
+    ])
+
+    if not has_any_ids and target_ids:
+        logger.warning(f"   ❌ BLOQUEADO: Admin sem IDs tentando atribuir IDs")
+        raise HTTPException(
+            status_code=403,
+            detail="Você não possui IDs para distribuir. Apenas super admins podem criar usuários com IDs sem possuir IDs próprios.",
+        )
 
     # Validar cada tipo de ID
     for id_type in [
