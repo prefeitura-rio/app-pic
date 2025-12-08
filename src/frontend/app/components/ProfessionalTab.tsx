@@ -28,6 +28,7 @@ import {
   Filter,
   Loader2,
   Eye,
+  RefreshCw,
 } from "lucide-react";
 
 interface ProfessionalTabProps {
@@ -37,6 +38,7 @@ interface ProfessionalTabProps {
   filters: ParticipantFilters;
   onFilterChange: (filters: ParticipantFilters) => void;
   onPageChange: (page: number) => void;
+  onRefresh?: () => void;
   loading?: boolean;
 }
 
@@ -49,6 +51,7 @@ const ProfessionalTabComponent = ({
   filters,
   onFilterChange,
   onPageChange,
+  onRefresh,
   loading = false,
 }: ProfessionalTabProps) => {
   const [searchInput, setSearchInput] = useState("");
@@ -65,12 +68,20 @@ const ProfessionalTabComponent = ({
     });
   }, [filters, onFilterChange]);
 
+  // Sanitize search input (remove special chars and trim)
+  const sanitizeSearchInput = useCallback((input: string): string => {
+    return input
+      .replace(/[.\-]/g, "") // Remove pontos e hífens (útil para CPF)
+      .trim(); // Remove espaços em branco no início e fim
+  }, []);
+
   const handleSearch = useCallback(() => {
+    const sanitized = sanitizeSearchInput(searchInput);
     onFilterChange({
       ...filters,
-      search: searchInput,
+      search: sanitized,
     });
-  }, [filters, searchInput, onFilterChange]);
+  }, [filters, searchInput, onFilterChange, sanitizeSearchInput]);
 
   const clearFilters = useCallback(() => {
     setSearchInput("");
@@ -113,39 +124,49 @@ const ProfessionalTabComponent = ({
         </p>
       </div>
 
-      {/* Search and Filters */}
-      <Card className="border-2 relative">
-        {/* Indicador de loading nos filtros */}
-        {loading && (
-          <div className="absolute top-3 right-3 z-10">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          </div>
-        )}
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-primary" />
-            Busca e Filtros
-            {loading && <span className="text-xs text-muted-foreground">(carregando...)</span>}
+      {/* Filtros */}
+      <Card className="relative">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            Filtros
           </CardTitle>
-          <Button variant="outline" size="sm" onClick={clearFilters} disabled={loading}>
-            Limpar Tudo
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Search Input */}
           <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Buscar por CPF ou Nome..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="pl-10"
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-8 text-xs"
+              disabled={loading}
+            >
+              Limpar Filtros
+            </Button>
+            {onRefresh && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRefresh}
+                className="h-8 text-xs"
                 disabled={loading}
-              />
-            </div>
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          {/* Busca */}
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="Buscar por CPF ou nome..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="flex-1"
+              disabled={loading}
+            />
             <Button onClick={handleSearch} disabled={loading}>
               <Search className="h-4 w-4 mr-2" />
               Buscar
@@ -206,17 +227,18 @@ const ProfessionalTabComponent = ({
               Filtros Regionais
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* CAP */}
+              {/* EDUCAÇÃO */}
+              {/* Escolas */}
               <VirtualizedSelect
-                value={filters.cap || "todas"}
-                onSelect={(v) => handleFilterUpdate("cap", v)}
+                value={filters.escola || "todas"}
+                onSelect={(v) => handleFilterUpdate("escola", v)}
                 disabled={loading}
-                placeholder="CAP"
-                defaultLabel="Todas as CAPs"
-                options={filteredOptions.caps}
+                placeholder="Escola"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
               />
 
-              {/* CRE */}
+              {/* CRE (Coordenadoria Regional de Educação) */}
               <VirtualizedSelect
                 value={filters.cre || "todas"}
                 onSelect={(v) => handleFilterUpdate("cre", v)}
@@ -224,6 +246,17 @@ const ProfessionalTabComponent = ({
                 placeholder="CRE"
                 defaultLabel="Todas as CREs"
                 options={filteredOptions.cres}
+              />
+
+              {/* ASSISTÊNCIA SOCIAL */}
+              {/* CRAS */}
+              <VirtualizedSelect
+                value={filters.cras || "todas"}
+                onSelect={(v) => handleFilterUpdate("cras", v)}
+                disabled={loading}
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
               />
 
               {/* CAS */}
@@ -236,26 +269,17 @@ const ProfessionalTabComponent = ({
                 options={filteredOptions.cas_list}
               />
 
-              {/* Bairro */}
+              {/* CAP (Centro de Atenção Psicossocial) */}
               <VirtualizedSelect
-                value={filters.bairro || "todos"}
-                onSelect={(v) => handleFilterUpdate("bairro", v)}
+                value={filters.cap || "todas"}
+                onSelect={(v) => handleFilterUpdate("cap", v)}
                 disabled={loading}
-                placeholder="Bairro"
-                defaultLabel="Todos os Bairros"
-                options={filteredOptions.bairros}
+                placeholder="CAP"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.caps}
               />
 
-              {/* Escolas */}
-              <VirtualizedSelect
-                value={filters.escola || "todas"}
-                onSelect={(v) => handleFilterUpdate("escola", v)}
-                disabled={loading}
-                placeholder="Escola"
-                defaultLabel="Todas as Escolas"
-                options={filteredOptions.escolas}
-              />
-
+              {/* SAÚDE */}
               {/* Clínicas da Família */}
               <VirtualizedSelect
                 value={filters.clinica || "todas"}
@@ -266,14 +290,15 @@ const ProfessionalTabComponent = ({
                 options={filteredOptions.clinicas}
               />
 
-              {/* CRAS */}
+              {/* LOCALIZAÇÃO */}
+              {/* Bairro */}
               <VirtualizedSelect
-                value={filters.cras || "todas"}
-                onSelect={(v) => handleFilterUpdate("cras", v)}
+                value={filters.bairro || "todos"}
+                onSelect={(v) => handleFilterUpdate("bairro", v)}
                 disabled={loading}
-                placeholder="CRAS"
-                defaultLabel="Todos os CRAS"
-                options={filteredOptions.cras}
+                placeholder="Bairro"
+                defaultLabel="Todos os Bairros"
+                options={filteredOptions.bairros}
               />
             </div>
           </div>
@@ -300,27 +325,19 @@ const ProfessionalTabComponent = ({
         </Card>
       ) : displayData.length > 0 ? (
         <Card className="border-2 relative">
-          {/* Loading overlay durante refetch */}
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/70 z-20 rounded-lg">
-              <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Atualizando dados...</p>
-              </div>
-            </div>
-          )}
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-6 w-6 text-primary" />
               Lista de Participantes
             </CardTitle>
           </CardHeader>
-          <CardContent className={loading ? 'opacity-50 pointer-events-none' : ''}>
+          <CardContent>
             {/* OTIMIZAÇÃO: Tabela virtualizada para performance com muitos dados */}
             <VirtualizedParticipantTable
               data={displayData}
               onRowClick={setSelectedParticipant}
               getBadgeVariant={getBadgeVariant}
+              isLoading={loading}
             />
 
             {/* Pagination */}

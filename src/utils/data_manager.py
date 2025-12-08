@@ -100,6 +100,8 @@ class DataManager:
         filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
         search_term: Optional[str] = None,
         search_columns: Optional[list[str]] = None,
+        user_permissions=None,  # NOVO: Optional[UserPermissions]
+        bypass_cache: bool = False,  # NOVO: Força query no BigQuery
     ) -> tuple[pd.DataFrame, PaginationMeta, Optional[SmartFilterOptions]]:
         """
         Executa pipeline completo de fetch → filter → filter_options → paginate.
@@ -185,11 +187,20 @@ class DataManager:
 
         # 1. GET DATASET (cache + DataFrame conversion)
         get_start = time.perf_counter()
-        df, cache_hit = DataManager.get_dataset(query)
+        df, cache_hit = DataManager.get_dataset(query, bypass_cache=bypass_cache)
         get_time = time.perf_counter() - get_start
         profiling.get_dataset_s = round(get_time, config.PROFILING_DECIMAL_PLACES)
         profiling.cache_hit = cache_hit
         profiling.rows_before_filter = len(df)
+
+        # 1.5. APPLY GOVERNANCE FILTERS (FIRST, before everything else)
+        # CRITICAL: Applied AFTER cache to not affect shared cache
+        if user_permissions:
+            governance_start = time.perf_counter()
+            df = DataManager.apply_governance_filters(df, user_permissions)
+            governance_time = time.perf_counter() - governance_start
+            logger.info(f"⚖️ Governance filters applied in {governance_time:.3f}s")
+            profiling.rows_before_filter = len(df)  # Update count after governance
 
         # 2. APPLY FILTERS
         filter_start = time.perf_counter()
@@ -247,7 +258,30 @@ class DataManager:
 
             # Clean (NaN/Inf)
             clean_start = time.perf_counter()
-            df_clean = df_page.replace([np.inf, -np.inf, np.nan], None)
+
+            # IMPORTANTE: replace() falha em colunas com arrays (object dtype com listas)
+            # Precisamos processar apenas colunas sem arrays
+            object_cols = df_page.select_dtypes(include=["object"]).columns.tolist()
+            array_cols = []
+
+            # Identificar colunas que contêm arrays/listas
+            for col in object_cols:
+                sample = df_page[col].iloc[0] if len(df_page) > 0 else None
+                if sample is not None and isinstance(sample, (list, np.ndarray)):
+                    array_cols.append(col)
+
+            # Colunas seguras para replace (não arrays)
+            safe_cols = [c for c in df_page.columns if c not in array_cols]
+
+            # Replace apenas em colunas seguras
+            if safe_cols:
+                df_clean = df_page.copy()
+                df_clean[safe_cols] = df_clean[safe_cols].replace(
+                    [np.inf, -np.inf, np.nan], None
+                )
+            else:
+                df_clean = df_page.copy()
+
             df_clean.columns = df_clean.columns.astype(str)
             clean_time = time.perf_counter() - clean_start
 
@@ -299,18 +333,21 @@ class DataManager:
         )
 
     @staticmethod
-    def get_dataset(query: str) -> tuple[pd.DataFrame, bool]:
+    def get_dataset(
+        query: str, bypass_cache: bool = False
+    ) -> tuple[pd.DataFrame, bool]:
         """
         Busca dataset completo do cache ou BigQuery.
 
         Fluxo:
             1. Tenta buscar do cache persistente (~0.001s se hit)
-            2. Se miss, busca do BigQuery (~2-3s)
+            2. Se miss (ou bypass_cache=True), busca do BigQuery (~2-3s)
             3. Armazena no cache para próximas requests
             4. Converte para DataFrame
 
         Args:
             query: SQL completa para buscar dados
+            bypass_cache: Se True, ignora cache e força query no BigQuery
 
         Returns:
             Tuple de (DataFrame, cache_hit: bool)
@@ -324,9 +361,9 @@ class DataManager:
         """
         start_time = time.perf_counter()
 
-        # 1. Try to get data from persistent cache
+        # 1. Try to get data from persistent cache (unless bypassing)
         cache_start = time.perf_counter()
-        raw_data = query_cache.get(query)
+        raw_data = None if bypass_cache else query_cache.get(query)
         cache_time = time.perf_counter() - cache_start
 
         cache_hit = raw_data is not None
@@ -362,15 +399,32 @@ class DataManager:
             optimize_start = time.perf_counter()
 
             for col in df.select_dtypes(include=["object"]).columns:
-                # Converter para category se a cardinalidade for baixa (< 50% unique)
-                num_unique = df[col].nunique()
-                num_total = len(df)
+                # Skip columns with numpy arrays (from BigQuery ARRAY columns)
+                # Arrays are unhashable and can't be converted to category
+                if len(df) > 0:
+                    sample_value = df[col].iloc[0]
+                    if isinstance(sample_value, np.ndarray):
+                        logger.info(
+                            f"⏭️  Skipping category optimization for array column '{col}'"
+                        )
+                        continue
 
-                if num_total > 0 and (num_unique / num_total) < 0.5:
-                    df[col] = df[col].astype("category")
-                    logger.info(
-                        f"Converted '{col}' to category ({num_unique} unique values)"
+                # Converter para category se a cardinalidade for baixa (< 50% unique)
+                try:
+                    num_unique = df[col].nunique()
+                    num_total = len(df)
+
+                    if num_total > 0 and (num_unique / num_total) < 0.5:
+                        df[col] = df[col].astype("category")
+                        logger.info(
+                            f"Converted '{col}' to category ({num_unique} unique values)"
+                        )
+                except TypeError as e:
+                    # Catch any unhashable type errors (e.g., lists, dicts, arrays)
+                    logger.warning(
+                        f"⏭️  Skipping category optimization for '{col}': unhashable type ({e})"
                     )
+                    continue
 
             optimize_time = time.perf_counter() - optimize_start
             logger.info(f"Category optimization: {optimize_time:.3f}s")
@@ -683,3 +737,159 @@ class DataManager:
         )
 
         return SmartFilterOptions(**filter_options_dict)
+
+    # ========================================================================
+    # GOVERNANCE METHODS
+    # ========================================================================
+
+    @staticmethod
+    def get_user_permissions(cpf: str):
+        """
+        Fetch permissions for a specific CPF from cached governance table.
+
+        OPTIMIZATION: Uses get_dataset() with shared cache.
+
+        Args:
+            cpf: User's CPF from JWT token
+
+        Returns:
+            UserPermissions object
+
+        Raises:
+            PermissionDeniedError: If CPF not found or inactive
+        """
+        from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+        from src.core.security.permissions_models import (
+            UserPermissions,
+            PermissionDeniedError,
+        )
+
+        # Buscar tabela completa (do cache)
+        governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+
+        # DEBUG LOGGING START
+        logger.info(f"Auth Check for CPF: '{cpf}'")
+        if not governance_df.empty:
+            logger.info(
+                f"Governance Table Stats: {len(governance_df)} rows. CPF Col Type: {governance_df['cpf'].dtype}"
+            )
+            # Log sample CPFs to check format (masked for security logs if needed, but safe here for debug)
+            # Check for exact match count
+            match_count = len(governance_df[governance_df["cpf"] == cpf])
+            logger.info(f"Exact matches found: {match_count}")
+        else:
+            logger.warning("Governance DataFrame is EMPTY!")
+        # DEBUG LOGGING END
+
+        # Ensure active column is boolean for robust comparison
+        # This handles 'true', 'True', 1, 1.0, etc.
+        if "active" in governance_df.columns:
+            # Converter para string, lower, comparar com 'true' ou 1
+            # Maneira vetorizada e segura
+            active_col = governance_df["active"].astype(str).str.lower()
+            governance_df["_active_bool"] = active_col.isin(["true", "1", "1.0", "yes"])
+        else:
+            # Se não tiver coluna active, assumir True (ou False dependendo da regra de negócio)
+            # Por segurança, melhor assumir False ou logar erro
+            logger.warning(
+                "Column 'active' not found in governance table. Defaulting to False."
+            )
+            governance_df["_active_bool"] = False
+
+        # Filter by CPF only first
+        user_rows = governance_df[governance_df["cpf"] == cpf]
+
+        if user_rows.empty:
+            # Tentar limpar CPF (remover pontuação) caso o token venha limpo e o banco sujo, ou vice-versa
+            # Mas idealmente ambos devem ser apenas números string
+            raise PermissionDeniedError(f"CPF {cpf} não cadastrado na base de acessos")
+
+        # Check active status
+        user_row = user_rows.iloc[0]
+        if not user_row["_active_bool"]:
+            raise PermissionDeniedError(f"Usuário {cpf} está inativo")
+
+        # Convert to UserPermissions
+        row_dict = user_row.to_dict()
+
+        # Sanitizar valores NaN/NA do pandas (converte para None)
+        for key, value in row_dict.items():
+            if not isinstance(value, (list, dict)):
+                try:
+                    if pd.isna(value):
+                        row_dict[key] = None
+                except (ValueError, TypeError):
+                    pass
+
+        # Garantir que active no objeto final seja bool limpo
+        row_dict["active"] = bool(row_dict["_active_bool"])
+
+        # Convert struct arrays to list of IdWithName
+        for id_type in [
+            "id_cras",
+            "id_escola",
+            "id_cre",
+            "id_cap",
+            "id_cas",
+            "id_clinica_familia",
+        ]:
+            list_key = f"{id_type}_list"
+            if row_dict.get(list_key) is not None:
+                # If it's a list of dicts (from BigQuery STRUCT)
+                if isinstance(row_dict[list_key], list) and len(row_dict[list_key]) > 0:
+                    row_dict[list_key] = [
+                        {
+                            "id": item.get("id", item.get(id_type, "")),
+                            "nome": item.get(
+                                "nome",
+                                item.get(f'nome_{id_type.replace("id_", "")}', ""),
+                            ),
+                        }
+                        for item in row_dict[list_key]
+                    ]
+
+        permissions = UserPermissions(**row_dict)
+        return permissions
+
+    @staticmethod
+    def apply_governance_filters(df: pd.DataFrame, user_permissions) -> pd.DataFrame:
+        """
+        Apply governance filters IN MEMORY over cached data.
+
+        CRITICAL: Applied AFTER get_dataset() to not affect shared cache.
+
+        Args:
+            df: Complete DataFrame from cache (all participants)
+            user_permissions: Current user's permissions
+
+        Returns:
+            DataFrame filtered to only data the user can see
+        """
+        if user_permissions.has_full_access():
+            logger.info("Super admin - no governance filters")
+            return df
+
+        # Create boolean mask (OR between all authorized IDs)
+        mask = pd.Series([False] * len(df), index=df.index)
+
+        # Check each ID type
+        for id_type in [
+            "id_cras",
+            "id_escola",
+            "id_cre",
+            "id_cap",
+            "id_cas",
+            "id_clinica_familia",
+        ]:
+            ids = user_permissions.get_filter_ids(id_type)
+            if ids:
+                mask |= df[id_type].isin(ids)
+
+        df_filtered = df[mask]
+
+        logger.info(
+            f"Governance filters applied: {len(df)} -> {len(df_filtered)} rows "
+            f"(CPF: {user_permissions.cpf})"
+        )
+
+        return df_filtered

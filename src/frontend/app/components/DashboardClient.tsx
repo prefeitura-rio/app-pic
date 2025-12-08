@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useMemo, useTransition, startTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { OverviewTab } from "@/app/components/OverviewTab";
@@ -41,6 +42,7 @@ interface UserInfo {
  */
 export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // State para filtros e paginação
   const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
@@ -48,15 +50,60 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const [professionalPage, setProfessionalPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
   const [isPending, startTransition] = useTransition();
+  const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
+  const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
+
+
+  // Verificação prévia de permissões (evita chamadas desnecessárias)
+  const {
+    data: currentUser,
+    isLoading: currentUserLoading,
+    error: currentUserError,
+  } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => apiService.getCurrentUser(),
+    staleTime: 10 * 60 * 1000, // 10 minutos
+    retry: false, // Não retry em caso de 403/401
+  });
+
+  // Redirect se usuário não autorizado
+  useEffect(() => {
+    if (currentUserError) {
+      // Erro já foi tratado por handleResponse() que faz redirect
+      return;
+    }
+
+    // Se usuário carregou mas está inativo, o backend vai retornar 403
+    // e handleResponse() vai redirecionar para /login?error=InactiveUser
+    if (currentUser && !currentUser.active) {
+      router.push("/login?error=InactiveUser");
+    }
+  }, [currentUser, currentUserError, router]);
 
   // TanStack Query para Dashboard (Visão Geral)
   const {
     data: dashboardResponse,
     isLoading: dashboardLoading,
+    isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
-    queryKey: ['dashboard', overviewFilters],
-    queryFn: () => apiService.getDashboard(overviewFilters),
+    queryKey: ['dashboard', overviewFilters, bypassCacheDashboardTimestamp],
+    queryFn: async ({ queryKey }) => {
+      const timestamp = queryKey[queryKey.length - 1] as number | null;
+      const shouldBypassCache = timestamp !== null;
+
+      const result = await apiService.getDashboard({
+        ...overviewFilters,
+        ...(shouldBypassCache && { bypass_cache: true }),
+      });
+
+      if (shouldBypassCache) {
+        setBypassCacheDashboardTimestamp(null);
+      }
+
+      return result;
+    },
+    enabled: !!currentUser && currentUser.active, // Só executa se usuário está ativo
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
@@ -65,10 +112,30 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const {
     data: participantsResponse,
     isLoading: participantsLoading,
+    isFetching: participantsFetching,
     error: participantsError,
   } = useQuery({
-    queryKey: ['participants', professionalFilters, professionalPage],
-    queryFn: () => apiService.getParticipants(professionalFilters, professionalPage, 20),
+    queryKey: ['participants', professionalFilters, professionalPage, bypassCacheParticipantsTimestamp],
+    queryFn: async ({ queryKey }) => {
+      const timestamp = queryKey[queryKey.length - 1] as number | null;
+      const shouldBypassCache = timestamp !== null;
+
+      const result = await apiService.getParticipants(
+        {
+          ...professionalFilters,
+          ...(shouldBypassCache && { bypass_cache: true }),
+        },
+        professionalPage,
+        20
+      );
+
+      if (shouldBypassCache) {
+        setBypassCacheParticipantsTimestamp(null);
+      }
+
+      return result;
+    },
+    enabled: !!currentUser && currentUser.active, // Só executa se usuário está ativo
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
@@ -114,9 +181,26 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   }, []);
 
   /**
+   * Handle refresh with cache bypass (for Overview tab)
+   */
+  const handleOverviewRefresh = useCallback(() => {
+    toast.info("Atualizando dados (forçando refresh do cache)...");
+    setBypassCacheDashboardTimestamp(Date.now());
+  }, []);
+
+  /**
+   * Handle refresh with cache bypass (for Professional tab)
+   */
+  const handleProfessionalRefresh = useCallback(() => {
+    toast.info("Atualizando dados (forçando refresh do cache)...");
+    setBypassCacheParticipantsTimestamp(Date.now());
+  }, []);
+
+  /**
    * Memoizar filter options vazias para evitar re-criação
    */
-  const emptyFilterOptions = useMemo(() => ({
+  const emptyFilterOptions = useMemo<SmartFilterOptions>(() => ({
+    // Filtros de participantes
     bairros: [],
     grupos: [],
     cohorts: [],
@@ -127,8 +211,29 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     cas_list: [],
     cras: [],
     escolas: [],
-    clinicas: []
+    clinicas: [],
+    // Filtros de usuários (admin)
+    ocupacoes: [],
+    secretarias: [],
+    status_ativo: [],
+    permissions: []
   }), []);
+
+  /**
+   * Show loading screen while verifying permissions
+   */
+  if (currentUserLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground">
+            Verificando permissões...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   /**
    * Show loading screen while loading data
@@ -139,7 +244,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
           <p className="text-lg text-muted-foreground">
-            Autenticando...
+            Carregando dados...
           </p>
         </div>
       </div>
@@ -185,7 +290,8 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 filterOptions={dashboardResponse?.filters || emptyFilterOptions}
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
-                loading={dashboardLoading}
+                onRefresh={handleOverviewRefresh}
+                loading={dashboardFetching}
               />
             </TabsContent>
           )}
@@ -199,7 +305,8 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 filters={professionalFilters}
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
-                loading={participantsLoading}
+                onRefresh={handleProfessionalRefresh}
+                loading={participantsFetching}
               />
             </TabsContent>
           )}

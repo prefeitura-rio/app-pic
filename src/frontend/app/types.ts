@@ -96,6 +96,7 @@ export interface FilterOptionItem {
 }
 
 export interface SmartFilterOptions {
+  // Filtros de participantes
   bairros: FilterOptionItem[];
   grupos: FilterOptionItem[];
   cohorts: FilterOptionItem[];
@@ -107,6 +108,12 @@ export interface SmartFilterOptions {
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
+
+  // Filtros de usuários (admin)
+  ocupacoes: FilterOptionItem[];
+  secretarias: FilterOptionItem[];
+  status_ativo: FilterOptionItem[];
+  permissions: FilterOptionItem[];
 }
 
 // ============================================================================
@@ -247,6 +254,8 @@ export interface DashboardFilters {
   safra?: string;
   grupo?: string;
   status?: string;
+  situacao?: string;
+  bypass_cache?: boolean;
 }
 
 /**
@@ -265,6 +274,7 @@ export interface ParticipantFilters {
   status?: string;
   situacao?: string;
   search?: string; // CPF or name search
+  bypass_cache?: boolean;
 }
 
 /**
@@ -293,3 +303,98 @@ export interface ApiError {
  * Loading state for async operations
  */
 export type LoadingState = "idle" | "loading" | "success" | "error";
+
+// ============================================================================
+// ADMIN / GOVERNANCE TYPES
+// ============================================================================
+
+/**
+ * ID with name for UI display
+ */
+export interface IdWithName {
+  id: string;
+  nome: string;
+}
+
+/**
+ * Available IDs for assignment (from /admin/available-ids endpoint)
+ */
+export interface AvailableIds {
+  cras: IdWithName[];
+  escolas: IdWithName[];
+  cres: IdWithName[];
+  caps: IdWithName[];
+  cas: IdWithName[];
+  clinicas: IdWithName[];
+}
+
+/**
+ * User access record (from /admin/users endpoint)
+ */
+export interface UserAccessRecord {
+  cpf: string;
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  is_admin: boolean;
+  is_super_admin: boolean;
+  permission?: string | null;
+
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+
+  active: boolean;
+  notes?: string | null;
+  created_by: string;
+  created_at: string; // ISO datetime string
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+/**
+ * Create user request payload
+ */
+export interface CreateUserRequest {
+  cpf: string;
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  is_admin?: boolean;
+  is_super_admin?: boolean;
+
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+
+  notes?: string | null;
+  is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
+}
+
+/**
+ * Update user request payload
+ */
+export interface UpdateUserRequest {
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  is_admin?: boolean | null;
+  is_super_admin?: boolean | null;
+
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+
+  notes?: string | null;
+  active?: boolean | null;
+  is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
+}

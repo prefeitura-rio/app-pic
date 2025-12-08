@@ -200,6 +200,32 @@ class CacheManager:
         if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
             self.redis_backend.save(query_hash, cache_object, ttl)
 
+    def delete(self, query: str) -> None:
+        """
+        Invalidate cache for a specific query.
+
+        SEGURANÇA: Usado após INSERT/UPDATE/DELETE para evitar race conditions.
+        Ao invés de fazer bypass_cache=True (que força nova query imediata),
+        apenas invalida o cache. Próxima request vai popular o cache naturalmente.
+
+        Args:
+            query: SQL query to invalidate cache for
+        """
+        query_hash = self._get_query_hash(query)
+
+        # Delete from File backend if enabled
+        if self.mode in (CacheMode.JSON, CacheMode.BOTH):
+            import os
+            cache_file = os.path.join(self.file_backend.data_dir, f"{query_hash}.pkl")
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
+                logger.info(f"🗑️  Cache invalidated (File): {query_hash[:8]}...")
+
+        # Delete from Redis if enabled
+        if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
+            self.redis_backend.client.delete(query_hash)
+            logger.info(f"🗑️  Cache invalidated (Redis): {query_hash[:8]}...")
+
 
 if env.USE_LOCAL_API:
     _MODE = CacheMode.JSON

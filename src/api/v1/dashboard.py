@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Any
 import polars as pl
 
-from src.core.security.jwt import verify_jwt
-from src.config import env
+from src.core.security.jwt import verify_jwt, CurrentUserPermissions
 from src.utils.log import logger
 from src.api.v1.schemas import (
     Dashboard,
@@ -16,13 +15,9 @@ from src.api.v1.schemas import (
     ResultadoProgramaPoint,
 )
 from src.utils.data_manager import DataManager
+from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
 
-PROJECT_ID = env.BQ_PROJECT_ID
-DATASET_ID = env.BQ_DATASET_ID
-
-router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
-)
+router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Dashboard"])
 
 # Configuração de filtros para dashboard (IDÊNTICA ao participants para cache sharing)
 DASHBOARD_FILTER_COLUMN_MAP = {
@@ -59,9 +54,15 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
 
 
 @router.get(
-    "/", summary="Métricas do Dashboard", response_model=PaginatedResponse[Dashboard]
+    "/dashboard",
+    summary="Métricas do Dashboard",
+    response_model=PaginatedResponse[Dashboard],
 )
-async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
+async def get_dashboard_metrics(
+    permissions: CurrentUserPermissions,
+    filters: CommonFilters = Depends(),
+    bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
+) -> Any:
     """
     Retorna métricas agregadas para o dashboard principal com suporte a filtros.
 
@@ -76,15 +77,18 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
     """
 
     # MESMA QUERY que /participants - CRÍTICO para cache sharing
-    query = f"""
-    SELECT
-        *
-    FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    ORDER BY nome ASC
-    """
-
+    query = PARTICIPANTS_TABLE_QUERY
+    per = permissions.model_dump(exclude_none=True)
+    per_log = {
+        "cpf": per.get("cpf"),
+        "is_admin": per.get("is_admin"),
+        "is_super_admin": per.get("is_super_admin"),
+        "active": per.get("active"),
+    }
     logger.info("Fetching dashboard metrics with filters (using participants cache)")
-    logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"🔑 Permissions: {per_log}")
+    logger.info(f"☰ Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"🔄 Bypass Cache: {bypass_cache}")
 
     try:
         # Converter filtros de API para colunas do DataFrame
@@ -103,12 +107,15 @@ async def get_dashboard_metrics(filters: CommonFilters = Depends()) -> Any:
         # 2. Aplicar filtros
         # 3. Calcular filter options com cascata inteligente
         # 4. Retornar TODOS os dados filtrados (sem paginação)
+        # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
             page=1,
             page_size=None,  # None = retorna TODOS os dados sem paginação
             filter_columns_config=DASHBOARD_FILTER_OPTIONS_CONFIG,
+            user_permissions=permissions,
+            bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
         )
 
         # OTIMIZAÇÃO: Converter Pandas DataFrame para Polars para cálculos eficientes

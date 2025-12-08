@@ -1,8 +1,8 @@
 import httpx
 import jwt
-from fastapi import HTTPException, Security
+from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from typing import Dict, Any
+from typing import Dict, Any, Annotated
 from src.config import env
 from src.utils.log import logger
 
@@ -80,6 +80,7 @@ async def verify_jwt(
             algorithms=["RS256"],
             audience=env.RMI_AUDIENCE,
             issuer=env.RMI_ISSUER,
+            leeway=60  # Tolerância de 60 segundos para clock skew (iat/exp)
         )
 
         logger.info(f"Token verified for user: {payload.get('sub')}")
@@ -100,3 +101,63 @@ async def verify_jwt(
     except Exception as e:
         logger.error(f"Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+
+async def get_current_user_permissions(
+    token_payload: Dict[str, Any] = Depends(verify_jwt)
+):
+    """
+    Get current user's permissions from data_access table.
+
+    Extracts CPF from JWT token and loads permissions from governance table.
+    Uses Redis/local cache for performance.
+
+    Args:
+        token_payload: Decoded JWT token from verify_jwt
+
+    Returns:
+        UserPermissions object
+
+    Raises:
+        HTTPException 403: If CPF not found in token or user not authorized
+        HTTPException 500: If failed to load permissions
+    """
+    from src.core.security.permissions_models import PermissionDeniedError
+    from src.utils.data_manager import DataManager
+
+    # Extract CPF from JWT (RMI/gov.br sends it in preferred_username)
+    cpf = token_payload.get("preferred_username")
+
+    if not cpf:
+        logger.error("CPF not found in JWT token")
+        raise HTTPException(
+            status_code=403,
+            detail="CPF não encontrado no token de autenticação"
+        )
+
+    try:
+        permissions = DataManager.get_user_permissions(cpf)
+        logger.info(
+            f"✅ User {cpf} authenticated - "
+            f"Admin: {permissions.is_admin}, "
+            f"SuperAdmin: {permissions.is_super_admin}"
+        )
+        return permissions
+
+    except PermissionDeniedError as e:
+        error_msg = str(e)
+        logger.warning(f"Permission denied for CPF {cpf}: {error_msg}")
+        raise HTTPException(
+            status_code=403,
+            detail=error_msg # Passar a mensagem específica da PermissionDeniedError
+        )
+    except Exception as e:
+        logger.error(f"Error loading permissions for CPF {cpf}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Falha ao carregar permissões do usuário"
+        )
+
+
+# Type alias for dependency injection
+CurrentUserPermissions = Annotated[Any, Depends(get_current_user_permissions)]

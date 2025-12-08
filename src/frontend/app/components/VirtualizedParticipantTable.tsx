@@ -10,6 +10,7 @@ interface ParticipantTableProps {
   data: Participante[];
   onRowClick: (participant: Participante) => void;
   getBadgeVariant: (situacao?: string) => "outline" | "default" | "secondary" | "destructive";
+  isLoading?: boolean;
 }
 
 // Custom props que passamos para o Row
@@ -82,13 +83,16 @@ export const VirtualizedParticipantTable = memo(({
   data,
   onRowClick,
   getBadgeVariant,
+  isLoading,
 }: ParticipantTableProps) => {
   if (!data || !Array.isArray(data) || data.length === 0) {
     return null;
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col">
+    <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col relative">
+      {/* Loading overlay */}
+      {isLoading && <div className="loading-overlay"></div>}
       {/* Header Estático */}
       <div className="flex items-center bg-muted border-b font-medium text-sm px-0 py-3 h-10 shrink-0">
         <div className="w-[20%] px-4">Nome</div>

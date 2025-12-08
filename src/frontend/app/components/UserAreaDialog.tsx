@@ -12,7 +12,10 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { User, Shield, LogOut, Mail, IdCard, Calendar, Key, Clock } from "lucide-react";
 
+import { IdWithName } from "@/app/types";
+
 interface UserInfo {
+  // JWT fields
   name?: string;
   email?: string;
   preferred_username?: string;
@@ -21,6 +24,17 @@ interface UserInfo {
   sub?: string;
   iat?: number;
   exp?: number;
+
+  // App fields (from /me or JWT enrichment)
+  permission?: string | null;
+  is_admin?: boolean;
+  is_super_admin?: boolean;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
 }
 
 interface UserAreaDialogProps {
@@ -194,16 +208,103 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
                 <div className="pt-2 space-y-1">
                   <p className="text-xs">
                     <span className="font-medium text-foreground">Nível de Acesso:</span>{" "}
-                    <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
-                      Visualização
-                    </span>
+                    {(() => {
+                      // Normalizar permissão (prioriza campo 'permission', fallback para booleans)
+                      const perm = userInfo?.permission || 
+                                  (userInfo?.is_super_admin ? 'super_admin' : 
+                                   userInfo?.is_admin ? 'admin' : 'user');
+                      
+                      switch (perm) {
+                        case 'super_admin':
+                          return (
+                            <span className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive ring-1 ring-inset ring-destructive/20">
+                              Super Admin
+                            </span>
+                          );
+                        case 'admin':
+                          return (
+                            <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
+                              Admin
+                            </span>
+                          );
+                        default:
+                          return (
+                            <span className="inline-flex items-center rounded-md bg-secondary/10 px-2 py-1 text-xs font-medium text-secondary ring-1 ring-inset ring-secondary/20">
+                              Usuário Comum
+                            </span>
+                          );
+                      }
+                    })()}
                   </p>
-                  <p className="text-xs">
-                    <span className="font-medium text-foreground">Provedor de Identidade:</span> GovBR
-                  </p>
-                  <p className="text-xs">
-                    <span className="font-medium text-foreground">Autenticação:</span> Identidade Carioca
-                  </p>
+                  {/* Seção de Permissões de Acesso */}
+                  {((userInfo?.id_cras_list?.length ?? 0) > 0 || (userInfo?.id_escola_list?.length ?? 0) > 0 || (userInfo?.id_cre_list?.length ?? 0) > 0 || (userInfo?.id_cap_list?.length ?? 0) > 0 || (userInfo?.id_cas_list?.length ?? 0) > 0 || (userInfo?.id_clinica_familia_list?.length ?? 0) > 0) ? (
+                    <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
+                      <p className="text-xs font-semibold text-foreground mb-2">Unidades Permitidas:</p>
+                      
+                      {/* Assistência Social */}
+                      {((userInfo?.id_cras_list?.length ?? 0) > 0 || (userInfo?.id_cas_list?.length ?? 0) > 0) && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
+                            Assistência Social
+                          </p>
+                          {userInfo?.id_cras_list && userInfo.id_cras_list.length > 0 && (
+                             <AccessList label="CRAS" items={userInfo.id_cras_list} />
+                          )}
+                          {userInfo?.id_cas_list && userInfo.id_cas_list.length > 0 && (
+                             <AccessList label="CAS" items={userInfo.id_cas_list} />
+                          )}
+                        </div>
+                      )}
+
+                      {/* Educação */}
+                      {((userInfo?.id_escola_list?.length ?? 0) > 0 || (userInfo?.id_cre_list?.length ?? 0) > 0) && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
+                            Educação
+                          </p>
+                          {userInfo?.id_cre_list && userInfo.id_cre_list.length > 0 && (
+                             <AccessList label="CREs" items={userInfo.id_cre_list} />
+                          )}
+                          {userInfo?.id_escola_list && userInfo.id_escola_list.length > 0 && (
+                             <AccessList label="Escolas" items={userInfo.id_escola_list} />
+                          )}
+                        </div>
+                      )}
+
+                      {/* Saúde */}
+                      {((userInfo?.id_cap_list?.length ?? 0) > 0 || (userInfo?.id_clinica_familia_list?.length ?? 0) > 0) && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
+                            Saúde
+                          </p>
+                          {userInfo?.id_cap_list && userInfo.id_cap_list.length > 0 && (
+                             <AccessList label="CAPs" items={userInfo.id_cap_list} />
+                          )}
+                          {userInfo?.id_clinica_familia_list && userInfo.id_clinica_familia_list.length > 0 && (
+                             <AccessList label="Clínicas" items={userInfo.id_clinica_familia_list} />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                     // Se for admin/superadmin sem restrições específicas (acesso total)
+                     (userInfo?.is_admin || userInfo?.is_super_admin) && (
+                        <div className="mt-3 pt-3 border-t border-border/50">
+                          <p className="text-xs text-muted-foreground italic">
+                            Acesso irrestrito a todas as unidades.
+                          </p>
+                        </div>
+                     )
+                  )}
+
+                  <div className="pt-3 mt-2 border-t border-border/50">
+                    <p className="text-xs">
+                      <span className="font-medium text-foreground">Provedor de Identidade:</span> GovBR
+                    </p>
+                    <p className="text-xs">
+                      <span className="font-medium text-foreground">Autenticação:</span> Identidade Carioca
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -217,5 +318,17 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Componente auxiliar para listar acessos de forma compacta
+function AccessList({ label, items }: { label: string, items: { nome: string }[] }) {
+  return (
+    <div className="text-xs pl-2 border-l-2 border-primary/20">
+      <span className="font-medium text-foreground">{label}:</span>{" "}
+      <span className="text-muted-foreground">
+        {items.length}
+      </span>
+    </div>
   );
 }

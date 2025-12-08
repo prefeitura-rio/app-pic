@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional, Union
 
-from src.core.security.jwt import verify_jwt
-from src.config import env
+from src.core.security.jwt import verify_jwt, CurrentUserPermissions
 from src.utils.log import logger
 from src.api.v1.schemas import (
     Participante,
@@ -13,13 +12,9 @@ from src.api.v1.schemas import (
 )
 from src.utils.data_manager import DataManager
 from src.utils.data_manager_config import DataManagerConfig as config
+from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
 
-PROJECT_ID = env.BQ_PROJECT_ID
-DATASET_ID = env.BQ_DATASET_ID
-
-router = APIRouter(
-    dependencies=[Depends(verify_jwt)],
-)
+router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 
 # Configuração de filtros para participantes (definido no endpoint, não no DataManager)
 PARTICIPANT_FILTER_COLUMN_MAP = {
@@ -55,12 +50,15 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
 
 
 @router.get(
-    "/",
+    "/participants",
     summary="Listar participantes com filtros e paginação",
     response_model=PaginatedResponse[Participante],
 )
 async def get_participants(
-    filters: CommonFilters = Depends(), pagination: PaginationParams = Depends()
+    permissions: CurrentUserPermissions,  # NOVO: Inject user permissions
+    filters: CommonFilters = Depends(),
+    pagination: PaginationParams = Depends(),
+    bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ) -> Any:
     """
     Retorna participantes com suporte a filtros e paginação.
@@ -74,17 +72,13 @@ async def get_participants(
     as opções disponíveis considerando os filtros já ativos. Isso evita discrepâncias
     entre contadores e resultados reais.
     """
-    query = f"""
-    SELECT
-        *
-    FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
-    ORDER BY nome ASC
-    """
+    query = PARTICIPANTS_TABLE_QUERY
 
     logger.info(
         f"Fetching participants - Page: {pagination.page}, Size: {pagination.page_size}"
     )
     logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"🔄 Bypass Cache: {bypass_cache}")
 
     try:
         # Converter filtros de API para colunas do DataFrame
@@ -99,7 +93,8 @@ async def get_participants(
                 column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
                 column_filters[column_name] = filter_value
 
-        # Pipeline completo: fetch -> filter -> search -> filter_options -> paginate
+        # Pipeline completo: fetch -> governance -> filter -> search -> filter_options -> paginate
+        # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
@@ -108,6 +103,8 @@ async def get_participants(
             filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
             search_term=search_term,
             search_columns=["nome", "cpf"] if search_term else None,
+            user_permissions=permissions,  # NOVO: Pass user permissions
+            bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
         )
 
         # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)

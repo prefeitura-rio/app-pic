@@ -12,6 +12,7 @@ interface StatCardProps {
     isPositive: boolean;
   };
   variant?: "default" | "success" | "warning" | "accent" | "destructive";
+  isLoading?: boolean;
 }
 
 export function StatCard({
@@ -20,7 +21,8 @@ export function StatCard({
   description,
   icon,
   trend,
-  variant = "default"
+  variant = "default",
+  isLoading = false
 }: StatCardProps) {
   // Check if icon is a LucideIcon component or JSX element
   const isComponent = typeof icon === 'function';
@@ -43,7 +45,8 @@ export function StatCard({
   };
 
   return (
-    <Card className={`${variantStyles[variant]} border-2 transition-all hover:shadow-lg`}>
+    <Card className={`${variantStyles[variant]} border-2 transition-all hover:shadow-lg relative`}>
+      {isLoading && <div className="loading-overlay"></div>}
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
