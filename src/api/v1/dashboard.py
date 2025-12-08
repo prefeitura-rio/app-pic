@@ -88,9 +88,15 @@ async def get_dashboard_metrics(
 
     # MESMA QUERY que /participants - CRÍTICO para cache sharing
     query = PARTICIPANTS_TABLE_QUERY
-
+    per = permissions.model_dump(exclude_none=True)
+    per_log = {
+        "cpf": per.get("cpf"),
+        "is_admin": per.get("is_admin"),
+        "is_super_admin": per.get("is_super_admin"),
+        "active": per.get("active"),
+    }
     logger.info("Fetching dashboard metrics with filters (using participants cache)")
-    logger.info(f"🔑 Permissions: {permissions.model_dump(exclude_none=True)}")
+    logger.info(f"🔑 Permissions: {per_log}")
     logger.info(f"☰ Filters: {filters.model_dump(exclude_none=True)}")
     logger.info(f"🔄 Bypass Cache: {bypass_cache}")
 

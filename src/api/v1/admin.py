@@ -311,9 +311,8 @@ async def get_current_user(permissions: CurrentUserPermissions):
     Retorna informações do usuário atual (incluindo se é admin/super admin).
 
     Usado pelo frontend para determinar permissões de UI.
+    Acessível a qualquer usuário autenticado.
     """
-    require_admin(permissions)
-
     logger.info(f"Retornando informações do usuário {permissions.cpf}")
 
     return UserAccessRecord(

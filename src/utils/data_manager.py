@@ -762,18 +762,49 @@ class DataManager:
         # Buscar tabela completa (do cache)
         governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
 
-        # Filter by CPF AND active status in memory (instantaneous)
-        user_row = governance_df[
-            (governance_df["cpf"] == cpf) & (governance_df["active"] == True)
-        ]
+        # DEBUG LOGGING START
+        logger.info(f"Auth Check for CPF: '{cpf}'")
+        if not governance_df.empty:
+            logger.info(f"Governance Table Stats: {len(governance_df)} rows. CPF Col Type: {governance_df['cpf'].dtype}")
+            # Log sample CPFs to check format (masked for security logs if needed, but safe here for debug)
+            sample_cpfs = governance_df['cpf'].head(3).tolist()
+            logger.info(f"Sample CPFs in DB: {sample_cpfs}")
+            
+            # Check for exact match count
+            match_count = len(governance_df[governance_df["cpf"] == cpf])
+            logger.info(f"Exact matches found: {match_count}")
+        else:
+            logger.warning("Governance DataFrame is EMPTY!")
+        # DEBUG LOGGING END
 
-        if user_row.empty:
-            raise PermissionDeniedError(
-                f"CPF {cpf} não autorizado ou usuário inativo"
-            )
+        # Ensure active column is boolean for robust comparison
+        # This handles 'true', 'True', 1, 1.0, etc.
+        if "active" in governance_df.columns:
+            # Converter para string, lower, comparar com 'true' ou 1
+            # Maneira vetorizada e segura
+            active_col = governance_df["active"].astype(str).str.lower()
+            governance_df["_active_bool"] = active_col.isin(["true", "1", "1.0", "yes"])
+        else:
+            # Se não tiver coluna active, assumir True (ou False dependendo da regra de negócio)
+            # Por segurança, melhor assumir False ou logar erro
+            logger.warning("Column 'active' not found in governance table. Defaulting to False.")
+            governance_df["_active_bool"] = False
+
+        # Filter by CPF only first
+        user_rows = governance_df[governance_df["cpf"] == cpf]
+
+        if user_rows.empty:
+            # Tentar limpar CPF (remover pontuação) caso o token venha limpo e o banco sujo, ou vice-versa
+            # Mas idealmente ambos devem ser apenas números string
+            raise PermissionDeniedError(f"CPF {cpf} não cadastrado na base de acessos")
+        
+        # Check active status
+        user_row = user_rows.iloc[0]
+        if not user_row["_active_bool"]:
+             raise PermissionDeniedError(f"Usuário {cpf} está inativo")
 
         # Convert to UserPermissions
-        row_dict = user_row.iloc[0].to_dict()
+        row_dict = user_row.to_dict()
 
         # Sanitizar valores NaN/NA do pandas (converte para None)
         for key, value in row_dict.items():
@@ -783,6 +814,9 @@ class DataManager:
                         row_dict[key] = None
                 except (ValueError, TypeError):
                     pass
+        
+        # Garantir que active no objeto final seja bool limpo
+        row_dict["active"] = bool(row_dict["_active_bool"])
 
         # Convert struct arrays to list of IdWithName
         for id_type in [

@@ -7,7 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/app/components/ui/card";
-import { Heart, Shield, Users, Building2, LogIn } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Heart, Shield, Users, Building2, LogIn, AlertCircle } from "lucide-react";
 
 /**
  * Build Keycloak OAuth2 authorization URL (server-side)
@@ -29,10 +30,26 @@ function buildAuthUrl(): string {
   return `${baseUrl}?${params.toString()}`;
 }
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const resolvedParams = await searchParams;
+  const error = resolvedParams.error;
+
   async function handleLogin() {
     "use server";
     redirect(buildAuthUrl());
+  }
+
+  let errorMessage = null;
+  if (error === "AccessDenied") {
+    errorMessage = "Seu CPF não possui permissão de acesso ao sistema. Entre em contato com o administrador.";
+  } else if (error === "InactiveUser") {
+    errorMessage = "Seu usuário está inativo. Entre em contato com o administrador para reativar seu acesso.";
+  } else if (error) {
+    errorMessage = "Ocorreu um erro durante a autenticação. Tente novamente.";
   }
 
   return (
@@ -148,7 +165,17 @@ export default function LoginPage() {
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="px-8 pb-10">
+            <CardContent className="px-8 pb-10 space-y-6">
+              {errorMessage && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Acesso Negado</AlertTitle>
+                  <AlertDescription>
+                    {errorMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <form action={handleLogin}>
                 <Button
                   className="w-full h-12 text-base font-semibold gap-2 shadow-lg hover:shadow-xl transition-all"

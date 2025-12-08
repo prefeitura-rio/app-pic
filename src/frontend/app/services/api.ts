@@ -56,6 +56,24 @@ async function handleResponse<T>(
     throw new Error("Unauthorized");
   }
 
+  // Handle Forbidden (403) - User logged in but no permission
+  if (response.status === 403) {
+    try {
+      const errorData = await response.clone().json();
+      const detail = errorData.detail || "";
+      
+      if (detail.toLowerCase().includes("inativo")) {
+        window.location.href = "/login?error=InactiveUser";
+        throw new Error("User Inactive");
+      }
+    } catch (e) {
+      // Ignore json parse errors or other issues reading body
+    }
+    
+    window.location.href = "/login?error=AccessDenied";
+    throw new Error("Access Denied");
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`API Error ${response.status}: ${errorText}`);

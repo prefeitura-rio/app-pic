@@ -80,6 +80,7 @@ async def verify_jwt(
             algorithms=["RS256"],
             audience=env.RMI_AUDIENCE,
             issuer=env.RMI_ISSUER,
+            leeway=60  # Tolerância de 60 segundos para clock skew (iat/exp)
         )
 
         logger.info(f"Token verified for user: {payload.get('sub')}")
@@ -147,7 +148,7 @@ async def get_current_user_permissions(
         logger.warning(f"Permission denied for CPF {cpf}: {e}")
         raise HTTPException(
             status_code=403,
-            detail="Acesso negado: usuário não autorizado"
+            detail=str(e) # Passar a mensagem específica da PermissionDeniedError
         )
     except Exception as e:
         logger.error(f"Error loading permissions for CPF {cpf}: {e}")
