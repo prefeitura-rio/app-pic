@@ -254,6 +254,7 @@ export interface DashboardFilters {
   safra?: string;
   grupo?: string;
   status?: string;
+  situacao?: string;
   bypass_cache?: boolean;
 }
 

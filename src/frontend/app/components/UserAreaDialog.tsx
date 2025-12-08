@@ -24,17 +24,17 @@ interface UserInfo {
   sub?: string;
   iat?: number;
   exp?: number;
-  
+
   // App fields (from /me or JWT enrichment)
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
-  id_cras_list?: IdWithName[];
-  id_escola_list?: IdWithName[];
-  id_cre_list?: IdWithName[];
-  id_cap_list?: IdWithName[];
-  id_cas_list?: IdWithName[];
-  id_clinica_familia_list?: IdWithName[];
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
 }
 
 interface UserAreaDialogProps {

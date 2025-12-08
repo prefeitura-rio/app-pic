@@ -351,7 +351,7 @@ export default function AdminPage() {
                 Admins
               </div>
               <div className="text-2xl font-bold mt-2">
-                {users.filter((u) => u.is_admin).length || 0}
+                {users.filter((u: UserAccessRecord) => u.is_admin).length || 0}
               </div>
               <div className="text-xs text-muted-foreground mt-1">
                 (nesta página)
@@ -362,7 +362,7 @@ export default function AdminPage() {
                 Super Admins
               </div>
               <div className="text-2xl font-bold mt-2">
-                {users.filter((u) => u.is_super_admin).length || 0}
+                {users.filter((u: UserAccessRecord) => u.is_super_admin).length || 0}
               </div>
               <div className="text-xs text-muted-foreground mt-1">
                 (nesta página)

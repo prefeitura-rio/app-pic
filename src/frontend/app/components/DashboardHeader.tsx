@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { useRouter, usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "../services/api";
+import { IdWithName } from "@/app/types";
 
 interface UserInfo {
   // JWT standard fields
@@ -18,17 +19,17 @@ interface UserInfo {
   sub?: string;
   iat?: number;
   exp?: number;
-  
+
   // Application specific fields (merged from /me endpoint)
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
-  id_cras_list?: any[];
-  id_escola_list?: any[];
-  id_cre_list?: any[];
-  id_cap_list?: any[];
-  id_cas_list?: any[];
-  id_clinica_familia_list?: any[];
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_cap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
 }
 
 export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {

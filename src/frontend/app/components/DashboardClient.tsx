@@ -199,7 +199,8 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   /**
    * Memoizar filter options vazias para evitar re-criação
    */
-  const emptyFilterOptions = useMemo(() => ({
+  const emptyFilterOptions = useMemo<SmartFilterOptions>(() => ({
+    // Filtros de participantes
     bairros: [],
     grupos: [],
     cohorts: [],
@@ -210,7 +211,12 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     cas_list: [],
     cras: [],
     escolas: [],
-    clinicas: []
+    clinicas: [],
+    // Filtros de usuários (admin)
+    ocupacoes: [],
+    secretarias: [],
+    status_ativo: [],
+    permissions: []
   }), []);
 
   /**
