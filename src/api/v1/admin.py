@@ -71,7 +71,7 @@ class AvailableIds(BaseModel):
     cras: List[IdWithName] = Field(default_factory=list)
     escolas: List[IdWithName] = Field(default_factory=list)
     cres: List[IdWithName] = Field(default_factory=list)
-    caps: List[IdWithName] = Field(default_factory=list)
+    aps: List[IdWithName] = Field(default_factory=list)
     cas: List[IdWithName] = Field(default_factory=list)
     clinicas: List[IdWithName] = Field(default_factory=list)
 
@@ -90,7 +90,7 @@ class UserAccessRecord(BaseModel):
     id_cras_list: Optional[List[IdWithName]] = None
     id_escola_list: Optional[List[IdWithName]] = None
     id_cre_list: Optional[List[IdWithName]] = None
-    id_cap_list: Optional[List[IdWithName]] = None
+    id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 
@@ -114,7 +114,7 @@ class UpsertUserRequest(BaseModel):
     id_cras_list: Optional[List[IdWithName]] = None
     id_escola_list: Optional[List[IdWithName]] = None
     id_cre_list: Optional[List[IdWithName]] = None
-    id_cap_list: Optional[List[IdWithName]] = None
+    id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 
@@ -181,7 +181,7 @@ def _filter_manageable_users(
     logger.info(f"  - CRAS: {len(admin_permissions.id_cras_list or [])}")
     logger.info(f"  - Escolas: {len(admin_permissions.id_escola_list or [])}")
     logger.info(f"  - CRE: {len(admin_permissions.id_cre_list or [])}")
-    logger.info(f"  - CAP: {len(admin_permissions.id_cap_list or [])}")
+    logger.info(f"  - AP: {len(admin_permissions.id_ap_list or [])}")
     logger.info(f"  - CAS: {len(admin_permissions.id_cas_list or [])}")
     logger.info(f"  - Clínicas: {len(admin_permissions.id_clinica_familia_list or [])}")
 
@@ -192,7 +192,7 @@ def _filter_manageable_users(
             admin_permissions.id_cras_list,
             admin_permissions.id_escola_list,
             admin_permissions.id_cre_list,
-            admin_permissions.id_cap_list,
+            admin_permissions.id_ap_list,
             admin_permissions.id_cas_list,
             admin_permissions.id_clinica_familia_list,
         ]
@@ -215,7 +215,7 @@ def _filter_manageable_users(
         "id_cras": set(admin_permissions.get_filter_ids("id_cras")),
         "id_escola": set(admin_permissions.get_filter_ids("id_escola")),
         "id_cre": set(admin_permissions.get_filter_ids("id_cre")),
-        "id_cap": set(admin_permissions.get_filter_ids("id_cap")),
+        "id_ap": set(admin_permissions.get_filter_ids("id_ap")),
         "id_cas": set(admin_permissions.get_filter_ids("id_cas")),
         "id_clinica_familia": set(
             admin_permissions.get_filter_ids("id_clinica_familia")
@@ -231,7 +231,7 @@ def _filter_manageable_users(
             "id_cras",
             "id_escola",
             "id_cre",
-            "id_cap",
+            "id_ap",
             "id_cas",
             "id_clinica_familia",
         ]:
@@ -308,7 +308,7 @@ def validate_segmented_admin_can_manage(
             admin_permissions.id_cras_list,
             admin_permissions.id_escola_list,
             admin_permissions.id_cre_list,
-            admin_permissions.id_cap_list,
+            admin_permissions.id_ap_list,
             admin_permissions.id_cas_list,
             admin_permissions.id_clinica_familia_list,
         ]
@@ -326,7 +326,7 @@ def validate_segmented_admin_can_manage(
         "id_cras",
         "id_escola",
         "id_cre",
-        "id_cap",
+        "id_ap",
         "id_cas",
         "id_clinica_familia",
     ]:
@@ -469,7 +469,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 cres=_extract_unique_ids(
                     df, "id_cre", "id_cre"
                 ),  # CRE não tem nome, usa id_cre como nome
-                caps=_extract_unique_ids(df, "id_cap", "nome_cap"),
+                aps=_extract_unique_ids(df, "id_ap", "nome_ap"),
                 cas=_extract_unique_ids(df, "id_cas", "nome_cas"),
                 clinicas=_extract_unique_ids(
                     df, "id_clinica_familia", "nome_clinica_familia"
@@ -480,7 +480,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 f"Super admin - Retornando {len(available_ids.cras)} CRAS, "
                 f"{len(available_ids.escolas)} escolas, "
                 f"{len(available_ids.cres)} CREs, "
-                f"{len(available_ids.caps)} CAPs, "
+                f"{len(available_ids.aps)} APs, "
                 f"{len(available_ids.cas)} CAS, "
                 f"{len(available_ids.clinicas)} clínicas"
             )
@@ -493,7 +493,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 cras=permissions.id_cras_list or [],
                 escolas=permissions.id_escola_list or [],
                 cres=permissions.id_cre_list or [],
-                caps=permissions.id_cap_list or [],
+                aps=permissions.id_ap_list or [],
                 cas=permissions.id_cas_list or [],
                 clinicas=permissions.id_clinica_familia_list or [],
             )
@@ -503,7 +503,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 f"{len(available_ids.cras)} CRAS, "
                 f"{len(available_ids.escolas)} escolas, "
                 f"{len(available_ids.cres)} CREs, "
-                f"{len(available_ids.caps)} CAPs, "
+                f"{len(available_ids.aps)} APs, "
                 f"{len(available_ids.cas)} CAS, "
                 f"{len(available_ids.clinicas)} clínicas"
             )
@@ -533,7 +533,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
         id_cras_list=permissions.id_cras_list,
         id_escola_list=permissions.id_escola_list,
         id_cre_list=permissions.id_cre_list,
-        id_cap_list=permissions.id_cap_list,
+        id_ap_list=permissions.id_ap_list,
         id_cas_list=permissions.id_cas_list,
         id_clinica_familia_list=permissions.id_clinica_familia_list,
         active=permissions.active,
@@ -661,7 +661,7 @@ async def list_users(
                     "id_cras",
                     "id_escola",
                     "id_cre",
-                    "id_cap",
+                    "id_ap",
                     "id_cas",
                     "id_clinica_familia",
                 ]:
@@ -794,7 +794,7 @@ async def upsert_user(
             "id_cras_list",
             "id_escola_list",
             "id_cre_list",
-            "id_cap_list",
+            "id_ap_list",
             "id_cas_list",
             "id_clinica_familia_list",
         },
@@ -861,7 +861,7 @@ async def upsert_user(
                     f"    CRE: {len(request.id_cre_list) if request.id_cre_list else 0} IDs"
                 )
                 logger.info(
-                    f"    CAP: {len(request.id_cap_list) if request.id_cap_list else 0} IDs"
+                    f"    AP: {len(request.id_ap_list) if request.id_ap_list else 0} IDs"
                 )
                 logger.info(
                     f"    CAS: {len(request.id_cas_list) if request.id_cas_list else 0} IDs"
@@ -881,7 +881,7 @@ async def upsert_user(
                     f"id_cre_list = {_convert_id_list_to_bq_struct(request.id_cre_list)}"
                 )
                 struct_updates.append(
-                    f"id_cap_list = {_convert_id_list_to_bq_struct(request.id_cap_list)}"
+                    f"id_ap_list = {_convert_id_list_to_bq_struct(request.id_ap_list)}"
                 )
                 struct_updates.append(
                     f"id_cas_list = {_convert_id_list_to_bq_struct(request.id_cas_list)}"
@@ -962,7 +962,7 @@ async def upsert_user(
             INSERT INTO `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
             (
                 cpf, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
-                id_cras_list, id_escola_list, id_cre_list, id_cap_list, id_cas_list, id_clinica_familia_list,
+                id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
                 created_by, active, notes, created_at
             )
             VALUES (
@@ -971,7 +971,7 @@ async def upsert_user(
                 {_convert_id_list_to_bq_struct(request.id_cras_list)},
                 {_convert_id_list_to_bq_struct(request.id_escola_list)},
                 {_convert_id_list_to_bq_struct(request.id_cre_list)},
-                {_convert_id_list_to_bq_struct(request.id_cap_list)},
+                {_convert_id_list_to_bq_struct(request.id_ap_list)},
                 {_convert_id_list_to_bq_struct(request.id_cas_list)},
                 {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
                 @created_by, @active, @notes, CURRENT_TIMESTAMP()
@@ -1064,7 +1064,7 @@ async def upsert_user(
             "id_cras",
             "id_escola",
             "id_cre",
-            "id_cap",
+            "id_ap",
             "id_cas",
             "id_clinica_familia",
         ]:

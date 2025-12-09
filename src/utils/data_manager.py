@@ -829,7 +829,7 @@ class DataManager:
             "id_cras",
             "id_escola",
             "id_cre",
-            "id_cap",
+            "id_ap",
             "id_cas",
             "id_clinica_familia",
         ]:
@@ -877,7 +877,7 @@ class DataManager:
             "id_cras",
             "id_escola",
             "id_cre",
-            "id_cap",
+            "id_ap",
             "id_cas",
             "id_clinica_familia",
         ]:

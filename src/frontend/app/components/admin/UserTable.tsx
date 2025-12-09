@@ -54,8 +54,8 @@ export function UserTable({
     if (user.id_cre_list?.length) {
       counts.push(`${user.id_cre_list.length} CREs`);
     }
-    if (user.id_cap_list?.length) {
-      counts.push(`${user.id_cap_list.length} CAPs`);
+    if (user.id_ap_list?.length) {
+      counts.push(`${user.id_ap_list.length} APs`);
     }
     if (user.id_cas_list?.length) {
       counts.push(`${user.id_cas_list.length} CAS`);

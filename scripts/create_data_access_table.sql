@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS `rj-pic-dev.app_pequenos_cariocas.data_access` (
   id_cras_list ARRAY<STRUCT<id STRING, nome STRING>>,
   id_escola_list ARRAY<STRUCT<id STRING, nome STRING>>,
   id_cre_list ARRAY<STRUCT<id STRING, nome STRING>>,
-  id_cap_list ARRAY<STRUCT<id STRING, nome STRING>>,
+  id_ap_list ARRAY<STRUCT<id STRING, nome STRING>>,
   id_cas_list ARRAY<STRUCT<id STRING, nome STRING>>,
   id_clinica_familia_list ARRAY<STRUCT<id STRING, nome STRING>>,
 

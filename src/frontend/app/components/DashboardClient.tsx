@@ -207,7 +207,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     status_list: [],
     situacoes: [],
     cres: [],
-    caps: [],
+    aps: [],
     cas_list: [],
     cras: [],
     escolas: [],

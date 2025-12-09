@@ -32,7 +32,7 @@ interface UserInfo {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_cap_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 }
@@ -237,7 +237,7 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
                     })()}
                   </p>
                   {/* Seção de Permissões de Acesso */}
-                  {((userInfo?.id_cras_list?.length ?? 0) > 0 || (userInfo?.id_escola_list?.length ?? 0) > 0 || (userInfo?.id_cre_list?.length ?? 0) > 0 || (userInfo?.id_cap_list?.length ?? 0) > 0 || (userInfo?.id_cas_list?.length ?? 0) > 0 || (userInfo?.id_clinica_familia_list?.length ?? 0) > 0) ? (
+                  {((userInfo?.id_cras_list?.length ?? 0) > 0 || (userInfo?.id_escola_list?.length ?? 0) > 0 || (userInfo?.id_cre_list?.length ?? 0) > 0 || (userInfo?.id_ap_list?.length ?? 0) > 0 || (userInfo?.id_cas_list?.length ?? 0) > 0 || (userInfo?.id_clinica_familia_list?.length ?? 0) > 0) ? (
                     <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
                       <p className="text-xs font-semibold text-foreground mb-2">Unidades Permitidas:</p>
                       
@@ -272,13 +272,13 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
                       )}
 
                       {/* Saúde */}
-                      {((userInfo?.id_cap_list?.length ?? 0) > 0 || (userInfo?.id_clinica_familia_list?.length ?? 0) > 0) && (
+                      {((userInfo?.id_ap_list?.length ?? 0) > 0 || (userInfo?.id_clinica_familia_list?.length ?? 0) > 0) && (
                         <div className="space-y-1">
                           <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
                             Saúde
                           </p>
-                          {userInfo?.id_cap_list && userInfo.id_cap_list.length > 0 && (
-                             <AccessList label="CAPs" items={userInfo.id_cap_list} />
+                          {userInfo?.id_ap_list && userInfo.id_ap_list.length > 0 && (
+                             <AccessList label="APs" items={userInfo.id_ap_list} />
                           )}
                           {userInfo?.id_clinica_familia_list && userInfo.id_clinica_familia_list.length > 0 && (
                              <AccessList label="Clínicas" items={userInfo.id_clinica_familia_list} />

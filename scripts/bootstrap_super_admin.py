@@ -34,7 +34,7 @@ from src.utils.log import logger
 
 # Tabela de governança (configurável via .env)
 TABLE_ID_DATA_ACCESS = env.BQ_TABLE_ID_DATA_ACCESS
-
+print(TABLE_ID_DATA_ACCESS)
 # ========================================================================
 # CONFIGURAÇÃO - EDITE AQUI
 # ========================================================================
@@ -98,7 +98,7 @@ def create_table():
       id_cras_list ARRAY<STRUCT<id STRING, nome STRING>>,
       id_escola_list ARRAY<STRUCT<id STRING, nome STRING>>,
       id_cre_list ARRAY<STRUCT<id STRING, nome STRING>>,
-      id_cap_list ARRAY<STRUCT<id STRING, nome STRING>>,
+      id_ap_list ARRAY<STRUCT<id STRING, nome STRING>>,
       id_cas_list ARRAY<STRUCT<id STRING, nome STRING>>,
       id_clinica_familia_list ARRAY<STRUCT<id STRING, nome STRING>>,
 
@@ -166,8 +166,8 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
     print(f"📋 CPF do super admin: {SUPER_ADMIN_CPF}")
     print(f"📋 Nome: {SUPER_ADMIN_NAME}")
     print(f"📋 Projeto: {env.BQ_PROJECT_ID}")
-    print(f"📋 Dataset: {env.BQ_DATASET_ID}\n")
-
+    print(f"📋 Dataset: {env.BQ_DATASET_ID}")
+    print(f"📋 Tabela: {TABLE_ID_DATA_ACCESS}\n")
     # Verificar se tabela existe, se não, criar
     if not table_exists():
         print(f"⚠️  Tabela {TABLE_ID_DATA_ACCESS} não existe. Criando...\n")

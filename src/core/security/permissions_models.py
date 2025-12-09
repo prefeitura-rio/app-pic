@@ -34,7 +34,7 @@ class UserPermissions(BaseModel):
     id_cras_list: Optional[List[IdWithName]] = None
     id_escola_list: Optional[List[IdWithName]] = None
     id_cre_list: Optional[List[IdWithName]] = None
-    id_cap_list: Optional[List[IdWithName]] = None
+    id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 

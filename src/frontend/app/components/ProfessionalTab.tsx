@@ -104,7 +104,7 @@ const ProfessionalTabComponent = ({
     status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
     situacoes: filterOptions.situacoes.filter((item) => item.id && item.id.trim() !== ""),
     cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
-    caps: filterOptions.caps.filter((item) => item.id && item.id.trim() !== ""),
+    aps: filterOptions.aps.filter((item) => item.id && item.id.trim() !== ""),
     cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
     cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
     bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
@@ -269,14 +269,14 @@ const ProfessionalTabComponent = ({
                 options={filteredOptions.cas_list}
               />
 
-              {/* CAP (Centro de Atenção Psicossocial) */}
+              {/* AP (Área Programática) */}
               <VirtualizedSelect
-                value={filters.cap || "todas"}
-                onSelect={(v) => handleFilterUpdate("cap", v)}
+                value={filters.ap || "todas"}
+                onSelect={(v) => handleFilterUpdate("ap", v)}
                 disabled={loading}
-                placeholder="CAP"
-                defaultLabel="Todas as CAPs"
-                options={filteredOptions.caps}
+                placeholder="AP"
+                defaultLabel="Todas as APs"
+                options={filteredOptions.aps}
               />
 
               {/* SAÚDE */}
@@ -416,7 +416,6 @@ const ProfessionalTabComponent = ({
                       <p className="text-sm text-muted-foreground">Grupo</p>
                       <p className="font-medium">
                         {selectedParticipant.grupo?.toLowerCase().includes("crianca") ? "👶 Criança" : "🤰 Gestante"}
-                        {selectedParticipant.bolsa_familia_indicador && " • Bolsa Família"}
                       </p>
                     </div>
                     <div>
@@ -473,7 +472,7 @@ const ProfessionalTabComponent = ({
                         <p className="text-sm text-muted-foreground">Assistência</p>
                         <p className="text-2xl font-bold">{selectedParticipant.assistencia_fracao || "0/0"}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {selectedParticipant.assistencia_protocolos_violados || 0} violados
+                          {selectedParticipant.assistencia_protocolos_irregular || 0} irregulares
                         </p>
                       </CardContent>
                     </Card>
@@ -483,7 +482,7 @@ const ProfessionalTabComponent = ({
                         <p className="text-sm text-muted-foreground">Educação</p>
                         <p className="text-2xl font-bold">{selectedParticipant.educacao_fracao || "0/0"}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {selectedParticipant.educacao_protocolos_violados || 0} violados
+                          {selectedParticipant.educacao_protocolos_irregular || 0} irregulares
                         </p>
                       </CardContent>
                     </Card>
@@ -493,56 +492,10 @@ const ProfessionalTabComponent = ({
                         <p className="text-sm text-muted-foreground">Saúde</p>
                         <p className="text-2xl font-bold">{selectedParticipant.saude_fracao || "0/0"}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {selectedParticipant.saude_protocolos_violados || 0} violados
+                          {selectedParticipant.saude_protocolos_irregular || 0} irregulares
                         </p>
                       </CardContent>
                     </Card>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Indicadores Assistência Social */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-foreground">📋 Dimensão Assistência Social</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
-                      <span className="text-sm">💰 Bolsa Família</span>
-                      <Badge variant={selectedParticipant.bolsa_familia_indicador ? "default" : "destructive"}>
-                        {selectedParticipant.bolsa_familia_indicador ? "✓ Sim" : "✗ Não"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
-                      <span className="text-sm">📋 CadÚnico Atualizado</span>
-                      <Badge variant={selectedParticipant.cadunico_indicador ? "default" : "destructive"}>
-                        {selectedParticipant.cadunico_indicador ? "✓ Sim" : "✗ Não"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Indicadores Educação */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-foreground">📚 Dimensão Educação</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
-                      <span className="text-sm">Frequência Escolar</span>
-                      <Badge variant={
-                        selectedParticipant.frequencia_escolar_percentual
-                          ? (selectedParticipant.frequencia_escolar_percentual >= 75 ? "default" : "destructive")
-                          : "secondary"
-                      }>
-                        {selectedParticipant.frequencia_escolar_percentual
-                          ? `${selectedParticipant.frequencia_escolar_percentual.toFixed(1)}%`
-                          : "N/A"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
-                      <span className="text-sm">Escola</span>
-                      <span className="text-sm font-medium">{selectedParticipant.nome_escola || "-"}</span>
-                    </div>
                   </div>
                 </div>
 
@@ -552,14 +505,18 @@ const ProfessionalTabComponent = ({
                 <div>
                   <h3 className="text-lg font-semibold mb-3 text-foreground">Resumo de Protocolos</h3>
                   <div className="bg-muted/50 p-4 rounded-lg">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">Total de Protocolos</p>
                         <p className="text-3xl font-bold text-primary">{selectedParticipant.total_protocolos || 0}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">Protocolos Violados</p>
-                        <p className="text-3xl font-bold text-destructive">{selectedParticipant.total_protocolos_violados || 0}</p>
+                        <p className="text-sm text-muted-foreground">Protocolos Irregulares</p>
+                        <p className="text-3xl font-bold text-destructive">{selectedParticipant.total_protocolos_irregular || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Protocolos Regulares</p>
+                        <p className="text-3xl font-bold text-green-600">{selectedParticipant.total_protocolos_regular || 0}</p>
                       </div>
                     </div>
                   </div>

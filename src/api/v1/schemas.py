@@ -21,7 +21,7 @@ class PaginationParams(BaseModel):
 class CommonFilters(BaseModel):
     bairro: Optional[str] = None
     cre: Optional[str] = None
-    cap: Optional[str] = None  # CAP (Coordenadoria de Área Programática)
+    ap: Optional[str] = None  # AP (Área Programática) - NOVO, substitui CAP
     cas: Optional[str] = None  # CAS (Centro de Atenção à Saúde)
     cras: Optional[str] = None
     escola: Optional[str] = None
@@ -73,7 +73,7 @@ class SmartFilterOptions(BaseModel):
     status_list: List[FilterOptionItem] = []
     situacoes: List[FilterOptionItem] = []
     cres: List[FilterOptionItem] = []
-    caps: List[FilterOptionItem] = []
+    aps: List[FilterOptionItem] = []  # RENOMEADO de caps (AP substitui CAP)
     cas_list: List[FilterOptionItem] = []
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
@@ -136,37 +136,31 @@ class Dashboard(BaseModel):
     percentual_regular: Optional[float] = 0.0
     percentual_irregular: Optional[float] = 0.0
 
-    # Métricas antigas (manter compatibilidade)
+    # Métrica de atenção
     total_participantes_em_atencao: Optional[int] = 0
     percentual_em_atencao: Optional[float] = 0.0
 
     # Protocolos gerais
     total_protocolos: Optional[int] = 0
-    total_protocolos_violados: Optional[int] = 0
-    percentual_protocolos_violados: Optional[float] = 0.0
+    total_protocolos_irregular: Optional[int] = 0
+    percentual_protocolos_irregular: Optional[float] = 0.0
 
     # Protocolos por dimensão (secretaria)
     total_protocolos_smas: Optional[int] = 0
-    total_protocolos_smas_violados: Optional[int] = 0
-    percentual_smas_violados: Optional[float] = 0.0
+    total_protocolos_smas_irregular: Optional[int] = 0
+    percentual_smas_irregular: Optional[float] = 0.0
     total_protocolos_sme: Optional[int] = 0
-    total_protocolos_sme_violados: Optional[int] = 0
-    percentual_sme_violados: Optional[float] = 0.0
+    total_protocolos_sme_irregular: Optional[int] = 0
+    percentual_sme_irregular: Optional[float] = 0.0
     total_protocolos_sms: Optional[int] = 0
-    total_protocolos_sms_violados: Optional[int] = 0
-    percentual_sms_violados: Optional[float] = 0.0
+    total_protocolos_sms_irregular: Optional[int] = 0
+    percentual_sms_irregular: Optional[float] = 0.0
 
-    # Dimensão Assistência Social
-    assistencia_bolsa_familia_total: Optional[int] = 0
-    assistencia_bolsa_familia_percentual: Optional[float] = 0.0
-    assistencia_cadunico_atualizado_total: Optional[int] = 0
-    assistencia_cadunico_atualizado_percentual: Optional[float] = 0.0
+    # Dimensão Assistência Social (completude apenas)
     assistencia_completude_total: Optional[int] = 0
     assistencia_completude_percentual: Optional[float] = 0.0
 
-    # Dimensão Educação
-    educacao_frequencia_adequada_total: Optional[int] = 0
-    educacao_frequencia_adequada_percentual: Optional[float] = 0.0
+    # Dimensão Educação (completude apenas)
     educacao_completude_total: Optional[int] = 0
     educacao_completude_percentual: Optional[float] = 0.0
 
@@ -206,52 +200,87 @@ class FiltroEquipamento(BaseModel):
     data_atualizacao: Optional[datetime] = None
 
 
+class ProtocoloListagemItem(BaseModel):
+    """Item individual da lista de protocolos do participante"""
+    id: Optional[str] = None
+    secretaria: Optional[str] = None
+    descricao: Optional[str] = None
+    status: Optional[str] = None
+    irregular_indicador: Optional[bool] = None
+    protocolo_status_label: Optional[str] = None
+
+
 class Participante(BaseModel):
+    # Identificação
     cpf: Optional[str] = None
     id_membro_familia: Optional[str] = None
     nome: Optional[str] = None
     sexo: Optional[str] = None
+
+    # Dados demográficos
     nascimento_data: Optional[date] = None
     idade: Optional[int] = None
+    bairro: Optional[str] = None
+
+    # Programa
     grupo: Optional[str] = None
     cohort: Optional[date] = None
     status: Optional[str] = None
     status_inativo_motivo: Optional[str] = None
-    bairro: Optional[str] = None
-    logradouro: Optional[str] = None
-    numero: Optional[str] = None
-    cep: Optional[str] = None
-    telefone_principal: Optional[str] = None
-    email_principal: Optional[str] = None
-    total_protocolos_violados: Optional[int] = None
+
+    # Protocolos - Lista detalhada (NOVO)
+    protocolo_listagem: Optional[List["ProtocoloListagemItem"]] = None
+
+    # Protocolos - Contadores gerais
     total_protocolos: Optional[int] = None
+    total_protocolos_irregular: Optional[int] = None  # RENOMEADO de total_protocolos_violados
+    total_protocolos_atencao: Optional[int] = None  # NOVO
+    total_protocolos_regular: Optional[int] = None  # NOVO
     total_fracao: Optional[str] = None
-    assistencia_protocolos_violados: Optional[int] = None
+
+    # Protocolos - Assistência Social
     assistencia_protocolos_total: Optional[int] = None
+    assistencia_protocolos_irregular: Optional[int] = None  # RENOMEADO de assistencia_protocolos_violados
+    assistencia_protocolos_atencao: Optional[int] = None  # NOVO
+    assistencia_protocolos_regular: Optional[int] = None  # NOVO
     assistencia_fracao: Optional[str] = None
-    educacao_protocolos_violados: Optional[int] = None
+
+    # Protocolos - Educação
     educacao_protocolos_total: Optional[int] = None
+    educacao_protocolos_irregular: Optional[int] = None  # RENOMEADO de educacao_protocolos_violados
+    educacao_protocolos_atencao: Optional[int] = None  # NOVO
+    educacao_protocolos_regular: Optional[int] = None  # NOVO
     educacao_fracao: Optional[str] = None
-    saude_protocolos_violados: Optional[int] = None
+
+    # Protocolos - Saúde
     saude_protocolos_total: Optional[int] = None
+    saude_protocolos_irregular: Optional[int] = None  # RENOMEADO de saude_protocolos_violados
+    saude_protocolos_atencao: Optional[int] = None  # NOVO
+    saude_protocolos_regular: Optional[int] = None  # NOVO
     saude_fracao: Optional[str] = None
+
+    # Situação
     situacao: Optional[str] = None
-    cadunico_indicador: Optional[bool] = None
-    bolsa_familia_indicador: Optional[bool] = None
-    bolsa_familia_valor: Optional[float] = None
+
+    # Equipamentos - SMAS
     id_cras: Optional[str] = None
     nome_cras: Optional[str] = None
+    id_cas: Optional[str] = None
+    nome_cas: Optional[str] = None
+
+    # Equipamentos - SME
     id_escola: Optional[str] = None
     nome_escola: Optional[str] = None
     id_cre: Optional[str] = None
     nome_cre: Optional[str] = None
-    id_cap: Optional[str] = None
-    nome_cap: Optional[str] = None
-    id_cas: Optional[str] = None
-    nome_cas: Optional[str] = None
-    frequencia_escolar_percentual: Optional[float] = None
+
+    # Equipamentos - SMS
+    id_ap: Optional[str] = None  # NOVO (substitui CAP)
+    nome_ap: Optional[str] = None  # NOVO (substitui CAP)
     id_clinica_familia: Optional[str] = None
     nome_clinica_familia: Optional[str] = None
+
+    # Infraestrutura
     cpf_particao: Optional[int] = None
 
 
@@ -265,7 +294,7 @@ class ProtocoloDetalhes(BaseModel):
     protocolo_descricao: Optional[str] = None
     protocolo_level: Optional[str] = None
     protocolo_status: Optional[str] = None
-    protocolo_violado: Optional[bool] = None
+    protocolo_irregular: Optional[bool] = None  # RENOMEADO de protocolo_violado
     protocolo_data_referencia_particicao: Optional[date] = None
     protocolo_status_label: Optional[str] = None
     cpf_particao: Optional[int] = None
@@ -277,10 +306,10 @@ class ProtocoloResumo(BaseModel):
     protocolo_descricao: Optional[str] = None
     protocolo_level: Optional[str] = None
     total_participantes: Optional[int] = None
-    total_violados: Optional[int] = None
+    total_irregular: Optional[int] = None
     total_regular: Optional[int] = None
     total_nao_aplica: Optional[int] = None
-    percentual_violados: Optional[float] = None
+    percentual_irregular: Optional[float] = None
     nivel_prioridade: Optional[str] = None
     data_atualizacao: Optional[datetime] = None
 

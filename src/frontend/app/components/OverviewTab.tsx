@@ -81,7 +81,7 @@ const OverviewTabComponent = ({
     status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
     situacoes: filterOptions.situacoes.filter((item) => item.id && item.id.trim() !== ""),
     cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
-    caps: filterOptions.caps.filter((item) => item.id && item.id.trim() !== ""),
+    aps: filterOptions.aps.filter((item) => item.id && item.id.trim() !== ""),
     cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
     cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
     bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
@@ -237,14 +237,14 @@ const OverviewTabComponent = ({
                 options={filteredOptions.cas_list}
               />
 
-              {/* CAP (Centro de Atenção Psicossocial) */}
+              {/* AP (Área Programática) */}
               <VirtualizedSelect
-                value={filters.cap || "todas"}
-                onSelect={(v) => handleFilterUpdate("cap", v)}
+                value={filters.ap || "todas"}
+                onSelect={(v) => handleFilterUpdate("ap", v)}
                 disabled={loading}
-                placeholder="CAP"
-                defaultLabel="Todas as CAPs"
-                options={filteredOptions.caps}
+                placeholder="AP"
+                defaultLabel="Todas as APs"
+                options={filteredOptions.aps}
               />
 
               {/* SAÚDE */}
@@ -352,30 +352,33 @@ const OverviewTabComponent = ({
             <StatCard
               title="% Irregular"
               value={`${(data.percentual_irregular || 0).toFixed(1)}%`}
-              description="Com protocolos violados"
+              description="Com protocolos irregulares"
               icon={<AlertTriangle className="h-6 w-6" />}
               variant="destructive"
               isLoading={loading}
             />
           </div>
 
-          {/* Dimensão Assistência Social */}
+          {/* Dimensões - Completude apenas */}
           <div className="space-y-3">
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              🏠 Dimensão Assistência Social
+              📊 Completude por Dimensão
             </h3>
+            <p className="text-sm text-muted-foreground">
+              Percentual de participantes cumprindo todos os protocolos de cada dimensão
+            </p>
             <div className="grid gap-3 md:grid-cols-3">
               <Card className="bg-muted relative">
                 {loading && (
                   <div className="loading-overlay"></div>
                 )}
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">💰 Bolsa Família</p>
+                  <p className="text-sm font-medium">🏠 Assistência Social</p>
                   <p className="text-2xl font-bold mt-1">
-                    {(data.assistencia_bolsa_familia_percentual || 0).toFixed(1)}%
+                    {(data.assistencia_completude_percentual || 0).toFixed(1)}%
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {data.assistencia_bolsa_familia_total || 0} de {data.total_participantes_geral || 0} participantes
+                    {data.assistencia_completude_total || 0} de {data.total_participantes_geral || 0} participantes
                   </p>
                 </CardContent>
               </Card>
@@ -385,12 +388,12 @@ const OverviewTabComponent = ({
                   <div className="loading-overlay"></div>
                 )}
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">📋 CadÚnico Atualizado</p>
+                  <p className="text-sm font-medium">📚 Educação</p>
                   <p className="text-2xl font-bold mt-1">
-                    {(data.assistencia_cadunico_atualizado_percentual || 0).toFixed(1)}%
+                    {(data.educacao_completude_percentual || 0).toFixed(1)}%
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    cadastros desatualizados ({(data.total_participantes_geral || 0) - (data.assistencia_cadunico_atualizado_total || 0)} de {data.total_participantes_geral || 0})
+                    {data.educacao_completude_total || 0} de {data.total_participantes_geral || 0} participantes
                   </p>
                 </CardContent>
               </Card>
@@ -400,93 +403,12 @@ const OverviewTabComponent = ({
                   <div className="loading-overlay"></div>
                 )}
                 <CardContent className="p-4">
-                  <p className="text-sm font-medium">👥 Equipe de Referência</p>
-                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Em desenvolvimento
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          {/* Dimensão Educação */}
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              📚 Dimensão Educação
-            </h3>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Card className="bg-muted relative">
-                {loading && (
-                  <div className="loading-overlay"></div>
-                )}
-                <CardContent className="p-4">
-                  <p className="text-sm font-medium">🎒 Frequência Escolar</p>
+                  <p className="text-sm font-medium">❤️ Saúde</p>
                   <p className="text-2xl font-bold mt-1">
-                    {((100 - (data.educacao_frequencia_adequada_percentual || 0))).toFixed(1)}%
+                    {(data.saude_completude_percentual || 0).toFixed(1)}%
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    com frequência inferior ao mínimo ({(data.total_participantes_geral || 0) - (data.educacao_frequencia_adequada_total || 0)} de {data.total_participantes_geral || 0})
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-muted relative">
-                {loading && (
-                  <div className="loading-overlay"></div>
-                )}
-                <CardContent className="p-4">
-                  <p className="text-sm font-medium">🏫 Matrícula em Creche</p>
-                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Em desenvolvimento
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          {/* Dimensão Saúde */}
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              ❤️ Dimensão Saúde
-            </h3>
-            <div className="grid gap-3 md:grid-cols-3">
-              <Card className="bg-muted relative">
-                {loading && (
-                  <div className="loading-overlay"></div>
-                )}
-                <CardContent className="p-4">
-                  <p className="text-sm font-medium">👶 Consultas Infantis</p>
-                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Em desenvolvimento
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-muted relative">
-                {loading && (
-                  <div className="loading-overlay"></div>
-                )}
-                <CardContent className="p-4">
-                  <p className="text-sm font-medium">🤰 Consultas Pré-natal</p>
-                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Em desenvolvimento
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-muted relative">
-                {loading && (
-                  <div className="loading-overlay"></div>
-                )}
-                <CardContent className="p-4">
-                  <p className="text-sm font-medium">💉 Vacinação</p>
-                  <p className="text-2xl font-bold mt-1 text-muted-foreground/50">-</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Em desenvolvimento
+                    {data.saude_completude_total || 0} de {data.total_participantes_geral || 0} participantes
                   </p>
                 </CardContent>
               </Card>
@@ -563,7 +485,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos || 0}
               icon={<TrendingUp className="h-4 w-4" />}
               trend={{
-                value: `${(data.percentual_protocolos_violados || 0).toFixed(1)}% violados`,
+                value: `${(data.percentual_protocolos_irregular || 0).toFixed(1)}% irregulares`,
                 isPositive: false,
               }}
               isLoading={loading}
@@ -573,7 +495,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos_smas || 0}
               icon={<Home className="h-4 w-4" />}
               trend={{
-                value: `${(data.percentual_smas_violados || 0).toFixed(1)}% violados`,
+                value: `${(data.percentual_smas_irregular || 0).toFixed(1)}% irregulares`,
                 isPositive: false,
               }}
               isLoading={loading}
@@ -583,7 +505,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos_sme || 0}
               icon={<Baby className="h-4 w-4" />}
               trend={{
-                value: `${(data.percentual_sme_violados || 0).toFixed(1)}% violados`,
+                value: `${(data.percentual_sme_irregular || 0).toFixed(1)}% irregulares`,
                 isPositive: false,
               }}
               isLoading={loading}
@@ -593,7 +515,7 @@ const OverviewTabComponent = ({
               value={data.total_protocolos_sms || 0}
               icon={<Heart className="h-4 w-4" />}
               trend={{
-                value: `${(data.percentual_sms_violados || 0).toFixed(1)}% violados`,
+                value: `${(data.percentual_sms_irregular || 0).toFixed(1)}% irregulares`,
                 isPositive: false,
               }}
               isLoading={loading}

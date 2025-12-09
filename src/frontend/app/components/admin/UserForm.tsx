@@ -45,7 +45,7 @@ export function UserForm({
   const [selectedCras, setSelectedCras] = useState<IdWithName[]>([]);
   const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>([]);
   const [selectedCres, setSelectedCres] = useState<IdWithName[]>([]);
-  const [selectedCaps, setSelectedCaps] = useState<IdWithName[]>([]);
+  const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
 
@@ -63,7 +63,7 @@ export function UserForm({
       setSelectedCras(user.id_cras_list || []);
       setSelectedEscolas(user.id_escola_list || []);
       setSelectedCres(user.id_cre_list || []);
-      setSelectedCaps(user.id_cap_list || []);
+      setSelectedAps(user.id_ap_list || []);
       setSelectedCas(user.id_cas_list || []);
       setSelectedClinicas(user.id_clinica_familia_list || []);
     } else {
@@ -78,7 +78,7 @@ export function UserForm({
       setSelectedCras([]);
       setSelectedEscolas([]);
       setSelectedCres([]);
-      setSelectedCaps([]);
+      setSelectedAps([]);
       setSelectedCas([]);
       setSelectedClinicas([]);
     }
@@ -112,7 +112,7 @@ export function UserForm({
         id_cras_list: selectedCras.length > 0 ? selectedCras : null,
         id_escola_list: selectedEscolas.length > 0 ? selectedEscolas : null,
         id_cre_list: selectedCres.length > 0 ? selectedCres : null,
-        id_cap_list: selectedCaps.length > 0 ? selectedCaps : null,
+        id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
         notes: notes || null,
@@ -130,7 +130,7 @@ export function UserForm({
         id_cras_list: selectedCras.length > 0 ? selectedCras : null,
         id_escola_list: selectedEscolas.length > 0 ? selectedEscolas : null,
         id_cre_list: selectedCres.length > 0 ? selectedCres : null,
-        id_cap_list: selectedCaps.length > 0 ? selectedCaps : null,
+        id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
         notes: notes || null,
@@ -301,12 +301,12 @@ export function UserForm({
               disabled={isLoading}
             />
 
-            {/* CAP (Centro de Atenção Psicossocial) */}
+            {/* AP (Área Programática) */}
             <VirtualizedIdMultiSelect
-              label="CAP (Centro de Atenção Psicossocial)"
-              options={availableIds.caps}
-              selected={selectedCaps}
-              onChange={setSelectedCaps}
+              label="AP (Área Programática)"
+              options={availableIds.aps}
+              selected={selectedAps}
+              onChange={setSelectedAps}
               disabled={isLoading}
             />
 

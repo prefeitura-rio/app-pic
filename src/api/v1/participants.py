@@ -20,7 +20,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 PARTICIPANT_FILTER_COLUMN_MAP = {
     "bairro": "bairro",
     "cre": "id_cre",
-    "cap": "id_cap",
+    "ap": "id_ap",  # ATUALIZADO: AP substitui CAP
     "cas": "id_cas",
     "cras": "id_cras",
     "escola": "id_escola",
@@ -38,7 +38,7 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "status_list": {"column": "status"},
     "situacoes": {"column": "situacao"},
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
-    "caps": {"column": "id_cap", "label_column": "nome_cap"},
+    "aps": {"column": "id_ap", "label_column": "nome_ap"},  # ATUALIZADO: caps → aps, CAP → AP
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},

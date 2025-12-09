@@ -5,18 +5,18 @@ export const bairros = [
   "Maré", "Rocinha", "Vidigal", "Cidade de Deus", "Anchieta"
 ];
 
-// Coordenadorias de Atenção Primária (Saúde)
-export const coordenadoriasCAP: Record<string, string[]> = {
-  "CAP 1.0": [],
-  "CAP 2.1": ["Copacabana", "Ipanema", "Rocinha", "Vidigal"],
-  "CAP 2.2": ["Tijuca", "Vila Isabel"],
-  "CAP 3.1": ["Penha", "Ilha do Governador", "Maré"],
-  "CAP 3.2": ["Méier", "Madureira"],
-  "CAP 3.3": ["Pavuna", "Anchieta"],
-  "CAP 4.0": ["Barra da Tijuca", "Jacarepaguá", "Cidade de Deus"],
-  "CAP 5.1": ["Bangu", "Realengo"],
-  "CAP 5.2": ["Campo Grande"],
-  "CAP 5.3": ["Santa Cruz"]
+// Áreas Programáticas (Saúde)
+export const coordenadoriasAP: Record<string, string[]> = {
+  "AP 1.0": [],
+  "AP 2.1": ["Copacabana", "Ipanema", "Rocinha", "Vidigal"],
+  "AP 2.2": ["Tijuca", "Vila Isabel"],
+  "AP 3.1": ["Penha", "Ilha do Governador", "Maré"],
+  "AP 3.2": ["Méier", "Madureira"],
+  "AP 3.3": ["Pavuna", "Anchieta"],
+  "AP 4.0": ["Barra da Tijuca", "Jacarepaguá", "Cidade de Deus"],
+  "AP 5.1": ["Bangu", "Realengo"],
+  "AP 5.2": ["Campo Grande"],
+  "AP 5.3": ["Santa Cruz"]
 };
 
 // Coordenadorias Regionais de Educação
