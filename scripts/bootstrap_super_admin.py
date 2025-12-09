@@ -32,6 +32,9 @@ from src.config import env
 from src.utils.bigquery import execute_query
 from src.utils.log import logger
 
+# Tabela de governança (configurável via .env)
+TABLE_ID_DATA_ACCESS = env.BQ_TABLE_ID_DATA_ACCESS
+
 # ========================================================================
 # CONFIGURAÇÃO - EDITE AQUI
 # ========================================================================
@@ -64,23 +67,23 @@ def table_exists() -> bool:
     query = f"""
     SELECT COUNT(*) as count
     FROM `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.INFORMATION_SCHEMA.TABLES`
-    WHERE table_name = 'data_access'
+    WHERE table_name = '{TABLE_ID_DATA_ACCESS}'
     """
 
     try:
         result = execute_query(query)
         return result.iloc[0]["count"] > 0
     except Exception as e:
-        logger.error(f"Erro ao verificar existência da tabela: {e}")
+        logger.error(f"❌ Erro ao verificar existência da tabela: {e}")
         return False
 
 
 def create_table():
     """Cria a tabela data_access se não existir"""
-    print("📦 Criando tabela data_access...")
+    print(f"📦 Criando tabela {TABLE_ID_DATA_ACCESS}...")
 
     query = f"""
-    CREATE TABLE `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.data_access` (
+    CREATE TABLE `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}` (
       cpf STRING NOT NULL,
       nome STRING,
       ocupacao STRING,
@@ -118,11 +121,11 @@ def create_table():
 
     try:
         execute_query(query)
-        print("✅ Tabela data_access criada com sucesso!\n")
+        print(f"✅ Tabela {TABLE_ID_DATA_ACCESS} criada com sucesso!\n")
         return True
     except Exception as e:
         print(f"❌ ERRO ao criar tabela: {e}\n")
-        logger.error(f"Erro ao criar tabela: {e}")
+        logger.error(f"❌ Erro ao criar tabela: {e}")
         return False
 
 
@@ -130,7 +133,7 @@ def check_super_admin_exists(cpf: str) -> bool:
     """Verifica se já existe um super admin com este CPF"""
     query = f"""
     SELECT COUNT(*) as count
-    FROM `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.data_access`
+    FROM `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
     WHERE cpf = '{cpf}' AND is_super_admin = TRUE AND active = TRUE
     """
 
@@ -138,7 +141,7 @@ def check_super_admin_exists(cpf: str) -> bool:
         result = execute_query(query)
         return result.iloc[0]["count"] > 0
     except Exception as e:
-        logger.error(f"Erro ao verificar super admin existente: {e}")
+        logger.error(f"❌ Erro ao verificar super admin existente: {e}")
         return False
 
 
@@ -167,12 +170,12 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
     # Verificar se tabela existe, se não, criar
     if not table_exists():
-        print("⚠️  Tabela data_access não existe. Criando...\n")
+        print(f"⚠️  Tabela {TABLE_ID_DATA_ACCESS} não existe. Criando...\n")
         if not create_table():
             print("❌ Não foi possível criar a tabela. Abortando.\n")
             sys.exit(1)
     else:
-        print("✅ Tabela data_access já existe\n")
+        print(f"✅ Tabela {TABLE_ID_DATA_ACCESS} já existe\n")
 
     # Verificar se já existe super admin
     if check_super_admin_exists(SUPER_ADMIN_CPF):
@@ -202,7 +205,7 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
     print("\n🔄 Criando super admin...")
 
     query = f"""
-    INSERT INTO `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.data_access`
+    INSERT INTO `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
     (cpf, is_admin, is_super_admin, permission, created_by, active, notes, created_at)
     VALUES (
         '{SUPER_ADMIN_CPF}',
@@ -245,7 +248,7 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
     except Exception as e:
         print(f"\n❌ ERRO ao criar super admin: {e}\n")
-        logger.error(f"Erro no bootstrap: {e}", exc_info=True)
+        logger.error(f"❌ Erro no bootstrap: {e}", exc_info=True)
         sys.exit(1)
 
 
@@ -268,5 +271,5 @@ if __name__ == "__main__":
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Erro inesperado: {e}\n")
-        logger.error(f"Erro inesperado no bootstrap: {e}", exc_info=True)
+        logger.error(f"❌ Erro inesperado no bootstrap: {e}", exc_info=True)
         sys.exit(1)

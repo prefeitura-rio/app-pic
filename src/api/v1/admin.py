@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
+TABLE_ID_DATA_ACCESS = env.BQ_TABLE_ID_DATA_ACCESS
 
 router = APIRouter(
     prefix="/admin",
@@ -510,7 +511,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
             return available_ids
 
     except Exception as e:
-        logger.error(f"Erro ao buscar IDs disponíveis: {e}")
+        logger.error(f"❌ Erro ao buscar IDs disponíveis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -673,10 +674,12 @@ async def list_users(
 
                 users.append(UserAccessRecord(**user_dict))
             except Exception as e:
-                logger.error(f"Erro ao converter usuário {user_dict.get('cpf')}: {e}")
+                logger.error(
+                    f"❌ Erro ao converter usuário {user_dict.get('cpf')}: {e}"
+                )
                 import traceback
 
-                logger.error(f"Traceback: {traceback.format_exc()}")
+                logger.error(f"❌ Traceback: {traceback.format_exc()}")
                 raise
 
         logger.info(f"Retornando {len(users)} usuários (página {pagination.page})")
@@ -688,10 +691,10 @@ async def list_users(
         )
 
     except Exception as e:
-        logger.error(f"Erro ao listar usuários: {e}")
+        logger.error(f"❌ Erro ao listar usuários: {e}")
         import traceback
 
-        logger.error(f"Full traceback: {traceback.format_exc()}")
+        logger.error(f"❌ Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -903,7 +906,7 @@ async def upsert_user(
             # Build parametrized query para campos simples
             if update_dict:
                 query, parameters = build_update_query(
-                    table=f"{PROJECT_ID}.{DATASET_ID}.data_access",
+                    table=f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}",
                     updates=update_dict,
                     where_field="cpf",
                     where_value=cpf,
@@ -932,7 +935,7 @@ async def upsert_user(
                 # Apenas struct updates (raro, mas possível)
                 all_updates = struct_updates + ["updated_at = CURRENT_TIMESTAMP()"]
                 query = f"""
-                UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
+                UPDATE `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
                 SET {', '.join(all_updates)}
                 WHERE cpf = @cpf
                 """
@@ -956,7 +959,7 @@ async def upsert_user(
             # SEGURANÇA: Usar parametrized queries para campos simples
             # ARRAY<STRUCT> ainda usa f-string inline por limitação do BigQuery
             query = f"""
-            INSERT INTO `{PROJECT_ID}.{DATASET_ID}.data_access`
+            INSERT INTO `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
             (
                 cpf, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_cap_list, id_cas_list, id_clinica_familia_list,
@@ -1005,10 +1008,13 @@ async def upsert_user(
         # IMPORTANTE: Aguardar 100ms para BigQuery propagar o UPDATE/INSERT
         # Isso previne race condition onde a query abaixo executa antes da propagação
         import time
+
         time.sleep(0.1)
 
         # Buscar usuário para retornar (força bypass_cache para garantir dados frescos)
-        governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)
+        governance_df, _ = DataManager.get_dataset(
+            GOVERNANCE_TABLE_QUERY, bypass_cache=True
+        )
         user_row = governance_df[governance_df["cpf"] == cpf]
 
         if user_row.empty:
@@ -1074,7 +1080,7 @@ async def upsert_user(
         return UserAccessRecord(**row_dict)
 
     except Exception as e:
-        logger.error(f"Erro ao fazer upsert do usuário {cpf}: {e}")
+        logger.error(f"❌ Erro ao fazer upsert do usuário {cpf}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1098,7 +1104,7 @@ async def delete_user(cpf: str, permissions: CurrentUserPermissions):
 
     # SEGURANÇA: Soft delete com parametrized query
     query = f"""
-    UPDATE `{PROJECT_ID}.{DATASET_ID}.data_access`
+    UPDATE `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
     SET
         active = @active,
         updated_by = @updated_by,
@@ -1120,5 +1126,5 @@ async def delete_user(cpf: str, permissions: CurrentUserPermissions):
         refresh_governance_cache()
 
     except Exception as e:
-        logger.error(f"Erro ao deletar usuário: {e}")
+        logger.error(f"❌ Erro ao deletar usuário: {e}")
         raise HTTPException(status_code=500, detail=str(e))

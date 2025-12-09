@@ -25,7 +25,7 @@ async def get_jwks() -> Dict[str, Any]:
             _jwks_cache.update(jwks)
             return jwks
     except Exception as e:
-        logger.error(f"Failed to fetch JWKS: {e}")
+        logger.error(f"❌ Failed to fetch JWKS: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch JWKS")
 
 
@@ -53,7 +53,7 @@ def get_signing_key(token: str, jwks: Dict[str, Any]) -> Any:
 
         return jwt.algorithms.RSAAlgorithm.from_jwk(rsa_key)
     except Exception as e:
-        logger.error(f"Error getting signing key: {e}")
+        logger.error(f"❌ Error getting signing key: {e}")
         raise HTTPException(status_code=401, detail="Invalid token header")
 
 
@@ -80,7 +80,7 @@ async def verify_jwt(
             algorithms=["RS256"],
             audience=env.RMI_AUDIENCE,
             issuer=env.RMI_ISSUER,
-            leeway=60  # Tolerância de 60 segundos para clock skew (iat/exp)
+            leeway=60,  # Tolerância de 60 segundos para clock skew (iat/exp)
         )
 
         logger.info(f"Token verified for user: {payload.get('sub')}")
@@ -99,12 +99,12 @@ async def verify_jwt(
         logger.warning(f"Invalid token: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
     except Exception as e:
-        logger.error(f"Token verification failed: {e}")
+        logger.error(f"❌ Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
 
 async def get_current_user_permissions(
-    token_payload: Dict[str, Any] = Depends(verify_jwt)
+    token_payload: Dict[str, Any] = Depends(verify_jwt),
 ):
     """
     Get current user's permissions from data_access table.
@@ -129,10 +129,9 @@ async def get_current_user_permissions(
     cpf = token_payload.get("preferred_username")
 
     if not cpf:
-        logger.error("CPF not found in JWT token")
+        logger.error("❌ CPF not found in JWT token")
         raise HTTPException(
-            status_code=403,
-            detail="CPF não encontrado no token de autenticação"
+            status_code=403, detail="CPF não encontrado no token de autenticação"
         )
 
     try:
@@ -149,13 +148,12 @@ async def get_current_user_permissions(
         logger.warning(f"Permission denied for CPF {cpf}: {error_msg}")
         raise HTTPException(
             status_code=403,
-            detail=error_msg # Passar a mensagem específica da PermissionDeniedError
+            detail=error_msg,  # Passar a mensagem específica da PermissionDeniedError
         )
     except Exception as e:
-        logger.error(f"Error loading permissions for CPF {cpf}: {e}")
+        logger.error(f"❌ Error loading permissions for CPF {cpf}: {e}")
         raise HTTPException(
-            status_code=500,
-            detail="Falha ao carregar permissões do usuário"
+            status_code=500, detail="Falha ao carregar permissões do usuário"
         )
 
 

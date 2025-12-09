@@ -175,7 +175,7 @@ async def get_dashboard_metrics(
         )
 
     except Exception as e:
-        logger.error(f"Error fetching dashboard metrics: {e}")
+        logger.error(f"❌ Error fetching dashboard metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -21,6 +21,15 @@ BQ_PROJECT_ID = getenv_or_action(
 BQ_DATASET_ID = getenv_or_action(
     env_name="BQ_DATASET_ID", default="app_pequenos_cariocas", action="raise"
 )
+BQ_TABLE_ID_PARTICIPANTS_LISTAGEM = getenv_or_action(
+    env_name="BQ_TABLE_ID_PARTICIPANTS_LISTAGEM",
+    action="raise",
+)
+BQ_TABLE_ID_DATA_ACCESS = getenv_or_action(
+    env_name="BQ_TABLE_ID_DATA_ACCESS",
+    action="raise",
+)
+
 
 USE_LOCAL_API = (
     getenv_or_action(env_name="USE_LOCAL_API", default="false", action="ignore")
@@ -34,7 +43,7 @@ RMI_AUDIENCE = getenv_or_action(env_name="RMI_AUDIENCE", action="raise")
 RMI_JWKS_URL = getenv_or_action(
     env_name="RMI_JWKS_URL",
     default=f"{RMI_ISSUER}/protocol/openid-connect/certs",
-    action="ignore"
+    action="ignore",
 )
 
 

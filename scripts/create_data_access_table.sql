@@ -1,5 +1,11 @@
 -- Tabela de governança para controle de acesso por CPF
 --
+-- IMPORTANTE: Os valores de projeto, dataset e tabela abaixo são exemplos.
+-- Ajuste conforme as variáveis de ambiente configuradas em src/config/.env:
+--   - BQ_PROJECT_ID (ex: rj-pic-dev)
+--   - BQ_DATASET_ID (ex: app_pequenos_cariocas)
+--   - BQ_TABLE_ID_DATA_ACCESS (ex: data_access)
+--
 -- Para criar:
 --   Execute este SQL no console do BigQuery
 --   Ou use: bq query --use_legacy_sql=false < scripts/create_data_access_table.sql
@@ -7,6 +13,10 @@
 -- Para dropar e recriar:
 --   DROP TABLE IF EXISTS `rj-pic-dev.app_pequenos_cariocas.data_access`;
 --   Depois execute este arquivo
+--
+-- NOTA: O script bootstrap_super_admin.py cria esta tabela automaticamente
+--       usando as variáveis de ambiente. Use este arquivo SQL apenas se
+--       precisar criar a tabela manualmente.
 
 CREATE TABLE IF NOT EXISTS `rj-pic-dev.app_pequenos_cariocas.data_access` (
   -- Identificação do usuário

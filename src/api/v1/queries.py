@@ -9,6 +9,8 @@ from src.config import env
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
+TABLE_ID_DATA_ACCESS = env.BQ_TABLE_ID_DATA_ACCESS
+TABLE_ID_PARTICIPANTS = env.BQ_TABLE_ID_PARTICIPANTS_LISTAGEM
 
 
 # ========================================================================
@@ -16,7 +18,7 @@ DATASET_ID = env.BQ_DATASET_ID
 # ========================================================================
 
 GOVERNANCE_TABLE_QUERY = f"""
-SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.data_access`
+SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
 ORDER BY cpf
 """
 
@@ -27,6 +29,6 @@ ORDER BY cpf
 
 PARTICIPANTS_TABLE_QUERY = f"""
 SELECT *
-FROM `{PROJECT_ID}.{DATASET_ID}.endpoint_participante`
+FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_PARTICIPANTS}`
 ORDER BY nome ASC
 """

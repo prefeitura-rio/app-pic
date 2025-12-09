@@ -60,7 +60,7 @@ class FileBackend(StorageBackend):
                         # os.remove(file_path)
                         return None
             except Exception as e:
-                logger.error(f"Error loading File cache for {key}: {e}")
+                logger.error(f"❌ Error loading File cache for {key}: {e}")
                 return None
         return None
 
@@ -73,7 +73,7 @@ class FileBackend(StorageBackend):
             with open(file_path, "wb") as f:
                 pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
-            logger.error(f"Error saving File cache for {key}: {e}")
+            logger.error(f"❌ Error saving File cache for {key}: {e}")
 
 
 class RedisBackend(StorageBackend):
@@ -97,7 +97,7 @@ class RedisBackend(StorageBackend):
                 return pickle.loads(data)
             return None
         except Exception as e:
-            logger.error(f"Redis load error for {key}: {e}")
+            logger.error(f"❌ Redis load error for {key}: {e}")
             return None
 
     def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
@@ -108,7 +108,7 @@ class RedisBackend(StorageBackend):
             # Use Redis native TTL
             self.client.set(name=key, value=serialized, ex=ttl_seconds)
         except Exception as e:
-            logger.error(f"Redis save error for {key}: {e}")
+            logger.error(f"❌ Redis save error for {key}: {e}")
 
 
 class CacheManager:
@@ -216,6 +216,7 @@ class CacheManager:
         # Delete from File backend if enabled
         if self.mode in (CacheMode.JSON, CacheMode.BOTH):
             import os
+
             cache_file = os.path.join(self.file_backend.data_dir, f"{query_hash}.pkl")
             if os.path.exists(cache_file):
                 os.remove(cache_file)

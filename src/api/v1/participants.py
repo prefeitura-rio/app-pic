@@ -117,5 +117,5 @@ async def get_participants(
         )
 
     except Exception as e:
-        logger.error(f"Error fetching participants: {e}")
+        logger.error(f"❌ Error fetching participants: {e}")
         raise HTTPException(status_code=500, detail=str(e))
