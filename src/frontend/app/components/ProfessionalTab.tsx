@@ -4,6 +4,7 @@ import {
   SmartFilterOptions,
   ParticipantFilters,
   PaginationMeta,
+  SortOrder,
 } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { ParticipantTable } from "./ParticipantTable";
@@ -103,6 +104,9 @@ interface ProfessionalTabProps {
   onRefresh?: () => void;
   loading?: boolean;
   pageSize: number;
+  sortBy?: string | null;
+  sortOrder?: SortOrder;
+  onSortChange?: (sortBy: string, sortOrder: SortOrder) => void;
 }
 
 // Removido MemoizedSelect - agora usando VirtualizedSelect
@@ -117,8 +121,24 @@ const ProfessionalTabComponent = ({
   onRefresh,
   loading = false,
   pageSize,
+  sortBy,
+  sortOrder = "asc",
+  onSortChange,
 }: ProfessionalTabProps) => {
   const [selectedParticipant, setSelectedParticipant] = useState<Participante | null>(null);
+
+  // Handler para clique no header de ordenação
+  const handleSort = useCallback((column: string) => {
+    if (!onSortChange) return;
+
+    // Se clicar na mesma coluna, inverte a ordem
+    // Se clicar em outra coluna, ordena ASC
+    if (sortBy === column) {
+      onSortChange(column, sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      onSortChange(column, "asc");
+    }
+  }, [sortBy, sortOrder, onSortChange]);
 
   const getBadgeVariant = useCallback((situacao?: string): "outline" | "default" | "secondary" | "destructive" | "warning" => {
     if (!situacao) return "outline";
@@ -178,6 +198,9 @@ const ProfessionalTabComponent = ({
               onRowClick={setSelectedParticipant}
               getBadgeVariant={getBadgeVariant}
               isLoading={loading}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSort={handleSort}
             />
 
             {/* Pagination - Footer do Card */}

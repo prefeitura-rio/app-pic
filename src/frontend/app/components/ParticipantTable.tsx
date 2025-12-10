@@ -1,8 +1,9 @@
 "use client";
 
 import { memo } from "react";
-import { Participante } from "../types";
+import { Participante, SortOrder } from "../types";
 import { Badge } from "@/app/components/ui/badge";
+import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
 type BadgeVariant = "outline" | "default" | "secondary" | "destructive" | "warning" | "success";
 
@@ -11,7 +12,35 @@ interface ParticipantTableProps {
   onRowClick: (participant: Participante) => void;
   getBadgeVariant: (situacao?: string) => BadgeVariant;
   isLoading?: boolean;
+  sortBy?: string | null;
+  sortOrder?: SortOrder;
+  onSort?: (column: string) => void;
 }
+
+// Configuração das colunas (key corresponde ao sort_by do backend)
+const SORTABLE_COLUMNS = [
+  { key: "nome", label: "Nome", align: "left" as const },
+  { key: "cpf", label: "CPF", align: "left" as const },
+  { key: "grupo", label: "Grupo", align: "left" as const },
+  { key: "bairro", label: "Bairro", align: "left" as const },
+  { key: "idade", label: "Idade", align: "center" as const },
+  { key: "status", label: "Status", align: "center" as const },
+  { key: "total_fracao", label: "Total", align: "center" as const },
+  { key: "assistencia_fracao", label: "Assist.", align: "center" as const },
+  { key: "educacao_fracao", label: "Educ.", align: "center" as const },
+  { key: "saude_fracao", label: "Saúde", align: "center" as const },
+  { key: "situacao", label: "Situação", align: "center" as const },
+];
+
+// Componente de ícone de ordenação
+const SortIcon = ({ column, sortBy, sortOrder }: { column: string; sortBy?: string | null; sortOrder?: SortOrder }) => {
+  if (sortBy !== column) {
+    return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+  }
+  return sortOrder === "asc"
+    ? <ArrowUp className="h-3 w-3 ml-1" />
+    : <ArrowDown className="h-3 w-3 ml-1" />;
+};
 
 // Função para capitalizar situação
 const capitalizeSituacao = (situacao?: string) => {
@@ -46,10 +75,19 @@ export const ParticipantTable = memo(({
   onRowClick,
   getBadgeVariant,
   isLoading,
+  sortBy,
+  sortOrder = "asc",
+  onSort,
 }: ParticipantTableProps) => {
   if (!data || !Array.isArray(data) || data.length === 0) {
     return null;
   }
+
+  const handleHeaderClick = (column: string) => {
+    if (onSort) {
+      onSort(column);
+    }
+  };
 
   return (
     <div
@@ -75,17 +113,18 @@ export const ParticipantTable = memo(({
         <table style={{ minWidth: MIN_TABLE_WIDTH, width: '100%' }} className="text-sm border-collapse">
           <thead className="bg-muted/50">
             <tr className="border-b">
-              <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Nome</th>
-              <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">CPF</th>
-              <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Grupo</th>
-              <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Bairro</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Idade</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Status</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Total</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Assist.</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Educ.</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Saúde</th>
-              <th className="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Situação</th>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th
+                  key={col.key}
+                  className={`px-3 py-3 text-${col.align} font-medium text-muted-foreground whitespace-nowrap cursor-pointer hover:bg-muted/80 transition-colors select-none`}
+                  onClick={() => handleHeaderClick(col.key)}
+                >
+                  <div className={`flex items-center ${col.align === "center" ? "justify-center" : ""}`}>
+                    {col.label}
+                    <SortIcon column={col.key} sortBy={sortBy} sortOrder={sortOrder} />
+                  </div>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>

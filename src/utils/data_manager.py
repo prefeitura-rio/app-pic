@@ -113,6 +113,8 @@ class DataManager:
         search_columns: Optional[list[str]] = None,
         user_permissions=None,  # NOVO: Optional[UserPermissions]
         bypass_cache: bool = False,  # NOVO: Força query no BigQuery
+        sort_by: Optional[str] = None,  # NOVO: Coluna para ordenação
+        sort_descending: bool = False,  # NOVO: True para DESC, False para ASC
     ) -> tuple[pl.DataFrame, PaginationMeta, Optional[SmartFilterOptions]]:
         """
         Executa pipeline completo de fetch → filter → filter_options → paginate.
@@ -240,6 +242,17 @@ class DataManager:
             search_time = time.perf_counter() - search_start
             profiling.search_s = round(search_time, config.PROFILING_DECIMAL_PLACES)
             profiling.rows_after_search = len(df_filtered)
+
+        # 3.5. APPLY SORTING (ANTES da paginação!)
+        if sort_by and sort_by in df_filtered.columns:
+            sort_start = time.perf_counter()
+            df_filtered = df_filtered.sort(sort_by, descending=sort_descending, nulls_last=True)
+            sort_time = time.perf_counter() - sort_start
+            logger.info(
+                f"📊 Sort applied: {sort_by} {'DESC' if sort_descending else 'ASC'} in {sort_time:.3f}s"
+            )
+        elif sort_by:
+            logger.warning(f"⚠️ Sort column '{sort_by}' not found in DataFrame")
 
         # 4. FILTER OPTIONS - usar pré-computadas se disponíveis (OTIMIZAÇÃO V2)
         filter_options_dict = None

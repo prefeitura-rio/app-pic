@@ -18,6 +18,20 @@ class PaginationParams(BaseModel):
     )
 
 
+class SortParams(BaseModel):
+    """Parâmetros de ordenação para endpoints paginados"""
+
+    sort_by: Optional[str] = Field(
+        None,
+        description="Coluna para ordenar (ex: nome, idade, situacao)",
+    )
+    sort_order: Optional[str] = Field(
+        "asc",
+        description="Direção da ordenação: 'asc' ou 'desc'",
+        pattern="^(asc|desc)$",
+    )
+
+
 class CommonFilters(BaseModel):
     bairro: Optional[str] = None
     cre: Optional[str] = None
