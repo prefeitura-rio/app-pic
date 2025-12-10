@@ -30,6 +30,58 @@ import {
   Filter,
 } from "lucide-react";
 
+// Função para renderizar o grupo com emoji (consistente com VirtualizedParticipantTable)
+const renderGrupo = (grupo?: string) => {
+  if (!grupo) return "-";
+  const lower = grupo.toLowerCase();
+  if (lower.includes("crian") || lower.includes("criança")) return "👶 Criança";
+  if (lower.includes("gestante")) return "🤰 Gestante";
+  return grupo;
+};
+
+// Função para renderizar grupo completo (com tipo Bolsa Família se aplicável)
+const renderGrupoCompleto = (grupo?: string) => {
+  if (!grupo) return "-";
+  const grupoBase = renderGrupo(grupo);
+  // Adicionar " • Bolsa Família" se o grupo original contiver "bf" ou "bolsa"
+  const lower = grupo.toLowerCase();
+  if (lower.includes("bf") || lower.includes("bolsa")) {
+    return `${grupoBase} • Bolsa Família`;
+  }
+  return grupoBase;
+};
+
+
+// Função para calcular completude total
+const calcularCompletude = (participant: Participante) => {
+  const total = participant.total_protocolos || 0;
+  const regular = participant.total_protocolos_regular || 0;
+  if (total === 0) return 0;
+  return Math.round((regular / total) * 100);
+};
+
+// Função para obter badge variant baseado no status do protocolo
+const getProtocolBadgeVariant = (status?: string, irregular?: boolean): "default" | "secondary" | "destructive" | "warning" => {
+  if (irregular) return "destructive";
+  if (!status) return "secondary";
+  const lower = status.toLowerCase();
+  if (lower === "regular" || lower.includes("regular")) return "default";
+  if (lower === "n/a" || lower === "não aplicável") return "secondary";
+  if (lower.includes("irregular")) return "destructive";
+  if (lower.includes("atenção") || lower.includes("atencao")) return "warning";
+  return "secondary";
+};
+
+// Função para formatar status do protocolo para exibição
+const formatProtocolStatus = (status?: string, irregular?: boolean) => {
+  if (irregular) return "✗ Irregular";
+  if (!status) return "N/A";
+  const lower = status.toLowerCase();
+  if (lower === "regular" || lower.includes("regular")) return "✓ Regular";
+  if (lower === "n/a" || lower === "não aplicável") return "N/A";
+  return status;
+};
+
 interface ProfessionalTabProps {
   data: Participante[];
   meta: PaginationMeta | null;
@@ -450,7 +502,7 @@ const ProfessionalTabComponent = ({
               <DialogHeader>
                 <DialogTitle className="text-2xl flex items-center gap-2">
                   <Eye className="h-6 w-6 text-primary" />
-                  Detalhamento da Pessoa
+                  Detalhamento Individual
                 </DialogTitle>
               </DialogHeader>
 
@@ -461,17 +513,15 @@ const ProfessionalTabComponent = ({
                   <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
                     <div>
                       <p className="text-sm text-muted-foreground">Nome</p>
-                      <p className="font-medium">{selectedParticipant.nome}</p>
+                      <p className="font-medium">{selectedParticipant.nome || "-"}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">CPF</p>
-                      <p className="font-mono font-medium">{selectedParticipant.cpf}</p>
+                      <p className="font-mono font-medium">{selectedParticipant.cpf || "-"}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Grupo</p>
-                      <p className="font-medium">
-                        {selectedParticipant.grupo?.toLowerCase().includes("crianca") ? "👶 Criança" : "🤰 Gestante"}
-                      </p>
+                      <p className="font-medium">{renderGrupoCompleto(selectedParticipant.grupo)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Idade</p>
@@ -479,7 +529,7 @@ const ProfessionalTabComponent = ({
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Bairro</p>
-                      <p className="font-medium">{selectedParticipant.bairro}</p>
+                      <p className="font-medium">{selectedParticipant.bairro || "-"}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Escola</p>
@@ -499,8 +549,8 @@ const ProfessionalTabComponent = ({
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Status</p>
-                      <Badge variant={selectedParticipant.status === "ativo" ? "default" : "secondary"}>
-                        {selectedParticipant.status}
+                      <Badge variant={selectedParticipant.status === "ativo" ? "success" : "destructive"}>
+                        {selectedParticipant.status || "-"}
                       </Badge>
                     </div>
                   </div>
@@ -508,74 +558,102 @@ const ProfessionalTabComponent = ({
 
                 <Separator />
 
-                {/* Situação Geral */}
+                {/* Situação Geral - Simplificada */}
                 <div>
                   <h3 className="text-lg font-semibold mb-3 text-foreground">Situação Geral</h3>
-                  <div className="grid grid-cols-4 gap-4">
-                    <Card className="bg-muted">
-                      <CardContent className="p-4 text-center">
-                        <p className="text-sm text-muted-foreground">Total</p>
-                        <p className="text-2xl font-bold">{selectedParticipant.total_fracao || "0/0"}</p>
-                        <Badge variant={getBadgeVariant(selectedParticipant.situacao)} className="mt-2">
-                          {selectedParticipant.situacao}
+                  <div className="bg-muted/50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Status</p>
+                        <Badge variant={getBadgeVariant(selectedParticipant.situacao)} className="text-base">
+                          {selectedParticipant.situacao || "-"}
                         </Badge>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-green-50 dark:bg-green-950/20">
-                      <CardContent className="p-4 text-center">
-                        <p className="text-sm text-muted-foreground">Assistência</p>
-                        <p className="text-2xl font-bold">{selectedParticipant.assistencia_fracao || "0/0"}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedParticipant.assistencia_protocolos_irregular || 0} irregulares
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-orange-50 dark:bg-orange-950/20">
-                      <CardContent className="p-4 text-center">
-                        <p className="text-sm text-muted-foreground">Educação</p>
-                        <p className="text-2xl font-bold">{selectedParticipant.educacao_fracao || "0/0"}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedParticipant.educacao_protocolos_irregular || 0} irregulares
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-red-50 dark:bg-red-950/20">
-                      <CardContent className="p-4 text-center">
-                        <p className="text-sm text-muted-foreground">Saúde</p>
-                        <p className="text-2xl font-bold">{selectedParticipant.saude_fracao || "0/0"}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {selectedParticipant.saude_protocolos_irregular || 0} irregulares
-                        </p>
-                      </CardContent>
-                    </Card>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground mb-1">Completude Total</p>
+                        <p className="text-3xl font-bold text-primary">{calcularCompletude(selectedParticipant)}%</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <Separator />
 
-                {/* Resumo Protocolos */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-foreground">Resumo de Protocolos</h3>
-                  <div className="bg-muted/50 p-4 rounded-lg">
-                    <div className="grid grid-cols-3 gap-4">
+                {/* Dimensão Assistência Social */}
+                {(() => {
+                  const protocolosAssistencia = (selectedParticipant.protocolo_listagem || [])
+                    .filter(p => p.secretaria?.toLowerCase() === "smas");
+                  if (protocolosAssistencia.length === 0) return null;
+                  return (
+                    <>
                       <div>
-                        <p className="text-sm text-muted-foreground">Total de Protocolos</p>
-                        <p className="text-3xl font-bold text-primary">{selectedParticipant.total_protocolos || 0}</p>
+                        <h3 className="text-lg font-semibold mb-3 text-foreground">📋 Dimensão Assistência Social</h3>
+                        <div className="space-y-2">
+                          {protocolosAssistencia.map((protocolo, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                              <span className="text-sm">{protocolo.descricao || "-"}</span>
+                              <Badge variant={getProtocolBadgeVariant(protocolo.status, protocolo.irregular_indicador)}>
+                                {formatProtocolStatus(protocolo.status, protocolo.irregular_indicador)}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                      <Separator />
+                    </>
+                  );
+                })()}
+
+                {/* Dimensão Educação */}
+                {(() => {
+                  const protocolosEducacao = (selectedParticipant.protocolo_listagem || [])
+                    .filter(p => p.secretaria?.toLowerCase() === "sme");
+                  if (protocolosEducacao.length === 0) return null;
+                  return (
+                    <>
                       <div>
-                        <p className="text-sm text-muted-foreground">Protocolos Irregulares</p>
-                        <p className="text-3xl font-bold text-destructive">{selectedParticipant.total_protocolos_irregular || 0}</p>
+                        <h3 className="text-lg font-semibold mb-3 text-foreground">📚 Dimensão Educação</h3>
+                        <div className="space-y-2">
+                          {protocolosEducacao.map((protocolo, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                              <span className="text-sm">{protocolo.descricao || "-"}</span>
+                              <Badge variant={getProtocolBadgeVariant(protocolo.status, protocolo.irregular_indicador)}>
+                                {formatProtocolStatus(protocolo.status, protocolo.irregular_indicador)}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                      <Separator />
+                    </>
+                  );
+                })()}
+
+                {/* Dimensão Saúde */}
+                {(() => {
+                  const protocolosSaude = (selectedParticipant.protocolo_listagem || [])
+                    .filter(p => p.secretaria?.toLowerCase() === "sms" || p.secretaria?.toLowerCase() === "subpav");
+                  if (protocolosSaude.length === 0) return null;
+                  return (
+                    <>
                       <div>
-                        <p className="text-sm text-muted-foreground">Protocolos Regulares</p>
-                        <p className="text-3xl font-bold text-green-600">{selectedParticipant.total_protocolos_regular || 0}</p>
+                        <h3 className="text-lg font-semibold mb-3 text-foreground">🏥 Dimensão Saúde</h3>
+                        <div className="space-y-2">
+                          {protocolosSaude.map((protocolo, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded">
+                              <span className="text-sm">{protocolo.descricao || "-"}</span>
+                              <Badge variant={getProtocolBadgeVariant(protocolo.status, protocolo.irregular_indicador)}>
+                                {formatProtocolStatus(protocolo.status, protocolo.irregular_indicador)}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
+                      <Separator />
+                    </>
+                  );
+                })()}
+
               </div>
             </>
           )}
