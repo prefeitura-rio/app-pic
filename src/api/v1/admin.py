@@ -12,7 +12,7 @@ REGRAS:
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional, Dict
-import pandas as pd
+import polars as pl
 from datetime import datetime, timezone
 
 from src.core.security.jwt import CurrentUserPermissions
@@ -155,8 +155,8 @@ def calculate_permission(is_admin: bool, is_super_admin: bool) -> str:
 
 
 def _filter_manageable_users(
-    df: pd.DataFrame, admin_permissions: UserPermissions
-) -> pd.DataFrame:
+    df: pl.DataFrame, admin_permissions: UserPermissions
+) -> pl.DataFrame:
     """
     Filtra usuários que admin segmentado pode gerenciar.
 
@@ -171,7 +171,7 @@ def _filter_manageable_users(
     Returns:
         DataFrame filtrado com apenas usuários gerenciáveis
     """
-    if df.empty:
+    if df.is_empty():
         return df
 
     # Debug: Log permissões do admin (sem expor CPF completo)
@@ -200,15 +200,15 @@ def _filter_manageable_users(
 
     if not has_any_ids:
         logger.warning(f"❌ Admin não possui nenhum ID - não pode gerenciar usuários")
-        return df.iloc[0:0]  # Retorna DataFrame vazio
+        return df.head(0)  # Retorna DataFrame vazio
 
     # OTIMIZAÇÃO: Usar operação vetorizada ao invés de iterrows()
     # Primeiro filtro: remover super admins (operação vetorizada)
-    df_non_super_admin = df[df["is_super_admin"] == False].copy()
+    df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
 
-    if df_non_super_admin.empty:
+    if df_non_super_admin.is_empty():
         logger.info("Nenhum usuário gerenciável (todos são super admins)")
-        return df.iloc[0:0]
+        return df.head(0)
 
     # Preparar sets de IDs do admin uma única vez (fora do loop)
     admin_id_sets = {
@@ -222,11 +222,13 @@ def _filter_manageable_users(
         ),
     }
 
-    def check_user_manageable(row):
-        """
-        Verifica se usuário é gerenciável (subset check).
-        Retorna True se TODOS os IDs do usuário estão no subset do admin.
-        """
+    # OTIMIZAÇÃO POLARS: Usar to_dicts() para iterar (governance table é pequena ~100 rows max)
+    # Isso é aceitável porque a tabela de governança tem poucos usuários
+    manageable_cpfs = []
+
+    for row in df_non_super_admin.to_dicts():
+        is_manageable = True
+
         for id_type in [
             "id_cras",
             "id_escola",
@@ -237,48 +239,33 @@ def _filter_manageable_users(
         ]:
             list_key = f"{id_type}_list"
             user_id_list = row.get(list_key)
-
-            # IDs que o admin possui para este tipo
             admin_ids = admin_id_sets[id_type]
 
             # Se usuário não tem IDs desse tipo, ok (pula)
-            if user_id_list is None or (
-                isinstance(user_id_list, list) and len(user_id_list) == 0
-            ):
-                continue
-
-            # Converter para lista se necessário
-            if not isinstance(user_id_list, (list, tuple)):
-                try:
-                    user_id_list = list(user_id_list)
-                except (TypeError, ValueError):
-                    continue
-
-            # Se lista vazia após conversão, ok
-            if len(user_id_list) == 0:
+            if user_id_list is None or (isinstance(user_id_list, list) and len(user_id_list) == 0):
                 continue
 
             # Extrair IDs do usuário
             user_ids = set()
-            for item in user_id_list:
+            for item in user_id_list if isinstance(user_id_list, list) else []:
                 if isinstance(item, dict):
                     user_ids.add(item.get("id"))
-                elif hasattr(item, "id"):
-                    user_ids.add(item.id)
 
             # REGRA: Se usuário tem IDs desse tipo, admin DEVE ter IDs desse tipo
-            if not admin_ids:
-                return False  # Admin não tem IDs, mas usuário tem
+            if user_ids and not admin_ids:
+                is_manageable = False
+                break
 
             # REGRA: Todos os IDs do usuário devem estar no subset do admin
-            if not user_ids.issubset(admin_ids):
-                return False  # Usuário tem IDs que admin não possui
+            if user_ids and not user_ids.issubset(admin_ids):
+                is_manageable = False
+                break
 
-        return True  # Passou todas as verificações
+        if is_manageable:
+            manageable_cpfs.append(row["cpf"])
 
-    # OTIMIZAÇÃO: apply() é ~10x mais rápido que iterrows()
-    mask = df_non_super_admin.apply(check_user_manageable, axis=1)
-    df_filtered = df_non_super_admin[mask]
+    # Filtrar DataFrame pelos CPFs gerenciáveis
+    df_filtered = df_non_super_admin.filter(pl.col("cpf").is_in(manageable_cpfs))
 
     logger.info(
         f"Admin segmentado - Usuários gerenciáveis: {len(df)} -> {len(df_filtered)}"
@@ -377,31 +364,31 @@ def validate_segmented_admin_can_manage(
 
 
 def _extract_unique_ids(
-    df: pd.DataFrame, id_col: str, nome_col: str
+    df: pl.DataFrame, id_col: str, nome_col: str
 ) -> List[IdWithName]:
     """Helper para extrair IDs únicos com nomes de um DataFrame"""
-    if df.empty or id_col not in df.columns:
+    if df.is_empty() or id_col not in df.columns:
         return []
 
     # Se nome_col não existe ou é igual a id_col, usar id_col para ambos
     if nome_col not in df.columns or id_col == nome_col:
-        unique_df = df[[id_col]].dropna().drop_duplicates().sort_values(id_col)
+        unique_df = df.select(id_col).drop_nulls().unique().sort(id_col)
         return [
             IdWithName(id=str(row[id_col]), nome=str(row[id_col]))
-            for _, row in unique_df.iterrows()
+            for row in unique_df.to_dicts()
         ]
 
     # Caso normal: colunas diferentes
     unique_df = (
-        df[[id_col, nome_col]]
-        .dropna()
-        .drop_duplicates(subset=[id_col])
-        .sort_values(nome_col)
+        df.select([id_col, nome_col])
+        .drop_nulls()
+        .unique(subset=[id_col])
+        .sort(nome_col)
     )
 
     return [
         IdWithName(id=str(row[id_col]), nome=str(row[nome_col]))
-        for _, row in unique_df.iterrows()
+        for row in unique_df.to_dicts()
     ]
 
 
@@ -744,12 +731,13 @@ async def upsert_user(
 
     # Verificar se CPF já existe (usa cache da tabela de governança)
     governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
-    existing_user = governance_df[governance_df["cpf"] == cpf]
-    user_exists = not existing_user.empty
+    existing_user = governance_df.filter(pl.col("cpf") == cpf)
+    user_exists = not existing_user.is_empty()
 
     # PROTEÇÃO: Impedir criação acidental de usuário que já existe (se não for update intencional)
     if user_exists and not request.is_update:
-        nome_existente = existing_user.iloc[0].get("nome", "Sem nome")
+        existing_row = existing_user.row(0, named=True)
+        nome_existente = existing_row.get("nome", "Sem nome")
         raise HTTPException(
             status_code=409,  # Conflict
             detail=f"CPF {cpf} já está cadastrado no sistema (Usuário: {nome_existente}). Use a função de edição para atualizar este usuário.",
@@ -757,7 +745,8 @@ async def upsert_user(
 
     # PROTEÇÃO: Impedir edição de super admins
     if user_exists:
-        is_target_super_admin = bool(existing_user.iloc[0]["is_super_admin"])
+        existing_row = existing_user.row(0, named=True)
+        is_target_super_admin = bool(existing_row["is_super_admin"])
         # Apenas permite editar se o próprio usuário for super admin, mas ainda assim com cuidado
         # (regra atual: super admins não editáveis via UI)
         if is_target_super_admin:
@@ -901,7 +890,7 @@ async def upsert_user(
 
             if not update_dict and not struct_updates:
                 logger.info("Nenhum campo para atualizar")
-                return UserAccessRecord(**existing_user.iloc[0].to_dict())
+                return UserAccessRecord(**existing_user.row(0, named=True))
 
             # Build parametrized query para campos simples
             if update_dict:
@@ -1015,9 +1004,9 @@ async def upsert_user(
         governance_df, _, _ = DataManager.get_dataset(
             GOVERNANCE_TABLE_QUERY, bypass_cache=True
         )
-        user_row = governance_df[governance_df["cpf"] == cpf]
+        user_row = governance_df.filter(pl.col("cpf") == cpf)
 
-        if user_row.empty:
+        if user_row.is_empty():
             # Fallback se cache refresh falhar ou tiver delay (raro com bypass_cache=True)
             # Retorna o que temos em memória do existing_user se possível, ou erro
             if user_exists:
@@ -1031,15 +1020,8 @@ async def upsert_user(
                 detail=f"Usuário {cpf} salvo, mas não encontrado no cache renovado",
             )
 
-        # Converter para UserAccessRecord (mesma lógica de antes)
-        row_dict = user_row.iloc[0].to_dict()
-        for key, value in row_dict.items():
-            if not isinstance(value, (list, dict)):
-                try:
-                    if pd.isna(value):
-                        row_dict[key] = None
-                except (ValueError, TypeError):
-                    pass
+        # Converter para UserAccessRecord (Polars já converte null para None)
+        row_dict = user_row.row(0, named=True)
 
         # Bool conv
         if "active" in row_dict:
