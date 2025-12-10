@@ -266,17 +266,17 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           }}
           className="w-full"
         >
-          <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted">
+          <TabsList className="w-full flex mb-8 h-12 p-0 bg-muted rounded-lg overflow-hidden">
             <TabsTrigger
               value="overview"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-3"
+              className="flex-1 h-full rounded-none data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=inactive]:bg-muted data-[state=inactive]:text-muted-foreground font-medium transition-colors"
             >
               <BarChart3 className="h-4 w-4 mr-2" />
               Visão Geral
             </TabsTrigger>
             <TabsTrigger
               value="professional"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-3"
+              className="flex-1 h-full rounded-none data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=inactive]:bg-muted data-[state=inactive]:text-muted-foreground font-medium transition-colors"
             >
               <Search className="h-4 w-4 mr-2" />
               Busca Individual

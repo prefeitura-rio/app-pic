@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, memo } from "react";
-import { useDebounce } from "../hooks/useDebounce";
 import {
   Participante,
   SmartFilterOptions,
@@ -25,10 +24,11 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  Filter,
-  Loader2,
   Eye,
   RefreshCw,
+  BarChart3,
+  X,
+  Filter,
 } from "lucide-react";
 
 interface ProfessionalTabProps {
@@ -56,9 +56,6 @@ const ProfessionalTabComponent = ({
 }: ProfessionalTabProps) => {
   const [searchInput, setSearchInput] = useState("");
   const [selectedParticipant, setSelectedParticipant] = useState<Participante | null>(null);
-
-  // Debounce search input para evitar re-renders durante digitação
-  const debouncedSearch = useDebounce(searchInput, 300);
 
   // Memoizar callbacks para evitar re-criação
   const handleFilterUpdate = useCallback((key: keyof ParticipantFilters, value: string) => {
@@ -88,11 +85,13 @@ const ProfessionalTabComponent = ({
     onFilterChange({});
   }, [onFilterChange]);
 
-  const getBadgeVariant = useCallback((situacao?: string) => {
+  const getBadgeVariant = useCallback((situacao?: string): "outline" | "default" | "secondary" | "destructive" | "warning" => {
     if (!situacao) return "outline";
-    if (situacao.toLowerCase().includes("regular")) return "default";
-    if (situacao.toLowerCase().includes("atenção")) return "secondary";
-    return "destructive";
+    const lower = situacao.toLowerCase();
+    if (lower === "regular") return "default";
+    if (lower.includes("atenção") || lower.includes("atencao")) return "warning";
+    if (lower.includes("irregular")) return "destructive";
+    return "secondary";
   }, []);
 
   // Memoizar dados filtrados (caso precisemos de filtro client-side no futuro)
@@ -120,65 +119,63 @@ const ProfessionalTabComponent = ({
           Busca Individual
         </h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Busque por CPF ou nome e aplique filtros para encontrar participantes
+          Busque por CPF ou nome para ver os detalhes de uma pessoa específica
         </p>
       </div>
 
-      {/* Filtros */}
-      <Card className="relative">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Filter className="h-4 w-4" />
-            Filtros
+      {/* Filtros e Busca */}
+      <Card className="relative border-2">
+        <CardHeader className="pb-4 flex flex-row items-center justify-between">
+          <CardTitle className="text-2xl font-bold flex items-center gap-2">
+            <Filter className="h-6 w-6" />
+            Filtros e Busca
           </CardTitle>
           <div className="flex gap-2">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={clearFilters}
               className="h-8 text-xs"
               disabled={loading}
             >
+              <X className="h-3 w-3 mr-1" />
               Limpar Filtros
             </Button>
             {onRefresh && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={onRefresh}
                 className="h-8 text-xs"
                 disabled={loading}
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
                 Atualizar
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-4">
-          {/* Busca */}
-          <div className="flex gap-2">
+          {/* Busca - Full Width com ícone interno */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Buscar por CPF ou nome..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="flex-1"
+              className="pl-10 h-11"
               disabled={loading}
             />
-            <Button onClick={handleSearch} disabled={loading}>
-              <Search className="h-4 w-4 mr-2" />
-              Buscar
-            </Button>
           </div>
 
           {/* Primeiro Nível - Filtros Principais */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Filtros Principais
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
               {/* Grupo */}
               <VirtualizedSelect
                 value={filters.grupo || "todos"}
@@ -222,11 +219,11 @@ const ProfessionalTabComponent = ({
           </div>
 
           {/* Segundo Nível - Filtros Regionais */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Filtros Regionais
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
               {/* EDUCAÇÃO */}
               {/* Escolas */}
               <VirtualizedSelect
@@ -304,8 +301,9 @@ const ProfessionalTabComponent = ({
           </div>
 
           {meta && (
-            <div className="pt-2 text-sm text-muted-foreground border-t mt-4">
-              📊 {meta.total_rows.toLocaleString('pt-BR')} resultado(s) encontrado(s)
+            <div className="pt-4 border-t mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <BarChart3 className="h-4 w-4" />
+              <span className="font-medium">{meta.total_rows.toLocaleString('pt-BR')}</span> pessoas encontradas
             </div>
           )}
         </CardContent>
@@ -314,24 +312,25 @@ const ProfessionalTabComponent = ({
       {/* Results Table */}
       {loading && !data.length ? (
         <Card className="border-2">
-          <CardHeader>
+          <CardHeader className="pb-4">
             <Skeleton className="h-6 w-48" />
           </CardHeader>
           <CardContent className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton className="h-11 w-full" />
+            {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
           </CardContent>
         </Card>
       ) : displayData.length > 0 ? (
         <Card className="border-2 relative">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-6 w-6 text-primary" />
-              Lista de Participantes
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="h-5 w-5 text-primary" />
+              Lista de Pessoas
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {/* OTIMIZAÇÃO: Tabela virtualizada para performance com muitos dados */}
             <VirtualizedParticipantTable
               data={displayData}
@@ -340,11 +339,12 @@ const ProfessionalTabComponent = ({
               isLoading={loading}
             />
 
-            {/* Pagination */}
+            {/* Pagination - Footer do Card */}
             {meta && meta.total_pages > 1 && (
-              <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center justify-between pt-4 border-t">
                 <p className="text-sm text-muted-foreground">
-                  Página {meta.page} de {meta.total_pages} ({meta.total_rows} itens)
+                  Página <span className="font-medium">{meta.page}</span> de <span className="font-medium">{meta.total_pages}</span>
+                  <span className="ml-2">({meta.total_rows.toLocaleString('pt-BR')} pessoas)</span>
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -353,11 +353,9 @@ const ProfessionalTabComponent = ({
                     onClick={() => onPageChange(Math.max(1, meta.page - 1))}
                     disabled={meta.page === 1 || loading}
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4 mr-1" />
                     Anterior
                   </Button>
-
-                  <span className="text-sm px-2">Página {meta.page}</span>
 
                   <Button
                     variant="outline"
@@ -366,7 +364,7 @@ const ProfessionalTabComponent = ({
                     disabled={meta.page === meta.total_pages || loading}
                   >
                     Próxima
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 </div>
               </div>
@@ -378,7 +376,7 @@ const ProfessionalTabComponent = ({
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">
               <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">Nenhum resultado encontrado</p>
+              <p className="text-lg font-medium">Nenhuma pessoa encontrada</p>
               <p className="text-sm mt-2">
                 Tente ajustar os filtros ou termo de busca
               </p>
@@ -395,7 +393,7 @@ const ProfessionalTabComponent = ({
               <DialogHeader>
                 <DialogTitle className="text-2xl flex items-center gap-2">
                   <Eye className="h-6 w-6 text-primary" />
-                  Detalhamento do Participante
+                  Detalhamento da Pessoa
                 </DialogTitle>
               </DialogHeader>
 

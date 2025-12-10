@@ -41,6 +41,15 @@ export function VirtualizedSelect({
   disabled = false,
 }: VirtualizedSelectProps) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const [triggerWidth, setTriggerWidth] = React.useState(0);
+
+  // Medir a largura do trigger quando abrir o popover
+  React.useEffect(() => {
+    if (open && triggerRef.current) {
+      setTriggerWidth(triggerRef.current.offsetWidth);
+    }
+  }, [open]);
 
   // Otimização: Filtragem local simples para react-window
   const [searchTerm, setSearchInput] = React.useState("");
@@ -99,6 +108,7 @@ export function VirtualizedSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -113,7 +123,11 @@ export function VirtualizedSelect({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      <PopoverContent
+        className="p-0"
+        align="start"
+        style={{ width: triggerWidth > 0 ? triggerWidth : 300 }}
+      >
         <Command shouldFilter={false}> {/* Desativa filtro nativo do cmkd */}
           <CommandInput
             placeholder="Buscar..."
