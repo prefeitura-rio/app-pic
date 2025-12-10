@@ -30,6 +30,8 @@ interface UserInfo {
   exp?: number;
 }
 
+const PAGE_SIZE = 50;
+
 /**
  * Main Dashboard Orchestrator Component
  *
@@ -126,7 +128,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           ...(shouldBypassCache && { bypass_cache: true }),
         },
         professionalPage,
-        20
+        PAGE_SIZE
       );
 
       if (shouldBypassCache) {
@@ -266,17 +268,17 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           }}
           className="w-full"
         >
-          <TabsList className="w-full flex mb-8 h-12 p-0 bg-muted rounded-lg overflow-hidden">
+          <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted rounded-md">
             <TabsTrigger
               value="overview"
-              className="flex-1 h-full rounded-none data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=inactive]:bg-muted data-[state=inactive]:text-muted-foreground font-medium transition-colors"
+              className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
             >
               <BarChart3 className="h-4 w-4 mr-2" />
               Visão Geral
             </TabsTrigger>
             <TabsTrigger
               value="professional"
-              className="flex-1 h-full rounded-none data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=inactive]:bg-muted data-[state=inactive]:text-muted-foreground font-medium transition-colors"
+              className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
             >
               <Search className="h-4 w-4 mr-2" />
               Busca Individual
@@ -307,6 +309,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 onPageChange={handleProfessionalPageChange}
                 onRefresh={handleProfessionalRefresh}
                 loading={participantsFetching}
+                pageSize={PAGE_SIZE}
               />
             </TabsContent>
           )}

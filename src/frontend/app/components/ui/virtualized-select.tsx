@@ -65,10 +65,10 @@ export function VirtualizedSelect({
     [options, value]
   );
 
-  // Texto a ser exibido no botão
+  // Texto a ser exibido no botão (mostra defaultLabel quando nenhum filtro específico selecionado)
   const displayText = value && value !== "todos" && value !== "todas"
     ? selectedLabel || value
-    : placeholder;
+    : defaultLabel;
 
   // Tipo para os props customizados (sem index, style, ariaAttributes)
   interface CustomRowProps {

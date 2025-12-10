@@ -26,7 +26,6 @@ import {
   ChevronRight,
   Eye,
   RefreshCw,
-  BarChart3,
   X,
   Filter,
 } from "lucide-react";
@@ -40,6 +39,7 @@ interface ProfessionalTabProps {
   onPageChange: (page: number) => void;
   onRefresh?: () => void;
   loading?: boolean;
+  pageSize: number;
 }
 
 // Removido MemoizedSelect - agora usando VirtualizedSelect
@@ -53,6 +53,7 @@ const ProfessionalTabComponent = ({
   onPageChange,
   onRefresh,
   loading = false,
+  pageSize,
 }: ProfessionalTabProps) => {
   const [searchInput, setSearchInput] = useState("");
   const [selectedParticipant, setSelectedParticipant] = useState<Participante | null>(null);
@@ -302,8 +303,7 @@ const ProfessionalTabComponent = ({
 
           {meta && (
             <div className="pt-4 border-t mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <BarChart3 className="h-4 w-4" />
-              <span className="font-medium">{meta.total_rows.toLocaleString('pt-BR')}</span> pessoas encontradas
+              <span className="font-medium">{meta.total_rows.toLocaleString('pt-BR')}</span> pessoa(s) encontrada(s)
             </div>
           )}
         </CardContent>
@@ -343,10 +343,9 @@ const ProfessionalTabComponent = ({
             {meta && meta.total_pages > 1 && (
               <div className="flex items-center justify-between pt-4 border-t">
                 <p className="text-sm text-muted-foreground">
-                  Página <span className="font-medium">{meta.page}</span> de <span className="font-medium">{meta.total_pages}</span>
-                  <span className="ml-2">({meta.total_rows.toLocaleString('pt-BR')} pessoas)</span>
+                  Mostrando <span className="font-medium">{((meta.page - 1) * pageSize) + 1}</span> a <span className="font-medium">{((meta.page - 1) * pageSize) + displayData.length}</span> de <span className="font-medium">{meta.total_rows.toLocaleString('pt-BR')}</span> registros
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Button
                     variant="outline"
                     size="sm"
@@ -356,6 +355,39 @@ const ProfessionalTabComponent = ({
                     <ChevronLeft className="h-4 w-4 mr-1" />
                     Anterior
                   </Button>
+
+                  {/* Page Numbers */}
+                  {(() => {
+                    const pages: number[] = [];
+                    const totalPages = meta.total_pages;
+                    const currentPage = meta.page;
+
+                    // Mostrar até 5 páginas
+                    let startPage = Math.max(1, currentPage - 2);
+                    let endPage = Math.min(totalPages, startPage + 4);
+
+                    // Ajustar se estiver no final
+                    if (endPage - startPage < 4) {
+                      startPage = Math.max(1, endPage - 4);
+                    }
+
+                    for (let i = startPage; i <= endPage; i++) {
+                      pages.push(i);
+                    }
+
+                    return pages.map((page) => (
+                      <Button
+                        key={page}
+                        variant={page === currentPage ? "default" : "outline"}
+                        size="sm"
+                        className="w-9"
+                        onClick={() => onPageChange(page)}
+                        disabled={loading}
+                      >
+                        {page}
+                      </Button>
+                    ));
+                  })()}
 
                   <Button
                     variant="outline"
@@ -418,7 +450,7 @@ const ProfessionalTabComponent = ({
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Idade</p>
-                      <p className="font-medium">{selectedParticipant.idade || "-"} anos</p>
+                      <p className="font-medium">{selectedParticipant.idade != null ? `${selectedParticipant.idade} anos` : "-"}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Bairro</p>

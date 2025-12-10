@@ -1,7 +1,7 @@
 "use client";
 
-import { memo, useState, useEffect } from "react";
-import { List, getScrollbarSize } from "react-window";
+import { memo } from "react";
+import { List } from "react-window";
 import { Participante } from "../types";
 import { Badge } from "@/app/components/ui/badge";
 
@@ -61,20 +61,20 @@ const Row = (props: {
       className="flex items-center border-b hover:bg-muted/50 cursor-pointer transition-colors text-sm"
       onClick={() => onRowClick(participant)}
     >
-      <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2 truncate font-medium">
-        {participant.nome || "-"}
+      <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2 font-medium">
+        <span className="line-clamp-2">{participant.nome || "-"}</span>
       </div>
       <div style={{ flex: '1 1 0%', minWidth: 95 }} className="px-2 font-mono">
         {participant.cpf || "-"}
       </div>
-      <div style={{ flex: '0.8 1 0%', minWidth: 75 }} className="px-2 truncate">
-        {renderGrupo(participant.grupo)}
+      <div style={{ flex: '0.8 1 0%', minWidth: 75 }} className="px-2">
+        <span className="line-clamp-2">{renderGrupo(participant.grupo)}</span>
       </div>
-      <div style={{ flex: '1.1 1 0%', minWidth: 90 }} className="px-2 truncate">
-        {participant.bairro || "-"}
+      <div style={{ flex: '1.1 1 0%', minWidth: 90 }} className="px-2">
+        <span className="line-clamp-2">{participant.bairro || "-"}</span>
       </div>
       <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-2">
-        {participant.idade ? `${participant.idade} anos` : "-"}
+        {participant.idade != null ? `${participant.idade} anos` : "-"}
       </div>
       <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-1 text-center capitalize">
         {participant.status || "-"}
@@ -106,26 +106,18 @@ export const VirtualizedParticipantTable = memo(({
   getBadgeVariant,
   isLoading,
 }: ParticipantTableProps) => {
-  const [scrollbarWidth, setScrollbarWidth] = useState(0);
-
-  useEffect(() => {
-    // Detecta a largura da scrollbar do sistema
-    setScrollbarWidth(getScrollbarSize());
-  }, []);
-
   if (!data || !Array.isArray(data) || data.length === 0) {
     return null;
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col relative">
+    <div className="rounded-lg border overflow-hidden h-[700px] bg-card flex flex-col relative">
       {/* Loading overlay */}
       {isLoading && <div className="loading-overlay"></div>}
 
-      {/* Header - mesmos flex values que as rows, com padding para scrollbar */}
+      {/* Header - mesmos flex values que as rows */}
       <div
         className="flex items-center bg-muted/50 border-b font-medium text-sm text-muted-foreground h-11 shrink-0"
-        style={{ paddingRight: scrollbarWidth }}
       >
         <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2">Nome</div>
         <div style={{ flex: '1 1 0%', minWidth: 95 }} className="px-2">CPF</div>
@@ -134,8 +126,8 @@ export const VirtualizedParticipantTable = memo(({
         <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-2">Idade</div>
         <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-1 text-center">Status</div>
         <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Total</div>
-        <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Assistência</div>
-        <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Educação</div>
+        <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Assist.</div>
+        <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Educ.</div>
         <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Saúde</div>
         <div style={{ flex: '1 1 0%', minWidth: 85 }} className="px-2 text-center">Situação</div>
       </div>
@@ -145,7 +137,7 @@ export const VirtualizedParticipantTable = memo(({
         <List
           rowComponent={Row}
           rowCount={data.length}
-          rowHeight={48}
+          rowHeight={56}
           rowProps={{ items: data, onRowClick, getBadgeVariant } as CustomRowProps}
           className="h-full"
         />
