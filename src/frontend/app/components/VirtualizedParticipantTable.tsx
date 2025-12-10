@@ -61,37 +61,37 @@ const Row = (props: {
       className="flex items-center border-b hover:bg-muted/50 cursor-pointer transition-colors text-sm"
       onClick={() => onRowClick(participant)}
     >
-      <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2 font-medium">
+      <div style={{ flex: '3 1 0%', minWidth: 200 }} className="px-3 font-medium">
         <span className="line-clamp-2">{participant.nome || "-"}</span>
       </div>
-      <div style={{ flex: '1 1 0%', minWidth: 95 }} className="px-2 font-mono">
+      <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-3 font-mono">
         {participant.cpf || "-"}
       </div>
-      <div style={{ flex: '0.8 1 0%', minWidth: 75 }} className="px-2">
+      <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-3">
         <span className="line-clamp-2">{renderGrupo(participant.grupo)}</span>
       </div>
-      <div style={{ flex: '1.1 1 0%', minWidth: 90 }} className="px-2">
+      <div style={{ flex: '1.1 1 0%', minWidth: 110 }} className="px-3">
         <span className="line-clamp-2">{participant.bairro || "-"}</span>
       </div>
-      <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-2">
+      <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-3">
         {participant.idade != null ? `${participant.idade} anos` : "-"}
       </div>
-      <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-1 text-center capitalize">
+      <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-2 text-center capitalize">
         {participant.status || "-"}
       </div>
-      <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className={`px-1 text-center font-mono ${getTotalColor(participant.total_fracao)}`}>
+      <div style={{ flex: '0.4 1 0%', minWidth: 55 }} className={`px-2 text-center font-mono ${getTotalColor(participant.total_fracao)}`}>
         {participant.total_fracao || "-"}
       </div>
-      <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center font-mono">
+      <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center font-mono">
         {participant.assistencia_fracao || "-"}
       </div>
-      <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center font-mono">
+      <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center font-mono">
         {participant.educacao_fracao || "-"}
       </div>
-      <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center font-mono">
+      <div style={{ flex: '0.4 1 0%', minWidth: 55 }} className="px-2 text-center font-mono">
         {participant.saude_fracao || "-"}
       </div>
-      <div style={{ flex: '1 1 0%', minWidth: 85 }} className="px-2 text-center">
+      <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-3 text-center">
         <Badge variant={getBadgeVariant(participant.situacao)} className="text-xs h-5 px-2">
           {capitalizeSituacao(participant.situacao)}
         </Badge>
@@ -120,8 +120,8 @@ export const VirtualizedParticipantTable = memo(({
     return null;
   }
 
-  // Largura mínima total da tabela (soma dos minWidths)
-  const minTableWidth = 180 + 95 + 75 + 90 + 55 + 55 + 45 + 55 + 55 + 45 + 85; // 835px
+  // Largura mínima total da tabela (com espaço extra para não ficar muito apertado)
+  const minTableWidth = 1100;
 
   return (
     <div className="rounded-lg border overflow-hidden h-[700px] bg-card flex flex-col relative">
@@ -137,17 +137,17 @@ export const VirtualizedParticipantTable = memo(({
           className="flex items-center bg-muted/50 border-b font-medium text-sm text-muted-foreground h-11"
           style={{ minWidth: minTableWidth }}
         >
-          <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2">Nome</div>
-          <div style={{ flex: '1 1 0%', minWidth: 95 }} className="px-2">CPF</div>
-          <div style={{ flex: '0.8 1 0%', minWidth: 75 }} className="px-2">Grupo</div>
-          <div style={{ flex: '1.1 1 0%', minWidth: 90 }} className="px-2">Bairro</div>
-          <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-2">Idade</div>
-          <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-1 text-center">Status</div>
-          <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Total</div>
-          <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Assist.</div>
-          <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Educ.</div>
-          <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Saúde</div>
-          <div style={{ flex: '1 1 0%', minWidth: 85 }} className="px-2 text-center">Situação</div>
+          <div style={{ flex: '3 1 0%', minWidth: 200 }} className="px-3">Nome</div>
+          <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-3">CPF</div>
+          <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-3">Grupo</div>
+          <div style={{ flex: '1.1 1 0%', minWidth: 110 }} className="px-3">Bairro</div>
+          <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-3">Idade</div>
+          <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-2 text-center">Status</div>
+          <div style={{ flex: '0.4 1 0%', minWidth: 55 }} className="px-2 text-center">Total</div>
+          <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center">Assist.</div>
+          <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center">Educ.</div>
+          <div style={{ flex: '0.4 1 0%', minWidth: 55 }} className="px-2 text-center">Saúde</div>
+          <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-3 text-center">Situação</div>
         </div>
       </div>
 
