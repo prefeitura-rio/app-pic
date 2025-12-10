@@ -165,7 +165,7 @@ export function VirtualizedSelect({
                 rowCount={filteredOptions.length}
                 rowHeight={32}
                 rowProps={{}}
-                style={{ height: listHeight, width: '100%' }}
+                style={{ height: listHeight, width: '100%', overflowX: 'hidden' }}
               />
             )}
           </Command>
