@@ -33,6 +33,8 @@ DASHBOARD_FILTER_COLUMN_MAP = {
     "grupo": "grupo",
     "status": "status",
     "situacao": "situacao",
+    "protocolo_descricao": "protocolo_listagem.descricao",  # Filtro de array
+    "protocolo_status": "protocolo_listagem.status",  # Filtro de array
 }
 
 # Filter options config (IDÊNTICA ao participants)
@@ -50,6 +52,16 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "clinicas": {
         "column": "id_clinica_familia",
         "label_column": "nome_clinica_familia",
+    },
+    "protocolo_descricoes": {
+        "column": "protocolo_listagem",
+        "array_field": "descricao",
+        "type": "array_extract",
+    },
+    "protocolo_status_list": {
+        "column": "protocolo_listagem",
+        "array_field": "status",
+        "type": "array_extract",
     },
 }
 

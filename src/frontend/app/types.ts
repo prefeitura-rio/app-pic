@@ -289,6 +289,8 @@ export interface DashboardFilters {
   status?: string;
   situacao?: string;
   bypass_cache?: boolean;
+  protocolo_descricao?: string; // Filtro por descrição do protocolo
+  protocolo_status?: string; // Filtro por status do protocolo
 }
 
 /**

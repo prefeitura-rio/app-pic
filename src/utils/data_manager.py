@@ -540,32 +540,38 @@ class DataManager:
         if not normalized_values:
             return df
 
+        logger.info(
+            f"🔍 Filtering array column '{array_col}.{field_name}' with values: {normalized_values}"
+        )
+
+        # Verificar se a coluna existe
+        if array_col not in df.columns:
+            logger.error(f"❌ Array column '{array_col}' not found in DataFrame")
+            return df
+
         # Estratégia: explode, filtrar, pegar índices únicos
         # 1. Adicionar índice temporário
         df_with_idx = df.with_row_index("_temp_idx")
 
         # 2. Explodir a coluna de array (cada item do array vira uma linha)
-        try:
-            df_exploded = df_with_idx.explode(array_col)
-        except Exception:
-            # Se falhar (coluna não é lista), retornar df original
-            return df
+        df_exploded = df_with_idx.explode(array_col)
+
+        if df_exploded.is_empty():
+            logger.warning(f"⚠️ Exploded DataFrame is empty for column '{array_col}'")
+            return df.head(0)  # Retornar DataFrame vazio
 
         # 3. Extrair o campo do struct e filtrar
-        try:
-            # Tentar acessar como struct field
-            field_expr = pl.col(array_col).struct.field(field_name)
-            matching_idx = (
-                df_exploded
-                .filter(
-                    field_expr.cast(pl.Utf8).str.to_lowercase().is_in(normalized_values)
-                )
-                .select("_temp_idx")
-                .unique()
+        field_expr = pl.col(array_col).struct.field(field_name)
+        matching_idx = (
+            df_exploded
+            .filter(
+                field_expr.cast(pl.Utf8).str.to_lowercase().is_in(normalized_values)
             )
-        except Exception:
-            # Fallback: retornar df original se estrutura não suportada
-            return df
+            .select("_temp_idx")
+            .unique()
+        )
+
+        logger.info(f"📊 Array filter matched {matching_idx.height} unique rows")
 
         # 4. Filtrar df original pelos índices que deram match
         result = df_with_idx.filter(
