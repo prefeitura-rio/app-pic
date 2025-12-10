@@ -319,17 +319,17 @@ export default function AdminPage() {
         }}
         className="w-full"
       >
-        <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted">
+        <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted rounded-md">
           <TabsTrigger
             value="users"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-3"
+            className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
           >
             <Users className="h-4 w-4 mr-2" />
             Usuários
           </TabsTrigger>
           <TabsTrigger
             value="form"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-3"
+            className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
           >
             <UserCog className="h-4 w-4 mr-2" />
             {editingUser ? "Editar Usuário" : "Novo Usuário"}
@@ -371,15 +371,15 @@ export default function AdminPage() {
           </div>
 
           {/* Filters */}
-          <Card className="relative">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                Filtros
+          <Card className="relative border-2">
+            <CardHeader className="pb-4 flex flex-row items-center justify-between">
+              <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                <Filter className="h-6 w-6" />
+                Filtros e Busca
               </CardTitle>
               <div className="flex gap-2">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={() => {
                     setFilterOcupacao("");
@@ -393,43 +393,38 @@ export default function AdminPage() {
                   className="h-8 text-xs"
                   disabled={usersFetching}
                 >
+                  <X className="h-3 w-3 mr-1" />
                   Limpar Filtros
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={handleRefreshWithBypass}
                   disabled={usersFetching}
                   className="h-8 text-xs"
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${usersFetching ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`h-3 w-3 mr-1 ${usersFetching ? "animate-spin" : ""}`} />
                   Atualizar
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="pt-0 space-y-4">
-              {/* Busca */}
-              <div className="flex gap-2">
+              {/* Busca - Full Width com ícone interno */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  type="text"
                   placeholder="Buscar por CPF ou nome..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyPress={handleSearchKeyPress}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="pl-10 h-11"
                   disabled={usersFetching}
-                  className="flex-1"
                 />
-                <Button
-                  onClick={handleSearch}
-                  disabled={usersFetching}
-                  size="default"
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Buscar
-                </Button>
               </div>
 
               {/* Filtros */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-2">
                 {/* Ocupação */}
                 <VirtualizedSelect
                   value={filterOcupacao || "todas"}
@@ -489,8 +484,8 @@ export default function AdminPage() {
               </div>
 
               {/* Results count */}
-              <div className="text-sm text-muted-foreground">
-                Mostrando {users.length} de {meta.total_rows || 0} usuários
+              <div className="pt-4 border-t mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="font-medium">{meta.total_rows?.toLocaleString('pt-BR') || 0}</span> usuário(s) encontrado(s)
               </div>
             </CardContent>
           </Card>
@@ -511,6 +506,7 @@ export default function AdminPage() {
             onPageChange={handlePageChange}
             isToggling={toggleActiveMutation.isPending}
             isLoading={usersFetching}
+            pageSize={pageSize}
           />
         </TabsContent>
 

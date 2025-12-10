@@ -171,7 +171,7 @@ export function UserForm({
 
           {/* CPF */}
           <div className="space-y-2">
-            <Label htmlFor="cpf">CPF *</Label>
+            <Label htmlFor="cpf" title="Cadastro de Pessoa Física - documento obrigatório">CPF *</Label>
             <Input
               id="cpf"
               placeholder="00000000000"
@@ -179,6 +179,7 @@ export function UserForm({
               onChange={(e) => handleCpfChange(e.target.value)}
               disabled={isEditMode || isLoading}
               required
+              title={isEditMode ? "O CPF não pode ser alterado após criação" : "Digite os 11 dígitos do CPF sem pontos ou traços"}
             />
             <p className="text-xs text-muted-foreground">
               {isEditMode
@@ -189,37 +190,40 @@ export function UserForm({
 
           {/* Nome */}
           <div className="space-y-2">
-            <Label htmlFor="nome">Nome Completo</Label>
+            <Label htmlFor="nome" title="Nome completo do usuário conforme documento">Nome Completo</Label>
             <Input
               id="nome"
               placeholder="Ex: Maria da Silva Santos"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               disabled={isLoading}
+              title="Digite o nome completo do usuário"
             />
           </div>
 
           {/* Ocupação e Secretaria */}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="ocupacao">Ocupação</Label>
+              <Label htmlFor="ocupacao" title="Cargo ou função do usuário">Ocupação</Label>
               <Input
                 id="ocupacao"
                 placeholder="Ex: Coordenador, Assistente Social"
                 value={ocupacao}
                 onChange={(e) => setOcupacao(e.target.value)}
                 disabled={isLoading}
+                title="Cargo ou função exercida pelo usuário"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="secretaria">Secretaria</Label>
+              <Label htmlFor="secretaria" title="Secretaria municipal onde o usuário trabalha">Secretaria</Label>
               <Input
                 id="secretaria"
                 placeholder="Ex: SMAS, SME, SMS"
                 value={secretaria}
                 onChange={(e) => setSecretaria(e.target.value)}
                 disabled={isLoading}
+                title="Secretaria municipal (SMAS, SME, SMS, etc.)"
               />
             </div>
           </div>
@@ -227,10 +231,10 @@ export function UserForm({
 
         {/* Admin Permissions */}
         <div className="space-y-4 rounded-lg border p-4">
-          <h3 className="text-sm font-medium mb-4">Permissões de Administração</h3>
+          <h3 className="text-sm font-medium mb-4" title="Defina o nível de acesso administrativo do usuário">Permissões de Administração</h3>
 
           {/* Is Admin Checkbox */}
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3" title="Administradores podem criar e editar outros usuários com permissões iguais ou menores">
             <Checkbox
               id="is_admin"
               checked={isAdmin}
@@ -242,6 +246,7 @@ export function UserForm({
               <Label
                 htmlFor="is_admin"
                 className="text-sm font-medium leading-none cursor-pointer"
+                title="Marque para conceder permissões de administrador"
               >
                 Admin
               </Label>
@@ -256,7 +261,7 @@ export function UserForm({
         {/* ID Selections */}
         <div className="space-y-4">
           <div className="space-y-2">
-            <h3 className="text-sm font-medium">Permissões de Acesso</h3>
+            <h3 className="text-sm font-medium" title="Defina quais unidades o usuário pode visualizar no sistema">Permissões de Acesso</h3>
             <p className="text-xs text-muted-foreground">
               Selecione os IDs aos quais o usuário terá acesso. Deixe vazio para sem restrições nesse tipo.
             </p>
@@ -271,6 +276,7 @@ export function UserForm({
               selected={selectedEscolas}
               onChange={setSelectedEscolas}
               disabled={isLoading}
+              tooltip="Unidades escolares que o usuário poderá visualizar no sistema"
             />
 
             {/* CRE (Coordenadoria Regional de Educação) */}
@@ -280,6 +286,7 @@ export function UserForm({
               selected={selectedCres}
               onChange={setSelectedCres}
               disabled={isLoading}
+              tooltip="Coordenadorias Regionais de Educação - selecione para dar acesso a todas as escolas da região"
             />
 
             {/* ASSISTÊNCIA SOCIAL */}
@@ -290,6 +297,7 @@ export function UserForm({
               selected={selectedCras}
               onChange={setSelectedCras}
               disabled={isLoading}
+              tooltip="Centros de Referência de Assistência Social que o usuário poderá acessar"
             />
 
             {/* CAS */}
@@ -299,6 +307,7 @@ export function UserForm({
               selected={selectedCas}
               onChange={setSelectedCas}
               disabled={isLoading}
+              tooltip="Coordenadorias de Assistência Social - selecione para dar acesso a todos os CRAS da região"
             />
 
             {/* AP (Área Programática) */}
@@ -308,6 +317,7 @@ export function UserForm({
               selected={selectedAps}
               onChange={setSelectedAps}
               disabled={isLoading}
+              tooltip="Áreas Programáticas de Saúde - divisão territorial do município"
             />
 
             {/* SAÚDE */}
@@ -318,13 +328,14 @@ export function UserForm({
               selected={selectedClinicas}
               onChange={setSelectedClinicas}
               disabled={isLoading}
+              tooltip="Clínicas da Família e unidades de saúde que o usuário poderá acessar"
             />
           </div>
         </div>
 
         {/* Notes */}
         <div className="space-y-2">
-          <Label htmlFor="notes">Notas (opcional)</Label>
+          <Label htmlFor="notes" title="Campo livre para observações internas sobre o usuário">Notas (opcional)</Label>
           <Textarea
             id="notes"
             placeholder="Adicione observações sobre este usuário..."
@@ -332,6 +343,7 @@ export function UserForm({
             onChange={(e) => setNotes(e.target.value)}
             disabled={isLoading}
             rows={3}
+            title="Observações internas visíveis apenas para administradores"
           />
         </div>
 
@@ -342,10 +354,15 @@ export function UserForm({
             variant="outline"
             onClick={onCancel}
             disabled={isLoading}
+            title="Cancelar e voltar para a lista de usuários"
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={!isValid || isLoading}>
+          <Button
+            type="submit"
+            disabled={!isValid || isLoading}
+            title={isEditMode ? "Salvar alterações do usuário" : "Criar novo usuário com as permissões definidas"}
+          >
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isEditMode ? "Atualizar" : "Criar Usuário"}
           </Button>

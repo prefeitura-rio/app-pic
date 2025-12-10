@@ -1,17 +1,11 @@
 "use client";
 
+import { memo, useRef, useCallback } from "react";
 import { UserAccessRecord, AvailableIds, PaginationMeta } from "@/app/types";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Edit2, Power, CheckCircle, XCircle, Shield, Crown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Edit2, Power, CheckCircle, XCircle, Shield, Crown, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -25,9 +19,10 @@ interface UserTableProps {
   onPageChange: (page: number) => void; // Callback para mudança de página
   isToggling: boolean;
   isLoading?: boolean;
+  pageSize?: number;
 }
 
-export function UserTable({
+const UserTableComponent = ({
   users,
   availableIds,
   currentUserCpf,
@@ -37,7 +32,17 @@ export function UserTable({
   onPageChange,
   isToggling,
   isLoading = false,
-}: UserTableProps) {
+  pageSize = 100,
+}: UserTableProps) => {
+  const headerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Sincroniza o scroll horizontal do header com a lista
+  const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (headerRef.current) {
+      headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  }, []);
   const formatCPF = (cpf: string) => {
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   };
@@ -67,125 +72,145 @@ export function UserTable({
     return counts.length > 0 ? counts.join(", ") : "Sem permissões específicas";
   };
 
+  // Largura mínima total da tabela
+  const minTableWidth = 1000;
+
   if (users.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-12 text-center">
-        <p className="text-muted-foreground">Nenhum usuário encontrado</p>
-      </div>
+      <Card className="border-2 border-dashed">
+        <CardContent className="py-12">
+          <div className="text-center text-muted-foreground">
+            <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-lg font-medium">Nenhum usuário encontrado</p>
+            <p className="text-sm mt-2">
+              Tente ajustar os filtros ou termo de busca
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Tabela com altura fixa e scroll - mesmo estilo da VirtualizedParticipantTable */}
-      <div className="rounded-lg border overflow-hidden h-[600px] bg-card flex flex-col relative">
-        {/* Loading overlay */}
-        {isLoading && <div className="loading-overlay" />}
-        {/* Header Estático */}
-        <div className="bg-muted border-b shrink-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[12%]">CPF</TableHead>
-                <TableHead className="w-[15%]">Nome</TableHead>
-                <TableHead className="w-[12%]">Ocupação</TableHead>
-                <TableHead className="w-[12%]">Secretaria</TableHead>
-                <TableHead className="w-[10%]">Tipo</TableHead>
-                <TableHead className="w-[15%]">Permissões</TableHead>
-                <TableHead className="w-[8%]">Status</TableHead>
-                <TableHead className="w-[10%]">Criado</TableHead>
-                <TableHead className="w-[6%] text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-          </Table>
-        </div>
+    <Card className="border-2 relative">
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Users className="h-5 w-5 text-primary" />
+          Lista de Usuários
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Tabela com altura fixa e scroll - mesmo estilo da VirtualizedParticipantTable */}
+        <div className="rounded-lg border overflow-hidden h-[700px] bg-card flex flex-col relative">
+          {/* Loading overlay */}
+          {isLoading && <div className="loading-overlay" />}
 
-        {/* Área com Scroll */}
-        <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-          <Table>
-            <TableBody>
+          {/* Header - scrollável horizontalmente, sincronizado com a lista */}
+          <div
+            ref={headerRef}
+            className="overflow-x-hidden shrink-0"
+          >
+            <div
+              className="flex items-center bg-muted/50 border-b font-medium text-sm text-muted-foreground h-11"
+              style={{ minWidth: minTableWidth }}
+            >
+              <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2">CPF</div>
+              <div style={{ flex: '1.5 1 0%', minWidth: 140 }} className="px-2">Nome</div>
+              <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Ocupação</div>
+              <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Secretaria</div>
+              <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-2">Tipo</div>
+              <div style={{ flex: '1.3 1 0%', minWidth: 140 }} className="px-2">Permissões</div>
+              <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center">Status</div>
+              <div style={{ flex: '0.8 1 0%', minWidth: 80 }} className="px-2">Criado</div>
+              <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-2 text-center">Ações</div>
+            </div>
+          </div>
+
+          {/* Área com Scroll sincronizado */}
+          <div
+            ref={listRef}
+            className="flex-1 overflow-auto"
+            onScroll={handleListScroll}
+          >
+            <div style={{ minWidth: minTableWidth }}>
               {users.map((user) => (
-                <TableRow key={user.cpf} className="hover:bg-muted/50">
+                <div
+                  key={user.cpf}
+                  className="flex items-center border-b hover:bg-muted/50 transition-colors text-sm"
+                  style={{ minHeight: 56 }}
+                >
                   {/* CPF */}
-                  <TableCell className="w-[12%] font-mono text-sm">
+                  <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2 font-mono">
                     {formatCPF(user.cpf)}
-                  </TableCell>
+                  </div>
 
                   {/* Nome */}
-                  <TableCell className="w-[15%]">
-                    <div className="truncate">
-                      {user.nome || "—"}
-                    </div>
-                  </TableCell>
+                  <div style={{ flex: '1.5 1 0%', minWidth: 140 }} className="px-2 font-medium">
+                    <span className="line-clamp-2">{user.nome || "—"}</span>
+                  </div>
 
                   {/* Ocupação */}
-                  <TableCell className="w-[12%]">
-                    <div className="text-sm text-muted-foreground truncate">
-                      {user.ocupacao || "—"}
-                    </div>
-                  </TableCell>
+                  <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2 text-muted-foreground">
+                    <span className="line-clamp-2">{user.ocupacao || "—"}</span>
+                  </div>
 
                   {/* Secretaria */}
-                  <TableCell className="w-[12%]">
-                    <div className="text-sm text-muted-foreground truncate">
-                      {user.secretaria || "—"}
-                    </div>
-                  </TableCell>
+                  <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2 text-muted-foreground">
+                    <span className="line-clamp-2">{user.secretaria || "—"}</span>
+                  </div>
 
                   {/* Type */}
-                  <TableCell className="w-[10%]">
-                    <div className="flex gap-1">
+                  <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-2">
+                    <div className="flex gap-1 flex-wrap">
                       {user.is_super_admin && (
-                        <Badge variant="destructive" className="gap-1">
+                        <Badge variant="destructive" className="gap-1 text-xs h-5 px-1.5">
                           <Crown className="h-3 w-3" />
-                          Super Admin
+                          Super
                         </Badge>
                       )}
                       {user.is_admin && !user.is_super_admin && (
-                        <Badge variant="default" className="gap-1">
+                        <Badge variant="default" className="gap-1 text-xs h-5 px-1.5">
                           <Shield className="h-3 w-3" />
                           Admin
                         </Badge>
                       )}
                       {!user.is_admin && !user.is_super_admin && (
-                        <Badge variant="secondary">Usuário</Badge>
+                        <Badge variant="secondary" className="text-xs h-5 px-1.5">Usuário</Badge>
                       )}
                     </div>
-                  </TableCell>
+                  </div>
 
                   {/* Permissions summary */}
-                  <TableCell className="w-[15%]">
-                    <div className="text-sm text-muted-foreground truncate">
-                      {getPermissionsSummary(user)}
-                    </div>
-                  </TableCell>
+                  <div style={{ flex: '1.3 1 0%', minWidth: 140 }} className="px-2 text-muted-foreground">
+                    <span className="line-clamp-2">{getPermissionsSummary(user)}</span>
+                  </div>
 
                   {/* Status */}
-                  <TableCell className="w-[8%]">
+                  <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center">
                     {user.active ? (
-                      <Badge variant="outline" className="gap-1 text-green-600">
+                      <Badge variant="outline" className="gap-1 text-green-600 text-xs h-5 px-1.5">
                         <CheckCircle className="h-3 w-3" />
                         Ativo
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="gap-1 text-red-600">
+                      <Badge variant="outline" className="gap-1 text-red-600 text-xs h-5 px-1.5">
                         <XCircle className="h-3 w-3" />
                         Inativo
                       </Badge>
                     )}
-                  </TableCell>
+                  </div>
 
                   {/* Created */}
-                  <TableCell className="w-[10%] text-sm text-muted-foreground">
+                  <div style={{ flex: '0.8 1 0%', minWidth: 80 }} className="px-2 text-muted-foreground text-xs">
                     {formatDistanceToNow(new Date(user.created_at), {
                       addSuffix: true,
                       locale: ptBR,
                     })}
-                  </TableCell>
+                  </div>
 
                   {/* Actions */}
-                  <TableCell className="w-[6%] text-right">
-                    <div className="flex justify-end gap-2">
+                  <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-2 text-center">
+                    <div className="flex justify-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -219,47 +244,81 @@ export function UserTable({
                         <Power className={`h-4 w-4 ${user.active ? "text-orange-600" : "text-green-600"}`} />
                       </Button>
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </div>
+                </div>
               ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {/* Paginação do Backend */}
-      {meta.total_pages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Mostrando {((meta.page - 1) * (meta.page_size || 0)) + 1} - {Math.min(meta.page * (meta.page_size || 0), meta.total_rows)} de {meta.total_rows} usuários
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(Math.max(1, meta.page - 1))}
-              disabled={meta.page === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Anterior
-            </Button>
-
-            <span className="text-sm px-2">
-              Página {meta.page} de {meta.total_pages}
-            </span>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(Math.min(meta.total_pages, meta.page + 1))}
-              disabled={meta.page === meta.total_pages}
-            >
-              Próxima
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            </div>
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Pagination - Footer do Card */}
+        {meta.total_pages > 1 && (
+          <div className="flex items-center justify-between pt-4 border-t">
+            <p className="text-sm text-muted-foreground">
+              Mostrando <span className="font-medium">{((meta.page - 1) * pageSize) + 1}</span> a <span className="font-medium">{((meta.page - 1) * pageSize) + users.length}</span> de <span className="font-medium">{meta.total_rows.toLocaleString('pt-BR')}</span> registros
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(Math.max(1, meta.page - 1))}
+                disabled={meta.page === 1 || isLoading}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Anterior
+              </Button>
+
+              {/* Page Numbers */}
+              {(() => {
+                const pages: number[] = [];
+                const totalPages = meta.total_pages;
+                const currentPage = meta.page;
+
+                // Mostrar até 5 páginas
+                let startPage = Math.max(1, currentPage - 2);
+                let endPage = Math.min(totalPages, startPage + 4);
+
+                // Ajustar se estiver no final
+                if (endPage - startPage < 4) {
+                  startPage = Math.max(1, endPage - 4);
+                }
+
+                for (let i = startPage; i <= endPage; i++) {
+                  pages.push(i);
+                }
+
+                return pages.map((page) => (
+                  <Button
+                    key={page}
+                    variant={page === currentPage ? "default" : "outline"}
+                    size="sm"
+                    className="w-9"
+                    onClick={() => onPageChange(page)}
+                    disabled={isLoading}
+                  >
+                    {page}
+                  </Button>
+                ));
+              })()}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(Math.min(meta.total_pages, meta.page + 1))}
+                disabled={meta.page === meta.total_pages || isLoading}
+              >
+                Próxima
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
-}
+};
+
+// Exportar com React.memo para evitar re-renders quando props não mudarem
+export const UserTable = memo(UserTableComponent);
+
+UserTable.displayName = "UserTable";

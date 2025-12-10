@@ -27,6 +27,7 @@ interface VirtualizedIdMultiSelectProps {
   onChange: (selected: IdWithName[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  tooltip?: string;
 }
 
 export function VirtualizedIdMultiSelect({
@@ -36,6 +37,7 @@ export function VirtualizedIdMultiSelect({
   onChange,
   placeholder = "Selecione...",
   disabled = false,
+  tooltip,
 }: VirtualizedIdMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -125,7 +127,7 @@ export function VirtualizedIdMultiSelect({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label>{label}</Label>
+        <Label title={tooltip}>{label}</Label>
         {!disabled && (
           <div className="flex gap-2">
             {selected.length < options.length && (
@@ -134,6 +136,7 @@ export function VirtualizedIdMultiSelect({
                 size="sm"
                 onClick={selectAll}
                 className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                title={`Selecionar todos os ${options.length} itens disponíveis`}
               >
                 Selecionar todos
               </Button>
@@ -144,6 +147,7 @@ export function VirtualizedIdMultiSelect({
                 size="sm"
                 onClick={clearAll}
                 className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                title="Remover todas as seleções"
               >
                 Limpar todos
               </Button>
@@ -216,6 +220,7 @@ export function VirtualizedIdMultiSelect({
               aria-expanded={open}
               className="w-full justify-between"
               disabled={disabled}
+              title={tooltip || `Clique para selecionar ${label.toLowerCase()}`}
             >
               {selected.length === 0 ? (
                 <span className="text-muted-foreground">{placeholder}</span>
