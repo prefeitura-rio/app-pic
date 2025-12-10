@@ -727,32 +727,55 @@ class DataManager:
         """
         Extrai valores únicos de um campo específico dentro de uma coluna de arrays (POLARS).
 
-        OTIMIZAÇÃO: Usa explode + struct.field + unique nativo.
+        OTIMIZAÇÃO: Usa explode + struct.field nativo do Polars (muito mais rápido que iteração).
 
         Args:
             df: DataFrame com a coluna de arrays
-            array_col: Nome da coluna contendo arrays de structs
+            array_col: Nome da coluna contendo arrays de structs ou dicts
             field_name: Campo a extrair (ex: "descricao", "status")
 
         Returns:
             Set de valores únicos encontrados
         """
+        if df.is_empty() or array_col not in df.columns:
+            logger.info(f"Array column '{array_col}' not found or df empty")
+            return set()
+
+        unique_values = set()
+
+        # Método 1: Usar explode + struct.field nativo (RÁPIDO)
         try:
-            # Explodir array, extrair campo, pegar únicos
-            unique_values = (
-                df.select(array_col)
-                .explode(array_col)
-                .select(pl.col(array_col).struct.field(field_name).alias("_field"))
+            # Explodir array para linhas individuais
+            df_exploded = df.select(array_col).drop_nulls().explode(array_col)
+
+            if df_exploded.is_empty():
+                logger.info(f"No data after explode for {array_col}")
+                return set()
+
+            # Extrair campo do struct
+            field_values = (
+                df_exploded
+                .select(pl.col(array_col).struct.field(field_name).alias("value"))
                 .drop_nulls()
                 .unique()
-                .to_series()
-                .to_list()
             )
-            return set(str(v).strip() for v in unique_values if v and str(v).strip())
-        except Exception:
-            # Fallback para método lento se estrutura não suportada
-            unique_values = set()
+
+            for row in field_values.to_dicts():
+                value = row.get("value")
+                if value and str(value).strip():
+                    unique_values.add(str(value).strip())
+
+            logger.info(f"Extracted {len(unique_values)} unique values from {array_col}.{field_name} (explode method)")
+            return unique_values
+
+        except Exception as e:
+            logger.warning(f"Explode method failed for {array_col}.{field_name}: {e}, trying fallback...")
+
+        # Método 2: Fallback - iterar sobre os valores (funciona para qualquer estrutura)
+        try:
             for arr in df[array_col].drop_nulls().to_list():
+                if arr is None:
+                    continue
                 if not isinstance(arr, (list, tuple)):
                     continue
                 for item in arr:
@@ -760,7 +783,11 @@ class DataManager:
                         value = item.get(field_name)
                         if value and str(value).strip():
                             unique_values.add(str(value).strip())
-            return unique_values
+        except Exception as e:
+            logger.warning(f"Fallback method also failed for {array_col}.{field_name}: {e}")
+
+        logger.info(f"Extracted {len(unique_values)} unique values from {array_col}.{field_name} (fallback method)")
+        return unique_values
 
     @staticmethod
     def calculate_filter_options_fast(
