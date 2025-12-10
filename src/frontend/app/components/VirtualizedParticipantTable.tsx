@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useRef, useCallback } from "react";
 import { List } from "react-window";
 import { Participante } from "../types";
 import { Badge } from "@/app/components/ui/badge";
@@ -106,41 +106,66 @@ export const VirtualizedParticipantTable = memo(({
   getBadgeVariant,
   isLoading,
 }: ParticipantTableProps) => {
+  const headerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Sincroniza o scroll horizontal do header com a lista
+  const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (headerRef.current) {
+      headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  }, []);
+
   if (!data || !Array.isArray(data) || data.length === 0) {
     return null;
   }
+
+  // Largura mínima total da tabela (soma dos minWidths)
+  const minTableWidth = 180 + 95 + 75 + 90 + 55 + 55 + 45 + 55 + 55 + 45 + 85; // 835px
 
   return (
     <div className="rounded-lg border overflow-hidden h-[700px] bg-card flex flex-col relative">
       {/* Loading overlay */}
       {isLoading && <div className="loading-overlay"></div>}
 
-      {/* Header - mesmos flex values que as rows */}
+      {/* Header - scrollável horizontalmente, sincronizado com a lista */}
       <div
-        className="flex items-center bg-muted/50 border-b font-medium text-sm text-muted-foreground h-11 shrink-0"
+        ref={headerRef}
+        className="overflow-x-hidden shrink-0"
       >
-        <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2">Nome</div>
-        <div style={{ flex: '1 1 0%', minWidth: 95 }} className="px-2">CPF</div>
-        <div style={{ flex: '0.8 1 0%', minWidth: 75 }} className="px-2">Grupo</div>
-        <div style={{ flex: '1.1 1 0%', minWidth: 90 }} className="px-2">Bairro</div>
-        <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-2">Idade</div>
-        <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-1 text-center">Status</div>
-        <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Total</div>
-        <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Assist.</div>
-        <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Educ.</div>
-        <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Saúde</div>
-        <div style={{ flex: '1 1 0%', minWidth: 85 }} className="px-2 text-center">Situação</div>
+        <div
+          className="flex items-center bg-muted/50 border-b font-medium text-sm text-muted-foreground h-11"
+          style={{ minWidth: minTableWidth }}
+        >
+          <div style={{ flex: '3 1 0%', minWidth: 180 }} className="px-2">Nome</div>
+          <div style={{ flex: '1 1 0%', minWidth: 95 }} className="px-2">CPF</div>
+          <div style={{ flex: '0.8 1 0%', minWidth: 75 }} className="px-2">Grupo</div>
+          <div style={{ flex: '1.1 1 0%', minWidth: 90 }} className="px-2">Bairro</div>
+          <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-2">Idade</div>
+          <div style={{ flex: '0.5 1 0%', minWidth: 55 }} className="px-1 text-center">Status</div>
+          <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Total</div>
+          <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Assist.</div>
+          <div style={{ flex: '0.6 1 0%', minWidth: 55 }} className="px-1 text-center">Educ.</div>
+          <div style={{ flex: '0.4 1 0%', minWidth: 45 }} className="px-1 text-center">Saúde</div>
+          <div style={{ flex: '1 1 0%', minWidth: 85 }} className="px-2 text-center">Situação</div>
+        </div>
       </div>
 
-      {/* Área Virtualizada - react-window v2 auto-sizes */}
-      <div className="flex-1 overflow-hidden">
-        <List
-          rowComponent={Row}
-          rowCount={data.length}
-          rowHeight={56}
-          rowProps={{ items: data, onRowClick, getBadgeVariant } as CustomRowProps}
-          className="h-full"
-        />
+      {/* Área Virtualizada com scroll sincronizado */}
+      <div
+        ref={listRef}
+        className="flex-1 overflow-auto"
+        onScroll={handleListScroll}
+      >
+        <div style={{ minWidth: minTableWidth }}>
+          <List
+            rowComponent={Row}
+            rowCount={data.length}
+            rowHeight={56}
+            rowProps={{ items: data, onRowClick, getBadgeVariant } as CustomRowProps}
+            className="h-full"
+          />
+        </div>
       </div>
     </div>
   );
