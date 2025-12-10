@@ -1,19 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from typing import Dict, Any
 
-from src.config import env
-from src.core.security.dependencies import validar_token
+from src.core.security.jwt import verify_jwt
 
 router = APIRouter(
-    dependencies=[Depends(validar_token)],
+    dependencies=[Depends(verify_jwt)],
 )
 
 
 @router.get("/auth", tags=["Authentication"])
-async def check_auth():
+async def protected_route(token_payload: Dict[str, Any]):
     """
-    Endpoint to check if the provided token is valid.
-    A successful response (200 OK) indicates a valid token.
-    An unsuccessful response (401 Unauthorized) indicates an invalid token.
+    Protected endpoint that requires JWT authentication.
+    Returns user information from the JWT token.
     """
-
-    return {"status": "ok"}
+    return {
+        "message": "Successfully authenticated!",
+        "user": {
+            "sub": token_payload.get("sub"),
+            "email": token_payload.get("email"),
+            "preferred_username": token_payload.get("preferred_username"),
+            "name": token_payload.get("name"),
+        },
+        "token_info": {
+            "iss": token_payload.get("iss"),
+            "aud": token_payload.get("aud"),
+            "exp": token_payload.get("exp"),
+            "iat": token_payload.get("iat"),
+        },
+    }

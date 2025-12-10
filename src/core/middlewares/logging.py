@@ -42,7 +42,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             # Log de erro
             logger.error(
-                f"Erro na requisição: {request.method} {request.url.path} - "
+                f"❌ Erro na requisição: {request.method} {request.url.path} - "
                 f"Erro: {str(e)} - "
                 f"ID: {request_id}"
             )

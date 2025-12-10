@@ -1,0 +1,34 @@
+"""
+Queries SQL centralizadas para os endpoints da API.
+
+Este módulo centraliza todas as queries SQL usadas nos endpoints,
+facilitando manutenção e garantindo consistência.
+"""
+
+from src.config import env
+
+PROJECT_ID = env.BQ_PROJECT_ID
+DATASET_ID = env.BQ_DATASET_ID
+TABLE_ID_DATA_ACCESS = env.BQ_TABLE_ID_DATA_ACCESS
+TABLE_ID_PARTICIPANTS = env.BQ_TABLE_ID_PARTICIPANTS_LISTAGEM
+
+
+# ========================================================================
+# GOVERNANCE QUERIES
+# ========================================================================
+
+GOVERNANCE_TABLE_QUERY = f"""
+SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
+ORDER BY cpf
+"""
+
+
+# ========================================================================
+# PARTICIPANT QUERIES
+# ========================================================================
+
+PARTICIPANTS_TABLE_QUERY = f"""
+SELECT *
+FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_PARTICIPANTS}`
+ORDER BY nome ASC
+"""

@@ -21,6 +21,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build the Next.js application
+# No build-time env vars needed - everything is runtime (from Infisical)
 RUN npm run build
 
 # Production image, copy all the files and run next

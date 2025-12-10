@@ -2,6 +2,16 @@
 default:
     @just --list
 
+# Run the FastAPI backend
+run-api:
+    @echo "🚀 Starting FastAPI backend on http://localhost:8089..."
+    uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8089
+
+# Run the Next.js frontend
+run-frontend:
+    @echo "🚀 Starting Next.js frontend on http://localhost:3000..."
+    cd src/frontend && npm run dev
+
 # Run linting checks for both Python and Next.js
 lint: lint-python lint-frontend
 

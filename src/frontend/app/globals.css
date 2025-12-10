@@ -1,26 +1,209 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
+@theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  
+  /* Lovable/Shadcn Colors */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-light: var(--success-light);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-light: var(--warning-light);
+  
+  --radius: var(--radius);
+  
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  
+  @keyframes accordion-down {
+    from { height: 0 }
+    to { height: var(--radix-accordion-content-height) }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height) }
+    to { height: 0 }
   }
 }
 
+:root {
+  /* Rio Institutional Colors & Lovable Tokens */
+  --background: hsl(0 0% 98%);
+  --foreground: hsl(210 100% 20%);
+
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(210 100% 20%);
+
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(210 100% 20%);
+
+  /* Primary: Institutional Blue #003366 */
+  --primary: hsl(210 100% 20%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-light: hsl(210 100% 35%);
+  --primary-dark: hsl(210 100% 15%);
+
+  /* Secondary: Neutral Grays */
+  --secondary: hsl(0 0% 96%);
+  --secondary-foreground: hsl(210 100% 20%);
+
+  --muted: hsl(210 20% 95%);
+  --muted-foreground: hsl(210 15% 45%);
+
+  /* Accent: Gold Yellow #FFCC00 */
+  --accent: hsl(48 100% 50%);
+  --accent-foreground: hsl(210 100% 20%);
+
+  /* Success: Light Green #7CC242 */
+  --success: hsl(95 54% 51%);
+  --success-foreground: hsl(0 0% 100%);
+  --success-light: hsl(95 54% 90%);
+
+  /* Warning/Attention */
+  --warning: hsl(38 100% 50%);
+  --warning-foreground: hsl(210 100% 20%);
+  --warning-light: hsl(48 100% 95%);
+
+  /* Destructive/Error */
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --border: hsl(210 20% 88%);
+  --input: hsl(210 20% 92%);
+  --ring: hsl(210 100% 20%);
+
+  --radius: 0.75rem;
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, hsl(210 100% 20%), hsl(210 100% 35%));
+  --gradient-accent: linear-gradient(135deg, hsl(48 100% 50%), hsl(38 100% 50%));
+  --gradient-success: linear-gradient(135deg, hsl(95 54% 51%), hsl(95 54% 70%));
+
+  /* Transitions */
+  /* Loading Overlay Settings - Para ajustar globalmente */
+  --loading-overlay-bg: rgba(255, 255, 255, 0.5);  /* Cor e opacidade do fundo (Light Mode: Branco translúcido) */
+  --loading-overlay-blur: 8px;                /* Intensidade do blur (4px, 8px, 12px, 16px) */
+}
+
+.dark {
+  /* Modern Dark Mode - Inspirado em GitHub Dark, VS Code Dark+ */
+
+  /* Backgrounds: Tons de cinza azulado mais claros e agradáveis */
+  --background: hsl(220 15% 11%);        /* Cinza escuro azulado suave */
+  --foreground: hsl(220 10% 92%);        /* Branco levemente azulado */
+
+  --card: hsl(220 15% 15%);              /* Cards com leve destaque */
+  --card-foreground: hsl(220 10% 92%);
+
+  --popover: hsl(220 15% 16%);           /* Popovers levemente mais claros */
+  --popover-foreground: hsl(220 10% 92%);
+
+  /* Primary: Azul suave e elegante para dark mode */
+  --primary: hsl(212 92% 50%);           /* Azul médio suave, menos saturado */
+  --primary-foreground: hsl(0 0% 100%);
+
+  /* Secondary: Cinza médio com contraste */
+  --secondary: hsl(220 20% 40%);         /* Cinza médio para botões secundários - bem mais claro para contraste visível */
+  --secondary-foreground: hsl(0 0% 100%);
+
+  /* Muted: Para textos secundários e backgrounds sutis */
+  --muted: hsl(220 15% 18%);             /* Background muted */
+  --muted-foreground: hsl(220 10% 65%);  /* Texto secundário legível */
+
+  /* Accent: Amarelo/dourado vibrante para destaques */
+  --accent: hsl(45 95% 65%);             /* Dourado mais suave no dark */
+  --accent-foreground: hsl(220 15% 11%);
+
+  /* Success: Verde mais vibrante e visível */
+  --success: hsl(142 71% 55%);           /* Verde moderno (#22c55e type) */
+  --success-foreground: hsl(0 0% 100%);
+  --success-light: hsl(142 71% 25%);     /* Background verde escuro */
+
+  /* Warning: Laranja vibrante */
+  --warning: hsl(38 92% 60%);            /* Laranja visível */
+  --warning-foreground: hsl(220 15% 11%);
+  --warning-light: hsl(38 92% 20%);
+
+  /* Destructive: Vermelho vibrante mas não muito forte */
+  --destructive: hsl(0 72% 58%);         /* Vermelho (#ef4444 type) */
+  --destructive-foreground: hsl(0 0% 100%);
+
+  /* Borders e Inputs: Mais visíveis */
+  --border: hsl(220 15% 25%);            /* Bordas mais visíveis */
+  --input: hsl(220 15% 18%);             /* Input background */
+  --ring: hsl(212 92% 50%);              /* Focus ring combinando com primary */
+
+  /* Loading Overlay Settings - Para ajustar globalmente */
+  --loading-overlay-bg: rgba(0, 0, 0, 0.5);  /* Cor e opacidade do fundo */
+  --loading-overlay-blur: 8px;                /* Intensidade do blur (4px, 8px, 12px, 16px) */
+}
+
+* {
+  border-color: var(--color-border);
+  transition: color 0.3s, background-color 0.3s, border-color 0.3s;
+}
+
+html {
+  /* Prevent layout shift when scrollbar appears/disappears */
+  overflow-y: scroll;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Utility Classes */
+.card-hover {
+  transition: all 0.3s;
+}
+
+.card-hover:hover {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.gradient-primary {
+  background: var(--gradient-primary);
+}
+
+.gradient-accent {
+  background: var(--gradient-accent);
+}
+
+.gradient-success {
+  background: var(--gradient-success);
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: var(--loading-overlay-bg, rgba(255, 255, 255, 0.5)); /* Fallback claro se dark mode falhar, mas idealmente usa a variável */
+  backdrop-filter: blur(var(--loading-overlay-blur, 8px));
+  -webkit-backdrop-filter: blur(var(--loading-overlay-blur, 8px));
+  z-index: 50;
+  border-radius: inherit; /* Herda o border-radius do pai (Card) para não vazar nos cantos */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all; /* Garante que bloqueie cliques */
 }
