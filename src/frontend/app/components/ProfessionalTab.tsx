@@ -111,6 +111,8 @@ const ProfessionalTabComponent = ({
     escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
     clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
     cras: filterOptions.cras.filter((item) => item.id && item.id.trim() !== ""),
+    protocolo_descricoes: (filterOptions.protocolo_descricoes || []).filter((item) => item.id && item.id.trim() !== ""),
+    protocolo_status_list: (filterOptions.protocolo_status_list || []).filter((item) => item.id && item.id.trim() !== ""),
   }), [filterOptions]);
 
   return (
@@ -176,7 +178,7 @@ const ProfessionalTabComponent = ({
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Filtros Principais
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {/* Grupo */}
               <VirtualizedSelect
                 value={filters.grupo || "todos"}
@@ -216,6 +218,28 @@ const ProfessionalTabComponent = ({
                 defaultLabel="Todas as Safras"
                 options={filteredOptions.cohorts}
               />
+
+              {/* Protocolo */}
+              <VirtualizedSelect
+                value={filters.protocolo_descricao || "todos"}
+                onSelect={(v) => handleFilterUpdate("protocolo_descricao", v)}
+                disabled={loading}
+                placeholder="Protocolo"
+                defaultLabel="Todos os Protocolos"
+                options={filteredOptions.protocolo_descricoes}
+                style={{ gridColumn: "span 2" }}
+              />
+
+              {/* Status Protocolo */}
+              <VirtualizedSelect
+                value={filters.protocolo_status || "todos"}
+                onSelect={(v) => handleFilterUpdate("protocolo_status", v)}
+                disabled={loading}
+                placeholder="Status Protocolo"
+                defaultLabel="Todos os Status de Protocolos"
+                options={filteredOptions.protocolo_status_list}
+                style={{ gridColumn: "span 2" }}
+              />
             </div>
           </div>
 
@@ -224,7 +248,7 @@ const ProfessionalTabComponent = ({
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Filtros Regionais
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {/* EDUCAÇÃO */}
               {/* Escolas */}
               <VirtualizedSelect
@@ -234,6 +258,7 @@ const ProfessionalTabComponent = ({
                 placeholder="Escola"
                 defaultLabel="Todas as Escolas"
                 options={filteredOptions.escolas}
+                style={{ gridColumn: "span 2" }}
               />
 
               {/* CRE (Coordenadoria Regional de Educação) */}

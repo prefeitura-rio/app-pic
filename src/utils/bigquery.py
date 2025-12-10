@@ -3,27 +3,34 @@ from google.oauth2 import service_account
 from typing import List, Optional
 import base64
 import json
-import pandas as pd
+import polars as pl
 import src.config.env as env
 from src.utils.log import logger
 
 
-def execute_query(query: str, parameters: Optional[List[bigquery.ScalarQueryParameter]] = None) -> pd.DataFrame:
+def execute_query(
+    query: str,
+    parameters: Optional[List[bigquery.ScalarQueryParameter]] = None,
+    return_polars: bool = True,  # Parâmetro mantido por compatibilidade, mas sempre retorna Polars
+) -> pl.DataFrame:
     """
-    Executes a BigQuery query and returns DataFrame directly.
+    Executes a BigQuery query and returns Polars DataFrame directly.
 
-    OTIMIZAÇÃO: Retorna DataFrame em vez de JSON.
-    Isso evita conversões desnecessárias DataFrame → JSON → DataFrame.
+    OTIMIZAÇÃO V2: Retorna Polars DataFrame via Arrow (muito mais rápido).
+    BigQuery → Arrow → Polars evita overhead de serialização Pandas.
 
     SEGURANÇA: Suporta parametrized queries para prevenir SQL injection.
 
     Args:
         query: SQL query (use @param_name para parametros)
         parameters: Lista de ScalarQueryParameter para binding seguro
+        return_polars: Ignorado (sempre retorna Polars)
 
     Returns:
-        pd.DataFrame: Resultado da query do BigQuery
+        pl.DataFrame: Resultado da query do BigQuery como Polars DataFrame
     """
+    _ = return_polars  # Ignorado - sempre Polars
+
     bq_client = get_bigquery_client()
 
     # Configure job com parametros se fornecidos
@@ -31,12 +38,14 @@ def execute_query(query: str, parameters: Optional[List[bigquery.ScalarQueryPara
     if parameters:
         job_config = bigquery.QueryJobConfig(query_parameters=parameters)
 
-    # Execute query e retornar DataFrame DIRETO
+    # Execute query
     query_job = bq_client.query(query, job_config=job_config)
     result = query_job.result()
-    result_df = result.to_dataframe()
 
-    logger.info(f"BigQuery returned {len(result_df)} rows as DataFrame")
+    # OTIMIZAÇÃO: BigQuery → Arrow → Polars (evita Pandas overhead)
+    arrow_table = result.to_arrow()
+    result_df = pl.from_arrow(arrow_table)
+    logger.info(f"BigQuery returned {len(result_df)} rows as Polars DataFrame (via Arrow)")
 
     return result_df
 

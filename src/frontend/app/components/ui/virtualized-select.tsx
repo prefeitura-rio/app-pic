@@ -30,6 +30,8 @@ interface VirtualizedSelectProps {
   placeholder?: string;
   defaultLabel?: string;
   disabled?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 export function VirtualizedSelect({
@@ -39,6 +41,8 @@ export function VirtualizedSelect({
   placeholder = "Selecione...",
   defaultLabel = "Todos",
   disabled = false,
+  className,
+  style,
 }: VirtualizedSelectProps) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -111,8 +115,9 @@ export function VirtualizedSelect({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <div className={className} style={style}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
           variant="outline"
@@ -174,7 +179,8 @@ export function VirtualizedSelect({
             )}
           </CommandGroup>
         </Command>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }

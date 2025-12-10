@@ -460,7 +460,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
         # Super admin: buscar todos os IDs disponíveis no sistema
         if permissions.is_super_admin:
             # Buscar dados de participantes (usa cache compartilhado)
-            df, _ = DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY)
+            df, _, _ = DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY)
 
             # Extrair IDs únicos com nomes
             available_ids = AvailableIds(
@@ -743,7 +743,7 @@ async def upsert_user(
     logger.info(f"    - is_update: {request.is_update}")
 
     # Verificar se CPF já existe (usa cache da tabela de governança)
-    governance_df, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+    governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
     existing_user = governance_df[governance_df["cpf"] == cpf]
     user_exists = not existing_user.empty
 
@@ -1012,7 +1012,7 @@ async def upsert_user(
         time.sleep(0.1)
 
         # Buscar usuário para retornar (força bypass_cache para garantir dados frescos)
-        governance_df, _ = DataManager.get_dataset(
+        governance_df, _, _ = DataManager.get_dataset(
             GOVERNANCE_TABLE_QUERY, bypass_cache=True
         )
         user_row = governance_df[governance_df["cpf"] == cpf]

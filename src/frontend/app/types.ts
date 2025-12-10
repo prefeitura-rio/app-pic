@@ -145,6 +145,8 @@ export interface SmartFilterOptions {
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
+  protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
+  protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 
   // Filtros de usuários (admin)
   ocupacoes: FilterOptionItem[];
@@ -306,6 +308,8 @@ export interface ParticipantFilters {
   situacao?: string;
   search?: string; // CPF or name search
   bypass_cache?: boolean;
+  protocolo_descricao?: string; // Filtro por descrição do protocolo
+  protocolo_status?: string; // Filtro por status do protocolo
 }
 
 /**

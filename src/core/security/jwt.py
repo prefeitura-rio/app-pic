@@ -122,6 +122,9 @@ async def get_current_user_permissions(
         HTTPException 403: If CPF not found in token or user not authorized
         HTTPException 500: If failed to load permissions
     """
+    import time
+    perm_start = time.perf_counter()
+
     from src.core.security.permissions_models import PermissionDeniedError
     from src.utils.data_manager import DataManager
 
@@ -136,10 +139,10 @@ async def get_current_user_permissions(
 
     try:
         permissions = DataManager.get_user_permissions(cpf)
+        perm_time = time.perf_counter() - perm_start
         logger.info(
-            f"✅ User {cpf} authenticated - "
-            f"Admin: {permissions.is_admin}, "
-            f"SuperAdmin: {permissions.is_super_admin}"
+            f"⏱️ [TIMING] get_user_permissions took {perm_time:.3f}s - "
+            f"User authenticated (Admin: {permissions.is_admin}, SuperAdmin: {permissions.is_super_admin})"
         )
         return permissions
 

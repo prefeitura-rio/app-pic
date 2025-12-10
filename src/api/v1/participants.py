@@ -29,6 +29,9 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     "grupo": "grupo",
     "status": "status",
     "situacao": "situacao",
+    # Filtros de array (protocolo_listagem) - usa dot notation para indicar campo do array
+    "protocolo_descricao": "protocolo_listagem.descricao",
+    "protocolo_status": "protocolo_listagem.status",
 }
 
 PARTICIPANT_FILTER_OPTIONS_CONFIG = {
@@ -45,6 +48,17 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "clinicas": {
         "column": "id_clinica_familia",
         "label_column": "nome_clinica_familia",
+    },
+    # Filtros de array (protocolo_listagem) - extrai valores únicos do array
+    "protocolo_descricoes": {
+        "column": "protocolo_listagem",
+        "array_field": "descricao",
+        "type": "array_extract",
+    },
+    "protocolo_status_list": {
+        "column": "protocolo_listagem",
+        "array_field": "status",
+        "type": "array_extract",
     },
 }
 
@@ -72,6 +86,10 @@ async def get_participants(
     as opções disponíveis considerando os filtros já ativos. Isso evita discrepâncias
     entre contadores e resultados reais.
     """
+    import time
+    endpoint_start = time.perf_counter()
+    logger.info("⏱️ [TIMING] Endpoint handler started (after auth/permissions)")
+
     query = PARTICIPANTS_TABLE_QUERY
 
     logger.info(
@@ -107,14 +125,28 @@ async def get_participants(
             bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
         )
 
-        # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
+        # Converter DataFrame para JSON e retornar resposta
+        json_start = time.perf_counter()
         data_json = DataManager.df_to_json(df_data)
+        json_time = time.perf_counter() - json_start
 
-        return PaginatedResponse(
+        response_start = time.perf_counter()
+        response = PaginatedResponse(
             data=data_json,
             meta=meta,
             filters=filter_options,
         )
+        response_time = time.perf_counter() - response_start
+
+        total_endpoint_time = time.perf_counter() - endpoint_start
+        logger.info(
+            f"⏱️ [TIMING] Endpoint complete: "
+            f"df_to_json={json_time:.3f}s, "
+            f"response_build={response_time:.3f}s, "
+            f"total_handler={total_endpoint_time:.3f}s"
+        )
+
+        return response
 
     except Exception as e:
         logger.error(f"❌ Error fetching participants: {e}")

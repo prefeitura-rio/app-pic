@@ -31,6 +31,8 @@ class CommonFilters(BaseModel):
     status: Optional[str] = None
     situacao: Optional[str] = None  # Regular, Atenção, Irregular
     search: Optional[str] = None  # CPF or name search
+    protocolo_descricao: Optional[str] = None  # Filtro por descrição do protocolo
+    protocolo_status: Optional[str] = None  # Filtro por status do protocolo
 
 
 # --- Response Models ---
@@ -78,6 +80,8 @@ class SmartFilterOptions(BaseModel):
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
     clinicas: List[FilterOptionItem] = []
+    protocolo_descricoes: List[FilterOptionItem] = []  # Descrições de protocolos
+    protocolo_status_list: List[FilterOptionItem] = []  # Status de protocolos
 
     # Filtros de usuários (admin)
     ocupacoes: List[FilterOptionItem] = []

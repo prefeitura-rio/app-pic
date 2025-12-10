@@ -1,12 +1,12 @@
-import os
 import hashlib
 import time
 import pickle
+import threading
 from pathlib import Path
 from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
-import datetime
+from dataclasses import dataclass
 
 from src.config import env
 from src.utils.log import logger
@@ -15,6 +15,77 @@ try:
     import redis
 except ImportError:
     redis = None
+
+
+# =============================================================================
+# IN-MEMORY CACHE (L1) - Evita desserialização repetida de pickle
+# =============================================================================
+@dataclass
+class MemoryCacheEntry:
+    """Entrada do cache em memória com TTL."""
+    data: Any
+    expires_at: float
+
+
+class InMemoryCache:
+    """
+    Cache em memória thread-safe com TTL.
+
+    OTIMIZAÇÃO CRÍTICA: Evita pickle.loads() repetidos (~2-3s cada).
+    Após primeira desserialização, dados ficam em memória e acesso é instant.
+    """
+
+    def __init__(self, max_size: int = 10):
+        self._cache: Dict[str, MemoryCacheEntry] = {}
+        self._lock = threading.RLock()
+        self._max_size = max_size
+
+    def get(self, key: str) -> Optional[Any]:
+        """Busca do cache em memória. Retorna None se expirado ou não existe."""
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+
+            # Verificar TTL
+            if time.time() > entry.expires_at:
+                del self._cache[key]
+                logger.info(f"🧠 Memory cache EXPIRED for {key[:16]}...")
+                return None
+
+            return entry.data
+
+    def set(self, key: str, data: Any, ttl_seconds: int) -> None:
+        """Salva no cache em memória com TTL."""
+        with self._lock:
+            # LRU simples: se atingiu max_size, remove o mais antigo
+            if len(self._cache) >= self._max_size and key not in self._cache:
+                # Remove entrada mais antiga (primeiro item do dict)
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
+                logger.info(f"🧠 Memory cache EVICTED {oldest_key[:16]}... (LRU)")
+
+            self._cache[key] = MemoryCacheEntry(
+                data=data,
+                expires_at=time.time() + ttl_seconds
+            )
+
+    def delete(self, key: str) -> None:
+        """Remove entrada do cache em memória."""
+        with self._lock:
+            if key in self._cache:
+                del self._cache[key]
+                logger.info(f"🧠 Memory cache DELETED {key[:16]}...")
+
+    def clear(self) -> None:
+        """Limpa todo o cache em memória."""
+        with self._lock:
+            self._cache.clear()
+            logger.info("🧠 Memory cache CLEARED")
+
+
+# Instância global do cache em memória
+_memory_cache = InMemoryCache(max_size=10)
 
 
 class CacheMode(Enum):
@@ -46,7 +117,6 @@ class FileBackend(StorageBackend):
         if file_path.exists():
             try:
                 with open(file_path, "rb") as f:
-                    # Pickle backend still needs to handle its own TTL check
                     data = pickle.load(f)
                     metadata = data.get("metadata", {})
                     created_at = metadata.get("created_at")
@@ -55,16 +125,16 @@ class FileBackend(StorageBackend):
                     if created_at and ttl and (time.time() - created_at) < ttl:
                         return data
                     else:
-                        logger.info(f"File cache expired for {key}")
-                        # Optionally delete expired file
-                        # os.remove(file_path)
+                        logger.info(f"File cache expired for {key[:16]}...")
                         return None
             except Exception as e:
-                logger.error(f"❌ Error loading File cache for {key}: {e}")
+                logger.error(f"❌ Error loading File cache for {key[:16]}...: {e}")
                 return None
         return None
 
     def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+        # Note: ttl_seconds is embedded in data["metadata"]["ttl"] and checked on load
+        _ = ttl_seconds  # Explicitly mark as used (TTL is in metadata)
         file_path = self._get_file_path(key)
         try:
             file_path.parent.mkdir(
@@ -93,11 +163,10 @@ class RedisBackend(StorageBackend):
         try:
             data = self.client.get(key)
             if data:
-                # OTIMIZAÇÃO: Desserializar Pickle (suporta DataFrames nativamente)
                 return pickle.loads(data)
             return None
         except Exception as e:
-            logger.error(f"❌ Redis load error for {key}: {e}")
+            logger.error(f"❌ Redis load error for {key[:16]}...: {e}")
             return None
 
     def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
@@ -135,33 +204,42 @@ class CacheManager:
 
     def get(self, query: str) -> Optional[Dict[str, Any]]:
         query_hash = self._get_query_hash(query)
+
+        # L1: Tentar cache em memória primeiro (INSTANT - evita pickle.loads)
+        memory_data = _memory_cache.get(query_hash)
+        if memory_data is not None:
+            logger.info("🧠 Cache HIT from Memory (instant)")
+            return memory_data
+
+        # L2: Tentar Redis/File (requer pickle.loads ~2-3s)
         data = None
 
         # Try Redis first if enabled
         if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
             data = self.redis_backend.load(query_hash)
             if data:
-                logger.info("💾 Cache HIT from Redis ♨️")
+                logger.info("💾 Cache HIT from Redis ♨️ (deserializing...)")
 
         # Fallback to File (Pickle) if enabled and missed in Redis (or Redis disabled)
         if not data and self.mode in (CacheMode.JSON, CacheMode.BOTH):
-            data = self.file_backend.load(
-                query_hash
-            )  # File backend handles its own TTL check
+            data = self.file_backend.load(query_hash)
             if data:
-                logger.info("💾 Cache HIT from File 📝")
+                logger.info("💾 Cache HIT from File 📝 (deserializing...)")
 
         if not data:
             return None
 
-        # Update Metadata (only for File, Redis expiration is native)
+        # Extrair dados e TTL restante
         metadata = data.get("metadata", {})
+        expires_at = metadata.get("expires_at", 0)
+        remaining_ttl = max(1, int(expires_at - time.time()))
 
-        now = time.time()
-        metadata["checked_at"] = now
-        metadata["checked_count"] = metadata.get("checked_count", 0) + 1
+        # Promover para L1 (cache em memória) para próximas requests
+        result_data = data["data"]
+        _memory_cache.set(query_hash, result_data, remaining_ttl)
+        logger.info(f"🧠 Promoted to Memory cache (TTL: {remaining_ttl}s)")
 
-        return data["data"]
+        return result_data
 
     def set(
         self,
@@ -192,11 +270,14 @@ class CacheManager:
             "data": data,
         }
 
-        # Save to File (Pickle) if enabled
+        # L1: Salvar no cache em memória (acesso instant para próximas requests)
+        _memory_cache.set(query_hash, data, ttl)
+
+        # L2: Save to File (Pickle) if enabled
         if self.mode in (CacheMode.JSON, CacheMode.BOTH):
             self.file_backend.save(query_hash, cache_object, ttl)
 
-        # Save to Redis if enabled (uses native TTL)
+        # L2: Save to Redis if enabled (uses native TTL)
         if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
             self.redis_backend.save(query_hash, cache_object, ttl)
 
@@ -213,7 +294,10 @@ class CacheManager:
         """
         query_hash = self._get_query_hash(query)
 
-        # Delete from File backend if enabled
+        # L1: Delete from Memory cache first (instant)
+        _memory_cache.delete(query_hash)
+
+        # L2: Delete from File backend if enabled
         if self.mode in (CacheMode.JSON, CacheMode.BOTH):
             import os
 
@@ -222,7 +306,7 @@ class CacheManager:
                 os.remove(cache_file)
                 logger.info(f"🗑️  Cache invalidated (File): {query_hash[:8]}...")
 
-        # Delete from Redis if enabled
+        # L2: Delete from Redis if enabled
         if self.mode in (CacheMode.REDIS, CacheMode.BOTH) and self.redis_backend:
             self.redis_backend.client.delete(query_hash)
             logger.info(f"🗑️  Cache invalidated (Redis): {query_hash[:8]}...")
