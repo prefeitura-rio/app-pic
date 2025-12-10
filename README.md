@@ -5,6 +5,7 @@ Plataforma integrada para acompanhamento de criancas e gestantes da Prefeitura d
 ## Visao Geral
 
 O PIC (Pequenos Cariocas) e uma aplicacao fullstack que permite:
+
 - Visualizar indicadores e metricas de participantes do programa
 - Monitorar o cumprimento de protocolos por dimensao (Saude, Educacao, Assistencia Social)
 - Buscar e filtrar participantes individualmente
@@ -13,6 +14,7 @@ O PIC (Pequenos Cariocas) e uma aplicacao fullstack que permite:
 ## Stack Tecnologico
 
 ### Backend
+
 - **Python 3.13** - Linguagem principal
 - **FastAPI** - Framework web async
 - **Polars** - Processamento de dados (substitui Pandas para maior performance)
@@ -21,18 +23,19 @@ O PIC (Pequenos Cariocas) e uma aplicacao fullstack que permite:
 - **PyJWT** - Autenticacao via JWT/OAuth2
 
 ### Frontend
+
 - **Next.js 16** - Framework React com App Router
-- **React 19** - Biblioteca UI
+- **React 19** - Runtime
+- **shadcn/ui** - Biblioteca de componentes (baseada em Radix UI)
 - **TypeScript** - Type safety
 - **Tailwind CSS 4** - Estilizacao
-- **Radix UI** - Componentes acessiveis
 - **TanStack Query** - Gerenciamento de estado servidor
 - **Recharts** - Graficos e visualizacoes
 - **NextAuth.js** - Autenticacao OAuth2
 
 ## Estrutura do Projeto
 
-```
+```text
 app-pic/
 ├── src/
 │   ├── api/                    # Endpoints da API
@@ -74,7 +77,7 @@ app-pic/
 
 ### Sistema de Cache (2 niveis)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                         Request                              │
 └─────────────────────────────────────────────────────────────┘
@@ -105,7 +108,7 @@ app-pic/
 
 ### Fluxo de Autenticacao
 
-```
+```text
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
 │  Login   │────▶│ Keycloak │────▶│  gov.br  │────▶│ Callback │
 │  Page    │     │  (RMI)   │     │  OAuth2  │     │  /api/   │
@@ -140,6 +143,7 @@ Filtros de governanca sao aplicados em memoria apos buscar do cache, garantindo 
 ## Endpoints da API
 
 ### Autenticacao
+
 Todos os endpoints requerem header `Authorization: Bearer <token>`.
 
 ### Principais Endpoints
@@ -254,11 +258,13 @@ just fix            # Auto-fix Python
 Para criar o primeiro super admin:
 
 1. Edite `scripts/bootstrap_super_admin.py` e configure o CPF:
+
    ```python
    SUPER_ADMIN_CPF = "12345678900"  # CPF do primeiro admin
    ```
 
 2. Execute o script:
+
    ```bash
    python scripts/bootstrap_super_admin.py
    ```
@@ -283,6 +289,7 @@ docker-compose down
 ### Kubernetes
 
 Configuracoes em `k8s/`:
+
 - ConfigMaps para variaveis de ambiente
 - Secrets para credenciais
 - Deployments para api e frontend
@@ -312,6 +319,7 @@ Configuracoes em `k8s/`:
 ### Cache nao atualiza
 
 O botao "Atualizar" no frontend envia `bypass_cache=true` que:
+
 1. Ignora cache L1 (memoria) e L2 (Redis/File)
 2. Busca dados frescos do BigQuery
 3. Substitui o cache antigo
@@ -319,6 +327,7 @@ O botao "Atualizar" no frontend envia `bypass_cache=true` que:
 ### Login em loop
 
 Verifique se:
+
 1. CPF esta cadastrado na tabela de governanca
 2. Usuario esta marcado como `active=true`
 3. Cookies estao sendo aceitos pelo navegador
