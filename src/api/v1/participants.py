@@ -31,7 +31,7 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     "situacao": "situacao",
     # Filtros de array (protocolo_listagem) - usa dot notation para indicar campo do array
     "protocolo_descricao": "protocolo_listagem.descricao",
-    "protocolo_status": "protocolo_listagem.status",
+    "protocolo_status": "protocolo_listagem.protocolo_status_label",
 }
 
 PARTICIPANT_FILTER_OPTIONS_CONFIG = {
@@ -41,7 +41,10 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "status_list": {"column": "status"},
     "situacoes": {"column": "situacao"},
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
-    "aps": {"column": "id_ap", "label_column": "nome_ap"},  # ATUALIZADO: caps → aps, CAP → AP
+    "aps": {
+        "column": "id_ap",
+        "label_column": "nome_ap",
+    },  # ATUALIZADO: caps → aps, CAP → AP
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},
@@ -57,7 +60,7 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     },
     "protocolo_status_list": {
         "column": "protocolo_listagem",
-        "array_field": "status",
+        "array_field": "protocolo_status_label",
         "type": "array_extract",
     },
 }
@@ -87,6 +90,7 @@ async def get_participants(
     entre contadores e resultados reais.
     """
     import time
+
     endpoint_start = time.perf_counter()
     logger.info("⏱️ [TIMING] Endpoint handler started (after auth/permissions)")
 

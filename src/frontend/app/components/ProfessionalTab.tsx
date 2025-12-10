@@ -57,25 +57,40 @@ const calcularCompletude = (participant: Participante) => {
 };
 
 // Função para obter badge variant baseado no status do protocolo
-const getProtocolBadgeVariant = (status?: string, irregular?: boolean): "default" | "secondary" | "destructive" | "warning" => {
-  if (irregular) return "destructive";
+// Prioriza o status real (regular, atencao, irregular) ao invés de irregular_indicador
+// IMPORTANTE: Verificar "irregular" ANTES de "regular" porque "irregular".includes("regular") === true
+const getProtocolBadgeVariant = (status?: string): "default" | "secondary" | "destructive" | "warning" => {
   if (!status) return "secondary";
   const lower = status.toLowerCase();
-  if (lower === "regular" || lower.includes("regular")) return "default";
-  if (lower === "n/a" || lower === "não aplicável") return "secondary";
-  if (lower.includes("irregular")) return "destructive";
-  if (lower.includes("atenção") || lower.includes("atencao")) return "warning";
+  // Verificar irregular PRIMEIRO (antes de regular)
+  if (lower === "irregular" || lower.includes("irregular")) return "destructive";
+  if (lower === "regular") return "default";
+  if (lower === "atencao" || lower.includes("atenção")) return "warning";
+  if (lower === "n/a" || lower === "nao_aplica" || lower === "não aplicável" || lower === "não se aplica") return "secondary";
   return "secondary";
 };
 
 // Função para formatar status do protocolo para exibição
-const formatProtocolStatus = (status?: string, irregular?: boolean) => {
-  if (irregular) return "✗ Irregular";
-  if (!status) return "N/A";
-  const lower = status.toLowerCase();
-  if (lower === "regular" || lower.includes("regular")) return "✓ Regular";
-  if (lower === "n/a" || lower === "não aplicável") return "N/A";
-  return status;
+// Usa protocolo_status_label do backend para exibição, com ícone baseado no status
+const formatProtocolStatus = (status?: string, protocolo_status_label?: string) => {
+  // Determinar ícone baseado no status
+  const lower = status?.toLowerCase() || "";
+  let icon = "";
+  if (lower === "regular") icon = "✓ ";
+  else if (lower === "atencao" || lower === "atenção") icon = "⚠ ";
+  else if (lower === "irregular") icon = "✗ ";
+
+  // Usar protocolo_status_label do backend para o texto
+  if (protocolo_status_label) {
+    return `${icon}${protocolo_status_label}`;
+  }
+
+  // Fallback se não tiver label
+  if (lower === "regular") return "✓ Regular";
+  if (lower === "atencao" || lower === "atenção") return "⚠ Atenção";
+  if (lower === "irregular") return "✗ Irregular";
+  if (lower === "nao_aplica" || lower === "n/a") return "N/A";
+  return status || "N/A";
 };
 
 interface ProfessionalTabProps {
@@ -334,7 +349,7 @@ const ProfessionalTabComponent = ({
                     .filter(p => p.secretaria?.toLowerCase() === "smas")
                     .filter(p => {
                       const status = p.status?.toLowerCase() || "";
-                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável";
+                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável" && status !== "nao_priorizado";
                     });
                   if (protocolosAssistencia.length === 0) return null;
                   return (
@@ -345,8 +360,8 @@ const ProfessionalTabComponent = ({
                           {protocolosAssistencia.map((protocolo, idx) => (
                             <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded">
                               <span className="text-sm">{protocolo.descricao || "-"}</span>
-                              <Badge variant={getProtocolBadgeVariant(protocolo.status, protocolo.irregular_indicador)}>
-                                {formatProtocolStatus(protocolo.status, protocolo.irregular_indicador)}
+                              <Badge variant={getProtocolBadgeVariant(protocolo.status)}>
+                                {formatProtocolStatus(protocolo.status, protocolo.protocolo_status_label)}
                               </Badge>
                             </div>
                           ))}
@@ -363,7 +378,7 @@ const ProfessionalTabComponent = ({
                     .filter(p => p.secretaria?.toLowerCase() === "sme")
                     .filter(p => {
                       const status = p.status?.toLowerCase() || "";
-                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável";
+                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável" && status !== "nao_priorizado";
                     });
                   if (protocolosEducacao.length === 0) return null;
                   return (
@@ -374,8 +389,8 @@ const ProfessionalTabComponent = ({
                           {protocolosEducacao.map((protocolo, idx) => (
                             <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded">
                               <span className="text-sm">{protocolo.descricao || "-"}</span>
-                              <Badge variant={getProtocolBadgeVariant(protocolo.status, protocolo.irregular_indicador)}>
-                                {formatProtocolStatus(protocolo.status, protocolo.irregular_indicador)}
+                              <Badge variant={getProtocolBadgeVariant(protocolo.status)}>
+                                {formatProtocolStatus(protocolo.status, protocolo.protocolo_status_label)}
                               </Badge>
                             </div>
                           ))}
@@ -392,7 +407,7 @@ const ProfessionalTabComponent = ({
                     .filter(p => p.secretaria?.toLowerCase() === "sms" || p.secretaria?.toLowerCase() === "subpav")
                     .filter(p => {
                       const status = p.status?.toLowerCase() || "";
-                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável";
+                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável" && status !== "nao_priorizado";
                     });
                   if (protocolosSaude.length === 0) return null;
                   return (
@@ -403,8 +418,8 @@ const ProfessionalTabComponent = ({
                           {protocolosSaude.map((protocolo, idx) => (
                             <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded">
                               <span className="text-sm">{protocolo.descricao || "-"}</span>
-                              <Badge variant={getProtocolBadgeVariant(protocolo.status, protocolo.irregular_indicador)}>
-                                {formatProtocolStatus(protocolo.status, protocolo.irregular_indicador)}
+                              <Badge variant={getProtocolBadgeVariant(protocolo.status)}>
+                                {formatProtocolStatus(protocolo.status, protocolo.protocolo_status_label)}
                               </Badge>
                             </div>
                           ))}

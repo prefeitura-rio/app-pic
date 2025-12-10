@@ -34,7 +34,7 @@ DASHBOARD_FILTER_COLUMN_MAP = {
     "status": "status",
     "situacao": "situacao",
     "protocolo_descricao": "protocolo_listagem.descricao",  # Filtro de array
-    "protocolo_status": "protocolo_listagem.status",  # Filtro de array
+    "protocolo_status": "protocolo_listagem.protocolo_status_label",  # Filtro de array
 }
 
 # Filter options config (IDÊNTICA ao participants)
@@ -45,7 +45,10 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "status_list": {"column": "status"},
     "situacoes": {"column": "situacao"},
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
-    "aps": {"column": "id_ap", "label_column": "nome_ap"},  # ATUALIZADO: caps → aps, CAP → AP
+    "aps": {
+        "column": "id_ap",
+        "label_column": "nome_ap",
+    },  # ATUALIZADO: caps → aps, CAP → AP
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},
@@ -60,7 +63,7 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     },
     "protocolo_status_list": {
         "column": "protocolo_listagem",
-        "array_field": "status",
+        "array_field": "protocolo_status_label",
         "type": "array_extract",
     },
 }
@@ -480,16 +483,16 @@ def _calculate_resultado_programa(df: pl.DataFrame) -> list[ResultadoProgramaPoi
             (pl.col("total_protocolos_irregular") == 0).sum().alias("regulares")
         )
     if has_saude_irregular:
-        aggs.append(
-            (pl.col("saude_protocolos_irregular") == 0).sum().alias("saude_ok")
-        )
+        aggs.append((pl.col("saude_protocolos_irregular") == 0).sum().alias("saude_ok"))
     if has_educacao_irregular:
         aggs.append(
             (pl.col("educacao_protocolos_irregular") == 0).sum().alias("educacao_ok")
         )
     if has_assistencia_irregular:
         aggs.append(
-            (pl.col("assistencia_protocolos_irregular") == 0).sum().alias("assistencia_ok")
+            (pl.col("assistencia_protocolos_irregular") == 0)
+            .sum()
+            .alias("assistencia_ok")
         )
 
     # Single group_by operation (muito mais rápido que loop)
