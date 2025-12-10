@@ -32,7 +32,12 @@ interface UserInfo {
   id_clinica_familia_list?: IdWithName[] | null;
 }
 
-export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
+interface DashboardHeaderProps {
+  userInfo?: UserInfo | null;
+  showUserControls?: boolean;
+}
+
+export function DashboardHeader({ userInfo, showUserControls = true }: DashboardHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
@@ -81,37 +86,44 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
           </button>
 
           <div className="flex items-center gap-2">
-            {/* Conditional navigation button based on current page */}
-            {isAdminPage ? (
-              // Show Home icon when in admin page
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => router.push("/")}
-                className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-              >
-                <Home className="h-5 w-5" />
-              </Button>
-            ) : (
-              // Show Admin icon when in main page (only if user is admin)
-              isAdmin && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => router.push("/admin")}
-                  className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                >
-                  <Shield className="h-5 w-5" />
-                </Button>
-              )
+            {showUserControls && (
+              <>
+                {/* Conditional navigation button based on current page */}
+                {isAdminPage ? (
+                  // Show Home icon when in admin page
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => router.push("/")}
+                    className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                  >
+                    <Home className="h-5 w-5" />
+                  </Button>
+                ) : (
+                  // Show Admin icon when in main page (only if user is admin)
+                  isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => router.push("/admin")}
+                      className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                    >
+                      <Shield className="h-5 w-5" />
+                    </Button>
+                  )
+                )}
+              </>
             )}
 
             <ThemeToggle />
-            <UserAreaDialog userInfo={effectiveUserInfo}>
-              <Button variant="ghost" size="icon" className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground">
-                <User className="h-5 w-5" />
-              </Button>
-            </UserAreaDialog>
+
+            {showUserControls && (
+              <UserAreaDialog userInfo={effectiveUserInfo}>
+                <Button variant="ghost" size="icon" className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground">
+                  <User className="h-5 w-5" />
+                </Button>
+              </UserAreaDialog>
+            )}
           </div>
         </div>
       </div>

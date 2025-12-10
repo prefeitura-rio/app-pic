@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
+import { Footer } from "@/app/components/Footer";
 import { OverviewTab } from "@/app/components/OverviewTab";
 import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { apiService } from "@/app/services/api";
@@ -190,17 +191,19 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    * Handle refresh with cache bypass (for Overview tab)
    */
   const handleOverviewRefresh = useCallback(() => {
-    toast.info("Atualizando dados (forçando refresh do cache)...");
+    // Invalidate TanStack Query cache to force refetch
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     setBypassCacheDashboardTimestamp(Date.now());
-  }, []);
+  }, [queryClient]);
 
   /**
    * Handle refresh with cache bypass (for Professional tab)
    */
   const handleProfessionalRefresh = useCallback(() => {
-    toast.info("Atualizando dados (forçando refresh do cache)...");
+    // Invalidate TanStack Query cache to force refetch
+    queryClient.invalidateQueries({ queryKey: ['participants'] });
     setBypassCacheParticipantsTimestamp(Date.now());
-  }, []);
+  }, [queryClient]);
 
   /**
    * Memoizar filter options vazias para evitar re-criação
@@ -250,7 +253,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     <div className="min-h-screen bg-background flex flex-col">
       <DashboardHeader userInfo={userInfo} />
 
-      <main className="container mx-auto px-4 py-8 flex-1">
+      <main className="container mx-auto px-6 py-8 flex-1">
         <Tabs
           value={activeTab}
           onValueChange={(value) => {
@@ -309,12 +312,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
         </Tabs>
       </main>
 
-      <footer className="bg-muted mt-12 py-6 border-t">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>Prefeitura do Rio de Janeiro • Programa Pequenos Cariocas</p>
-          <p className="mt-1">Integração Saúde • Educação • Assistência Social</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { memo, useMemo, useCallback } from "react";
-import { Baby, Heart, Activity, Users, Filter, TrendingUp, Home, Loader2, AlertTriangle, CheckCircle, RefreshCw, X } from "lucide-react";
+import { memo, useMemo } from "react";
+import { Baby, Heart, Activity, Users, TrendingUp, Home, Loader2, AlertTriangle, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
   Dashboard,
@@ -7,9 +7,8 @@ import {
   DashboardFilters,
 } from "../types";
 import { StatCard } from "./StatCard";
-import { Button } from "./ui/button";
+import { FilterCard } from "./FilterCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import dynamic from "next/dynamic";
 
 // OTIMIZAÇÃO CRÍTICA: Lazy load dos gráficos (só carrega quando necessário)
@@ -36,8 +35,6 @@ interface OverviewTabProps {
   loading?: boolean;
 }
 
-// Removido MemoizedSelect - agora usando VirtualizedSelect
-
 const OverviewTabComponent = ({
   data,
   filterOptions,
@@ -46,18 +43,6 @@ const OverviewTabComponent = ({
   onRefresh,
   loading = false,
 }: OverviewTabProps) => {
-
-  // Memoizar callbacks para evitar re-criação
-  const handleFilterUpdate = useCallback((key: keyof DashboardFilters, value: string) => {
-    onFilterChange({
-      ...filters,
-      [key]: value,
-    });
-  }, [filters, onFilterChange]);
-
-  const clearFilters = useCallback(() => {
-    onFilterChange({});
-  }, [onFilterChange]);
 
   // Memoizar dados dos gráficos para evitar re-processamento
   const chartData = useMemo(() => {
@@ -74,23 +59,6 @@ const OverviewTabComponent = ({
       motivosSaida: data?.distribuicao_motivo_saida || [],
     };
   }, [data]);
-
-  // OTIMIZAÇÃO CRÍTICA: Pré-filtrar todas as opções de filtro UMA VEZ
-  const filteredOptions = useMemo(() => ({
-    grupos: filterOptions.grupos.filter((item) => item.id && item.id.trim() !== ""),
-    status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
-    situacoes: filterOptions.situacoes.filter((item) => item.id && item.id.trim() !== ""),
-    cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
-    aps: filterOptions.aps.filter((item) => item.id && item.id.trim() !== ""),
-    cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
-    cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
-    bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
-    escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
-    clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
-    cras: filterOptions.cras.filter((item) => item.id && item.id.trim() !== ""),
-    protocolo_descricoes: (filterOptions.protocolo_descricoes || []).filter((item) => item.id && item.id.trim() !== ""),
-    protocolo_status_list: (filterOptions.protocolo_status_list || []).filter((item) => item.id && item.id.trim() !== ""),
-  }), [filterOptions]);
 
   if (loading && !data) {
     return (
@@ -110,193 +78,13 @@ const OverviewTabComponent = ({
 
   return (
     <div className="space-y-8">
-      {/* Filters */}
-      <Card className="relative border-2">
-        <CardHeader className="pb-4 flex flex-row items-center justify-between">
-          <CardTitle className="text-2xl font-bold flex items-center gap-2">
-            <Filter className="h-6 w-6" />
-            Filtros
-          </CardTitle>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearFilters}
-              className="h-8 text-xs"
-              disabled={loading}
-            >
-              <X className="h-3 w-3 mr-1" />
-              Limpar Filtros
-            </Button>
-            {onRefresh && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRefresh}
-                className="h-8 text-xs"
-                disabled={loading}
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
-                Atualizar
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-4">
-          {/* Primeiro Nível - Filtros Principais */}
-          <div className="space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Filtros Principais
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {/* Grupo */}
-              <VirtualizedSelect
-                value={filters.grupo || "todos"}
-                onSelect={(v) => handleFilterUpdate("grupo", v)}
-                disabled={loading}
-                placeholder="Grupo"
-                defaultLabel="Todos os Grupos"
-                options={filteredOptions.grupos}
-              />
-
-              {/* Status */}
-              <VirtualizedSelect
-                value={filters.status || "todos"}
-                onSelect={(v) => handleFilterUpdate("status", v)}
-                disabled={loading}
-                placeholder="Status"
-                defaultLabel="Todos os Status"
-                options={filteredOptions.status_list}
-              />
-
-              {/* Situação */}
-              <VirtualizedSelect
-                value={filters.situacao || "todas"}
-                onSelect={(v) => handleFilterUpdate("situacao", v)}
-                disabled={loading}
-                placeholder="Situação"
-                defaultLabel="Todas as Situações"
-                options={filteredOptions.situacoes}
-              />
-
-              {/* Safra */}
-              <VirtualizedSelect
-                value={filters.safra || "todas"}
-                onSelect={(v) => handleFilterUpdate("safra", v)}
-                disabled={loading}
-                placeholder="Safra"
-                defaultLabel="Todas as Safras"
-                options={filteredOptions.cohorts}
-              />
-
-              {/* Protocolo */}
-              <VirtualizedSelect
-                value={filters.protocolo_descricao || "todos"}
-                onSelect={(v) => handleFilterUpdate("protocolo_descricao", v)}
-                disabled={loading}
-                placeholder="Protocolo"
-                defaultLabel="Todos os Protocolos"
-                options={filteredOptions.protocolo_descricoes}
-                style={{ gridColumn: "span 2" }}
-              />
-
-              {/* Status Protocolo */}
-              <VirtualizedSelect
-                value={filters.protocolo_status || "todos"}
-                onSelect={(v) => handleFilterUpdate("protocolo_status", v)}
-                disabled={loading}
-                placeholder="Status Protocolo"
-                defaultLabel="Todos os Status de Protocolos"
-                options={filteredOptions.protocolo_status_list}
-                style={{ gridColumn: "span 2" }}
-              />
-            </div>
-          </div>
-
-          {/* Segundo Nível - Filtros Regionais */}
-          <div className="space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Filtros Regionais
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {/* EDUCAÇÃO */}
-              {/* Escolas */}
-              <VirtualizedSelect
-                value={filters.escola || "todas"}
-                onSelect={(v) => handleFilterUpdate("escola", v)}
-                disabled={loading}
-                placeholder="Escola"
-                defaultLabel="Todas as Escolas"
-                options={filteredOptions.escolas}
-                style={{ gridColumn: "span 2" }}
-              />
-
-              {/* CRE (Coordenadoria Regional de Educação) */}
-              <VirtualizedSelect
-                value={filters.cre || "todas"}
-                onSelect={(v) => handleFilterUpdate("cre", v)}
-                disabled={loading}
-                placeholder="CRE"
-                defaultLabel="Todas as CREs"
-                options={filteredOptions.cres}
-              />
-
-              {/* ASSISTÊNCIA SOCIAL */}
-              {/* CRAS */}
-              <VirtualizedSelect
-                value={filters.cras || "todas"}
-                onSelect={(v) => handleFilterUpdate("cras", v)}
-                disabled={loading}
-                placeholder="CRAS"
-                defaultLabel="Todos os CRAS"
-                options={filteredOptions.cras}
-              />
-
-              {/* CAS */}
-              <VirtualizedSelect
-                value={filters.cas || "todas"}
-                onSelect={(v) => handleFilterUpdate("cas", v)}
-                disabled={loading}
-                placeholder="CAS"
-                defaultLabel="Todas as CAS"
-                options={filteredOptions.cas_list}
-              />
-
-              {/* AP (Área Programática) */}
-              <VirtualizedSelect
-                value={filters.ap || "todas"}
-                onSelect={(v) => handleFilterUpdate("ap", v)}
-                disabled={loading}
-                placeholder="AP"
-                defaultLabel="Todas as APs"
-                options={filteredOptions.aps}
-              />
-
-              {/* SAÚDE */}
-              {/* Clínicas da Família */}
-              <VirtualizedSelect
-                value={filters.clinica || "todas"}
-                onSelect={(v) => handleFilterUpdate("clinica", v)}
-                disabled={loading}
-                placeholder="Clínica da Família"
-                defaultLabel="Todas as Clínicas da Família"
-                options={filteredOptions.clinicas}
-              />
-
-              {/* LOCALIZAÇÃO */}
-              {/* Bairro */}
-              <VirtualizedSelect
-                value={filters.bairro || "todos"}
-                onSelect={(v) => handleFilterUpdate("bairro", v)}
-                disabled={loading}
-                placeholder="Bairro"
-                defaultLabel="Todos os Bairros"
-                options={filteredOptions.bairros}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <FilterCard
+        filterOptions={filterOptions}
+        filters={filters}
+        onFilterChange={onFilterChange}
+        onRefresh={onRefresh}
+        loading={loading}
+      />
 
       {loading && !data && (
         <>

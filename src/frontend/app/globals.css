@@ -163,6 +163,11 @@
   transition: color 0.3s, background-color 0.3s, border-color 0.3s;
 }
 
+html {
+  /* Prevent layout shift when scrollbar appears/disappears */
+  overflow-y: scroll;
+}
+
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { IdWithName } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,6 @@ import {
 import {
   Command,
   CommandEmpty,
-  CommandGroup,
   CommandInput,
 } from "@/components/ui/command";
 import { Check, ChevronsUpDown, X } from "lucide-react";
@@ -55,18 +54,18 @@ export function VirtualizedIdMultiSelect({
   }, [options, search]);
 
   // Check if an option is selected
-  const isSelected = (option: IdWithName) => {
+  const isOptionSelected = useCallback((option: IdWithName) => {
     return selected.some((s) => s.id === option.id);
-  };
+  }, [selected]);
 
   // Toggle selection
-  const toggleOption = (option: IdWithName) => {
-    if (isSelected(option)) {
+  const toggleOption = useCallback((option: IdWithName) => {
+    if (isOptionSelected(option)) {
       onChange(selected.filter((s) => s.id !== option.id));
     } else {
       onChange([...selected, option]);
     }
-  };
+  }, [selected, onChange, isOptionSelected]);
 
   // Remove selected item
   const removeItem = (option: IdWithName) => {
@@ -83,36 +82,28 @@ export function VirtualizedIdMultiSelect({
     onChange([...options]);
   };
 
-  // Virtualized row component
-  interface CustomRowProps {
-    options: IdWithName[];
-    toggleOption: (option: IdWithName) => void;
-    isSelected: (option: IdWithName) => boolean;
-  }
-
-  const Row = (props: {
+  // Row component para react-window
+  const Row = useCallback((props: {
     index: number;
     style: React.CSSProperties;
     ariaAttributes: { "aria-posinset": number; "aria-setsize": number; role: "listitem" };
-  } & CustomRowProps) => {
-    const { index, style, options, toggleOption: handleToggle, isSelected: checkSelected } = props;
-    const option = options[index];
-    const selected = checkSelected(option);
-
+  }) => {
+    const option = filteredOptions[props.index];
+    const optionIsSelected = isOptionSelected(option);
     return (
       <div
-        style={style}
+        style={props.style}
         className={cn(
-          "flex items-start cursor-pointer px-2 py-2 hover:bg-secondary hover:text-secondary-foreground",
-          selected && "bg-secondary/50"
+          "flex items-start cursor-pointer px-2 py-2 rounded-sm mx-1 hover:bg-accent hover:text-accent-foreground",
+          optionIsSelected && "bg-accent/50"
         )}
-        onClick={() => handleToggle(option)}
+        onClick={() => toggleOption(option)}
         title={`${option.nome} (${option.id})`}
       >
         <Check
           className={cn(
             "mr-2 h-4 w-4 mt-0.5 shrink-0",
-            selected ? "opacity-100" : "opacity-0"
+            optionIsSelected ? "opacity-100" : "opacity-0"
           )}
         />
         <div className="flex flex-col min-w-0">
@@ -123,7 +114,9 @@ export function VirtualizedIdMultiSelect({
         </div>
       </div>
     );
-  };
+  }, [filteredOptions, isOptionSelected, toggleOption]);
+
+  const listHeight = Math.min(300, filteredOptions.length * 48);
 
   return (
     <div className="space-y-2">
@@ -242,18 +235,18 @@ export function VirtualizedIdMultiSelect({
                 value={search}
                 onValueChange={setSearch}
               />
-              <CommandEmpty>Nenhum resultado encontrado</CommandEmpty>
-              <CommandGroup className="p-0">
-                {filteredOptions.length > 0 && (
-                  <List
-                    rowComponent={Row}
-                    rowCount={filteredOptions.length}
-                    rowHeight={48}
-                    rowProps={{ options: filteredOptions, toggleOption, isSelected }}
-                    style={{ height: Math.min(300, filteredOptions.length * 48), width: '100%' }}
-                  />
-                )}
-              </CommandGroup>
+              {filteredOptions.length === 0 && (
+                <CommandEmpty>Nenhum resultado encontrado</CommandEmpty>
+              )}
+              {filteredOptions.length > 0 && (
+                <List
+                  rowComponent={Row}
+                  rowCount={filteredOptions.length}
+                  rowHeight={48}
+                  rowProps={{}}
+                  style={{ height: listHeight, width: '100%' }}
+                />
+              )}
             </Command>
           </PopoverContent>
         </Popover>

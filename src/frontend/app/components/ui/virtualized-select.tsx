@@ -13,7 +13,6 @@ import {
 import {
   Command,
   CommandEmpty,
-  CommandGroup,
   CommandInput,
   CommandItem,
 } from "@/app/components/ui/command";
@@ -38,7 +37,6 @@ export function VirtualizedSelect({
   options,
   value,
   onSelect,
-  placeholder = "Selecione...",
   defaultLabel = "Todos",
   disabled = false,
   className,
@@ -55,7 +53,7 @@ export function VirtualizedSelect({
     }
   }, [open]);
 
-  // Otimização: Filtragem local simples para react-window
+  // Filtragem local
   const [searchTerm, setSearchInput] = React.useState("");
 
   const filteredOptions = React.useMemo(() => {
@@ -69,38 +67,30 @@ export function VirtualizedSelect({
     [options, value]
   );
 
-  // Texto a ser exibido no botão (mostra defaultLabel quando nenhum filtro específico selecionado)
+  // Texto a ser exibido no botão
   const displayText = value && value !== "todos" && value !== "todas"
     ? selectedLabel || value
     : defaultLabel;
 
-  // Tipo para os props customizados (sem index, style, ariaAttributes)
-  interface CustomRowProps {
-    options: Option[];
-    value?: string;
-    onSelect: (value: string) => void;
-    setOpen: (open: boolean) => void;
-  }
-
-  const Row = (props: {
+  // Row component para react-window
+  const Row = React.useCallback((props: {
     index: number;
     style: React.CSSProperties;
     ariaAttributes: { "aria-posinset": number; "aria-setsize": number; role: "listitem" };
-  } & CustomRowProps) => {
-    const { index, style, options, value: selectedValue, onSelect: handleSelect, setOpen: handleSetOpen } = props;
-    const option = options[index];
-    const isSelected = selectedValue === option.id;
+  }) => {
+    const option = filteredOptions[props.index];
+    const isSelected = value === option.id;
     return (
       <div
-        style={style}
+        style={props.style}
         title={option.label}
         className={cn(
-          "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-secondary hover:text-secondary-foreground",
-          isSelected && "bg-secondary text-secondary-foreground"
+          "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm mx-1",
+          isSelected && "bg-accent text-accent-foreground"
         )}
         onClick={() => {
-          handleSelect(option.id);
-          handleSetOpen(false);
+          onSelect(option.id);
+          setOpen(false);
         }}
       >
         <Check
@@ -112,49 +102,52 @@ export function VirtualizedSelect({
         <span className="truncate">{option.label}</span>
       </div>
     );
-  };
+  }, [filteredOptions, value, onSelect]);
+
+  const listHeight = Math.min(280, filteredOptions.length * 32);
 
   return (
     <div className={className} style={style}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-        <Button
-          ref={triggerRef}
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          title={displayText}
-          className="w-full justify-between font-normal px-3"
-          disabled={disabled}
+          <Button
+            ref={triggerRef}
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            title={displayText}
+            className="w-full justify-between font-normal px-3"
+            disabled={disabled}
+          >
+            <span className="truncate">
+              {displayText}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="p-0"
+          align="start"
+          style={{ width: triggerWidth > 0 ? triggerWidth : 300 }}
         >
-          <span className="truncate">
-            {displayText}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="p-0"
-        align="start"
-        style={{ width: triggerWidth > 0 ? triggerWidth : 300 }}
-      >
-        <Command shouldFilter={false}> {/* Desativa filtro nativo do cmkd */}
-          <CommandInput
-            placeholder="Buscar..."
-            value={searchTerm}
-            onValueChange={setSearchInput}
-          />
-          {filteredOptions.length === 0 && (
-            <CommandEmpty>Nenhum resultado.</CommandEmpty>
-          )}
-          <CommandGroup>
-             {/* Opção "Todos" fixa no topo */}
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="Buscar..."
+              value={searchTerm}
+              onValueChange={setSearchInput}
+            />
+            {filteredOptions.length === 0 && (
+              <CommandEmpty>Nenhum resultado.</CommandEmpty>
+            )}
+
+            {/* Opção "Todos" fixa no topo */}
             <CommandItem
               value="todos"
               onSelect={() => {
                 onSelect("todos");
                 setOpen(false);
               }}
+              className="mx-1"
             >
               <Check
                 className={cn(
@@ -165,20 +158,17 @@ export function VirtualizedSelect({
               {defaultLabel}
             </CommandItem>
 
-            {/* Lista Virtualizada */}
+            {/* Lista virtualizada */}
             {filteredOptions.length > 0 && (
-              <div style={{ height: Math.min(250, filteredOptions.length * 32) }}>
-                <List
-                  rowComponent={Row}
-                  rowCount={filteredOptions.length}
-                  rowHeight={32}
-                  rowProps={{ options: filteredOptions, value, onSelect, setOpen }}
-                  style={{ height: Math.min(250, filteredOptions.length * 32), width: '100%' }}
-                />
-              </div>
+              <List
+                rowComponent={Row}
+                rowCount={filteredOptions.length}
+                rowHeight={32}
+                rowProps={{}}
+                style={{ height: listHeight, width: '100%' }}
+              />
             )}
-          </CommandGroup>
-        </Command>
+          </Command>
         </PopoverContent>
       </Popover>
     </div>

@@ -249,7 +249,8 @@ export default function AdminPage() {
 
   // Handle refresh with cache bypass
   const handleRefreshWithBypass = () => {
-    toast.info("Atualizando lista (forçando refresh do cache)...");
+    // Invalidate TanStack Query cache to force refetch
+    queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
     setBypassCacheTimestamp(Date.now());
   };
 
