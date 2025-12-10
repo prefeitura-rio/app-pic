@@ -65,6 +65,11 @@ export function VirtualizedSelect({
     [options, value]
   );
 
+  // Texto a ser exibido no botão
+  const displayText = value && value !== "todos" && value !== "todas"
+    ? selectedLabel || value
+    : placeholder;
+
   // Tipo para os props customizados (sem index, style, ariaAttributes)
   interface CustomRowProps {
     options: Option[];
@@ -84,6 +89,7 @@ export function VirtualizedSelect({
     return (
       <div
         style={style}
+        title={option.label}
         className={cn(
           "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-secondary hover:text-secondary-foreground",
           isSelected && "bg-secondary text-secondary-foreground"
@@ -95,7 +101,7 @@ export function VirtualizedSelect({
       >
         <Check
           className={cn(
-            "mr-2 h-4 w-4",
+            "mr-2 h-4 w-4 shrink-0",
             isSelected ? "opacity-100" : "opacity-0"
           )}
         />
@@ -112,13 +118,12 @@ export function VirtualizedSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          title={displayText}
           className="w-full justify-between font-normal px-3"
           disabled={disabled}
         >
           <span className="truncate">
-            {value && value !== "todos" && value !== "todas"
-              ? selectedLabel || value
-              : placeholder}
+            {displayText}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
