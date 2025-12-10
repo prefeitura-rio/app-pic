@@ -17,6 +17,7 @@ import {
   DashboardFilters,
   ParticipantFilters,
   PaginationMeta,
+  SortOrder,
 } from "@/app/types";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
@@ -57,6 +58,10 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const [isPending, startTransition] = useTransition();
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
   const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
+
+  // State para ordenação
+  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
 
   // Verificação prévia de permissões (evita chamadas desnecessárias)
@@ -123,7 +128,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     isFetching: participantsFetching,
     error: participantsError,
   } = useQuery({
-    queryKey: ['participants', professionalFilters, professionalPage, bypassCacheParticipantsTimestamp],
+    queryKey: ['participants', professionalFilters, professionalPage, sortBy, sortOrder, bypassCacheParticipantsTimestamp],
     queryFn: async ({ queryKey }) => {
       const timestamp = queryKey[queryKey.length - 1] as number | null;
       const shouldBypassCache = timestamp !== null;
@@ -131,6 +136,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       const result = await apiService.getParticipants(
         {
           ...professionalFilters,
+          ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
           ...(shouldBypassCache && { bypass_cache: true }),
         },
         professionalPage,
@@ -185,6 +191,16 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    */
   const handleProfessionalPageChange = useCallback((page: number) => {
     setProfessionalPage(page);
+  }, []);
+
+  /**
+   * Handle sort change
+   * Atualiza sortBy e sortOrder, reseta para página 1
+   */
+  const handleSortChange = useCallback((newSortBy: string, newSortOrder: SortOrder) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setProfessionalPage(1); // Reset to page 1 when sorting changes
   }, []);
 
   /**
@@ -306,6 +322,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 onRefresh={handleProfessionalRefresh}
                 loading={participantsFetching}
                 pageSize={PAGE_SIZE}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSortChange={handleSortChange}
               />
             </TabsContent>
           )}

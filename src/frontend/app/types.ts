@@ -312,6 +312,8 @@ export interface ParticipantFilters {
   bypass_cache?: boolean;
   protocolo_descricao?: string; // Filtro por descrição do protocolo
   protocolo_status?: string; // Filtro por status do protocolo
+  sort_by?: string; // Coluna para ordenação
+  sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }
 
 /**
@@ -322,6 +324,16 @@ export interface PaginationState {
   pageSize: number;
   totalRows: number;
   totalPages: number;
+}
+
+/**
+ * Sort state for tables
+ */
+export type SortOrder = "asc" | "desc";
+
+export interface SortState {
+  sortBy: string | null;
+  sortOrder: SortOrder;
 }
 
 // ============================================================================

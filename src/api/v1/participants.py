@@ -9,6 +9,7 @@ from src.api.v1.schemas import (
     PaginatedResponse,
     CommonFilters,
     PaginationParams,
+    SortParams,
 )
 from src.utils.data_manager import DataManager
 from src.utils.data_manager_config import DataManagerConfig as config
@@ -65,16 +66,33 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     },
 }
 
+# Colunas permitidas para ordenação (EXATAMENTE as mesmas da tabela no frontend)
+# Segurança: whitelist evita SQL injection
+PARTICIPANT_SORTABLE_COLUMNS = {
+    "nome": "nome",
+    "cpf": "cpf",
+    "grupo": "grupo",
+    "bairro": "bairro",
+    "idade": "idade",
+    "status": "status",
+    "total_fracao": "total_protocolos_regular",  # Ordena pelo numerador da fração
+    "assistencia_fracao": "assistencia_protocolos_regular",
+    "educacao_fracao": "educacao_protocolos_regular",
+    "saude_fracao": "saude_protocolos_regular",
+    "situacao": "situacao",
+}
+
 
 @router.get(
     "/participants",
-    summary="Listar participantes com filtros e paginação",
+    summary="Listar participantes com filtros, paginação e ordenação",
     response_model=PaginatedResponse[Participante],
 )
 async def get_participants(
     permissions: CurrentUserPermissions,  # NOVO: Inject user permissions
     filters: CommonFilters = Depends(),
     pagination: PaginationParams = Depends(),
+    sort: SortParams = Depends(),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ) -> Any:
     """
@@ -100,6 +118,7 @@ async def get_participants(
         f"Fetching participants - Page: {pagination.page}, Size: {pagination.page_size}"
     )
     logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
+    logger.info(f"Sort: {sort.sort_by} {sort.sort_order}")
     logger.info(f"🔄 Bypass Cache: {bypass_cache}")
 
     try:
@@ -115,7 +134,20 @@ async def get_participants(
                 column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
                 column_filters[column_name] = filter_value
 
-        # Pipeline completo: fetch -> governance -> filter -> search -> filter_options -> paginate
+        # Validar e mapear coluna de ordenação
+        sort_column = None
+        sort_descending = False
+        if sort.sort_by:
+            if sort.sort_by in PARTICIPANT_SORTABLE_COLUMNS:
+                sort_column = PARTICIPANT_SORTABLE_COLUMNS[sort.sort_by]
+                sort_descending = sort.sort_order == "desc"
+            else:
+                logger.warning(
+                    f"⚠️ Coluna de ordenação não permitida: {sort.sort_by}. "
+                    f"Colunas válidas: {list(PARTICIPANT_SORTABLE_COLUMNS.keys())}"
+                )
+
+        # Pipeline completo: fetch -> governance -> filter -> search -> sort -> filter_options -> paginate
         # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
         df_data, meta, filter_options = DataManager.fetch_filter_paginate(
             query=query,
@@ -127,6 +159,8 @@ async def get_participants(
             search_columns=["nome", "cpf"] if search_term else None,
             user_permissions=permissions,  # NOVO: Pass user permissions
             bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
+            sort_by=sort_column,  # NOVO: Coluna para ordenação
+            sort_descending=sort_descending,  # NOVO: Direção da ordenação
         )
 
         # Converter DataFrame para JSON e retornar resposta
