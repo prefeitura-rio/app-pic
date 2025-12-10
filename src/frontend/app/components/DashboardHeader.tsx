@@ -44,6 +44,8 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
 
   // Fetch complete user info (including permissions) from backend
   // IMPORTANTE: Usa mesma queryKey que DashboardClient para compartilhar cache
+  // IMPORTANTE: Desabilita query quando showUserControls=false (página de login)
+  // para evitar loop infinito de redirects 401 -> /login -> 401 -> /login
   const { data: currentUserAccess } = useQuery({
     queryKey: ['currentUser'], // Mesma key que DashboardClient
     queryFn: async () => {
@@ -55,6 +57,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
     },
     retry: false,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes (mesmo que DashboardClient)
+    enabled: showUserControls, // Não executa na página de login
   });
 
   // Merge basic userInfo (from JWT) with detailed access info (from API)
