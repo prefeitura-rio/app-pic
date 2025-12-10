@@ -107,6 +107,7 @@ export function VirtualizedIdMultiSelect({
           selected && "bg-secondary/50"
         )}
         onClick={() => handleToggle(option)}
+        title={`${option.nome} (${option.id})`}
       >
         <Check
           className={cn(
@@ -167,12 +168,14 @@ export function VirtualizedIdMultiSelect({
                   key={item.id}
                   variant="secondary"
                   className="gap-1"
+                  title={`${item.nome} (${item.id})`}
                 >
                   {item.nome}
                   {!disabled && (
                     <button
                       onClick={() => removeItem(item)}
                       className="ml-1 hover:text-destructive"
+                      title={`Remover ${item.nome}`}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -189,19 +192,21 @@ export function VirtualizedIdMultiSelect({
                     key={item.id}
                     variant="secondary"
                     className="gap-1"
+                    title={`${item.nome} (${item.id})`}
                   >
                     {item.nome}
                     {!disabled && (
                       <button
                         onClick={() => removeItem(item)}
                         className="ml-1 hover:text-destructive"
+                        title={`Remover ${item.nome}`}
                       >
                         <X className="h-3 w-3" />
                       </button>
                     )}
                   </Badge>
                 ))}
-                <Badge variant="outline" className="bg-background">
+                <Badge variant="outline" className="bg-background" title={`${selected.length - 5} itens adicionais selecionados`}>
                   +{selected.length - 5} mais
                 </Badge>
               </div>
