@@ -331,7 +331,11 @@ const ProfessionalTabComponent = ({
                 {/* Dimensão Assistência Social */}
                 {(() => {
                   const protocolosAssistencia = (selectedParticipant.protocolo_listagem || [])
-                    .filter(p => p.secretaria?.toLowerCase() === "smas");
+                    .filter(p => p.secretaria?.toLowerCase() === "smas")
+                    .filter(p => {
+                      const status = p.status?.toLowerCase() || "";
+                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável";
+                    });
                   if (protocolosAssistencia.length === 0) return null;
                   return (
                     <>
@@ -356,7 +360,11 @@ const ProfessionalTabComponent = ({
                 {/* Dimensão Educação */}
                 {(() => {
                   const protocolosEducacao = (selectedParticipant.protocolo_listagem || [])
-                    .filter(p => p.secretaria?.toLowerCase() === "sme");
+                    .filter(p => p.secretaria?.toLowerCase() === "sme")
+                    .filter(p => {
+                      const status = p.status?.toLowerCase() || "";
+                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável";
+                    });
                   if (protocolosEducacao.length === 0) return null;
                   return (
                     <>
@@ -381,7 +389,11 @@ const ProfessionalTabComponent = ({
                 {/* Dimensão Saúde */}
                 {(() => {
                   const protocolosSaude = (selectedParticipant.protocolo_listagem || [])
-                    .filter(p => p.secretaria?.toLowerCase() === "sms" || p.secretaria?.toLowerCase() === "subpav");
+                    .filter(p => p.secretaria?.toLowerCase() === "sms" || p.secretaria?.toLowerCase() === "subpav")
+                    .filter(p => {
+                      const status = p.status?.toLowerCase() || "";
+                      return status !== "nao_aplica" && status !== "não aplica" && status !== "n/a" && status !== "não aplicável";
+                    });
                   if (protocolosSaude.length === 0) return null;
                   return (
                     <>
