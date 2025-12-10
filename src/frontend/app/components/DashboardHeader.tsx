@@ -85,10 +85,10 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
             {isAdminPage ? (
               // Show Home icon when in admin page
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="icon"
                 onClick={() => router.push("/")}
-                className="rounded-full"
+                className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
               >
                 <Home className="h-5 w-5" />
               </Button>
@@ -96,10 +96,10 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
               // Show Admin icon when in main page (only if user is admin)
               isAdmin && (
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   size="icon"
                   onClick={() => router.push("/admin")}
-                  className="rounded-full"
+                  className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                 >
                   <Shield className="h-5 w-5" />
                 </Button>
@@ -108,7 +108,7 @@ export function DashboardHeader({ userInfo }: { userInfo?: UserInfo | null }) {
 
             <ThemeToggle />
             <UserAreaDialog userInfo={effectiveUserInfo}>
-              <Button variant="secondary" size="icon" className="rounded-full">
+              <Button variant="ghost" size="icon" className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground">
                 <User className="h-5 w-5" />
               </Button>
             </UserAreaDialog>
