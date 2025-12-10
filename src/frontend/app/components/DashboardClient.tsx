@@ -313,9 +313,6 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>Prefeitura do Rio de Janeiro • Programa Pequenos Cariocas</p>
           <p className="mt-1">Integração Saúde • Educação • Assistência Social</p>
-          {userInfo?.name && (
-            <p className="mt-2 text-xs">Logado como: {userInfo.name}</p>
-          )}
         </div>
       </footer>
     </div>
