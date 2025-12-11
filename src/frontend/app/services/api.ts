@@ -3,12 +3,12 @@ import {
   Participante,
   ProtocoloDetalhes,
   SmartFilterOptions,
-  DashboardFilters,
   ParticipantFilters,
   AvailableIds,
   UserAccessRecord,
   CreateUserRequest,
 } from "../types";
+import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
 // Use server-side proxy to access backend API
 // This allows reading API_URL from runtime environment (Infisical)
@@ -105,7 +105,7 @@ async function handleResponse<T>(
  * Build query parameters from filter object, excluding default "todos"/"todas" values
  */
 function buildFilterParams(
-  filters: DashboardFilters | ParticipantFilters
+  filters: DashboardFilterValues | ParticipantFilters
 ): URLSearchParams {
   const params = new URLSearchParams();
 
@@ -138,7 +138,7 @@ export const apiService = {
    * @returns Dashboard data
    */
   async getDashboard(
-    filters: DashboardFilters = {}
+    filters: DashboardFilterValues = {}
   ): Promise<PaginatedResponse<any>> {
     const params = buildFilterParams(filters);
     const url = `${BASE_URL}/api/v1/dashboard?${params.toString()}`;

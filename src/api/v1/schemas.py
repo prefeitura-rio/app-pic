@@ -139,6 +139,23 @@ class ResultadoProgramaPoint(BaseModel):
     assistencia: float  # % completude assistência
 
 
+# ========================================================================
+# DASHBOARD - Schema para protocolo resumo usado internamente
+# ========================================================================
+
+
+class ProtocoloResumoDashboard(BaseModel):
+    """Resumo de um protocolo com percentual atual e evolução para o dashboard"""
+
+    protocolo_id: str
+    protocolo_descricao: str
+    protocolo_secretaria: str
+    numerador: int = 0
+    denominador: int = 0
+    percentual: float = 0.0
+    evolucao_mensal: List[dict] = []  # [{mes: "2024-01", percentual: 85.2}, ...]
+
+
 # Endpoint Models
 
 

@@ -14,11 +14,11 @@ import {
   SmartFilterOptions,
   Dashboard,
   Participante,
-  DashboardFilters,
   ParticipantFilters,
   PaginationMeta,
   SortOrder,
 } from "@/app/types";
+import { DashboardFilterValues } from "@/app/components/DashboardFilterCard";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
 interface UserInfo {
@@ -51,7 +51,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const queryClient = useQueryClient();
 
   // State para filtros e paginação
-  const [overviewFilters, setOverviewFilters] = useState<DashboardFilters>({});
+  const [overviewFilters, setOverviewFilters] = useState<DashboardFilterValues>({});
   const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>({});
   const [professionalPage, setProfessionalPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
@@ -172,7 +172,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    * Handle overview filter changes
    * TanStack Query refetch automaticamente quando overviewFilters muda
    */
-  const handleOverviewFilterChange = useCallback((newFilters: DashboardFilters) => {
+  const handleOverviewFilterChange = useCallback((newFilters: DashboardFilterValues) => {
     setOverviewFilters(newFilters);
   }, []);
 
