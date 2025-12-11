@@ -159,21 +159,34 @@ export interface SmartFilterOptions {
 // DASHBOARD TYPES
 // ============================================================================
 
-export interface DistribuicaoMotivoSaida {
-  motivo?: string;
-  total?: number;
+/**
+ * Indicador individual de um protocolo (card)
+ */
+export interface ProtocoloIndicador {
+  protocolo_id: string;         // "sms_vacinacao_pentavalente"
+  protocolo_descricao: string;  // "Vacinação Pentavalente"
+  protocolo_secretaria: string; // "SMS", "SME", "SMAS"
+  numerador: number;            // Quantos estão regulares
+  denominador: number;          // Total aplicável
+  percentual_regular: number;   // (numerador/denominador) * 100
+  percentual_irregular: number; // 100 - percentual_regular
 }
 
-export interface DistribuicaoGrupo {
-  grupo?: string;
-  total_participantes?: number;
+/**
+ * Ponto de evolução temporal do programa (gráfico de linha)
+ */
+export interface ResultadoProgramaPoint {
+  mes: string;           // "2025-12"
+  mes_label: string;     // "Dez/25"
+  todos: number;         // % completude geral
+  saude: number;         // % completude SMS
+  educacao: number;      // % completude SME
+  assistencia: number;   // % completude SMAS
 }
 
-export interface DistribuicaoBairro {
-  bairro?: string;
-  total_participantes?: number;
-}
-
+/**
+ * Distribuição por safra (gráfico de barras)
+ */
 export interface DistribuicaoSafra {
   safra?: string;
   total_participantes?: number;
@@ -181,68 +194,52 @@ export interface DistribuicaoSafra {
   total_inativos?: number;
 }
 
-export interface ResultadoProgramaPoint {
-  mes: string;
-  todos: number; // % completude geral
-  saude: number; // % completude saúde
-  educacao: number; // % completude educação
-  assistencia: number; // % completude assistência
+/**
+ * Motivo de saída do programa (gráfico pizza)
+ */
+export interface DistribuicaoMotivoSaida {
+  motivo?: string;
+  total?: number;
 }
 
+/**
+ * Modelo principal do Dashboard
+ * Todos os valores são calculados no backend e prontos para exibição
+ */
 export interface Dashboard {
-  // Totais básicos
-  total_participantes_ativos?: number;
-  total_participantes_inativos?: number;
-  total_participantes_geral?: number;
+  // =========================================================================
+  // SEÇÃO 1: INDICADORES PRINCIPAIS (3 cards)
+  // =========================================================================
+  total_participantes: number;     // Total de participantes (denominador)
+  total_regulares: number;         // Participantes com TODOS protocolos regulares
+  total_irregulares: number;       // Participantes com ALGUM protocolo irregular
+  percentual_regular: number;      // (total_regulares / total_participantes) * 100
+  percentual_irregular: number;    // (total_irregulares / total_participantes) * 100
 
-  // Métricas principais (Regular/Irregular)
-  total_participantes_regulares?: number;
-  total_participantes_irregulares?: number;
-  percentual_regular?: number;
-  percentual_irregular?: number;
+  // =========================================================================
+  // SEÇÃO 2: INDICADORES POR PROTOCOLO (cards individuais)
+  // =========================================================================
+  protocolos: ProtocoloIndicador[];
 
-  // Métrica de atenção
-  total_participantes_em_atencao?: number;
-  percentual_em_atencao?: number;
+  // =========================================================================
+  // SEÇÃO 3: RESULTADO DO PROGRAMA (gráfico de linha)
+  // =========================================================================
+  resultado_programa: ResultadoProgramaPoint[];
 
-  // Protocolos gerais
-  total_protocolos?: number;
-  total_protocolos_irregular?: number; // RENOMEADO de total_protocolos_violados
-  percentual_protocolos_irregular?: number; // RENOMEADO de percentual_protocolos_violados
+  // =========================================================================
+  // SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA (gráfico de barras)
+  // =========================================================================
+  distribuicao_por_safra: DistribuicaoSafra[];
 
-  // Protocolos por dimensão (secretaria)
-  total_protocolos_smas?: number;
-  total_protocolos_smas_irregular?: number; // RENOMEADO de total_protocolos_smas_violados
-  percentual_smas_irregular?: number; // RENOMEADO de percentual_smas_violados
-  total_protocolos_sme?: number;
-  total_protocolos_sme_irregular?: number; // RENOMEADO de total_protocolos_sme_violados
-  percentual_sme_irregular?: number; // RENOMEADO de percentual_sme_violados
-  total_protocolos_sms?: number;
-  total_protocolos_sms_irregular?: number; // RENOMEADO de total_protocolos_sms_violados
-  percentual_sms_irregular?: number; // RENOMEADO de percentual_sms_violados
+  // =========================================================================
+  // SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza)
+  // =========================================================================
+  distribuicao_motivo_saida: DistribuicaoMotivoSaida[];
 
-  // Dimensão Assistência Social (completude apenas)
-  assistencia_completude_total?: number;
-  assistencia_completude_percentual?: number;
-
-  // Dimensão Educação (completude apenas)
-  educacao_completude_total?: number;
-  educacao_completude_percentual?: number;
-
-  // Dimensão Saúde
-  saude_completude_total?: number;
-  saude_completude_percentual?: number;
-
-  // Distribuições
-  distribuicao_por_grupo?: DistribuicaoGrupo[];
-  top_bairros?: DistribuicaoBairro[];
-  distribuicao_motivo_saida?: DistribuicaoMotivoSaida[];
-  distribuicao_por_safra?: DistribuicaoSafra[];
-
-  // Resultado do Programa (evolução temporal)
-  resultado_programa?: ResultadoProgramaPoint[];
-
-  data_atualizacao?: string; // ISO datetime string
+  // =========================================================================
+  // METADADOS
+  // =========================================================================
+  data_atualizacao?: string;
 }
 
 // ============================================================================
