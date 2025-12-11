@@ -26,6 +26,7 @@ class UserPermissions(BaseModel):
     Defines which facility IDs a user has access to and their admin status.
     """
     cpf: str
+    email: Optional[str] = None
     is_admin: bool = False
     is_super_admin: bool = False
     permission: Optional[str] = None

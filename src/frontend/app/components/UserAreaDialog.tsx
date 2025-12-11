@@ -16,19 +16,24 @@ import { IdWithName } from "@/app/types";
 
 interface UserInfo {
   // JWT fields
-  name?: string;
-  email?: string;
-  preferred_username?: string;
-  given_name?: string;
-  family_name?: string;
-  sub?: string;
+  name?: string | null;
+  email?: string | null;
+  preferred_username?: string | null;
+  given_name?: string | null;
+  family_name?: string | null;
+  sub?: string | null;
   iat?: number;
   exp?: number;
 
   // App fields (from /me or JWT enrichment)
+  cpf?: string;
+  nome?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
+  active?: boolean;
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;

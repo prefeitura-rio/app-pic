@@ -73,7 +73,7 @@ const UserTableComponent = ({
   };
 
   // Largura mínima total da tabela
-  const minTableWidth = 1000;
+  const minTableWidth = 1150;
 
   if (users.length === 0) {
     return (
@@ -116,6 +116,7 @@ const UserTableComponent = ({
             >
               <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2">CPF</div>
               <div style={{ flex: '1.5 1 0%', minWidth: 140 }} className="px-2">Nome</div>
+              <div style={{ flex: '1.3 1 0%', minWidth: 150 }} className="px-2">Email</div>
               <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Ocupação</div>
               <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Secretaria</div>
               <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-2">Tipo</div>
@@ -147,6 +148,11 @@ const UserTableComponent = ({
                   {/* Nome */}
                   <div style={{ flex: '1.5 1 0%', minWidth: 140 }} className="px-2 font-medium">
                     <span className="line-clamp-2">{user.nome || "—"}</span>
+                  </div>
+
+                  {/* Email */}
+                  <div style={{ flex: '1.3 1 0%', minWidth: 150 }} className="px-2 text-muted-foreground">
+                    <span className="line-clamp-1 text-xs">{user.email || "—"}</span>
                   </div>
 
                   {/* Ocupação */}

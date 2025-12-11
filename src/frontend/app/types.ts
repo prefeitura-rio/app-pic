@@ -382,6 +382,7 @@ export interface AvailableIds {
  */
 export interface UserAccessRecord {
   cpf: string;
+  email?: string | null;
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
@@ -409,6 +410,7 @@ export interface UserAccessRecord {
  */
 export interface CreateUserRequest {
   cpf: string;
+  email?: string | null;
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
@@ -430,6 +432,7 @@ export interface CreateUserRequest {
  * Update user request payload
  */
 export interface UpdateUserRequest {
+  email?: string | null;
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;

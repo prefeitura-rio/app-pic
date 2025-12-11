@@ -80,6 +80,7 @@ class UserAccessRecord(BaseModel):
     """Registro de acesso de um usuário (usado em GET /users)"""
 
     cpf: str
+    email: Optional[str] = None
     nome: Optional[str] = None
     ocupacao: Optional[str] = None
     secretaria: Optional[str] = None
@@ -105,6 +106,7 @@ class UserAccessRecord(BaseModel):
 class UpsertUserRequest(BaseModel):
     """Request para criar ou atualizar usuário (UPSERT)"""
 
+    email: Optional[str] = None
     nome: Optional[str] = None
     ocupacao: Optional[str] = None
     secretaria: Optional[str] = None
@@ -514,6 +516,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
 
     return UserAccessRecord(
         cpf=permissions.cpf,
+        email=permissions.email,
         is_admin=permissions.is_admin,
         is_super_admin=permissions.is_super_admin,
         permission=permissions.permission,
@@ -806,6 +809,9 @@ async def upsert_user(
             update_dict = {}
             struct_updates = []  # Para ARRAY<STRUCT> que precisam de f-string
 
+            if request.email is not None:
+                update_dict["email"] = request.email
+
             if request.nome is not None:
                 update_dict["nome"] = request.nome
 
@@ -817,7 +823,8 @@ async def upsert_user(
 
             # Detectar se é full update ou apenas toggle de active
             is_full_update = (
-                request.nome is not None
+                request.email is not None
+                or request.nome is not None
                 or request.ocupacao is not None
                 or request.secretaria is not None
                 or request.id_cras_list is not None
@@ -950,12 +957,12 @@ async def upsert_user(
             query = f"""
             INSERT INTO `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
             (
-                cpf, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
+                cpf, email, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
                 created_by, active, notes, created_at
             )
             VALUES (
-                @cpf, @nome, @ocupacao, @secretaria,
+                @cpf, @email, @nome, @ocupacao, @secretaria,
                 @is_admin, @is_super_admin, @permission,
                 {_convert_id_list_to_bq_struct(request.id_cras_list)},
                 {_convert_id_list_to_bq_struct(request.id_escola_list)},
@@ -970,6 +977,7 @@ async def upsert_user(
             # Build parameters list
             parameters = [
                 bigquery.ScalarQueryParameter("cpf", "STRING", cpf),
+                bigquery.ScalarQueryParameter("email", "STRING", request.email),
                 bigquery.ScalarQueryParameter("nome", "STRING", request.nome),
                 bigquery.ScalarQueryParameter("ocupacao", "STRING", request.ocupacao),
                 bigquery.ScalarQueryParameter(
