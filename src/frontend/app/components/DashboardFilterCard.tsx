@@ -107,7 +107,7 @@ const DashboardFilterCardComponent = ({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {/* Grupo (crianca, gestante) */}
           <VirtualizedSelect
             value={filters.grupo || "todos"}
