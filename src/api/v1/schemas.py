@@ -130,88 +130,82 @@ class DistribuicaoSafra(BaseModel):
 
 
 class ResultadoProgramaPoint(BaseModel):
-    """Ponto de evolução temporal do programa por dimensão"""
-
-    mes: str
-    todos: float  # % completude geral
-    saude: float  # % completude saúde
-    educacao: float  # % completude educação
-    assistencia: float  # % completude assistência
+    """
+    Ponto de evolução temporal do programa por dimensão.
+    Usado no gráfico de linha "Resultado do Programa".
+    """
+    mes: str  # "2025-12", "2025-11", etc.
+    mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
+    todos: float = 0.0  # % completude geral (todos protocolos)
+    saude: float = 0.0  # % completude SMS
+    educacao: float = 0.0  # % completude SME
+    assistencia: float = 0.0  # % completude SMAS
 
 
 # ========================================================================
-# DASHBOARD - Schema para protocolo resumo usado internamente
+# DASHBOARD - Cards de Indicadores por Protocolo
 # ========================================================================
 
 
-class ProtocoloResumoDashboard(BaseModel):
-    """Resumo de um protocolo com percentual atual e evolução para o dashboard"""
-
-    protocolo_id: str
-    protocolo_descricao: str
-    protocolo_secretaria: str
-    numerador: int = 0
-    denominador: int = 0
-    percentual: float = 0.0
-    evolucao_mensal: List[dict] = []  # [{mes: "2024-01", percentual: 85.2}, ...]
+class ProtocoloIndicador(BaseModel):
+    """
+    Card de indicador individual de um protocolo.
+    Calculado a partir de `valor_mais_recente` do BigQuery.
+    """
+    protocolo_id: str  # "sms_vacinacao_pentavalente"
+    protocolo_descricao: str  # "Vacinação Pentavalente"
+    protocolo_secretaria: str  # "SMS", "SME", "SMAS"
+    numerador: int = 0  # Quantos estão regulares
+    denominador: int = 0  # Total aplicável
+    percentual_regular: float = 0.0  # (numerador/denominador) * 100
+    percentual_irregular: float = 0.0  # 100 - percentual_regular
 
 
 # Endpoint Models
 
 
 class Dashboard(BaseModel):
-    # Totais básicos
-    total_participantes_ativos: Optional[int] = 0
-    total_participantes_inativos: Optional[int] = 0
-    total_participantes_geral: Optional[int] = 0
+    """
+    Modelo principal do Dashboard.
+    Todos os valores são calculados no backend e prontos para exibição no frontend.
+    """
 
-    # Métricas principais (Regular/Irregular)
-    total_participantes_regulares: Optional[int] = 0
-    total_participantes_irregulares: Optional[int] = 0
-    percentual_regular: Optional[float] = 0.0
-    percentual_irregular: Optional[float] = 0.0
+    # =========================================================================
+    # SEÇÃO 1: INDICADORES PRINCIPAIS (3 cards)
+    # Fonte: indicador_participantes_percentual_regular/irregular
+    # =========================================================================
+    total_participantes: int = 0  # Total de participantes (denominador)
+    total_regulares: int = 0  # Participantes com TODOS protocolos regulares
+    total_irregulares: int = 0  # Participantes com ALGUM protocolo irregular
+    percentual_regular: float = 0.0  # (total_regulares / total_participantes) * 100
+    percentual_irregular: float = 0.0  # (total_irregulares / total_participantes) * 100
 
-    # Métrica de atenção
-    total_participantes_em_atencao: Optional[int] = 0
-    percentual_em_atencao: Optional[float] = 0.0
+    # =========================================================================
+    # SEÇÃO 2: INDICADORES POR PROTOCOLO (cards individuais)
+    # Fonte: indicador_protocolos_percentual_regular[].valor_mais_recente
+    # =========================================================================
+    protocolos: List[ProtocoloIndicador] = []
 
-    # Protocolos gerais
-    total_protocolos: Optional[int] = 0
-    total_protocolos_irregular: Optional[int] = 0
-    percentual_protocolos_irregular: Optional[float] = 0.0
-
-    # Protocolos por dimensão (secretaria)
-    total_protocolos_smas: Optional[int] = 0
-    total_protocolos_smas_irregular: Optional[int] = 0
-    percentual_smas_irregular: Optional[float] = 0.0
-    total_protocolos_sme: Optional[int] = 0
-    total_protocolos_sme_irregular: Optional[int] = 0
-    percentual_sme_irregular: Optional[float] = 0.0
-    total_protocolos_sms: Optional[int] = 0
-    total_protocolos_sms_irregular: Optional[int] = 0
-    percentual_sms_irregular: Optional[float] = 0.0
-
-    # Dimensão Assistência Social (completude apenas)
-    assistencia_completude_total: Optional[int] = 0
-    assistencia_completude_percentual: Optional[float] = 0.0
-
-    # Dimensão Educação (completude apenas)
-    educacao_completude_total: Optional[int] = 0
-    educacao_completude_percentual: Optional[float] = 0.0
-
-    # Dimensão Saúde
-    saude_completude_total: Optional[int] = 0
-    saude_completude_percentual: Optional[float] = 0.0
-
-    # Distribuições
-    distribuicao_por_grupo: List[DistribuicaoGrupo] = []
-    top_bairros: List[DistribuicaoBairro] = []
-    distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
-    distribuicao_por_safra: List[DistribuicaoSafra] = []
-
-    # Resultado do Programa (evolução temporal)
+    # =========================================================================
+    # SEÇÃO 3: RESULTADO DO PROGRAMA (gráfico de linha evolução temporal)
+    # Fonte: indicador_protocolos_percentual_regular[].valores_mensais
+    # Agrupa por mês e por secretaria (SMAS, SME, SMS)
+    # =========================================================================
     resultado_programa: List[ResultadoProgramaPoint] = []
 
+    # =========================================================================
+    # SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA (gráfico de barras) - FUTURO
+    # =========================================================================
+    distribuicao_por_safra: List[DistribuicaoSafra] = []
+
+    # =========================================================================
+    # SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza) - FUTURO
+    # =========================================================================
+    distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
+
+    # =========================================================================
+    # METADADOS
+    # =========================================================================
     data_atualizacao: Optional[datetime] = None
 
 

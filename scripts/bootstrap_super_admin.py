@@ -41,10 +41,10 @@ print(TABLE_ID_DATA_ACCESS)
 
 # CPF do super admin inicial (sem pontos ou traços)
 # Este CPF deve corresponder ao campo 'preferred_username' do JWT após login gov.br
-SUPER_ADMIN_CPF = "00420153241"  # Ex: "12345678900"
+SUPER_ADMIN_CPF = "05912622746"  # Ex: "12345678900"
 
 # Nome do super admin (opcional, apenas para auditoria)
-SUPER_ADMIN_NAME = "Sistema (Bootstrap)"
+SUPER_ADMIN_NAME = "Thiago Trabach"
 
 # ========================================================================
 # VALIDAÇÕES
@@ -72,7 +72,8 @@ def table_exists() -> bool:
 
     try:
         result = execute_query(query)
-        return result.iloc[0]["count"] > 0
+        # Polars DataFrame: usar row() ou item() ao invés de iloc
+        return result.row(0)[0] > 0
     except Exception as e:
         logger.error(f"❌ Erro ao verificar existência da tabela: {e}")
         return False
@@ -140,7 +141,8 @@ def check_super_admin_exists(cpf: str) -> bool:
 
     try:
         result = execute_query(query)
-        return result.iloc[0]["count"] > 0
+        # Polars DataFrame: usar row() ou item() ao invés de iloc
+        return result.row(0)[0] > 0
     except Exception as e:
         logger.error(f"❌ Erro ao verificar super admin existente: {e}")
         return False
