@@ -6,7 +6,6 @@ import {
 } from "../types";
 import { StatCard } from "./StatCard";
 import { DashboardFilterCard, DashboardFilterValues } from "./DashboardFilterCard";
-import { Card, CardContent } from "@/app/components/ui/card";
 
 interface OverviewTabProps {
   data: Dashboard | null;
@@ -43,7 +42,7 @@ const OverviewTabComponent = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Filtros do Dashboard */}
       <DashboardFilterCard
         filterOptions={filterOptions}
@@ -87,50 +86,6 @@ const OverviewTabComponent = ({
           variant="destructive"
           isLoading={loading}
         />
-      </div>
-
-      {/* Completude por Dimensão */}
-      <div className="space-y-3">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          Completude por Dimensão
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Percentual de participantes cumprindo todos os protocolos de cada dimensão
-        </p>
-        <div className="grid gap-4 md:grid-cols-3">
-          {/* Assistência Social */}
-          <Card className="bg-muted/50 relative">
-            {loading && <div className="loading-overlay" />}
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-muted-foreground">Assistência Social</p>
-              <p className="text-3xl font-bold mt-1">
-                {(data.assistencia_completude_percentual || 0).toFixed(1)}%
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Educação */}
-          <Card className="bg-muted/50 relative">
-            {loading && <div className="loading-overlay" />}
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-muted-foreground">Educação</p>
-              <p className="text-3xl font-bold mt-1">
-                {(data.educacao_completude_percentual || 0).toFixed(1)}%
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Saúde */}
-          <Card className="bg-muted/50 relative">
-            {loading && <div className="loading-overlay" />}
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-muted-foreground">Saúde</p>
-              <p className="text-3xl font-bold mt-1">
-                {(data.saude_completude_percentual || 0).toFixed(1)}%
-              </p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );

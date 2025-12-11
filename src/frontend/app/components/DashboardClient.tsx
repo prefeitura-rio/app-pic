@@ -22,12 +22,12 @@ import { DashboardFilterValues } from "@/app/components/DashboardFilterCard";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
 interface UserInfo {
-  name?: string;
-  email?: string;
-  preferred_username?: string;
-  given_name?: string;
-  family_name?: string;
-  sub?: string;
+  name?: string | null;
+  email?: string | null;
+  preferred_username?: string | null;
+  given_name?: string | null;
+  family_name?: string | null;
+  sub?: string | null;
   iat?: number;
   exp?: number;
 }
