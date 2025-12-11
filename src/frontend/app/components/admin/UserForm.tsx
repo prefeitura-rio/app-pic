@@ -35,6 +35,7 @@ export function UserForm({
 
   // Form state
   const [cpf, setCpf] = useState("");
+  const [email, setEmail] = useState("");
   const [nome, setNome] = useState("");
   const [ocupacao, setOcupacao] = useState("");
   const [secretaria, setSecretaria] = useState("");
@@ -53,6 +54,7 @@ export function UserForm({
   useEffect(() => {
     if (user) {
       setCpf(user.cpf);
+      setEmail(user.email || "");
       setNome(user.nome || "");
       setOcupacao(user.ocupacao || "");
       setSecretaria(user.secretaria || "");
@@ -69,6 +71,7 @@ export function UserForm({
     } else {
       // Reset form
       setCpf("");
+      setEmail("");
       setNome("");
       setOcupacao("");
       setSecretaria("");
@@ -104,6 +107,7 @@ export function UserForm({
     if (isEditMode) {
       // Update mode
       const updateData: UpdateUserRequest = {
+        email: email || null,
         nome: nome || null,
         ocupacao: ocupacao || null,
         secretaria: secretaria || null,
@@ -122,6 +126,7 @@ export function UserForm({
       // Create mode
       const createData: CreateUserRequest = {
         cpf,
+        email: email || null,
         nome: nome || null,
         ocupacao: ocupacao || null,
         secretaria: secretaria || null,
@@ -198,6 +203,20 @@ export function UserForm({
               onChange={(e) => setNome(e.target.value)}
               disabled={isLoading}
               title="Digite o nome completo do usuário"
+            />
+          </div>
+
+          {/* Email */}
+          <div className="space-y-2">
+            <Label htmlFor="email" title="Email institucional do usuário">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="Ex: usuario@rio.rj.gov.br"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
+              title="Digite o email institucional do usuário"
             />
           </div>
 

@@ -88,6 +88,7 @@ def create_table():
       nome STRING,
       ocupacao STRING,
       secretaria STRING,
+      email STRING,
       is_admin BOOLEAN NOT NULL,
       is_super_admin BOOLEAN NOT NULL,
 
@@ -206,9 +207,10 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
     query = f"""
     INSERT INTO `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
-    (cpf, is_admin, is_super_admin, permission, created_by, active, notes, created_at)
+    (cpf, email, is_admin, is_super_admin, permission, created_by, active, notes, created_at)
     VALUES (
         '{SUPER_ADMIN_CPF}',
+        NULL,
         TRUE,
         TRUE,
         'super_admin',
