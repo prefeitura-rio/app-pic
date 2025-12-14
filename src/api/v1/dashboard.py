@@ -19,6 +19,7 @@ from src.api.v1.schemas import (
     ProtocoloIndicador,
     ResultadoProgramaPoint,
     DistribuicaoSafra,
+    DistribuicaoMotivoSaida,
     PaginatedResponse,
 )
 from src.utils.data_manager import DataManager
@@ -222,6 +223,11 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
         lambda: {"ativos": 0, "inativos": 0}
     )
 
+    # =========================================================================
+    # SEÇÃO 5: MOTIVOS DE SAÍDA (pic_status_inativo_motivo)
+    # =========================================================================
+    motivos_saida: Dict[str, int] = defaultdict(int)
+
     # Processar cada linha do DataFrame
     for row in df.to_dicts():
         # -----------------------------------------------------------------
@@ -350,6 +356,16 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
             else:
                 safras_agregadas[cohort_str]["inativos"] += qtd
 
+        # -----------------------------------------------------------------
+        # 5. Motivos de Saída (apenas para inativos)
+        # -----------------------------------------------------------------
+        if status_lower == "inativo":
+            motivo = row.get("pic_status_inativo_motivo")
+            if motivo and isinstance(motivo, str) and motivo.strip():
+                motivos_saida[motivo.strip()] += qtd
+            else:
+                motivos_saida["Não informado"] += qtd
+
     # =========================================================================
     # CALCULAR MÉTRICAS FINAIS
     # =========================================================================
@@ -421,6 +437,16 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
             )
         )
 
+    # 5. Motivos de Saída (ordenados por total decrescente)
+    distribuicao_motivos: List[DistribuicaoMotivoSaida] = []
+    for motivo, total in sorted(motivos_saida.items(), key=lambda x: x[1], reverse=True):
+        distribuicao_motivos.append(
+            DistribuicaoMotivoSaida(
+                motivo=motivo,
+                total=total,
+            )
+        )
+
     return Dashboard(
         # Indicadores Principais
         total_participantes=total_participantes,
@@ -434,8 +460,8 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
         resultado_programa=resultado_programa,
         # Distribuição por Safra
         distribuicao_por_safra=distribuicao_safra,
-        # Motivos de Saída (não disponível ainda)
-        distribuicao_motivo_saida=[],
+        # Motivos de Saída
+        distribuicao_motivo_saida=distribuicao_motivos,
     )
 
 
