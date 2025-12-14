@@ -161,13 +161,13 @@ const FilterCardComponent = ({
               options={filteredOptions.situacoes}
             />
 
-            {/* Safra */}
+            {/* Mês de Egresso no Programa */}
             <VirtualizedSelect
               value={(filters as any).safra || "todas"}
               onSelect={(v) => handleFilterUpdate("safra", v)}
               disabled={loading}
-              placeholder="Safra"
-              defaultLabel="Todas as Safras"
+              placeholder="Mês de Egresso"
+              defaultLabel="Todos os Meses de Egresso"
               options={filteredOptions.cohorts}
             />
 

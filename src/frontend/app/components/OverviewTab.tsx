@@ -385,11 +385,11 @@ const OverviewTabComponent = ({
       {/* SEÇÃO 5: PARTICIPANTES POR SAFRA E MOTIVOS DE SAÍDA (lado a lado) */}
       {/* ===================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Participantes por Safra */}
+        {/* Participantes por Mês de Egresso */}
         <Card className="relative">
           <LoadingOverlay show={loading} />
           <CardHeader>
-            <CardTitle className="text-xl">Participantes por Safra</CardTitle>
+            <CardTitle className="text-xl">Participantes por Mês de Egresso no Programa</CardTitle>
             <CardDescription>
               Acompanhamento de entrada e saída de participantes do programa ao longo do tempo
             </CardDescription>
@@ -404,7 +404,7 @@ const OverviewTabComponent = ({
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="safra"
-                    label={{ value: 'Safra', position: 'insideBottom', offset: -5 }}
+                    label={{ value: 'Mês de Egresso', position: 'insideBottom', offset: -5 }}
                   />
                   <YAxis
                     label={{ value: 'Participantes', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
@@ -416,7 +416,7 @@ const OverviewTabComponent = ({
                         const d = payload[0].payload;
                         return (
                           <div className="bg-background border rounded-lg p-3 shadow-lg">
-                            <p className="font-semibold mb-2">Safra: {d.safra}</p>
+                            <p className="font-semibold mb-2">Mês de Egresso: {d.safra}</p>
                             <p className="text-sm" style={{ color: '#3b82f6' }}>
                               Ativos: {(d.total_ativos || 0).toLocaleString("pt-BR")}
                             </p>

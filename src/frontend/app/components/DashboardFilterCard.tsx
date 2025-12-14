@@ -118,13 +118,13 @@ const DashboardFilterCardComponent = ({
             options={filteredOptions.grupos}
           />
 
-          {/* Safra/Cohort */}
+          {/* Mês de Egresso no Programa */}
           <VirtualizedSelect
             value={filters.cohort || "todas"}
             onSelect={(v) => handleFilterUpdate("cohort", v)}
             disabled={loading}
-            placeholder="Safra"
-            defaultLabel="Todas as Safras"
+            placeholder="Mês de Egresso"
+            defaultLabel="Todos os Meses de Egresso"
             options={filteredOptions.cohorts}
           />
 
