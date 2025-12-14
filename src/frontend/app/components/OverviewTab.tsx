@@ -7,7 +7,19 @@ import {
 } from "../types";
 import { StatCard } from "./StatCard";
 import { DashboardFilterCard, DashboardFilterValues } from "./DashboardFilterCard";
-import { Card, CardContent } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface OverviewTabProps {
   data: Dashboard | null;
@@ -174,6 +186,119 @@ const OverviewTabComponent = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* SEÇÃO 3: RESULTADO DO PROGRAMA (gráfico de linha) */}
+      {/* ===================================================================== */}
+      {data.resultado_programa && data.resultado_programa.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Resultado do Programa</CardTitle>
+            <CardDescription>
+              Evolução mensal da completude de protocolos por dimensão
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart
+                data={data.resultado_programa}
+                margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="mes_label" />
+                <YAxis label={{ value: '% Completude', angle: -90, position: 'insideLeft' }} />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="todos"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  name="Todos os Protocolos"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="saude"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  name="Protocolos da Saúde"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="educacao"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  name="Protocolos da Educação"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="assistencia"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  name="Protocolos da Assistência"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ===================================================================== */}
+      {/* SEÇÃO 4: PARTICIPANTES POR SAFRA (gráfico de barras) */}
+      {/* ===================================================================== */}
+      {data.distribuicao_por_safra && data.distribuicao_por_safra.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Participantes por Safra</CardTitle>
+            <CardDescription>
+              Acompanhamento de entrada e saída de participantes do programa ao longo do tempo
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={450}>
+              <BarChart
+                data={data.distribuicao_por_safra}
+                margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="safra"
+                  label={{ value: 'Safra', position: 'insideBottom', offset: -5 }}
+                />
+                <YAxis 
+                  label={{ value: 'Número de Participantes', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-background border rounded-lg p-3 shadow-lg">
+                          <p className="font-semibold mb-2">Safra: {data.safra}</p>
+                          <p className="text-sm" style={{ color: '#3b82f6' }}>
+                            Ativos: {data.total_ativos || 0}
+                          </p>
+                          <p className="text-sm" style={{ color: '#ef4444' }}>
+                            Inativos: {data.total_inativos || 0}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Total: {data.total_participantes || 0}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                <Bar dataKey="total_ativos" fill="#3b82f6" name="Participantes Ativos" />
+                <Bar dataKey="total_inativos" fill="#ef4444" name="Participantes Inativos" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       )}
 
     </div>
