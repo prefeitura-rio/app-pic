@@ -500,7 +500,7 @@ const OverviewTabComponent = ({
                 <ResponsiveContainer width="100%" height={380}>
                   <PieChart>
                     <Pie
-                      data={data.distribuicao_motivo_saida}
+                      data={data.distribuicao_motivo_saida as unknown as Record<string, unknown>[]}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
@@ -509,7 +509,7 @@ const OverviewTabComponent = ({
                       fill="#8884d8"
                       dataKey="total"
                       nameKey="motivo"
-                      label={({ percent, cx, cy, midAngle, outerRadius, index }) => {
+                      label={({ percent = 0, cx = 0, cy = 0, midAngle = 0, outerRadius = 0, index = 0 }) => {
                         const RADIAN = Math.PI / 180;
                         // Ponto de saída da fatia
                         const startX = cx + (outerRadius + 5) * Math.cos(-midAngle * RADIAN);
