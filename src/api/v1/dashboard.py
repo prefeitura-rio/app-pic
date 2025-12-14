@@ -188,7 +188,8 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     PROCESSAMENTO:
     1. Indicadores Principais: soma de numeradores/denominadores de participantes
     2. Protocolos Individuais: agregação por protocolo_id usando valor_mais_recente
-    3. Resultado do Programa: agregação por mês e secretaria usando valores_mensais
+    3. Resultado do Programa: usa serie_participantes_percentual_regular (já agregado por secretaria)
+    4. Distribuição por Safra: agregação por cohort
     """
     # =========================================================================
     # SEÇÃO 1: INDICADORES PRINCIPAIS
@@ -206,7 +207,9 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
 
     # =========================================================================
     # SEÇÃO 3: RESULTADO DO PROGRAMA (evolução mensal)
-    # Estrutura: {mes: {secretaria: {num, den}}}
+    # Usa serie_participantes_percentual_regular com estrutura:
+    # {geral: [{data, num, den}], smas: [...], sme: [...], sms: [...]}
+    # Estrutura agregada: {mes: {secretaria: {num, den}}}
     # =========================================================================
     evolucao_mensal: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
         lambda: defaultdict(lambda: {"num": 0, "den": 0})
@@ -241,57 +244,68 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
                 participantes_irregular_den += _safe_int(ind_irregular.get("denominador"))
 
         # -----------------------------------------------------------------
-        # 2 & 3. Processar Protocolos
+        # 2. Processar Protocolos Individuais (cards)
         # -----------------------------------------------------------------
         protocolos = _parse_json_column(row.get("indicador_protocolos_percentual_regular"))
-        if not protocolos:
-            continue
+        if protocolos:
+            if not isinstance(protocolos, list):
+                protocolos = [protocolos]
 
-        if not isinstance(protocolos, list):
-            protocolos = [protocolos]
+            for protocolo in protocolos:
+                if not isinstance(protocolo, dict):
+                    continue
 
-        for protocolo in protocolos:
-            if not isinstance(protocolo, dict):
-                continue
+                protocolo_id = protocolo.get("protocolo_id", "")
+                protocolo_descricao = protocolo.get("protocolo_descricao", "")
+                protocolo_secretaria = protocolo.get("protocolo_secretaria", "")
 
-            protocolo_id = protocolo.get("protocolo_id", "")
-            protocolo_descricao = protocolo.get("protocolo_descricao", "")
-            protocolo_secretaria = protocolo.get("protocolo_secretaria", "")
+                if not protocolo_id:
+                    continue
 
-            if not protocolo_id:
-                continue
+                # Agregar valor_mais_recente para cards de protocolo
+                valor_recente = protocolo.get("valor_mais_recente")
+                if valor_recente:
+                    if isinstance(valor_recente, list):
+                        valor_recente = valor_recente[0] if valor_recente else {}
+                    if isinstance(valor_recente, dict):
+                        num = _safe_int(valor_recente.get("indicador_numerador"))
+                        den = _safe_int(valor_recente.get("indicador_denominador"))
 
-            # ---------------------------------------------------------
-            # 2. Agregar valor_mais_recente para cards de protocolo
-            # ---------------------------------------------------------
-            valor_recente = protocolo.get("valor_mais_recente")
-            if valor_recente:
-                if isinstance(valor_recente, list):
-                    valor_recente = valor_recente[0] if valor_recente else {}
-                if isinstance(valor_recente, dict):
-                    num = _safe_int(valor_recente.get("indicador_numerador"))
-                    den = _safe_int(valor_recente.get("indicador_denominador"))
+                        if protocolo_id not in protocolos_agregados:
+                            protocolos_agregados[protocolo_id] = {
+                                "descricao": protocolo_descricao,
+                                "secretaria": protocolo_secretaria,
+                                "num": 0,
+                                "den": 0,
+                            }
 
-                    if protocolo_id not in protocolos_agregados:
-                        protocolos_agregados[protocolo_id] = {
-                            "descricao": protocolo_descricao,
-                            "secretaria": protocolo_secretaria,
-                            "num": 0,
-                            "den": 0,
-                        }
+                        protocolos_agregados[protocolo_id]["num"] += num
+                        protocolos_agregados[protocolo_id]["den"] += den
 
-                    protocolos_agregados[protocolo_id]["num"] += num
-                    protocolos_agregados[protocolo_id]["den"] += den
+        # -----------------------------------------------------------------
+        # 3. Processar Série Temporal (Resultado do Programa)
+        # Usa serie_participantes_percentual_regular com estrutura:
+        # {geral: [...], smas: [...], sme: [...], sms: [...]}
+        # -----------------------------------------------------------------
+        serie_temporal = _parse_json_column(row.get("serie_participantes_percentual_regular"))
+        if serie_temporal and isinstance(serie_temporal, dict):
+            # Mapeamento de chave da série para nome da secretaria
+            mapa_secretarias = {
+                "geral": "TODOS",
+                "smas": "SMAS",
+                "sme": "SME",
+                "sms": "SMS",
+            }
 
-            # ---------------------------------------------------------
-            # 3. Agregar valores_mensais para evolução temporal
-            # ---------------------------------------------------------
-            valores_mensais = protocolo.get("valores_mensais")
-            if valores_mensais:
-                if not isinstance(valores_mensais, list):
-                    valores_mensais = [valores_mensais]
+            for chave, nome_secretaria in mapa_secretarias.items():
+                pontos = serie_temporal.get(chave)
+                if not pontos:
+                    continue
 
-                for ponto in valores_mensais:
+                if not isinstance(pontos, list):
+                    pontos = [pontos]
+
+                for ponto in pontos:
                     if not isinstance(ponto, dict):
                         continue
 
@@ -302,10 +316,8 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
 
                     # Normalizar para "YYYY-MM"
                     if hasattr(data_ref, 'strftime'):
-                        # É um objeto date/datetime
                         mes = data_ref.strftime("%Y-%m")
                     else:
-                        # É uma string
                         data_ref_str = str(data_ref)
                         mes = data_ref_str[:7] if len(data_ref_str) >= 7 else data_ref_str
 
@@ -313,12 +325,8 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
                     den = _safe_int(ponto.get("indicador_denominador"))
 
                     # Agregar por mês e secretaria
-                    evolucao_mensal[mes][protocolo_secretaria]["num"] += num
-                    evolucao_mensal[mes][protocolo_secretaria]["den"] += den
-
-                    # Também agregar para "TODOS"
-                    evolucao_mensal[mes]["TODOS"]["num"] += num
-                    evolucao_mensal[mes]["TODOS"]["den"] += den
+                    evolucao_mensal[mes][nome_secretaria]["num"] += num
+                    evolucao_mensal[mes][nome_secretaria]["den"] += den
 
         # -----------------------------------------------------------------
         # 4. Distribuição por Safra
