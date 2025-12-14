@@ -13,6 +13,9 @@ import {
   Line,
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -20,6 +23,18 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+
+// Cores para o gráfico de pizza (ordem: crianca=vermelho, cadunico=amarelo, gravidez=verde, obito=azul)
+const PIE_COLORS = [
+  "#ef4444", // red - crianca ultrapassou os 6 anos
+  "#f59e0b", // amber - saiu da base do CadÚnico
+  "#10b981", // green - mulher com gravidez concluida
+  "#3b82f6", // blue - obito
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#06b6d4", // cyan
+  "#84cc16", // lime
+];
 
 interface OverviewTabProps {
   data: Dashboard | null;
@@ -480,22 +495,113 @@ const OverviewTabComponent = ({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-center h-[450px] text-muted-foreground">
-              <div className="text-center">
-                <PieChartIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">Em desenvolvimento</p>
-                <p className="text-sm mt-2">Gráfico de pizza: motivos de inativação dos participantes</p>
-                <div className="mt-4 text-xs text-left max-w-md mx-auto">
-                  <p className="font-medium mb-2">Motivos previstos:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Criança ultrapassou os 6 anos de idade</li>
-                    <li>Saiu da base do CadÚnico Rio de Janeiro</li>
-                    <li>Mulher com gravidez concluída</li>
-                    <li>Óbito</li>
-                  </ul>
+            {data.distribuicao_motivo_saida && data.distribuicao_motivo_saida.length > 0 ? (
+              <div className="space-y-4">
+                <ResponsiveContainer width="100%" height={380}>
+                  <PieChart>
+                    <Pie
+                      data={data.distribuicao_motivo_saida}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={130}
+                      innerRadius={65}
+                      fill="#8884d8"
+                      dataKey="total"
+                      nameKey="motivo"
+                      label={({ percent, cx, cy, midAngle, outerRadius, index }) => {
+                        const RADIAN = Math.PI / 180;
+                        // Ponto de saída da fatia
+                        const startX = cx + (outerRadius + 5) * Math.cos(-midAngle * RADIAN);
+                        const startY = cy + (outerRadius + 5) * Math.sin(-midAngle * RADIAN);
+                        // Distância maior para labels pequenos evitarem sobreposição
+                        const radius = percent < 0.05 ? outerRadius + 45 : outerRadius + 30;
+                        const endX = cx + radius * Math.cos(-midAngle * RADIAN);
+                        let endY = cy + radius * Math.sin(-midAngle * RADIAN);
+                        // Ajuste para o label verde (index 2) ficar mais abaixo
+                        if (index === 2) endY += 15;
+                        const color = PIE_COLORS[index % PIE_COLORS.length];
+                        return (
+                          <g>
+                            <line
+                              x1={startX}
+                              y1={startY + (index === 2 ? 7 : 0)}
+                              x2={endX}
+                              y2={endY}
+                              stroke={color}
+                              strokeWidth={1.5}
+                            />
+                            <text
+                              x={endX}
+                              y={endY}
+                              fill={color}
+                              textAnchor={endX > cx ? "start" : "end"}
+                              dominantBaseline="central"
+                              fontSize={16}
+                              fontWeight={600}
+                            >
+                              {(percent * 100).toFixed(1)}%
+                            </text>
+                          </g>
+                        );
+                      }}
+                    >
+                      {data.distribuicao_motivo_saida.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const d = payload[0].payload;
+                          const total = data.distribuicao_motivo_saida.reduce((acc, item) => acc + (item.total || 0), 0);
+                          const percent = total > 0 ? ((d.total || 0) / total * 100).toFixed(1) : 0;
+                          return (
+                            <div className="bg-background border rounded-lg p-3 shadow-lg">
+                              <p className="font-semibold mb-1">{d.motivo}</p>
+                              <p className="text-sm">
+                                {(d.total || 0).toLocaleString("pt-BR")} participantes ({percent}%)
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Legenda customizada */}
+                <div className="space-y-2 px-4">
+                  {data.distribuicao_motivo_saida.map((item, index) => {
+                    const total = data.distribuicao_motivo_saida.reduce((acc, i) => acc + (i.total || 0), 0);
+                    const percent = total > 0 ? ((item.total || 0) / total * 100).toFixed(1) : 0;
+                    const color = PIE_COLORS[index % PIE_COLORS.length];
+                    return (
+                      <div key={index} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span style={{ color }}>{item.motivo}</span>
+                        </div>
+                        <span className="font-medium" style={{ color }}>
+                          {(item.total || 0).toLocaleString("pt-BR")} ({percent}%)
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-center h-[450px] text-muted-foreground">
+                <div className="text-center">
+                  <PieChartIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Sem dados de saída</p>
+                  <p className="text-sm mt-2">Nenhum participante inativo no período selecionado</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
