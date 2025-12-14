@@ -287,38 +287,7 @@ export function UserForm({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {/* EDUCAÇÃO */}
-            {/* Escolas */}
-            <VirtualizedIdMultiSelect
-              label="Escolas"
-              options={availableIds.escolas}
-              selected={selectedEscolas}
-              onChange={setSelectedEscolas}
-              disabled={isLoading}
-              tooltip="Unidades escolares que o usuário poderá visualizar no sistema"
-            />
-
-            {/* CRE (Coordenadoria Regional de Educação) */}
-            <VirtualizedIdMultiSelect
-              label="CRE (Coordenadoria Regional de Educação)"
-              options={availableIds.cres}
-              selected={selectedCres}
-              onChange={setSelectedCres}
-              disabled={isLoading}
-              tooltip="Coordenadorias Regionais de Educação - selecione para dar acesso a todas as escolas da região"
-            />
-
             {/* ASSISTÊNCIA SOCIAL */}
-            {/* CRAS */}
-            <VirtualizedIdMultiSelect
-              label="CRAS"
-              options={availableIds.cras}
-              selected={selectedCras}
-              onChange={setSelectedCras}
-              disabled={isLoading}
-              tooltip="Centros de Referência de Assistência Social que o usuário poderá acessar"
-            />
-
             {/* CAS */}
             <VirtualizedIdMultiSelect
               label="CAS (Centros de Assistência Social)"
@@ -329,6 +298,38 @@ export function UserForm({
               tooltip="Coordenadorias de Assistência Social - selecione para dar acesso a todos os CRAS da região"
             />
 
+            {/* CRAS */}
+            <VirtualizedIdMultiSelect
+              label="CRAS"
+              options={availableIds.cras}
+              selected={selectedCras}
+              onChange={setSelectedCras}
+              disabled={isLoading}
+              tooltip="Centros de Referência de Assistência Social que o usuário poderá acessar"
+            />
+
+            {/* EDUCAÇÃO */}
+            {/* CRE (Coordenadoria Regional de Educação) */}
+            <VirtualizedIdMultiSelect
+              label="CRE (Coordenadoria Regional de Educação)"
+              options={availableIds.cres}
+              selected={selectedCres}
+              onChange={setSelectedCres}
+              disabled={isLoading}
+              tooltip="Coordenadorias Regionais de Educação - selecione para dar acesso a todas as escolas da região"
+            />
+
+            {/* Escolas */}
+            <VirtualizedIdMultiSelect
+              label="Escolas"
+              options={availableIds.escolas}
+              selected={selectedEscolas}
+              onChange={setSelectedEscolas}
+              disabled={isLoading}
+              tooltip="Unidades escolares que o usuário poderá visualizar no sistema"
+            />
+
+            {/* SAÚDE */}
             {/* AP (Área Programática) */}
             <VirtualizedIdMultiSelect
               label="AP (Área Programática)"
@@ -339,7 +340,6 @@ export function UserForm({
               tooltip="Áreas Programáticas de Saúde - divisão territorial do município"
             />
 
-            {/* SAÚDE */}
             {/* Clínicas da Família */}
             <VirtualizedIdMultiSelect
               label="Clínicas da Família"

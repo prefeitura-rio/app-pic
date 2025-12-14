@@ -138,7 +138,17 @@ const DashboardFilterCardComponent = ({
             options={filteredOptions.status_list}
           />
 
-          {/* CRE */}
+          {/* CAS (Assistência Social) */}
+          <VirtualizedSelect
+            value={filters.cas || "todas"}
+            onSelect={(v) => handleFilterUpdate("cas", v)}
+            disabled={loading}
+            placeholder="CAS"
+            defaultLabel="Todas as CAS"
+            options={filteredOptions.cas_list}
+          />
+
+          {/* CRE (Educação) */}
           <VirtualizedSelect
             value={filters.cre || "todas"}
             onSelect={(v) => handleFilterUpdate("cre", v)}
@@ -148,7 +158,7 @@ const DashboardFilterCardComponent = ({
             options={filteredOptions.cres}
           />
 
-          {/* AP */}
+          {/* AP (Saúde) */}
           <VirtualizedSelect
             value={filters.ap || "todas"}
             onSelect={(v) => handleFilterUpdate("ap", v)}
@@ -156,16 +166,6 @@ const DashboardFilterCardComponent = ({
             placeholder="AP"
             defaultLabel="Todas as APs"
             options={filteredOptions.aps}
-          />
-
-          {/* CAS */}
-          <VirtualizedSelect
-            value={filters.cas || "todas"}
-            onSelect={(v) => handleFilterUpdate("cas", v)}
-            disabled={loading}
-            placeholder="CAS"
-            defaultLabel="Todas as CAS"
-            options={filteredOptions.cas_list}
           />
 
           {/* Bairro */}

@@ -201,39 +201,7 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* EDUCAÇÃO */}
-            {/* Escolas */}
-            <VirtualizedSelect
-              value={(filters as any).escola || "todas"}
-              onSelect={(v) => handleFilterUpdate("escola", v)}
-              disabled={loading}
-              placeholder="Escola"
-              defaultLabel="Todas as Escolas"
-              options={filteredOptions.escolas}
-              style={{ gridColumn: "span 2" }}
-            />
-
-            {/* CRE (Coordenadoria Regional de Educação) */}
-            <VirtualizedSelect
-              value={(filters as any).cre || "todas"}
-              onSelect={(v) => handleFilterUpdate("cre", v)}
-              disabled={loading}
-              placeholder="CRE"
-              defaultLabel="Todas as CREs"
-              options={filteredOptions.cres}
-            />
-
             {/* ASSISTÊNCIA SOCIAL */}
-            {/* CRAS */}
-            <VirtualizedSelect
-              value={(filters as any).cras || "todas"}
-              onSelect={(v) => handleFilterUpdate("cras", v)}
-              disabled={loading}
-              placeholder="CRAS"
-              defaultLabel="Todos os CRAS"
-              options={filteredOptions.cras}
-            />
-
             {/* CAS */}
             <VirtualizedSelect
               value={(filters as any).cas || "todas"}
@@ -244,6 +212,38 @@ const FilterCardComponent = ({
               options={filteredOptions.cas_list}
             />
 
+            {/* CRAS */}
+            <VirtualizedSelect
+              value={(filters as any).cras || "todas"}
+              onSelect={(v) => handleFilterUpdate("cras", v)}
+              disabled={loading}
+              placeholder="CRAS"
+              defaultLabel="Todos os CRAS"
+              options={filteredOptions.cras}
+            />
+
+            {/* EDUCAÇÃO */}
+            {/* CRE (Coordenadoria Regional de Educação) */}
+            <VirtualizedSelect
+              value={(filters as any).cre || "todas"}
+              onSelect={(v) => handleFilterUpdate("cre", v)}
+              disabled={loading}
+              placeholder="CRE"
+              defaultLabel="Todas as CREs"
+              options={filteredOptions.cres}
+            />
+
+            {/* Escolas */}
+            <VirtualizedSelect
+              value={(filters as any).escola || "todas"}
+              onSelect={(v) => handleFilterUpdate("escola", v)}
+              disabled={loading}
+              placeholder="Escola"
+              defaultLabel="Todas as Escolas"
+              options={filteredOptions.escolas}
+            />
+
+            {/* SAÚDE */}
             {/* AP (Área Programática) */}
             <VirtualizedSelect
               value={(filters as any).ap || "todas"}
@@ -254,14 +254,13 @@ const FilterCardComponent = ({
               options={filteredOptions.aps}
             />
 
-            {/* SAÚDE */}
             {/* Clínicas da Família */}
             <VirtualizedSelect
               value={(filters as any).clinica || "todas"}
               onSelect={(v) => handleFilterUpdate("clinica", v)}
               disabled={loading}
               placeholder="Clínica da Família"
-              defaultLabel="Todas as Clínicas da Família"
+              defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
             />
 
@@ -274,6 +273,7 @@ const FilterCardComponent = ({
               placeholder="Bairro"
               defaultLabel="Todos os Bairros"
               options={filteredOptions.bairros}
+              style={{ gridColumn: "span 2" }}
             />
           </div>
         </div>
