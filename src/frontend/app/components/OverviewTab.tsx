@@ -42,7 +42,7 @@ const ProtocoloCard = ({ protocolo, loading }: { protocolo: ProtocoloIndicador; 
           <span className="text-xs text-muted-foreground">regular</span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          {protocolo.numerador} de {protocolo.denominador} participantes
+          {protocolo.numerador.toLocaleString("pt-BR")} de {protocolo.denominador.toLocaleString("pt-BR")} participantes
         </p>
       </CardContent>
     </Card>
@@ -106,7 +106,7 @@ const OverviewTabComponent = ({
         <StatCard
           title="Total de Participantes"
           value={data.total_participantes || 0}
-          description={`${data.total_regulares || 0} regulares`}
+          description={`${(data.total_regulares || 0).toLocaleString("pt-BR")} regulares`}
           icon={<Users className="h-6 w-6" />}
           variant="default"
           isLoading={loading}
@@ -130,24 +130,17 @@ const OverviewTabComponent = ({
       </div>
 
       {/* ===================================================================== */}
-      {/* SEÇÃO 2: INDICADORES POR PROTOCOLO */}
+      {/* SEÇÃO 2: INDICADORES POR DIMENSÃO */}
       {/* ===================================================================== */}
       {data.protocolos && data.protocolos.length > 0 && (
         <div className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-foreground">Indicadores por Protocolo</h2>
-            <p className="text-sm text-muted-foreground">
-              Percentual de regularidade em cada protocolo monitorado
-            </p>
-          </div>
-
-          {/* Assistência Social */}
+          {/* Dimensão Assistência Social */}
           {protocolosPorSecretaria.SMAS.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
+              <h2 className="text-xl font-bold flex items-center gap-2">
                 <Home className="h-5 w-5 text-green-600" />
-                Assistência Social (SMAS)
-              </h3>
+                Dimensão Assistência Social
+              </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {protocolosPorSecretaria.SMAS.map((protocolo) => (
                   <ProtocoloCard key={protocolo.protocolo_id} protocolo={protocolo} loading={loading} />
@@ -156,13 +149,13 @@ const OverviewTabComponent = ({
             </div>
           )}
 
-          {/* Educação */}
+          {/* Dimensão Educação */}
           {protocolosPorSecretaria.SME.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
+              <h2 className="text-xl font-bold flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-amber-600" />
-                Educação (SME)
-              </h3>
+                Dimensão Educação
+              </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {protocolosPorSecretaria.SME.map((protocolo) => (
                   <ProtocoloCard key={protocolo.protocolo_id} protocolo={protocolo} loading={loading} />
@@ -171,13 +164,13 @@ const OverviewTabComponent = ({
             </div>
           )}
 
-          {/* Saúde */}
+          {/* Dimensão Saúde */}
           {protocolosPorSecretaria.SMS.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold flex items-center gap-2">
+              <h2 className="text-xl font-bold flex items-center gap-2">
                 <Activity className="h-5 w-5 text-red-600" />
-                Saúde (SMS)
-              </h3>
+                Dimensão Saúde
+              </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {protocolosPorSecretaria.SMS.map((protocolo) => (
                   <ProtocoloCard key={protocolo.protocolo_id} protocolo={protocolo} loading={loading} />
@@ -410,13 +403,13 @@ const OverviewTabComponent = ({
                           <div className="bg-background border rounded-lg p-3 shadow-lg">
                             <p className="font-semibold mb-2">Safra: {d.safra}</p>
                             <p className="text-sm" style={{ color: '#3b82f6' }}>
-                              Ativos: {d.total_ativos || 0}
+                              Ativos: {(d.total_ativos || 0).toLocaleString("pt-BR")}
                             </p>
                             <p className="text-sm" style={{ color: '#ef4444' }}>
-                              Inativos: {d.total_inativos || 0}
+                              Inativos: {(d.total_inativos || 0).toLocaleString("pt-BR")}
                             </p>
                             <p className="text-sm text-muted-foreground mt-1">
-                              Total: {d.total_participantes || 0}
+                              Total: {(d.total_participantes || 0).toLocaleString("pt-BR")}
                             </p>
                           </div>
                         );
