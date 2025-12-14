@@ -244,13 +244,13 @@ const FilterCardComponent = ({
             />
 
             {/* SAÚDE */}
-            {/* AP (Área Programática) */}
+            {/* CAP (Coordenadoria de Área Programática) */}
             <VirtualizedSelect
               value={(filters as any).ap || "todas"}
               onSelect={(v) => handleFilterUpdate("ap", v)}
               disabled={loading}
-              placeholder="AP"
-              defaultLabel="Todas as APs"
+              placeholder="CAP"
+              defaultLabel="Todas as CAPs"
               options={filteredOptions.aps}
             />
 

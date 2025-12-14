@@ -158,13 +158,13 @@ const DashboardFilterCardComponent = ({
             options={filteredOptions.cres}
           />
 
-          {/* AP (Saúde) */}
+          {/* CAP (Saúde) */}
           <VirtualizedSelect
             value={filters.ap || "todas"}
             onSelect={(v) => handleFilterUpdate("ap", v)}
             disabled={loading}
-            placeholder="AP"
-            defaultLabel="Todas as APs"
+            placeholder="CAP"
+            defaultLabel="Todas as CAPs"
             options={filteredOptions.aps}
           />
 

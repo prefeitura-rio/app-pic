@@ -330,14 +330,14 @@ export function UserForm({
             />
 
             {/* SAÚDE */}
-            {/* AP (Área Programática) */}
+            {/* CAP (Coordenadoria de Área Programática) */}
             <VirtualizedIdMultiSelect
-              label="AP (Área Programática)"
+              label="CAP (Coordenadoria de Área Programática)"
               options={availableIds.aps}
               selected={selectedAps}
               onChange={setSelectedAps}
               disabled={isLoading}
-              tooltip="Áreas Programáticas de Saúde - divisão territorial do município"
+              tooltip="Coordenadorias de Área Programática de Saúde - divisão territorial do município"
             />
 
             {/* Clínicas da Família */}
