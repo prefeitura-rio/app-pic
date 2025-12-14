@@ -87,6 +87,12 @@ const OverviewTabComponent = ({
     SMS: data.protocolos?.filter(p => p.protocolo_secretaria === "SMS") || [],
   };
 
+  // Determinar quais seções mostrar baseado no filtro de secretaria
+  const selectedSecretaria = filters.secretaria;
+  const showSMAS = !selectedSecretaria || selectedSecretaria === "SMAS";
+  const showSME = !selectedSecretaria || selectedSecretaria === "SME";
+  const showSMS = !selectedSecretaria || selectedSecretaria === "SMS";
+
   return (
     <div className="space-y-8">
       {/* Filtros do Dashboard */}
@@ -141,7 +147,7 @@ const OverviewTabComponent = ({
       {data.protocolos && data.protocolos.length > 0 && (
         <div className="space-y-6">
           {/* Dimensão Assistência Social */}
-          {protocolosPorSecretaria.SMAS.length > 0 && (
+          {showSMAS && protocolosPorSecretaria.SMAS.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Home className="h-5 w-5 text-green-600" />
@@ -156,7 +162,7 @@ const OverviewTabComponent = ({
           )}
 
           {/* Dimensão Educação */}
-          {protocolosPorSecretaria.SME.length > 0 && (
+          {showSME && protocolosPorSecretaria.SME.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-amber-600" />
@@ -171,7 +177,7 @@ const OverviewTabComponent = ({
           )}
 
           {/* Dimensão Saúde */}
-          {protocolosPorSecretaria.SMS.length > 0 && (
+          {showSMS && protocolosPorSecretaria.SMS.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Activity className="h-5 w-5 text-red-600" />
@@ -217,27 +223,33 @@ const OverviewTabComponent = ({
                   strokeWidth={2}
                   name="Todos os Protocolos"
                 />
-                <Line
-                  type="monotone"
-                  dataKey="saude"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  name="Protocolos da Saúde"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="educacao"
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  name="Protocolos da Educação"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="assistencia"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  name="Protocolos da Assistência"
-                />
+                {showSMS && (
+                  <Line
+                    type="monotone"
+                    dataKey="saude"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    name="Protocolos da Saúde"
+                  />
+                )}
+                {showSME && (
+                  <Line
+                    type="monotone"
+                    dataKey="educacao"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    name="Protocolos da Educação"
+                  />
+                )}
+                {showSMAS && (
+                  <Line
+                    type="monotone"
+                    dataKey="assistencia"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    name="Protocolos da Assistência"
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -274,47 +286,53 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="relative border-2 bg-success/10">
-            <LoadingOverlay show={loading} />
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Home className="h-4 w-4 text-success" />
-                <p className="text-sm font-medium text-muted-foreground">Assistência Social</p>
-              </div>
-              <div className="flex items-center justify-center h-12 text-muted-foreground">
-                <Clock className="h-4 w-4 mr-2" />
-                <span className="text-sm">Em desenvolvimento</span>
-              </div>
-            </CardContent>
-          </Card>
+          {showSMAS && (
+            <Card className="relative border-2 bg-success/10">
+              <LoadingOverlay show={loading} />
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <Home className="h-4 w-4 text-success" />
+                  <p className="text-sm font-medium text-muted-foreground">Assistência Social</p>
+                </div>
+                <div className="flex items-center justify-center h-12 text-muted-foreground">
+                  <Clock className="h-4 w-4 mr-2" />
+                  <span className="text-sm">Em desenvolvimento</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="relative border-2 bg-warning/10">
-            <LoadingOverlay show={loading} />
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <BookOpen className="h-4 w-4 text-warning" />
-                <p className="text-sm font-medium text-muted-foreground">Educação</p>
-              </div>
-              <div className="flex items-center justify-center h-12 text-muted-foreground">
-                <Clock className="h-4 w-4 mr-2" />
-                <span className="text-sm">Em desenvolvimento</span>
-              </div>
-            </CardContent>
-          </Card>
+          {showSME && (
+            <Card className="relative border-2 bg-warning/10">
+              <LoadingOverlay show={loading} />
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <BookOpen className="h-4 w-4 text-warning" />
+                  <p className="text-sm font-medium text-muted-foreground">Educação</p>
+                </div>
+                <div className="flex items-center justify-center h-12 text-muted-foreground">
+                  <Clock className="h-4 w-4 mr-2" />
+                  <span className="text-sm">Em desenvolvimento</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="relative border-2 bg-destructive/10">
-            <LoadingOverlay show={loading} />
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Heart className="h-4 w-4 text-destructive" />
-                <p className="text-sm font-medium text-muted-foreground">Saúde</p>
-              </div>
-              <div className="flex items-center justify-center h-12 text-muted-foreground">
-                <Clock className="h-4 w-4 mr-2" />
-                <span className="text-sm">Em desenvolvimento</span>
-              </div>
-            </CardContent>
-          </Card>
+          {showSMS && (
+            <Card className="relative border-2 bg-destructive/10">
+              <LoadingOverlay show={loading} />
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <Heart className="h-4 w-4 text-destructive" />
+                  <p className="text-sm font-medium text-muted-foreground">Saúde</p>
+                </div>
+                <div className="flex items-center justify-center h-12 text-muted-foreground">
+                  <Clock className="h-4 w-4 mr-2" />
+                  <span className="text-sm">Em desenvolvimento</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Gráficos de Análise de Tempo - Grid 2x1 */}
