@@ -30,11 +30,17 @@ interface OverviewTabProps {
   loading?: boolean;
 }
 
+// Overlay de loading reutilizável (mesmo estilo do StatCard)
+const LoadingOverlay = ({ show }: { show: boolean }) => {
+  if (!show) return null;
+  return <div className="loading-overlay" />;
+};
+
 // Componente para card de protocolo individual
 const ProtocoloCard = ({ protocolo, loading }: { protocolo: ProtocoloIndicador; loading: boolean }) => {
   return (
     <Card className="relative">
-      {loading && <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10"><Loader2 className="h-4 w-4 animate-spin" /></div>}
+      <LoadingOverlay show={loading} />
       <CardContent className="p-4">
         <p className="text-sm font-semibold mb-3 line-clamp-2">{protocolo.protocolo_descricao}</p>
         <div className="flex items-baseline gap-2">
@@ -185,7 +191,8 @@ const OverviewTabComponent = ({
       {/* SEÇÃO 3: RESULTADO DO PROGRAMA (gráfico de linha) */}
       {/* ===================================================================== */}
       {data.resultado_programa && data.resultado_programa.length > 0 && (
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay show={loading} />
           <CardHeader>
             <CardTitle className="text-xl">Resultado do Programa</CardTitle>
             <CardDescription>
@@ -253,7 +260,8 @@ const OverviewTabComponent = ({
 
         {/* Cards de Tempo Médio por Dimensão */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="border-2 bg-card">
+          <Card className="relative border-2 bg-card">
+            <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="h-4 w-4 text-primary" />
@@ -266,7 +274,8 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="border-2 border-green-200 bg-green-50 dark:bg-green-950/20">
+          <Card className="relative border-2 border-green-200 bg-green-50 dark:bg-green-950/20">
+            <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
                 <Home className="h-4 w-4 text-green-600" />
@@ -279,7 +288,8 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="border-2 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+          <Card className="relative border-2 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+            <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
                 <BookOpen className="h-4 w-4 text-amber-600" />
@@ -292,7 +302,8 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="border-2 border-red-200 bg-red-50 dark:bg-red-950/20">
+          <Card className="relative border-2 border-red-200 bg-red-50 dark:bg-red-950/20">
+            <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
                 <Heart className="h-4 w-4 text-red-600" />
@@ -309,7 +320,8 @@ const OverviewTabComponent = ({
         {/* Gráficos de Análise de Tempo - Grid 2x1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Distribuição por Faixas de Tempo */}
-          <Card>
+          <Card className="relative">
+            <LoadingOverlay show={loading} />
             <CardHeader>
               <CardTitle className="text-lg">Distribuição por Tempo de Irregularidade</CardTitle>
               <CardDescription>
@@ -328,7 +340,8 @@ const OverviewTabComponent = ({
           </Card>
 
           {/* Taxa de Resolução Mensal */}
-          <Card>
+          <Card className="relative">
+            <LoadingOverlay show={loading} />
             <CardHeader>
               <CardTitle className="text-lg">Taxa de Resolução Mensal</CardTitle>
               <CardDescription>
@@ -348,7 +361,8 @@ const OverviewTabComponent = ({
         </div>
 
         {/* Evolução do Tempo Médio de Irregularidade */}
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay show={loading} />
           <CardHeader>
             <CardTitle className="text-lg">Evolução do Tempo Médio de Irregularidade</CardTitle>
             <CardDescription>
@@ -372,7 +386,8 @@ const OverviewTabComponent = ({
       {/* ===================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Participantes por Safra */}
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay show={loading} />
           <CardHeader>
             <CardTitle className="text-xl">Participantes por Safra</CardTitle>
             <CardDescription>
@@ -435,7 +450,8 @@ const OverviewTabComponent = ({
         </Card>
 
         {/* Motivos de Saída do Programa */}
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay show={loading} />
           <CardHeader>
             <CardTitle className="text-xl flex items-center gap-2">
               <PieChartIcon className="h-5 w-5" />
