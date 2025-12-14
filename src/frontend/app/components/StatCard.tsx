@@ -42,10 +42,10 @@ export function StatCard({
   const Icon = isComponent ? (icon as LucideIcon) : null;
   const variantStyles = {
     default: "bg-card border-border",
-    success: "bg-success/10 border-success/50",
-    warning: "bg-warning/10 border-warning/50",
-    accent: "bg-accent/10 border-accent/50",
-    destructive: "bg-destructive/10 border-destructive/50",
+    success: "bg-success/10",
+    warning: "bg-warning/10",
+    accent: "bg-accent/10",
+    destructive: "bg-destructive/10",
   };
 
   // Adjust icon styles to match the bg

@@ -260,7 +260,7 @@ const OverviewTabComponent = ({
 
         {/* Cards de Tempo Médio por Dimensão */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="relative border-2 bg-card">
+          <Card className="relative border-2 bg-card border-border">
             <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
@@ -274,11 +274,11 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="relative border-2 border-green-200 bg-green-50 dark:bg-green-950/20">
+          <Card className="relative border-2 bg-success/10">
             <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
-                <Home className="h-4 w-4 text-green-600" />
+                <Home className="h-4 w-4 text-success" />
                 <p className="text-sm font-medium text-muted-foreground">Assistência Social</p>
               </div>
               <div className="flex items-center justify-center h-12 text-muted-foreground">
@@ -288,11 +288,11 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="relative border-2 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+          <Card className="relative border-2 bg-warning/10">
             <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
-                <BookOpen className="h-4 w-4 text-amber-600" />
+                <BookOpen className="h-4 w-4 text-warning" />
                 <p className="text-sm font-medium text-muted-foreground">Educação</p>
               </div>
               <div className="flex items-center justify-center h-12 text-muted-foreground">
@@ -302,11 +302,11 @@ const OverviewTabComponent = ({
             </CardContent>
           </Card>
 
-          <Card className="relative border-2 border-red-200 bg-red-50 dark:bg-red-950/20">
+          <Card className="relative border-2 bg-destructive/10">
             <LoadingOverlay show={loading} />
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-2">
-                <Heart className="h-4 w-4 text-red-600" />
+                <Heart className="h-4 w-4 text-destructive" />
                 <p className="text-sm font-medium text-muted-foreground">Saúde</p>
               </div>
               <div className="flex items-center justify-center h-12 text-muted-foreground">
