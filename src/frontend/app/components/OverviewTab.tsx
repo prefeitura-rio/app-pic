@@ -286,73 +286,65 @@ const OverviewTabComponent = ({
         </div>
 
         {/* Cards de Tempo Médio por Dimensão */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="relative border-2 bg-card border-border">
-            <LoadingOverlay show={loading} />
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity className="h-4 w-4 text-primary" />
-                <p className="text-sm font-medium text-muted-foreground">Tempo Médio Geral</p>
-              </div>
-              <div className="flex items-center justify-center h-12 text-muted-foreground">
-                <Clock className="h-4 w-4 mr-2" />
-                <span className="text-sm">Em desenvolvimento</span>
-              </div>
-            </CardContent>
-          </Card>
+        {data.tempo_medio_irregularidade && data.tempo_medio_irregularidade.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {data.tempo_medio_irregularidade
+              .filter(item => {
+                if (item.secretaria === "geral") return true;
+                if (item.secretaria === "smas" && showSMAS) return true;
+                if (item.secretaria === "sme" && showSME) return true;
+                if (item.secretaria === "sms" && showSMS) return true;
+                return false;
+              })
+              .map((item) => {
+                const iconMap: Record<string, { icon: typeof Activity; color: string; bgClass: string }> = {
+                  geral: { icon: Activity, color: "text-primary", bgClass: "bg-card border-border" },
+                  smas: { icon: Home, color: "text-success", bgClass: "bg-success/10" },
+                  sme: { icon: BookOpen, color: "text-warning", bgClass: "bg-warning/10" },
+                  sms: { icon: Heart, color: "text-destructive", bgClass: "bg-destructive/10" },
+                };
+                const { icon: IconComponent, color, bgClass } = iconMap[item.secretaria] || iconMap.geral;
 
-          {showSMAS && (
-            <Card className="relative border-2 bg-success/10">
+                return (
+                  <Card key={item.secretaria} className={`relative border-2 ${bgClass}`}>
+                    <LoadingOverlay show={loading} />
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <IconComponent className={`h-4 w-4 ${color}`} />
+                        <p className="text-sm font-medium text-muted-foreground">{item.secretaria_label}</p>
+                      </div>
+                      <p className="text-3xl font-bold text-foreground mb-1">
+                        {item.tempo_medio_dias.toFixed(0)} dias
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.total_irregulares.toLocaleString("pt-BR")} participantes irregulares
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="relative border-2 bg-card border-border">
               <LoadingOverlay show={loading} />
               <CardContent className="p-6">
                 <div className="flex items-center gap-2 mb-2">
-                  <Home className="h-4 w-4 text-success" />
-                  <p className="text-sm font-medium text-muted-foreground">Assistência Social</p>
+                  <Activity className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-medium text-muted-foreground">Tempo Médio Geral</p>
                 </div>
                 <div className="flex items-center justify-center h-12 text-muted-foreground">
                   <Clock className="h-4 w-4 mr-2" />
-                  <span className="text-sm">Em desenvolvimento</span>
+                  <span className="text-sm">Sem dados</span>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {showSME && (
-            <Card className="relative border-2 bg-warning/10">
-              <LoadingOverlay show={loading} />
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <BookOpen className="h-4 w-4 text-warning" />
-                  <p className="text-sm font-medium text-muted-foreground">Educação</p>
-                </div>
-                <div className="flex items-center justify-center h-12 text-muted-foreground">
-                  <Clock className="h-4 w-4 mr-2" />
-                  <span className="text-sm">Em desenvolvimento</span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {showSMS && (
-            <Card className="relative border-2 bg-destructive/10">
-              <LoadingOverlay show={loading} />
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <Heart className="h-4 w-4 text-destructive" />
-                  <p className="text-sm font-medium text-muted-foreground">Saúde</p>
-                </div>
-                <div className="flex items-center justify-center h-12 text-muted-foreground">
-                  <Clock className="h-4 w-4 mr-2" />
-                  <span className="text-sm">Em desenvolvimento</span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Gráficos de Análise de Tempo - Grid 2x1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Distribuição por Faixas de Tempo */}
+          {/* Distribuição por Faixas de Tempo (Histograma) */}
           <Card className="relative">
             <LoadingOverlay show={loading} />
             <CardHeader>
@@ -362,13 +354,47 @@ const OverviewTabComponent = ({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-                <div className="text-center">
-                  <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">Em desenvolvimento</p>
-                  <p className="text-sm mt-2">Gráfico de barras: faixas 0-30, 31-60, 61-90, 90+ dias</p>
+              {data.distribuicao_tempo_irregularidade && data.distribuicao_tempo_irregularidade.length > 0 ? (
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart
+                    data={data.distribuicao_tempo_irregularidade}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="faixa_label" />
+                    <YAxis />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const d = payload[0].payload;
+                          return (
+                            <div className="bg-background border rounded-lg p-3 shadow-lg">
+                              <p className="font-semibold mb-2">{d.faixa_label}</p>
+                              <p className="text-sm">Participantes: {d.count.toLocaleString("pt-BR")}</p>
+                              <p className="text-sm">Percentual: {d.percentual.toFixed(1)}%</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="count" name="Participantes">
+                      <Cell fill="#10b981" />
+                      <Cell fill="#f59e0b" />
+                      <Cell fill="#ef4444" />
+                      <Cell fill="#991b1b" />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                  <div className="text-center">
+                    <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">Sem dados</p>
+                    <p className="text-sm mt-2">Nenhum dado de tempo de irregularidade disponível</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -382,36 +408,57 @@ const OverviewTabComponent = ({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-                <div className="text-center">
-                  <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">Em desenvolvimento</p>
-                  <p className="text-sm mt-2">Gráfico de linha: evolução mensal da taxa de resolução</p>
+              {data.taxa_resolucao_mensal && data.taxa_resolucao_mensal.length > 0 ? (
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart
+                    data={data.taxa_resolucao_mensal}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="mes_label" />
+                    <YAxis label={{ value: '% Resolvidos', angle: -90, position: 'insideLeft' }} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const d = payload[0].payload;
+                          return (
+                            <div className="bg-background border rounded-lg p-3 shadow-lg">
+                              <p className="font-semibold mb-2">Mês: {d.mes_label}</p>
+                              <p className="text-sm" style={{ color: '#8b5cf6' }}>Geral: {d.todos.toFixed(1)}%</p>
+                              {showSMS && <p className="text-sm" style={{ color: '#ef4444' }}>Saúde: {d.saude.toFixed(1)}%</p>}
+                              {showSME && <p className="text-sm" style={{ color: '#f59e0b' }}>Educação: {d.educacao.toFixed(1)}%</p>}
+                              {showSMAS && <p className="text-sm" style={{ color: '#10b981' }}>Assistência: {d.assistencia.toFixed(1)}%</p>}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="todos" stroke="#8b5cf6" strokeWidth={2} name="Taxa Geral" />
+                    {showSMS && (
+                      <Line type="monotone" dataKey="saude" stroke="#ef4444" strokeWidth={2} name="Saúde" />
+                    )}
+                    {showSME && (
+                      <Line type="monotone" dataKey="educacao" stroke="#f59e0b" strokeWidth={2} name="Educação" />
+                    )}
+                    {showSMAS && (
+                      <Line type="monotone" dataKey="assistencia" stroke="#10b981" strokeWidth={2} name="Assistência" />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                  <div className="text-center">
+                    <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">Sem dados</p>
+                    <p className="text-sm mt-2">Nenhum dado de taxa de resolução disponível</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
-
-        {/* Evolução do Tempo Médio de Irregularidade */}
-        <Card className="relative">
-          <LoadingOverlay show={loading} />
-          <CardHeader>
-            <CardTitle className="text-lg">Evolução do Tempo Médio de Irregularidade</CardTitle>
-            <CardDescription>
-              Como o tempo médio de irregularidade tem evoluído ao longo dos meses por dimensão
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-              <div className="text-center">
-                <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">Em desenvolvimento</p>
-                <p className="text-sm mt-2">Gráfico de linha: tempo médio por dimensão ao longo dos meses</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* ===================================================================== */}

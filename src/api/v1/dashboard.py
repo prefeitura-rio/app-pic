@@ -20,6 +20,9 @@ from src.api.v1.schemas import (
     ResultadoProgramaPoint,
     DistribuicaoSafra,
     DistribuicaoMotivoSaida,
+    DistribuicaoTempoIrregularidade,
+    TempoMedioIrregularidade,
+    TaxaResolucaoMensalPoint,
     PaginatedResponse,
 )
 from src.utils.data_manager import DataManager
@@ -228,6 +231,22 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     # =========================================================================
     motivos_saida: Dict[str, int] = defaultdict(int)
 
+    # =========================================================================
+    # SEÇÃO 6: TEMPO DE IRREGULARIDADE (indicador_tempo_irregular)
+    # Estrutura: [{secretaria: "sms", valor_array: ["4", "10", "30"]}]
+    # Coleta todos os valores de dias para calcular média e distribuição
+    # =========================================================================
+    tempo_irregular_por_secretaria: Dict[str, List[int]] = defaultdict(list)
+
+    # =========================================================================
+    # SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (serie_resolucao_alertas_percentual)
+    # Estrutura: [{secretaria: "sme", resultado_mensal: [{data_referencia_mensal, num, den}]}]
+    # Estrutura agregada: {mes: {secretaria: {num, den}}}
+    # =========================================================================
+    resolucao_mensal: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"num": 0, "den": 0})
+    )
+
     # Processar cada linha do DataFrame
     for row in df.to_dicts():
         # -----------------------------------------------------------------
@@ -366,6 +385,93 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
             else:
                 motivos_saida["Não informado"] += qtd
 
+        # -----------------------------------------------------------------
+        # 6. Tempo de Irregularidade (indicador_tempo_irregular)
+        # Estrutura: [{secretaria: "sms", valor_array: ["4", "10"]}]
+        # -----------------------------------------------------------------
+        tempo_irregular = _parse_json_column(row.get("indicador_tempo_irregular"))
+        if tempo_irregular:
+            if not isinstance(tempo_irregular, list):
+                tempo_irregular = [tempo_irregular]
+
+            for item in tempo_irregular:
+                if not isinstance(item, dict):
+                    continue
+
+                secretaria_raw = item.get("secretaria")
+                if not secretaria_raw or not isinstance(secretaria_raw, str):
+                    continue
+                secretaria = secretaria_raw.lower()
+                valor_array = item.get("valor_array", [])
+
+                if not secretaria or not valor_array:
+                    continue
+
+                # Converter valores para int e adicionar à lista
+                for valor in valor_array:
+                    dias = _safe_int(valor)
+                    if dias > 0:
+                        tempo_irregular_por_secretaria[secretaria].append(dias)
+                        tempo_irregular_por_secretaria["geral"].append(dias)
+
+        # -----------------------------------------------------------------
+        # 7. Taxa de Resolução Mensal (serie_resolucao_alertas_percentual)
+        # Estrutura: [{secretaria: "sme", resultado_mensal: [{data, num, den}]}]
+        # -----------------------------------------------------------------
+        serie_resolucao = _parse_json_column(row.get("serie_resolucao_alertas_percentual"))
+        if serie_resolucao:
+            if not isinstance(serie_resolucao, list):
+                serie_resolucao = [serie_resolucao]
+
+            for item in serie_resolucao:
+                if not isinstance(item, dict):
+                    continue
+
+                secretaria_raw = item.get("secretaria")
+                if not secretaria_raw or not isinstance(secretaria_raw, str):
+                    continue
+                secretaria = secretaria_raw.lower()
+                resultado_mensal = item.get("resultado_mensal", [])
+
+                if not isinstance(resultado_mensal, list):
+                    resultado_mensal = [resultado_mensal]
+
+                for ponto in resultado_mensal:
+                    if not isinstance(ponto, dict):
+                        continue
+
+                    data_ref = ponto.get("data_referencia_mensal")
+                    if not data_ref:
+                        continue
+
+                    # Normalizar para "YYYY-MM"
+                    if hasattr(data_ref, 'strftime'):
+                        mes = data_ref.strftime("%Y-%m")
+                    else:
+                        data_ref_str = str(data_ref)
+                        mes = data_ref_str[:7] if len(data_ref_str) >= 7 else data_ref_str
+
+                    if not mes:
+                        continue
+
+                    num = _safe_int(ponto.get("indicador_numerador"))
+                    den = _safe_int(ponto.get("indicador_denominador"))
+
+                    # Mapear secretaria para nome padronizado
+                    mapa_secretarias = {
+                        "smas": "SMAS",
+                        "sme": "SME",
+                        "sms": "SMS",
+                    }
+                    nome_secretaria = mapa_secretarias.get(secretaria, secretaria.upper())
+
+                    # Agregar por mês e secretaria
+                    resolucao_mensal[mes][nome_secretaria]["num"] += num
+                    resolucao_mensal[mes][nome_secretaria]["den"] += den
+                    # Também agregar no "TODOS" (geral)
+                    resolucao_mensal[mes]["TODOS"]["num"] += num
+                    resolucao_mensal[mes]["TODOS"]["den"] += den
+
     # =========================================================================
     # CALCULAR MÉTRICAS FINAIS
     # =========================================================================
@@ -447,6 +553,80 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
             )
         )
 
+    # 6. Tempo Médio de Irregularidade por Secretaria (cards)
+    tempo_medio_lista: List[TempoMedioIrregularidade] = []
+    mapa_labels = {
+        "geral": "Geral",
+        "smas": "Assistência Social",
+        "sme": "Educação",
+        "sms": "Saúde",
+    }
+    # Ordem de exibição: geral primeiro, depois as secretarias
+    for secretaria in ["geral", "smas", "sme", "sms"]:
+        valores = tempo_irregular_por_secretaria.get(secretaria, [])
+        if valores:
+            tempo_medio = sum(valores) / len(valores)
+        else:
+            tempo_medio = 0.0
+
+        tempo_medio_lista.append(
+            TempoMedioIrregularidade(
+                secretaria=secretaria,
+                secretaria_label=mapa_labels.get(secretaria, secretaria.upper()),
+                tempo_medio_dias=round(tempo_medio, 1),
+                total_irregulares=len(valores),
+            )
+        )
+
+    # 7. Distribuição por Tempo de Irregularidade (histograma)
+    # Faixas: 0-30, 31-60, 61-90, 90+
+    todos_valores = tempo_irregular_por_secretaria.get("geral", [])
+    faixas_config = [
+        ("0-30", "0-30 dias", 0, 30),
+        ("31-60", "31-60 dias", 31, 60),
+        ("61-90", "61-90 dias", 61, 90),
+        ("90+", "90+ dias", 91, float("inf")),
+    ]
+
+    distribuicao_tempo: List[DistribuicaoTempoIrregularidade] = []
+    total_valores = len(todos_valores)
+
+    for faixa, faixa_label, min_dias, max_dias in faixas_config:
+        count = sum(1 for v in todos_valores if min_dias <= v <= max_dias)
+        percentual = (count / total_valores * 100) if total_valores > 0 else 0.0
+
+        distribuicao_tempo.append(
+            DistribuicaoTempoIrregularidade(
+                faixa=faixa,
+                faixa_label=faixa_label,
+                count=count,
+                percentual=round(percentual, 1),
+            )
+        )
+
+    # 8. Taxa de Resolução Mensal (gráfico de linha)
+    taxa_resolucao_lista: List[TaxaResolucaoMensalPoint] = []
+    for mes in sorted(resolucao_mensal.keys()):
+        dados_mes = resolucao_mensal[mes]
+
+        # Calcular percentual por secretaria
+        def calc_perc_resolucao(secretaria: str) -> float:
+            dados = dados_mes.get(secretaria, {"num": 0, "den": 0})
+            if dados["den"] > 0:
+                return round(dados["num"] / dados["den"] * 100, 1)
+            return 0.0
+
+        taxa_resolucao_lista.append(
+            TaxaResolucaoMensalPoint(
+                mes=mes,
+                mes_label=_format_mes_label(mes),
+                todos=calc_perc_resolucao("TODOS"),
+                saude=calc_perc_resolucao("SMS"),
+                educacao=calc_perc_resolucao("SME"),
+                assistencia=calc_perc_resolucao("SMAS"),
+            )
+        )
+
     return Dashboard(
         # Indicadores Principais
         total_participantes=total_participantes,
@@ -462,6 +642,11 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
         distribuicao_por_safra=distribuicao_safra,
         # Motivos de Saída
         distribuicao_motivo_saida=distribuicao_motivos,
+        # Tempo de Irregularidade (cards + histograma)
+        tempo_medio_irregularidade=tempo_medio_lista,
+        distribuicao_tempo_irregularidade=distribuicao_tempo,
+        # Taxa de Resolução Mensal
+        taxa_resolucao_mensal=taxa_resolucao_lista,
     )
 
 
@@ -477,4 +662,7 @@ def _create_empty_dashboard() -> Dashboard:
         resultado_programa=[],
         distribuicao_por_safra=[],
         distribuicao_motivo_saida=[],
+        tempo_medio_irregularidade=[],
+        distribuicao_tempo_irregularidade=[],
+        taxa_resolucao_mensal=[],
     )
