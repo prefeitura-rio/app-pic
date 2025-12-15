@@ -3,6 +3,7 @@
 import { memo, useMemo, useCallback, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Filter, X, RefreshCw, Search } from "lucide-react";
@@ -36,6 +37,14 @@ const FilterCardComponent = ({
     onFilterChange({
       ...filters,
       [key]: value,
+    });
+  }, [filters, onFilterChange]);
+
+  // Callback para filtros multi-select (arrays)
+  const handleMultiFilterUpdate = useCallback((key: string, values: string[]) => {
+    onFilterChange({
+      ...filters,
+      [key]: values.length > 0 ? values : undefined,
     });
   }, [filters, onFilterChange]);
 
@@ -171,12 +180,18 @@ const FilterCardComponent = ({
               options={filteredOptions.cohorts}
             />
 
-            {/* Protocolo */}
-            <VirtualizedSelect
-              value={(filters as any).protocolo_descricao || "todos"}
-              onSelect={(v) => handleFilterUpdate("protocolo_descricao", v)}
+            {/* Protocolo (Multi-select) */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).protocolo_descricao)
+                  ? (filters as any).protocolo_descricao
+                  : (filters as any).protocolo_descricao
+                    ? [(filters as any).protocolo_descricao]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("protocolo_descricao", values)}
               disabled={loading}
-              placeholder="Protocolo"
+              placeholder="Protocolos"
               defaultLabel="Todos os Protocolos"
               options={filteredOptions.protocolo_descricoes}
               style={{ gridColumn: "span 2" }}

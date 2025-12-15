@@ -336,7 +336,7 @@ const ProfessionalTabComponent = ({
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Status</p>
-                      <Badge variant={selectedParticipant.status === "ativo" ? "success" : "destructive"}>
+                      <Badge variant={selectedParticipant.status?.toLowerCase() === "ativo" ? "success" : "destructive"}>
                         {selectedParticipant.status || "-"}
                       </Badge>
                     </div>

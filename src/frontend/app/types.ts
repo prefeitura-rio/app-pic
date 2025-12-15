@@ -329,7 +329,7 @@ export interface DashboardFilters {
   status?: string;
   situacao?: string;
   bypass_cache?: boolean;
-  protocolo_descricao?: string; // Filtro por descrição do protocolo
+  protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
   protocolo_status?: string; // Filtro por status do protocolo
 }
 
@@ -350,7 +350,7 @@ export interface ParticipantFilters {
   situacao?: string;
   search?: string; // CPF or name search
   bypass_cache?: boolean;
-  protocolo_descricao?: string; // Filtro por descrição do protocolo
+  protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
   protocolo_status?: string; // Filtro por status do protocolo
   sort_by?: string; // Coluna para ordenação
   sort_order?: SortOrder; // Direção da ordenação (asc/desc)

@@ -115,6 +115,17 @@ function buildFilterParams(
       return;
     }
 
+    // Handle arrays (multi-select filters)
+    if (Array.isArray(value)) {
+      // Skip empty arrays
+      if (value.length === 0) {
+        return;
+      }
+      // Send as comma-separated string for the backend
+      params.append(key, value.join(","));
+      return;
+    }
+
     // Convert boolean to string explicitly
     if (typeof value === "boolean") {
       params.append(key, value.toString());

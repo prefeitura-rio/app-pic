@@ -275,8 +275,12 @@ class DataManager:
                 logger.info("⚡ Using precomputed filter options (instant)")
             else:
                 # Fallback: calcular dinamicamente (quando há filtros ativos)
+                # OTIMIZAÇÃO: Passar AMBOS DataFrames para evitar recálculos
+                # - df_filtered: usado para colunas SEM filtro ativo (maioria)
+                # - df: usado para recalcular quando precisamos excluir um filtro
                 filter_options_dict = DataManager.calculate_filter_options_fast(
-                    df_original=df,  # DataFrame completo (sem filtros)
+                    df_original=df,  # DataFrame ANTES dos filtros (para exclusão)
+                    df_already_filtered=df_filtered,  # DataFrame JÁ filtrado (otimização)
                     filter_columns_config=filter_columns_config,
                     active_filters=filters_dict,  # Filtros atualmente ativos
                 )
@@ -594,6 +598,93 @@ class DataManager:
         return result
 
     @staticmethod
+    def _filter_array_column_combined_polars(
+        df: pl.DataFrame,
+        array_col: str,
+        field_filters: Dict[str, list],
+    ) -> pl.DataFrame:
+        """
+        Filtra linhas onde TODOS os campos especificados correspondem no MESMO item do array.
+        TAMBÉM filtra o conteúdo do array para mostrar apenas itens que correspondem.
+
+        Usado para filtros dependentes como protocolo_descricao + protocolo_status,
+        onde ambos devem corresponder ao MESMO protocolo.
+
+        Args:
+            df: DataFrame completo
+            array_col: Nome da coluna contendo arrays de structs (ex: "protocolo_listagem")
+            field_filters: Dict de {campo: [valores]} a serem filtrados conjuntamente
+                Ex: {"descricao": ["cadunico"], "protocolo_status_label": ["atenção"]}
+
+        Returns:
+            DataFrame filtrado com array também filtrado
+        """
+        if not field_filters:
+            return df
+
+        # Normalizar todos os valores de filtro
+        normalized_filters = {}
+        for field, values in field_filters.items():
+            normalized_values = [
+                str(v).lower().strip() for v in values if v and str(v).strip()
+            ]
+            if normalized_values:
+                normalized_filters[field] = normalized_values
+
+        if not normalized_filters:
+            return df
+
+        logger.info(
+            f"🔗 Combined array filter on '{array_col}': {normalized_filters}"
+        )
+
+        # Verificar se a coluna existe
+        if array_col not in df.columns:
+            logger.error(f"❌ Array column '{array_col}' not found in DataFrame")
+            return df
+
+        # Estratégia: explode, filtrar, reagrupar
+        # 1. Adicionar índice temporário
+        df_with_idx = df.with_row_index("_temp_idx")
+
+        # 2. Guardar todas as colunas exceto a do array para join depois
+        other_cols = [c for c in df_with_idx.columns if c != array_col]
+
+        # 3. Explodir a coluna de array (cada item do array vira uma linha)
+        df_exploded = df_with_idx.explode(array_col)
+
+        if df_exploded.is_empty():
+            logger.warning(f"⚠️ Exploded DataFrame is empty for column '{array_col}'")
+            return df.head(0)
+
+        # 4. Construir expressão combinada (AND de todos os campos)
+        combined_expr = pl.lit(True)
+        for field, values in normalized_filters.items():
+            field_expr = pl.col(array_col).struct.field(field)
+            combined_expr = combined_expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(values)
+
+        # 5. Filtrar itens do array que correspondem
+        df_filtered_items = df_exploded.filter(combined_expr)
+
+        if df_filtered_items.is_empty():
+            logger.info(f"📊 Combined array filter matched 0 rows")
+            return df.head(0)
+
+        # 6. Pegar índices únicos que deram match
+        matching_idx = df_filtered_items.select("_temp_idx").unique()
+
+        logger.info(f"📊 Combined array filter matched {matching_idx.height} unique rows")
+
+        # 7. Filtrar df original pelos índices que deram match
+        # IMPORTANTE: Mantemos o array ORIGINAL (não filtrado) para que os detalhes
+        # mostrem todos os protocolos do participante
+        result = df_with_idx.filter(
+            pl.col("_temp_idx").is_in(matching_idx["_temp_idx"])
+        ).drop("_temp_idx")
+
+        return result
+
+    @staticmethod
     def apply_filters(df: pl.DataFrame, filters_dict: Dict[str, Any]) -> pl.DataFrame:
         """
         Aplica filtros case-insensitive ao Polars DataFrame.
@@ -618,9 +709,13 @@ class DataManager:
         # Polars: construir expressão de filtro
         filter_expr = pl.lit(True)
 
-        for col, filter_value in filters_dict.items():
-            filter_start = time.perf_counter()
+        # PASSO 1: Agrupar filtros de array por coluna base para aplicar combinados
+        # Isso garante que filtros como protocolo_descricao + protocolo_status
+        # sejam aplicados no MESMO item do array (filtros dependentes)
+        array_filters_by_column: Dict[str, Dict[str, list]] = {}
+        scalar_filters: Dict[str, Any] = {}
 
+        for col, filter_value in filters_dict.items():
             # Converter para lista se não for
             if not isinstance(filter_value, list):
                 filter_value = [filter_value]
@@ -634,36 +729,49 @@ class DataManager:
             if not filter_value:
                 continue
 
-            before_filter = df.filter(filter_expr).height
-
-            # Detectar filtros de array via dot notation
+            # Separar filtros de array e escalares
             if "." in col:
                 array_col, field_name = col.split(".", 1)
+                if array_col not in array_filters_by_column:
+                    array_filters_by_column[array_col] = {}
+                array_filters_by_column[array_col][field_name] = filter_value
+            else:
+                scalar_filters[col] = filter_value
 
-                if array_col not in df.columns:
-                    logger.warning(f"Array filter column '{array_col}' not found in DataFrame")
-                    continue
+        # PASSO 2: Aplicar filtros de array combinados (por coluna base)
+        for array_col, field_filters in array_filters_by_column.items():
+            filter_start = time.perf_counter()
 
-                # Aplicar filtro de array (usa explode nativo - muito rápido)
-                df = DataManager._filter_array_column_polars(
-                    df, array_col, field_name, filter_value
-                )
-
-                filter_time = time.perf_counter() - filter_start
-                filter_times[col] = filter_time
-                logger.info(
-                    f"Filter (array) '{col}': {before_filter} -> {len(df)} rows in {filter_time:.3f}s"
-                )
+            if array_col not in df.columns:
+                logger.warning(f"Array filter column '{array_col}' not found in DataFrame")
                 continue
+
+            before_filter = len(df)
+
+            # Usar filtro combinado para garantir que todos os campos
+            # correspondam ao MESMO item do array
+            df = DataManager._filter_array_column_combined_polars(
+                df, array_col, field_filters
+            )
+
+            filter_time = time.perf_counter() - filter_start
+            filter_times[f"{array_col}.*"] = filter_time
+            logger.info(
+                f"Filter (array combined) '{array_col}' with {list(field_filters.keys())}: {before_filter} -> {len(df)} rows in {filter_time:.3f}s"
+            )
+
+        # PASSO 3: Aplicar filtros escalares (colunas normais)
+        for col, filter_value in scalar_filters.items():
+            filter_start = time.perf_counter()
 
             # Pular se coluna não existe
             if col not in df.columns:
                 logger.warning(f"Filter column '{col}' not found in DataFrame")
                 continue
 
+            before_filter = df.filter(filter_expr).height
+
             # Normalizar valores de filtro (apenas lowercase - sem remover acentos)
-            # NOTA: Não usamos TextNormalizer aqui porque map_elements é muito lento
-            # Os valores vêm do dropdown então já estão corretos
             normalized_filter_values = [
                 str(v).lower().strip() for v in filter_value
             ]
@@ -675,7 +783,7 @@ class DataManager:
             filter_time = time.perf_counter() - filter_start
             filter_times[col] = filter_time
 
-        # Aplicar filtro final
+        # Aplicar filtro final de colunas escalares
         df_filtered = df.filter(filter_expr)
 
         total_time = time.perf_counter() - start_time
@@ -782,45 +890,112 @@ class DataManager:
         return result
 
     @staticmethod
+    def _extract_unique_from_array_with_filter_polars(
+        df: pl.DataFrame,
+        array_col: str,
+        field_name: str,
+        filter_fields: Dict[str, list],
+        exclude_field: Optional[str] = None,
+    ) -> set:
+        """
+        Extrai valores únicos de um campo do array, aplicando filtros nos itens do array.
+
+        Usado para calcular filter options com cascata entre campos do mesmo array.
+        Por exemplo: ao filtrar por protocolo_status=atenção, mostrar apenas os
+        protocolo_descricao que têm status atenção.
+
+        Args:
+            df: DataFrame com a coluna de arrays
+            array_col: Nome da coluna contendo arrays de structs
+            field_name: Campo a extrair valores únicos
+            filter_fields: Dict de {campo: [valores]} para filtrar itens do array
+            exclude_field: Campo a excluir do filtro (para manter opções do próprio filtro)
+
+        Returns:
+            Set de valores únicos encontrados
+        """
+        if df.is_empty() or array_col not in df.columns:
+            return set()
+
+        # Explodir array para linhas individuais
+        df_exploded = df.select(array_col).drop_nulls().explode(array_col)
+
+        if df_exploded.is_empty():
+            return set()
+
+        # Aplicar filtros nos itens do array (exceto o campo que estamos extraindo)
+        filter_expr = pl.lit(True)
+        for field, values in filter_fields.items():
+            if field == exclude_field:
+                continue
+            if values:
+                normalized_values = [str(v).lower().strip() for v in values]
+                field_expr = pl.col(array_col).struct.field(field).cast(pl.Utf8).str.to_lowercase()
+                filter_expr = filter_expr & field_expr.is_in(normalized_values)
+
+        df_filtered = df_exploded.filter(filter_expr)
+
+        if df_filtered.is_empty():
+            return set()
+
+        # Extrair valores únicos do campo desejado
+        unique_values = (
+            df_filtered
+            .select(pl.col(array_col).struct.field(field_name).cast(pl.Utf8).alias("value"))
+            .drop_nulls()
+            .unique()
+            .get_column("value")
+            .to_list()
+        )
+
+        result = {v.strip() for v in unique_values if v and v.strip()}
+        return result
+
+    @staticmethod
     def calculate_filter_options_fast(
         df_original: pl.DataFrame,
         filter_columns_config: Dict[str, Dict[str, str]],
         active_filters: Dict[str, Any],
+        df_already_filtered: Optional[pl.DataFrame] = None,
     ) -> SmartFilterOptions:
         """
-        VERSÃO V4 POLARS de calculate_filter_options.
+        VERSÃO V7 POLARS de calculate_filter_options - SUPER OTIMIZADA.
 
-        OTIMIZAÇÕES:
-        1. Usa Polars que é muito mais rápido que Pandas
-        2. Operações vetorizadas nativas
-        3. Pré-calcula expressões de filtro uma vez
+        LÓGICA DE CASCATA INTELIGENTE:
+        Para cada filter option, aplicamos TODOS os filtros EXCETO o do próprio campo.
 
-        Performance: ~0.05-0.1s para 180k rows.
+        OTIMIZAÇÃO PRINCIPAL: Usa df_already_filtered para colunas sem filtro ativo,
+        evitando recálculos desnecessários. Só recalcula quando precisa excluir um filtro.
         """
         start_time = time.perf_counter()
 
         if df_original.is_empty():
             return SmartFilterOptions()
 
-        # Construir expressão de filtro combinada
-        filter_exprs = {}
+        # Usar df já filtrado se disponível, senão usar original
+        df_base_filtered = df_already_filtered if df_already_filtered is not None else df_original
+
+        # Identificar quais filtros estão ativos
+        active_scalar_filters: Dict[str, list] = {}
+        active_array_filters: Dict[str, Dict[str, list]] = {}
 
         for k, v in active_filters.items():
             if v in [None, "", "todos", "todas"]:
                 continue
 
-            # Pular filtros de array (dot notation)
+            values = v if isinstance(v, list) else [v]
+            values = [val for val in values if val and str(val).strip() and str(val) not in config.FILTER_IGNORE_VALUES]
+            if not values:
+                continue
+
             if "." in k:
-                continue
-
-            if k not in df_original.columns:
-                continue
-
-            # Normalizar valor do filtro (apenas lowercase - consistente com apply_filters)
-            filter_normalized = str(v).lower().strip()
-
-            # Polars: expressão de filtro case-insensitive nativo (muito rápido)
-            filter_exprs[k] = pl.col(k).cast(pl.Utf8).str.to_lowercase() == filter_normalized
+                array_col, field_name = k.split(".", 1)
+                if array_col not in active_array_filters:
+                    active_array_filters[array_col] = {}
+                active_array_filters[array_col][field_name] = values
+            else:
+                if k in df_original.columns:
+                    active_scalar_filters[k] = values
 
         filter_options_dict = {}
 
@@ -834,21 +1009,82 @@ class DataManager:
                 filter_options_dict[result_key] = []
                 continue
 
-            # Combinar TODAS as expressões EXCETO a do filtro atual
-            combined_expr = pl.lit(True)
-            for filter_key, expr in filter_exprs.items():
-                if filter_key == column:
-                    continue
-                combined_expr = combined_expr & expr
+            is_array_filter = config_type == "array_extract" and array_field
 
-            # Aplicar filtro
-            df_filtered = df_original.filter(combined_expr)
+            # Determinar qual DataFrame usar
+            if column in active_scalar_filters:
+                # Filtro escalar ativo - precisa recalcular excluindo este filtro
+                # Aplicar todos os filtros escalares EXCETO este
+                filter_expr = pl.lit(True)
+                for filter_col, filter_vals in active_scalar_filters.items():
+                    if filter_col != column:
+                        normalized = [str(v).lower().strip() for v in filter_vals]
+                        filter_expr = filter_expr & pl.col(filter_col).cast(pl.Utf8).str.to_lowercase().is_in(normalized)
+
+                df_filtered = df_original.filter(filter_expr)
+
+                # Aplicar filtros de array (todos)
+                for array_col, field_filters in active_array_filters.items():
+                    if array_col in df_filtered.columns:
+                        df_filtered = DataManager._filter_array_column_combined_polars(
+                            df_filtered, array_col, field_filters
+                        )
+
+            elif is_array_filter and array_field:
+                # Verificar se este campo de array tem filtro ativo
+                array_col_for_filter = column  # ex: "protocolo_listagem"
+                if array_col_for_filter in active_array_filters and array_field in active_array_filters[array_col_for_filter]:
+                    # Precisa recalcular excluindo este campo do filtro de array
+                    # Primeiro aplicar todos os filtros escalares
+                    filter_expr = pl.lit(True)
+                    for filter_col, filter_vals in active_scalar_filters.items():
+                        normalized = [str(v).lower().strip() for v in filter_vals]
+                        filter_expr = filter_expr & pl.col(filter_col).cast(pl.Utf8).str.to_lowercase().is_in(normalized)
+
+                    df_filtered = df_original.filter(filter_expr)
+
+                    # Aplicar filtros de array excluindo este campo
+                    for arr_col, field_filters in active_array_filters.items():
+                        if arr_col not in df_filtered.columns:
+                            continue
+
+                        if arr_col == array_col_for_filter:
+                            # Excluir o campo atual
+                            other_filters = {f: v for f, v in field_filters.items() if f != array_field}
+                            if other_filters:
+                                df_filtered = DataManager._filter_array_column_combined_polars(
+                                    df_filtered, arr_col, other_filters
+                                )
+                        else:
+                            df_filtered = DataManager._filter_array_column_combined_polars(
+                                df_filtered, arr_col, field_filters
+                            )
+                else:
+                    # Nenhum filtro ativo neste campo - usar DataFrame já filtrado
+                    df_filtered = df_base_filtered
+            else:
+                # Coluna sem filtro ativo - usar DataFrame já filtrado (OTIMIZAÇÃO!)
+                df_filtered = df_base_filtered
 
             # Tratar extração de array
             if config_type == "array_extract" and array_field:
-                unique_values = DataManager._extract_unique_from_array_polars(
-                    df_filtered, column, array_field
-                )
+                # Verificar se há filtros de array ativos para este array
+                array_col_name = column  # ex: "protocolo_listagem"
+                if array_col_name in active_array_filters:
+                    # Usar função que aplica filtros nos itens do array (cascata)
+                    # Exclui o próprio campo para manter suas opções
+                    unique_values = DataManager._extract_unique_from_array_with_filter_polars(
+                        df_filtered,
+                        array_col_name,
+                        array_field,
+                        filter_fields=active_array_filters[array_col_name],
+                        exclude_field=array_field,  # Excluir próprio campo
+                    )
+                else:
+                    # Sem filtros de array ativos - extrair normalmente
+                    unique_values = DataManager._extract_unique_from_array_polars(
+                        df_filtered, column, array_field
+                    )
                 options = [
                     FilterOptionItem(id=str(v), label=str(v))
                     for v in sorted(unique_values)
