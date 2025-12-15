@@ -273,7 +273,7 @@ export function UserFormDialog({
               />
 
               <VirtualizedIdMultiSelect
-                label="AP (Áreas Programáticas)"
+                label="CAP (Coordenadorias de Área Programática)"
                 options={availableIds.aps}
                 selected={selectedAps}
                 onChange={setSelectedCaps}

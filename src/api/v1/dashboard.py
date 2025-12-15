@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Any, Optional, Dict, List
 from collections import defaultdict
 import polars as pl
-import json
 import time
 
 from src.core.security.jwt import verify_jwt, CurrentUserPermissions
@@ -19,6 +18,10 @@ from src.api.v1.schemas import (
     ProtocoloIndicador,
     ResultadoProgramaPoint,
     DistribuicaoSafra,
+    DistribuicaoMotivoSaida,
+    DistribuicaoTempoIrregularidade,
+    TempoMedioIrregularidade,
+    TaxaResolucaoMensalPoint,
     PaginatedResponse,
 )
 from src.utils.data_manager import DataManager
@@ -32,9 +35,9 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "cohorts": {"column": "pic_cohort"},
     "status_list": {"column": "pic_status"},
     "bairros": {"column": "bairro"},
-    "cres": {"column": "id_cre"},
-    "aps": {"column": "id_ap"},
-    "cas_list": {"column": "id_cas"},
+    "cres": {"column": "id_cre", "label_column": "nome_cre"},
+    "aps": {"column": "id_ap", "label_column": "nome_ap"},
+    "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
 }
 
 # Mapeamento de mês numérico para label
@@ -141,30 +144,6 @@ async def get_dashboard_metrics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _parse_json_column(value: Any) -> Any:
-    """Parseia uma coluna JSON string para objeto Python."""
-    if value is None:
-        return None
-    if isinstance(value, (dict, list)):
-        return value
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            return None
-    return value
-
-
-def _safe_int(value: Any) -> int:
-    """Converte valor para int de forma segura."""
-    if value is None:
-        return 0
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return 0
-
-
 def _format_mes_label(mes: str) -> str:
     """
     Converte "2025-12-01" ou "2025-12" para "Dez/25".
@@ -185,183 +164,300 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     """
     Calcula métricas do dashboard a partir de dados pré-agregados do BigQuery.
 
+    VERSÃO OTIMIZADA V2: Usa operações 100% vetorizadas do Polars.
+    Os dados já vêm como Struct/List nativos do Polars (não precisa parsear JSON).
+
     PROCESSAMENTO:
-    1. Indicadores Principais: soma de numeradores/denominadores de participantes
-    2. Protocolos Individuais: agregação por protocolo_id usando valor_mais_recente
-    3. Resultado do Programa: agregação por mês e secretaria usando valores_mensais
+    1. Indicadores Principais: struct.field().sum() direto
+    2. Protocolos Individuais: explode + struct.field + group_by
+    3. Resultado do Programa: struct.field para cada secretaria
+    4. Distribuição por Safra: group_by nativo
+    5. Motivos de Saída: group_by nativo
+    6. Tempo de Irregularidade: explode + struct.field + agregações
+    7. Taxa de Resolução Mensal: explode + struct.field + group_by
     """
-    # =========================================================================
-    # SEÇÃO 1: INDICADORES PRINCIPAIS
-    # =========================================================================
-    participantes_regular_num = 0
-    participantes_regular_den = 0
-    participantes_irregular_num = 0
-    participantes_irregular_den = 0
+    import time as perf_time
 
     # =========================================================================
-    # SEÇÃO 2: PROTOCOLOS INDIVIDUAIS (cards)
-    # Estrutura: {protocolo_id: {descricao, secretaria, num, den}}
+    # SEÇÃO 4 + 5: SAFRAS E MOTIVOS (Polars nativo - instantâneo)
     # =========================================================================
+    section_start = perf_time.perf_counter()
+
+    # Preparar coluna de quantidade (com fallback para 1)
+    df_with_qtd = df.with_columns([
+        pl.col("indicador_participantes_qtd_total").cast(pl.Int64).fill_null(1).alias("qtd"),
+        pl.col("pic_status").fill_null("").str.to_lowercase().alias("status_lower"),
+        pl.col("pic_cohort").cast(pl.Utf8).str.slice(0, 7).alias("cohort_str"),
+    ])
+
+    # 4. Distribuição por Safra - group_by nativo
+    safra_df = (
+        df_with_qtd
+        .filter(pl.col("cohort_str").is_not_null() & (pl.col("cohort_str") != ""))
+        .group_by("cohort_str", "status_lower")
+        .agg(pl.col("qtd").sum().alias("total"))
+    )
+
+    safras_agregadas: Dict[str, Dict[str, int]] = defaultdict(lambda: {"ativos": 0, "inativos": 0})
+    for row in safra_df.iter_rows(named=True):
+        cohort = row["cohort_str"]
+        status = row["status_lower"]
+        total = row["total"] or 0
+        if status == "ativo":
+            safras_agregadas[cohort]["ativos"] += total
+        else:
+            safras_agregadas[cohort]["inativos"] += total
+
+    # 5. Motivos de Saída - group_by nativo
+    motivos_df = (
+        df_with_qtd
+        .filter(pl.col("status_lower") == "inativo")
+        .with_columns([
+            pl.col("pic_status_inativo_motivo").fill_null("Não informado").alias("motivo")
+        ])
+        .group_by("motivo")
+        .agg(pl.col("qtd").sum().alias("total"))
+    )
+
+    motivos_saida: Dict[str, int] = {}
+    for row in motivos_df.iter_rows(named=True):
+        motivo = row["motivo"] or "Não informado"
+        motivos_saida[motivo.strip() if motivo.strip() else "Não informado"] = row["total"] or 0
+
+    logger.info(f"⚡ Seções 4+5 (Safras+Motivos): {perf_time.perf_counter() - section_start:.3f}s")
+
+    # =========================================================================
+    # SEÇÃO 1: INDICADORES PRINCIPAIS (Polars struct.field - instantâneo)
+    # =========================================================================
+    section_start = perf_time.perf_counter()
+
+    # Extrair numerador/denominador diretamente do Struct usando Polars nativo
+    participantes_regular_num = df.select(
+        pl.col("indicador_participantes_percentual_regular").struct.field("numerador").sum()
+    ).item() or 0
+
+    participantes_regular_den = df.select(
+        pl.col("indicador_participantes_percentual_regular").struct.field("denominador").sum()
+    ).item() or 0
+
+    participantes_irregular_num = df.select(
+        pl.col("indicador_participantes_percentual_irregular").struct.field("numerador").sum()
+    ).item() or 0
+
+    participantes_irregular_den = df.select(
+        pl.col("indicador_participantes_percentual_irregular").struct.field("denominador").sum()
+    ).item() or 0
+
+    logger.info(f"⚡ Seção 1 (Indicadores): {perf_time.perf_counter() - section_start:.3f}s")
+
+    # =========================================================================
+    # SEÇÃO 2: PROTOCOLOS (explode + struct.field + group_by)
+    # =========================================================================
+    section_start = perf_time.perf_counter()
+
+    # Explode a lista de protocolos e extrair campos
     protocolos_agregados: Dict[str, Dict[str, Any]] = {}
 
+    if "indicador_protocolos_percentual_regular" in df.columns:
+        df_protocolos = (
+            df.select(pl.col("indicador_protocolos_percentual_regular"))
+            .explode("indicador_protocolos_percentual_regular")
+            .filter(pl.col("indicador_protocolos_percentual_regular").is_not_null())
+        )
+
+        if len(df_protocolos) > 0:
+            # Extrair campos do struct
+            df_protocolos = df_protocolos.with_columns([
+                pl.col("indicador_protocolos_percentual_regular").struct.field("protocolo_id").alias("protocolo_id"),
+                pl.col("indicador_protocolos_percentual_regular").struct.field("protocolo_descricao").alias("descricao"),
+                pl.col("indicador_protocolos_percentual_regular").struct.field("protocolo_secretaria").alias("secretaria"),
+                pl.col("indicador_protocolos_percentual_regular").struct.field("valor_mais_recente").alias("valor_recente"),
+            ])
+
+            # valor_mais_recente é uma List de Structs, pegar o primeiro elemento
+            df_protocolos = df_protocolos.with_columns([
+                pl.col("valor_recente").list.first().alias("valor_recente_first"),
+            ])
+
+            # Extrair numerador/denominador do primeiro elemento
+            df_protocolos = df_protocolos.with_columns([
+                pl.col("valor_recente_first").struct.field("indicador_numerador").alias("num"),
+                pl.col("valor_recente_first").struct.field("indicador_denominador").alias("den"),
+            ])
+
+            # Agregar por protocolo_id
+            df_agg = (
+                df_protocolos
+                .filter(pl.col("protocolo_id").is_not_null())
+                .group_by("protocolo_id")
+                .agg([
+                    pl.col("descricao").first().alias("descricao"),
+                    pl.col("secretaria").first().alias("secretaria"),
+                    pl.col("num").sum().alias("num"),
+                    pl.col("den").sum().alias("den"),
+                ])
+            )
+
+            for row in df_agg.iter_rows(named=True):
+                protocolos_agregados[row["protocolo_id"]] = {
+                    "descricao": row["descricao"] or "",
+                    "secretaria": row["secretaria"] or "",
+                    "num": row["num"] or 0,
+                    "den": row["den"] or 0,
+                }
+
+    logger.info(f"⚡ Seção 2 (Protocolos): {perf_time.perf_counter() - section_start:.3f}s")
+
     # =========================================================================
-    # SEÇÃO 3: RESULTADO DO PROGRAMA (evolução mensal)
-    # Estrutura: {mes: {secretaria: {num, den}}}
+    # SEÇÃO 3: SÉRIE TEMPORAL (struct.field para cada secretaria)
     # =========================================================================
+    section_start = perf_time.perf_counter()
+
     evolucao_mensal: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
         lambda: defaultdict(lambda: {"num": 0, "den": 0})
     )
 
+    if "serie_participantes_percentual_regular" in df.columns:
+        for chave, nome_secretaria in [("geral", "TODOS"), ("smas", "SMAS"), ("sme", "SME"), ("sms", "SMS")]:
+            try:
+                df_serie = (
+                    df.select(
+                        pl.col("serie_participantes_percentual_regular").struct.field(chave).alias("pontos")
+                    )
+                    .explode("pontos")
+                    .filter(pl.col("pontos").is_not_null())
+                )
+
+                if len(df_serie) > 0:
+                    df_serie = df_serie.with_columns([
+                        pl.col("pontos").struct.field("data_referencia_mensal").cast(pl.Utf8).str.slice(0, 7).alias("mes"),
+                        pl.col("pontos").struct.field("indicador_numerador").alias("num"),
+                        pl.col("pontos").struct.field("indicador_denominador").alias("den"),
+                    ])
+
+                    df_agg = df_serie.group_by("mes").agg([
+                        pl.col("num").sum().alias("num"),
+                        pl.col("den").sum().alias("den"),
+                    ])
+
+                    for row in df_agg.iter_rows(named=True):
+                        if row["mes"]:
+                            evolucao_mensal[row["mes"]][nome_secretaria]["num"] = row["num"] or 0
+                            evolucao_mensal[row["mes"]][nome_secretaria]["den"] = row["den"] or 0
+            except Exception:
+                pass  # Secretaria pode não existir na estrutura
+
+    logger.info(f"⚡ Seção 3 (Série Temporal): {perf_time.perf_counter() - section_start:.3f}s")
+
     # =========================================================================
-    # SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA
+    # SEÇÃO 6: TEMPO DE IRREGULARIDADE (explode + agregações)
     # =========================================================================
-    safras_agregadas: Dict[str, Dict[str, int]] = defaultdict(
-        lambda: {"ativos": 0, "inativos": 0}
+    section_start = perf_time.perf_counter()
+
+    tempo_irregular_por_secretaria: Dict[str, List[int]] = defaultdict(list)
+
+    if "indicador_tempo_irregular" in df.columns:
+        df_tempo = (
+            df.select(pl.col("indicador_tempo_irregular"))
+            .explode("indicador_tempo_irregular")
+            .filter(pl.col("indicador_tempo_irregular").is_not_null())
+        )
+
+        if len(df_tempo) > 0:
+            df_tempo = df_tempo.with_columns([
+                pl.col("indicador_tempo_irregular").struct.field("secretaria").str.to_lowercase().alias("secretaria"),
+                pl.col("indicador_tempo_irregular").struct.field("valor_array").alias("valores"),
+            ])
+
+            # Explodir os valores individuais
+            df_valores = (
+                df_tempo
+                .filter(pl.col("secretaria").is_not_null())
+                .explode("valores")
+                .filter(pl.col("valores").is_not_null() & (pl.col("valores") > 0))
+            )
+
+            if len(df_valores) > 0:
+                # Coletar valores por secretaria
+                for row in df_valores.select(["secretaria", "valores"]).iter_rows():
+                    secretaria, valor = row
+                    tempo_irregular_por_secretaria[secretaria].append(valor)
+                    tempo_irregular_por_secretaria["geral"].append(valor)
+
+    logger.info(f"⚡ Seção 6 (Tempo Irregularidade): {perf_time.perf_counter() - section_start:.3f}s")
+
+    # =========================================================================
+    # SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (explode + group_by)
+    # =========================================================================
+    section_start = perf_time.perf_counter()
+
+    resolucao_mensal: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"num": 0, "den": 0})
     )
 
-    # Processar cada linha do DataFrame
-    for row in df.to_dicts():
-        # -----------------------------------------------------------------
-        # 1. Indicadores de Participantes
-        # -----------------------------------------------------------------
-        ind_regular = _parse_json_column(row.get("indicador_participantes_percentual_regular"))
-        if ind_regular:
-            if isinstance(ind_regular, list):
-                ind_regular = ind_regular[0] if ind_regular else {}
-            if isinstance(ind_regular, dict):
-                participantes_regular_num += _safe_int(ind_regular.get("numerador"))
-                participantes_regular_den += _safe_int(ind_regular.get("denominador"))
+    if "serie_resolucao_alertas_percentual" in df.columns:
+        df_resolucao = (
+            df.select(pl.col("serie_resolucao_alertas_percentual"))
+            .explode("serie_resolucao_alertas_percentual")
+            .filter(pl.col("serie_resolucao_alertas_percentual").is_not_null())
+        )
 
-        ind_irregular = _parse_json_column(row.get("indicador_participantes_percentual_irregular"))
-        if ind_irregular:
-            if isinstance(ind_irregular, list):
-                ind_irregular = ind_irregular[0] if ind_irregular else {}
-            if isinstance(ind_irregular, dict):
-                participantes_irregular_num += _safe_int(ind_irregular.get("numerador"))
-                participantes_irregular_den += _safe_int(ind_irregular.get("denominador"))
+        if len(df_resolucao) > 0:
+            df_resolucao = df_resolucao.with_columns([
+                pl.col("serie_resolucao_alertas_percentual").struct.field("secretaria").str.to_lowercase().alias("secretaria"),
+                pl.col("serie_resolucao_alertas_percentual").struct.field("resultado_mensal").alias("resultado_mensal"),
+            ])
 
-        # -----------------------------------------------------------------
-        # 2 & 3. Processar Protocolos
-        # -----------------------------------------------------------------
-        protocolos = _parse_json_column(row.get("indicador_protocolos_percentual_regular"))
-        if not protocolos:
-            continue
+            # Explodir resultado_mensal
+            df_pontos = (
+                df_resolucao
+                .filter(pl.col("secretaria").is_not_null())
+                .explode("resultado_mensal")
+                .filter(pl.col("resultado_mensal").is_not_null())
+            )
 
-        if not isinstance(protocolos, list):
-            protocolos = [protocolos]
+            if len(df_pontos) > 0:
+                df_pontos = df_pontos.with_columns([
+                    pl.col("resultado_mensal").struct.field("data_referencia_mensal").cast(pl.Utf8).str.slice(0, 7).alias("mes"),
+                    pl.col("resultado_mensal").struct.field("indicador_numerador").alias("num"),
+                    pl.col("resultado_mensal").struct.field("indicador_denominador").alias("den"),
+                ])
 
-        for protocolo in protocolos:
-            if not isinstance(protocolo, dict):
-                continue
+                mapa_sec = {"smas": "SMAS", "sme": "SME", "sms": "SMS"}
 
-            protocolo_id = protocolo.get("protocolo_id", "")
-            protocolo_descricao = protocolo.get("protocolo_descricao", "")
-            protocolo_secretaria = protocolo.get("protocolo_secretaria", "")
+                # Agregar por mes + secretaria
+                df_agg = df_pontos.group_by(["mes", "secretaria"]).agg([
+                    pl.col("num").sum().alias("num"),
+                    pl.col("den").sum().alias("den"),
+                ])
 
-            if not protocolo_id:
-                continue
+                for row in df_agg.iter_rows(named=True):
+                    if row["mes"] and row["secretaria"]:
+                        nome_sec = mapa_sec.get(row["secretaria"], row["secretaria"].upper())
+                        resolucao_mensal[row["mes"]][nome_sec]["num"] += row["num"] or 0
+                        resolucao_mensal[row["mes"]][nome_sec]["den"] += row["den"] or 0
+                        resolucao_mensal[row["mes"]]["TODOS"]["num"] += row["num"] or 0
+                        resolucao_mensal[row["mes"]]["TODOS"]["den"] += row["den"] or 0
 
-            # ---------------------------------------------------------
-            # 2. Agregar valor_mais_recente para cards de protocolo
-            # ---------------------------------------------------------
-            valor_recente = protocolo.get("valor_mais_recente")
-            if valor_recente:
-                if isinstance(valor_recente, list):
-                    valor_recente = valor_recente[0] if valor_recente else {}
-                if isinstance(valor_recente, dict):
-                    num = _safe_int(valor_recente.get("indicador_numerador"))
-                    den = _safe_int(valor_recente.get("indicador_denominador"))
-
-                    if protocolo_id not in protocolos_agregados:
-                        protocolos_agregados[protocolo_id] = {
-                            "descricao": protocolo_descricao,
-                            "secretaria": protocolo_secretaria,
-                            "num": 0,
-                            "den": 0,
-                        }
-
-                    protocolos_agregados[protocolo_id]["num"] += num
-                    protocolos_agregados[protocolo_id]["den"] += den
-
-            # ---------------------------------------------------------
-            # 3. Agregar valores_mensais para evolução temporal
-            # ---------------------------------------------------------
-            valores_mensais = protocolo.get("valores_mensais")
-            if valores_mensais:
-                if not isinstance(valores_mensais, list):
-                    valores_mensais = [valores_mensais]
-
-                for ponto in valores_mensais:
-                    if not isinstance(ponto, dict):
-                        continue
-
-                    # Extrair mês (formato "2025-12-01" -> "2025-12")
-                    data_ref = ponto.get("data_referencia_mensal")
-                    if not data_ref:
-                        continue
-
-                    # Normalizar para "YYYY-MM"
-                    if hasattr(data_ref, 'strftime'):
-                        # É um objeto date/datetime
-                        mes = data_ref.strftime("%Y-%m")
-                    else:
-                        # É uma string
-                        data_ref_str = str(data_ref)
-                        mes = data_ref_str[:7] if len(data_ref_str) >= 7 else data_ref_str
-
-                    num = _safe_int(ponto.get("indicador_numerador"))
-                    den = _safe_int(ponto.get("indicador_denominador"))
-
-                    # Agregar por mês e secretaria
-                    evolucao_mensal[mes][protocolo_secretaria]["num"] += num
-                    evolucao_mensal[mes][protocolo_secretaria]["den"] += den
-
-                    # Também agregar para "TODOS"
-                    evolucao_mensal[mes]["TODOS"]["num"] += num
-                    evolucao_mensal[mes]["TODOS"]["den"] += den
-
-        # -----------------------------------------------------------------
-        # 4. Distribuição por Safra
-        # -----------------------------------------------------------------
-        cohort = row.get("pic_cohort")
-        status = row.get("pic_status", "")
-        status_lower = status.lower() if isinstance(status, str) else ""
-        qtd = _safe_int(row.get("indicador_participantes_qtd_total", 1))
-
-        if cohort:
-            # Converter cohort para string no formato YYYY-MM
-            if hasattr(cohort, 'strftime'):
-                # É um objeto date/datetime
-                cohort_str = cohort.strftime("%Y-%m")
-            else:
-                # É uma string
-                cohort_str = str(cohort)[:7]
-
-            if status_lower == "ativo":
-                safras_agregadas[cohort_str]["ativos"] += qtd
-            else:
-                safras_agregadas[cohort_str]["inativos"] += qtd
+    logger.info(f"⚡ Seção 7 (Taxa Resolução): {perf_time.perf_counter() - section_start:.3f}s")
 
     # =========================================================================
     # CALCULAR MÉTRICAS FINAIS
     # =========================================================================
+    section_start = perf_time.perf_counter()
 
     # 1. Indicadores Principais
     total_participantes = participantes_regular_den
     total_regulares = participantes_regular_num
     total_irregulares = participantes_irregular_num
-
     perc_regular = (total_regulares / total_participantes * 100) if total_participantes > 0 else 0.0
     perc_irregular = (total_irregulares / total_participantes * 100) if total_participantes > 0 else 0.0
 
     # 2. Protocolos Individuais
     protocolos_lista: List[ProtocoloIndicador] = []
     for protocolo_id, dados in protocolos_agregados.items():
-        num = dados["num"]
-        den = dados["den"]
+        num, den = dados["num"], dados["den"]
         perc_reg = (num / den * 100) if den > 0 else 0.0
-        perc_irreg = 100 - perc_reg if den > 0 else 0.0
-
         protocolos_lista.append(
             ProtocoloIndicador(
                 protocolo_id=protocolo_id,
@@ -370,33 +466,23 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
                 numerador=num,
                 denominador=den,
                 percentual_regular=round(perc_reg, 1),
-                percentual_irregular=round(perc_irreg, 1),
+                percentual_irregular=round(100 - perc_reg, 1) if den > 0 else 0.0,
             )
         )
-
-    # Ordenar protocolos por secretaria e depois por descrição
     protocolos_lista.sort(key=lambda p: (p.protocolo_secretaria, p.protocolo_descricao))
 
-    # 3. Resultado do Programa (evolução mensal)
+    # 3. Resultado do Programa
     resultado_programa: List[ResultadoProgramaPoint] = []
     for mes in sorted(evolucao_mensal.keys()):
         dados_mes = evolucao_mensal[mes]
-
-        # Calcular percentual por secretaria
-        def calc_perc(secretaria: str) -> float:
-            dados = dados_mes.get(secretaria, {"num": 0, "den": 0})
-            if dados["den"] > 0:
-                return round(dados["num"] / dados["den"] * 100, 1)
-            return 0.0
-
+        def calc_perc(sec: str) -> float:
+            d = dados_mes.get(sec, {"num": 0, "den": 0})
+            return round(d["num"] / d["den"] * 100, 1) if d["den"] > 0 else 0.0
         resultado_programa.append(
             ResultadoProgramaPoint(
-                mes=mes,
-                mes_label=_format_mes_label(mes),
-                todos=calc_perc("TODOS"),
-                saude=calc_perc("SMS"),
-                educacao=calc_perc("SME"),
-                assistencia=calc_perc("SMAS"),
+                mes=mes, mes_label=_format_mes_label(mes),
+                todos=calc_perc("TODOS"), saude=calc_perc("SMS"),
+                educacao=calc_perc("SME"), assistencia=calc_perc("SMAS"),
             )
         )
 
@@ -413,21 +499,72 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
             )
         )
 
+    # 5. Motivos de Saída
+    distribuicao_motivos: List[DistribuicaoMotivoSaida] = [
+        DistribuicaoMotivoSaida(motivo=m, total=t)
+        for m, t in sorted(motivos_saida.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    # 6. Tempo Médio de Irregularidade
+    mapa_labels = {"geral": "Geral", "smas": "Assistência Social", "sme": "Educação", "sms": "Saúde"}
+    tempo_medio_lista: List[TempoMedioIrregularidade] = []
+    for secretaria in ["geral", "smas", "sme", "sms"]:
+        valores = tempo_irregular_por_secretaria.get(secretaria, [])
+        tempo_medio = sum(valores) / len(valores) if valores else 0.0
+        tempo_medio_lista.append(
+            TempoMedioIrregularidade(
+                secretaria=secretaria,
+                secretaria_label=mapa_labels.get(secretaria, secretaria.upper()),
+                tempo_medio_dias=round(tempo_medio, 1),
+                total_irregulares=len(valores),
+            )
+        )
+
+    # 7. Distribuição por Tempo de Irregularidade (histograma)
+    todos_valores = tempo_irregular_por_secretaria.get("geral", [])
+    total_valores = len(todos_valores)
+    faixas_config = [("0-30", "0-30 dias", 0, 30), ("31-60", "31-60 dias", 31, 60),
+                     ("61-90", "61-90 dias", 61, 90), ("90+", "90+ dias", 91, float("inf"))]
+    distribuicao_tempo: List[DistribuicaoTempoIrregularidade] = []
+    for faixa, faixa_label, min_d, max_d in faixas_config:
+        count = sum(1 for v in todos_valores if min_d <= v <= max_d)
+        distribuicao_tempo.append(
+            DistribuicaoTempoIrregularidade(
+                faixa=faixa, faixa_label=faixa_label, count=count,
+                percentual=round(count / total_valores * 100, 1) if total_valores > 0 else 0.0,
+            )
+        )
+
+    # 8. Taxa de Resolução Mensal
+    taxa_resolucao_lista: List[TaxaResolucaoMensalPoint] = []
+    for mes in sorted(resolucao_mensal.keys()):
+        dados_mes = resolucao_mensal[mes]
+        def calc_res(sec: str) -> float:
+            d = dados_mes.get(sec, {"num": 0, "den": 0})
+            return round(d["num"] / d["den"] * 100, 1) if d["den"] > 0 else 0.0
+        taxa_resolucao_lista.append(
+            TaxaResolucaoMensalPoint(
+                mes=mes, mes_label=_format_mes_label(mes),
+                todos=calc_res("TODOS"), saude=calc_res("SMS"),
+                educacao=calc_res("SME"), assistencia=calc_res("SMAS"),
+            )
+        )
+
+    logger.info(f"⚡ Métricas finais: {perf_time.perf_counter() - section_start:.3f}s")
+
     return Dashboard(
-        # Indicadores Principais
         total_participantes=total_participantes,
         total_regulares=total_regulares,
         total_irregulares=total_irregulares,
         percentual_regular=round(perc_regular, 1),
         percentual_irregular=round(perc_irregular, 1),
-        # Protocolos Individuais
         protocolos=protocolos_lista,
-        # Evolução Mensal
         resultado_programa=resultado_programa,
-        # Distribuição por Safra
         distribuicao_por_safra=distribuicao_safra,
-        # Motivos de Saída (não disponível ainda)
-        distribuicao_motivo_saida=[],
+        distribuicao_motivo_saida=distribuicao_motivos,
+        tempo_medio_irregularidade=tempo_medio_lista,
+        distribuicao_tempo_irregularidade=distribuicao_tempo,
+        taxa_resolucao_mensal=taxa_resolucao_lista,
     )
 
 
@@ -443,4 +580,7 @@ def _create_empty_dashboard() -> Dashboard:
         resultado_programa=[],
         distribuicao_por_safra=[],
         distribuicao_motivo_saida=[],
+        tempo_medio_irregularidade=[],
+        distribuicao_tempo_irregularidade=[],
+        taxa_resolucao_mensal=[],
     )

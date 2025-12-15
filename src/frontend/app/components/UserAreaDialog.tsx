@@ -283,7 +283,7 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
                             Saúde
                           </p>
                           {userInfo?.id_ap_list && userInfo.id_ap_list.length > 0 && (
-                             <AccessList label="APs" items={userInfo.id_ap_list} />
+                             <AccessList label="CAPs" items={userInfo.id_ap_list} />
                           )}
                           {userInfo?.id_clinica_familia_list && userInfo.id_clinica_familia_list.length > 0 && (
                              <AccessList label="Clínicas" items={userInfo.id_clinica_familia_list} />

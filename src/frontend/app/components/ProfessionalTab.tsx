@@ -331,12 +331,12 @@ const ProfessionalTabComponent = ({
                       <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Safra</p>
+                      <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
                       <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Status</p>
-                      <Badge variant={selectedParticipant.status === "ativo" ? "success" : "destructive"}>
+                      <Badge variant={selectedParticipant.status?.toLowerCase() === "ativo" ? "success" : "destructive"}>
                         {selectedParticipant.status || "-"}
                       </Badge>
                     </div>

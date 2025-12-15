@@ -142,6 +142,41 @@ class ResultadoProgramaPoint(BaseModel):
     assistencia: float = 0.0  # % completude SMAS
 
 
+class DistribuicaoTempoIrregularidade(BaseModel):
+    """
+    Distribuição de participantes por faixa de tempo de irregularidade.
+    Usado no histograma "Distribuição por Tempo de Irregularidade".
+    """
+    faixa: str  # "0-30", "31-60", "61-90", "90+"
+    faixa_label: str = ""  # "0-30 dias", "31-60 dias", etc.
+    count: int = 0  # Quantidade de participantes na faixa
+    percentual: float = 0.0  # Percentual do total
+
+
+class TempoMedioIrregularidade(BaseModel):
+    """
+    Tempo médio de irregularidade por secretaria.
+    Usado nos cards de tempo médio.
+    """
+    secretaria: str  # "geral", "smas", "sme", "sms"
+    secretaria_label: str = ""  # "Geral", "Assistência Social", "Educação", "Saúde"
+    tempo_medio_dias: float = 0.0  # Tempo médio em dias
+    total_irregulares: int = 0  # Quantidade de participantes irregulares
+
+
+class TaxaResolucaoMensalPoint(BaseModel):
+    """
+    Ponto de taxa de resolução mensal por secretaria.
+    Usado no gráfico de linha "Taxa de Resolução Mensal".
+    """
+    mes: str  # "2025-12", "2025-11", etc.
+    mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
+    todos: float = 0.0  # % resolução geral
+    saude: float = 0.0  # % resolução SMS
+    educacao: float = 0.0  # % resolução SME
+    assistencia: float = 0.0  # % resolução SMAS
+
+
 # ========================================================================
 # DASHBOARD - Cards de Indicadores por Protocolo
 # ========================================================================
@@ -194,14 +229,27 @@ class Dashboard(BaseModel):
     resultado_programa: List[ResultadoProgramaPoint] = []
 
     # =========================================================================
-    # SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA (gráfico de barras) - FUTURO
+    # SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA (gráfico de barras)
     # =========================================================================
     distribuicao_por_safra: List[DistribuicaoSafra] = []
 
     # =========================================================================
-    # SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza) - FUTURO
+    # SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza)
     # =========================================================================
     distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
+
+    # =========================================================================
+    # SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma)
+    # Fonte: indicador_tempo_irregular
+    # =========================================================================
+    tempo_medio_irregularidade: List["TempoMedioIrregularidade"] = []
+    distribuicao_tempo_irregularidade: List["DistribuicaoTempoIrregularidade"] = []
+
+    # =========================================================================
+    # SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)
+    # Fonte: serie_resolucao_alertas_percentual
+    # =========================================================================
+    taxa_resolucao_mensal: List["TaxaResolucaoMensalPoint"] = []
 
     # =========================================================================
     # METADADOS

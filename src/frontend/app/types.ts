@@ -203,6 +203,38 @@ export interface DistribuicaoMotivoSaida {
 }
 
 /**
+ * Distribuição por tempo de irregularidade (histograma)
+ */
+export interface DistribuicaoTempoIrregularidade {
+  faixa: string;           // "0-30", "31-60", "61-90", "90+"
+  faixa_label: string;     // "0-30 dias", "31-60 dias", etc.
+  count: number;           // Quantidade de participantes na faixa
+  percentual: number;      // Percentual do total
+}
+
+/**
+ * Tempo médio de irregularidade por secretaria (cards)
+ */
+export interface TempoMedioIrregularidade {
+  secretaria: string;           // "geral", "smas", "sme", "sms"
+  secretaria_label: string;     // "Geral", "Assistência Social", "Educação", "Saúde"
+  tempo_medio_dias: number;     // Tempo médio em dias
+  total_irregulares: number;    // Quantidade de participantes irregulares
+}
+
+/**
+ * Ponto de taxa de resolução mensal (gráfico de linha)
+ */
+export interface TaxaResolucaoMensalPoint {
+  mes: string;           // "2025-12"
+  mes_label: string;     // "Dez/25"
+  todos: number;         // % resolução geral
+  saude: number;         // % resolução SMS
+  educacao: number;      // % resolução SME
+  assistencia: number;   // % resolução SMAS
+}
+
+/**
  * Modelo principal do Dashboard
  * Todos os valores são calculados no backend e prontos para exibição
  */
@@ -235,6 +267,17 @@ export interface Dashboard {
   // SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza)
   // =========================================================================
   distribuicao_motivo_saida: DistribuicaoMotivoSaida[];
+
+  // =========================================================================
+  // SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma)
+  // =========================================================================
+  tempo_medio_irregularidade: TempoMedioIrregularidade[];
+  distribuicao_tempo_irregularidade: DistribuicaoTempoIrregularidade[];
+
+  // =========================================================================
+  // SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)
+  // =========================================================================
+  taxa_resolucao_mensal: TaxaResolucaoMensalPoint[];
 
   // =========================================================================
   // METADADOS
@@ -286,7 +329,7 @@ export interface DashboardFilters {
   status?: string;
   situacao?: string;
   bypass_cache?: boolean;
-  protocolo_descricao?: string; // Filtro por descrição do protocolo
+  protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
   protocolo_status?: string; // Filtro por status do protocolo
 }
 
@@ -307,7 +350,7 @@ export interface ParticipantFilters {
   situacao?: string;
   search?: string; // CPF or name search
   bypass_cache?: boolean;
-  protocolo_descricao?: string; // Filtro por descrição do protocolo
+  protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
   protocolo_status?: string; // Filtro por status do protocolo
   sort_by?: string; // Coluna para ordenação
   sort_order?: SortOrder; // Direção da ordenação (asc/desc)

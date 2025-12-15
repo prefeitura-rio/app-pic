@@ -12,13 +12,14 @@ import { SmartFilterOptions } from "@/app/types";
  * Mapeados para as colunas da tabela de dashboard pré-agregada
  */
 export interface DashboardFilterValues {
-  grupo?: string;    // pic_grupo
-  cohort?: string;   // pic_cohort (safra)
-  status?: string;   // pic_status
-  bairro?: string;   // bairro
-  cre?: string;      // id_cre
-  ap?: string;       // id_ap
-  cas?: string;      // id_cas
+  grupo?: string;       // pic_grupo
+  cohort?: string;      // pic_cohort (safra)
+  status?: string;      // pic_status
+  secretaria?: string;  // secretaria (SMAS, SME, SMS)
+  bairro?: string;      // bairro
+  cre?: string;         // id_cre
+  ap?: string;          // id_ap
+  cas?: string;         // id_cas
 }
 
 interface DashboardFilterCardProps {
@@ -28,6 +29,13 @@ interface DashboardFilterCardProps {
   onRefresh?: () => void;
   loading?: boolean;
 }
+
+// Opções de secretaria fixas
+const SECRETARIA_OPTIONS = [
+  { id: "SMAS", label: "Assistência Social (SMAS)" },
+  { id: "SME", label: "Educação (SME)" },
+  { id: "SMS", label: "Saúde (SMS)" },
+];
 
 const DashboardFilterCardComponent = ({
   filterOptions,
@@ -51,11 +59,6 @@ const DashboardFilterCardComponent = ({
     onFilterChange({});
   }, [onFilterChange]);
 
-  // Contar filtros ativos
-  const activeFiltersCount = useMemo(() => {
-    return Object.keys(filters).filter(k => filters[k as keyof DashboardFilterValues]).length;
-  }, [filters]);
-
   // Pré-filtrar opções (remover vazios)
   const filteredOptions = useMemo(() => ({
     grupos: (filterOptions.grupos || []).filter((item) => item.id && item.id.trim() !== ""),
@@ -69,29 +72,22 @@ const DashboardFilterCardComponent = ({
 
   return (
     <Card className="relative border-2">
-      <CardHeader className="pb-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <Filter className="h-5 w-5" />
+      <CardHeader className="pb-4 flex flex-row items-center justify-between">
+        <CardTitle className="text-2xl font-bold flex items-center gap-2">
+          <Filter className="h-6 w-6" />
           Filtros
-          {activeFiltersCount > 0 && (
-            <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
-              {activeFiltersCount}
-            </span>
-          )}
         </CardTitle>
         <div className="flex gap-2">
-          {activeFiltersCount > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearFilters}
-              className="h-8 text-xs"
-              disabled={loading}
-            >
-              <X className="h-3 w-3 mr-1" />
-              Limpar
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearFilters}
+            className="h-8 text-xs"
+            disabled={loading}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Limpar Filtros
+          </Button>
           {onRefresh && (
             <Button
               variant="outline"
@@ -106,77 +102,101 @@ const DashboardFilterCardComponent = ({
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Grupo (crianca, gestante) */}
-          <VirtualizedSelect
-            value={filters.grupo || "todos"}
-            onSelect={(v) => handleFilterUpdate("grupo", v)}
-            disabled={loading}
-            placeholder="Grupo"
-            defaultLabel="Todos os Grupos"
-            options={filteredOptions.grupos}
-          />
+      <CardContent className="pt-0 space-y-4">
+        {/* Primeiro Nível - Filtros Principais */}
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Filtros Principais
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Grupo */}
+            <VirtualizedSelect
+              value={filters.grupo || "todos"}
+              onSelect={(v) => handleFilterUpdate("grupo", v)}
+              disabled={loading}
+              placeholder="Grupo"
+              defaultLabel="Todos os Grupos"
+              options={filteredOptions.grupos}
+            />
 
-          {/* Safra/Cohort */}
-          <VirtualizedSelect
-            value={filters.cohort || "todas"}
-            onSelect={(v) => handleFilterUpdate("cohort", v)}
-            disabled={loading}
-            placeholder="Safra"
-            defaultLabel="Todas as Safras"
-            options={filteredOptions.cohorts}
-          />
+            {/* Status */}
+            <VirtualizedSelect
+              value={filters.status || "todos"}
+              onSelect={(v) => handleFilterUpdate("status", v)}
+              disabled={loading}
+              placeholder="Status"
+              defaultLabel="Todos os Status"
+              options={filteredOptions.status_list}
+            />
 
-          {/* Status (ativo, inativo) */}
-          <VirtualizedSelect
-            value={filters.status || "todos"}
-            onSelect={(v) => handleFilterUpdate("status", v)}
-            disabled={loading}
-            placeholder="Status"
-            defaultLabel="Todos os Status"
-            options={filteredOptions.status_list}
-          />
+            {/* Mês de Ingresso */}
+            <VirtualizedSelect
+              value={filters.cohort || "todas"}
+              onSelect={(v) => handleFilterUpdate("cohort", v)}
+              disabled={loading}
+              placeholder="Mês de Ingresso"
+              defaultLabel="Todos os Meses de Ingresso"
+              options={filteredOptions.cohorts}
+            />
 
-          {/* CRE */}
-          <VirtualizedSelect
-            value={filters.cre || "todas"}
-            onSelect={(v) => handleFilterUpdate("cre", v)}
-            disabled={loading}
-            placeholder="CRE"
-            defaultLabel="Todas as CREs"
-            options={filteredOptions.cres}
-          />
+            {/* Secretaria */}
+            <VirtualizedSelect
+              value={filters.secretaria || "todas"}
+              onSelect={(v) => handleFilterUpdate("secretaria", v)}
+              disabled={loading}
+              placeholder="Secretaria"
+              defaultLabel="Todas as Secretarias"
+              options={SECRETARIA_OPTIONS}
+            />
+          </div>
+        </div>
 
-          {/* AP */}
-          <VirtualizedSelect
-            value={filters.ap || "todas"}
-            onSelect={(v) => handleFilterUpdate("ap", v)}
-            disabled={loading}
-            placeholder="AP"
-            defaultLabel="Todas as APs"
-            options={filteredOptions.aps}
-          />
+        {/* Segundo Nível - Filtros Regionais */}
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Filtros Regionais
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Bairro */}
+            <VirtualizedSelect
+              value={filters.bairro || "todos"}
+              onSelect={(v) => handleFilterUpdate("bairro", v)}
+              disabled={loading}
+              placeholder="Bairro"
+              defaultLabel="Todos os Bairros"
+              options={filteredOptions.bairros}
+            />
 
-          {/* CAS */}
-          <VirtualizedSelect
-            value={filters.cas || "todas"}
-            onSelect={(v) => handleFilterUpdate("cas", v)}
-            disabled={loading}
-            placeholder="CAS"
-            defaultLabel="Todas as CAS"
-            options={filteredOptions.cas_list}
-          />
+            {/* CAP (Saúde) */}
+            <VirtualizedSelect
+              value={filters.ap || "todas"}
+              onSelect={(v) => handleFilterUpdate("ap", v)}
+              disabled={loading}
+              placeholder="CAP"
+              defaultLabel="Todas as CAPs"
+              options={filteredOptions.aps}
+            />
 
-          {/* Bairro */}
-          <VirtualizedSelect
-            value={filters.bairro || "todos"}
-            onSelect={(v) => handleFilterUpdate("bairro", v)}
-            disabled={loading}
-            placeholder="Bairro"
-            defaultLabel="Todos os Bairros"
-            options={filteredOptions.bairros}
-          />
+            {/* CRE (Educação) */}
+            <VirtualizedSelect
+              value={filters.cre || "todas"}
+              onSelect={(v) => handleFilterUpdate("cre", v)}
+              disabled={loading}
+              placeholder="CRE"
+              defaultLabel="Todas as CREs"
+              options={filteredOptions.cres}
+            />
+
+            {/* CAS (Assistência Social) */}
+            <VirtualizedSelect
+              value={filters.cas || "todas"}
+              onSelect={(v) => handleFilterUpdate("cas", v)}
+              disabled={loading}
+              placeholder="CAS"
+              defaultLabel="Todas as CAS"
+              options={filteredOptions.cas_list}
+            />
+          </div>
         </div>
       </CardContent>
     </Card>

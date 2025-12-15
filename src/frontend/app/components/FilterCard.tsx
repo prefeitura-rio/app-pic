@@ -3,6 +3,7 @@
 import { memo, useMemo, useCallback, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Filter, X, RefreshCw, Search } from "lucide-react";
@@ -36,6 +37,14 @@ const FilterCardComponent = ({
     onFilterChange({
       ...filters,
       [key]: value,
+    });
+  }, [filters, onFilterChange]);
+
+  // Callback para filtros multi-select (arrays)
+  const handleMultiFilterUpdate = useCallback((key: string, values: string[]) => {
+    onFilterChange({
+      ...filters,
+      [key]: values.length > 0 ? values : undefined,
     });
   }, [filters, onFilterChange]);
 
@@ -161,22 +170,28 @@ const FilterCardComponent = ({
               options={filteredOptions.situacoes}
             />
 
-            {/* Safra */}
+            {/* Mês de Ingresso no Programa */}
             <VirtualizedSelect
               value={(filters as any).safra || "todas"}
               onSelect={(v) => handleFilterUpdate("safra", v)}
               disabled={loading}
-              placeholder="Safra"
-              defaultLabel="Todas as Safras"
+              placeholder="Mês de Ingresso"
+              defaultLabel="Todos os Meses de Ingresso"
               options={filteredOptions.cohorts}
             />
 
-            {/* Protocolo */}
-            <VirtualizedSelect
-              value={(filters as any).protocolo_descricao || "todos"}
-              onSelect={(v) => handleFilterUpdate("protocolo_descricao", v)}
+            {/* Protocolo (Multi-select) */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).protocolo_descricao)
+                  ? (filters as any).protocolo_descricao
+                  : (filters as any).protocolo_descricao
+                    ? [(filters as any).protocolo_descricao]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("protocolo_descricao", values)}
               disabled={loading}
-              placeholder="Protocolo"
+              placeholder="Protocolos"
               defaultLabel="Todos os Protocolos"
               options={filteredOptions.protocolo_descricoes}
               style={{ gridColumn: "span 2" }}
@@ -201,39 +216,7 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* EDUCAÇÃO */}
-            {/* Escolas */}
-            <VirtualizedSelect
-              value={(filters as any).escola || "todas"}
-              onSelect={(v) => handleFilterUpdate("escola", v)}
-              disabled={loading}
-              placeholder="Escola"
-              defaultLabel="Todas as Escolas"
-              options={filteredOptions.escolas}
-              style={{ gridColumn: "span 2" }}
-            />
-
-            {/* CRE (Coordenadoria Regional de Educação) */}
-            <VirtualizedSelect
-              value={(filters as any).cre || "todas"}
-              onSelect={(v) => handleFilterUpdate("cre", v)}
-              disabled={loading}
-              placeholder="CRE"
-              defaultLabel="Todas as CREs"
-              options={filteredOptions.cres}
-            />
-
             {/* ASSISTÊNCIA SOCIAL */}
-            {/* CRAS */}
-            <VirtualizedSelect
-              value={(filters as any).cras || "todas"}
-              onSelect={(v) => handleFilterUpdate("cras", v)}
-              disabled={loading}
-              placeholder="CRAS"
-              defaultLabel="Todos os CRAS"
-              options={filteredOptions.cras}
-            />
-
             {/* CAS */}
             <VirtualizedSelect
               value={(filters as any).cas || "todas"}
@@ -244,24 +227,55 @@ const FilterCardComponent = ({
               options={filteredOptions.cas_list}
             />
 
-            {/* AP (Área Programática) */}
+            {/* CRAS */}
+            <VirtualizedSelect
+              value={(filters as any).cras || "todas"}
+              onSelect={(v) => handleFilterUpdate("cras", v)}
+              disabled={loading}
+              placeholder="CRAS"
+              defaultLabel="Todos os CRAS"
+              options={filteredOptions.cras}
+            />
+
+            {/* EDUCAÇÃO */}
+            {/* CRE (Coordenadoria Regional de Educação) */}
+            <VirtualizedSelect
+              value={(filters as any).cre || "todas"}
+              onSelect={(v) => handleFilterUpdate("cre", v)}
+              disabled={loading}
+              placeholder="CRE"
+              defaultLabel="Todas as CREs"
+              options={filteredOptions.cres}
+            />
+
+            {/* Escolas */}
+            <VirtualizedSelect
+              value={(filters as any).escola || "todas"}
+              onSelect={(v) => handleFilterUpdate("escola", v)}
+              disabled={loading}
+              placeholder="Escola"
+              defaultLabel="Todas as Escolas"
+              options={filteredOptions.escolas}
+            />
+
+            {/* SAÚDE */}
+            {/* CAP (Coordenadoria de Área Programática) */}
             <VirtualizedSelect
               value={(filters as any).ap || "todas"}
               onSelect={(v) => handleFilterUpdate("ap", v)}
               disabled={loading}
-              placeholder="AP"
-              defaultLabel="Todas as APs"
+              placeholder="CAP"
+              defaultLabel="Todas as CAPs"
               options={filteredOptions.aps}
             />
 
-            {/* SAÚDE */}
             {/* Clínicas da Família */}
             <VirtualizedSelect
               value={(filters as any).clinica || "todas"}
               onSelect={(v) => handleFilterUpdate("clinica", v)}
               disabled={loading}
               placeholder="Clínica da Família"
-              defaultLabel="Todas as Clínicas da Família"
+              defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
             />
 
@@ -274,6 +288,7 @@ const FilterCardComponent = ({
               placeholder="Bairro"
               defaultLabel="Todos os Bairros"
               options={filteredOptions.bairros}
+              style={{ gridColumn: "span 2" }}
             />
           </div>
         </div>

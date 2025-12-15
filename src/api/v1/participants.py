@@ -132,6 +132,9 @@ async def get_participants(
         for filter_key, filter_value in filters_dict.items():
             if filter_key in PARTICIPANT_FILTER_COLUMN_MAP:
                 column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
+                # Handle comma-separated values (multi-select from frontend)
+                if isinstance(filter_value, str) and "," in filter_value:
+                    filter_value = [v.strip() for v in filter_value.split(",") if v.strip()]
                 column_filters[column_name] = filter_value
 
         # Validar e mapear coluna de ordenação
