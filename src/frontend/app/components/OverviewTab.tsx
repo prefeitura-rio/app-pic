@@ -317,7 +317,7 @@ const OverviewTabComponent = ({
                         {item.tempo_medio_dias.toFixed(0)} dias
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {item.total_irregulares.toLocaleString("pt-BR")} participantes irregulares
+                        {item.total_irregulares.toLocaleString("pt-BR")} alertas
                       </p>
                     </CardContent>
                   </Card>
