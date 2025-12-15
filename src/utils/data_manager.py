@@ -605,19 +605,23 @@ class DataManager:
     ) -> pl.DataFrame:
         """
         Filtra linhas onde TODOS os campos especificados correspondem no MESMO item do array.
-        TAMBÉM filtra o conteúdo do array para mostrar apenas itens que correspondem.
 
-        Usado para filtros dependentes como protocolo_descricao + protocolo_status,
-        onde ambos devem corresponder ao MESMO protocolo.
+        LÓGICA AND PARA MULTI-SELECT:
+        Quando um campo tem múltiplos valores (ex: descricao=["cadunico", "creche"]),
+        o participante deve ter um match para CADA valor (AND), não apenas para algum (OR).
+
+        Exemplo: descricao=["cadunico", "creche"] + status="irregular"
+        → Mostra participantes que têm AMBOS:
+          - cadunico com status irregular
+          - creche com status irregular
 
         Args:
             df: DataFrame completo
             array_col: Nome da coluna contendo arrays de structs (ex: "protocolo_listagem")
             field_filters: Dict de {campo: [valores]} a serem filtrados conjuntamente
-                Ex: {"descricao": ["cadunico"], "protocolo_status_label": ["atenção"]}
 
         Returns:
-            DataFrame filtrado com array também filtrado
+            DataFrame filtrado
         """
         if not field_filters:
             return df
@@ -643,41 +647,80 @@ class DataManager:
             logger.error(f"❌ Array column '{array_col}' not found in DataFrame")
             return df
 
-        # Estratégia: explode, filtrar, reagrupar
+        # Identificar o campo principal (com múltiplos valores) - geralmente 'descricao'
+        # Os outros campos são aplicados como filtro adicional
+        multi_value_field = None
+        multi_values = []
+        single_value_filters = {}
+
+        for field, values in normalized_filters.items():
+            if len(values) > 1 and multi_value_field is None:
+                # Primeiro campo com múltiplos valores é o principal
+                multi_value_field = field
+                multi_values = values
+            else:
+                single_value_filters[field] = values
+
         # 1. Adicionar índice temporário
         df_with_idx = df.with_row_index("_temp_idx")
 
-        # 2. Guardar todas as colunas exceto a do array para join depois
-        other_cols = [c for c in df_with_idx.columns if c != array_col]
-
-        # 3. Explodir a coluna de array (cada item do array vira uma linha)
+        # 2. Explodir a coluna de array
         df_exploded = df_with_idx.explode(array_col)
 
         if df_exploded.is_empty():
             logger.warning(f"⚠️ Exploded DataFrame is empty for column '{array_col}'")
             return df.head(0)
 
-        # 4. Construir expressão combinada (AND de todos os campos)
-        combined_expr = pl.lit(True)
-        for field, values in normalized_filters.items():
-            field_expr = pl.col(array_col).struct.field(field)
-            combined_expr = combined_expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(values)
+        # Se não há campo multi-valor, usar lógica simples (OR)
+        if multi_value_field is None:
+            # Construir expressão combinada simples
+            combined_expr = pl.lit(True)
+            for field, values in normalized_filters.items():
+                field_expr = pl.col(array_col).struct.field(field)
+                combined_expr = combined_expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(values)
 
-        # 5. Filtrar itens do array que correspondem
-        df_filtered_items = df_exploded.filter(combined_expr)
+            df_filtered_items = df_exploded.filter(combined_expr)
 
-        if df_filtered_items.is_empty():
-            logger.info(f"📊 Combined array filter matched 0 rows")
-            return df.head(0)
+            if df_filtered_items.is_empty():
+                logger.info(f"📊 Combined array filter matched 0 rows")
+                return df.head(0)
 
-        # 6. Pegar índices únicos que deram match
-        matching_idx = df_filtered_items.select("_temp_idx").unique()
+            matching_idx = df_filtered_items.select("_temp_idx").unique()
+        else:
+            # LÓGICA AND: Para cada valor do campo multi-valor, verificar se existe match
+            # O participante só é incluído se TODOS os valores tiverem match
+            matching_idx_sets = []
+
+            for value in multi_values:
+                # Construir expressão: campo_principal = value E outros_campos
+                expr = pl.col(array_col).struct.field(multi_value_field).cast(pl.Utf8).str.to_lowercase() == value
+
+                for field, values in single_value_filters.items():
+                    field_expr = pl.col(array_col).struct.field(field)
+                    expr = expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(values)
+
+                # Pegar índices que têm match para este valor específico
+                matched = df_exploded.filter(expr).select("_temp_idx").unique()
+                matching_idx_sets.append(set(matched["_temp_idx"].to_list()))
+
+            # Interseção de todos os conjuntos (AND)
+            if matching_idx_sets:
+                final_idx_set = matching_idx_sets[0]
+                for idx_set in matching_idx_sets[1:]:
+                    final_idx_set = final_idx_set.intersection(idx_set)
+
+                if not final_idx_set:
+                    logger.info(f"📊 Combined array filter (AND) matched 0 rows")
+                    return df.head(0)
+
+                matching_idx = pl.DataFrame({"_temp_idx": list(final_idx_set)})
+            else:
+                logger.info(f"📊 Combined array filter matched 0 rows (no values)")
+                return df.head(0)
 
         logger.info(f"📊 Combined array filter matched {matching_idx.height} unique rows")
 
-        # 7. Filtrar df original pelos índices que deram match
-        # IMPORTANTE: Mantemos o array ORIGINAL (não filtrado) para que os detalhes
-        # mostrem todos os protocolos do participante
+        # Filtrar df original pelos índices que deram match
         result = df_with_idx.filter(
             pl.col("_temp_idx").is_in(matching_idx["_temp_idx"])
         ).drop("_temp_idx")
