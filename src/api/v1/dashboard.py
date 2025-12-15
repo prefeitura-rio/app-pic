@@ -36,9 +36,9 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "cohorts": {"column": "pic_cohort"},
     "status_list": {"column": "pic_status"},
     "bairros": {"column": "bairro"},
-    "cres": {"column": "id_cre"},
-    "aps": {"column": "id_ap"},
-    "cas_list": {"column": "id_cas"},
+    "cres": {"column": "id_cre", "label_column": "nome_cre"},
+    "aps": {"column": "id_ap", "label_column": "nome_ap"},
+    "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
 }
 
 # Mapeamento de mês numérico para label
