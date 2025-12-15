@@ -129,13 +129,13 @@ const DashboardFilterCardComponent = ({
               options={filteredOptions.status_list}
             />
 
-            {/* Mês de Egresso */}
+            {/* Mês de Ingresso */}
             <VirtualizedSelect
               value={filters.cohort || "todas"}
               onSelect={(v) => handleFilterUpdate("cohort", v)}
               disabled={loading}
-              placeholder="Mês de Egresso"
-              defaultLabel="Todos os Meses de Egresso"
+              placeholder="Mês de Ingresso"
+              defaultLabel="Todos os Meses de Ingresso"
               options={filteredOptions.cohorts}
             />
 

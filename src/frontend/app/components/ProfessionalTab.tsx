@@ -331,7 +331,7 @@ const ProfessionalTabComponent = ({
                       <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Mês de Egresso no Programa</p>
+                      <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
                       <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
                     </div>
                     <div>
