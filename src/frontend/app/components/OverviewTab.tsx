@@ -231,20 +231,13 @@ const OverviewTabComponent = ({
                 <YAxis label={{ value: '% Completude', angle: -90, position: 'insideLeft' }} />
                 <Tooltip />
                 <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="todos"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  name="Todos os Protocolos"
-                />
-                {showSMS && (
+                {showSMAS && (
                   <Line
                     type="monotone"
-                    dataKey="saude"
-                    stroke="#ef4444"
+                    dataKey="assistencia"
+                    stroke="#10b981"
                     strokeWidth={2}
-                    name="Protocolos da Saúde"
+                    name="Protocolos da Assistência"
                   />
                 )}
                 {showSME && (
@@ -256,15 +249,22 @@ const OverviewTabComponent = ({
                     name="Protocolos da Educação"
                   />
                 )}
-                {showSMAS && (
+                {showSMS && (
                   <Line
                     type="monotone"
-                    dataKey="assistencia"
-                    stroke="#10b981"
+                    dataKey="saude"
+                    stroke="#ef4444"
                     strokeWidth={2}
-                    name="Protocolos da Assistência"
+                    name="Protocolos da Saúde"
                   />
                 )}
+                <Line
+                  type="monotone"
+                  dataKey="todos"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  name="Todos os Protocolos"
+                />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -424,10 +424,10 @@ const OverviewTabComponent = ({
                           return (
                             <div className="bg-background border rounded-lg p-3 shadow-lg">
                               <p className="font-semibold mb-2">Mês: {d.mes_label}</p>
-                              <p className="text-sm" style={{ color: '#8b5cf6' }}>Geral: {d.todos.toFixed(1)}%</p>
-                              {showSMS && <p className="text-sm" style={{ color: '#ef4444' }}>Saúde: {d.saude.toFixed(1)}%</p>}
-                              {showSME && <p className="text-sm" style={{ color: '#f59e0b' }}>Educação: {d.educacao.toFixed(1)}%</p>}
                               {showSMAS && <p className="text-sm" style={{ color: '#10b981' }}>Assistência: {d.assistencia.toFixed(1)}%</p>}
+                              {showSME && <p className="text-sm" style={{ color: '#f59e0b' }}>Educação: {d.educacao.toFixed(1)}%</p>}
+                              {showSMS && <p className="text-sm" style={{ color: '#ef4444' }}>Saúde: {d.saude.toFixed(1)}%</p>}
+                              <p className="text-sm" style={{ color: '#8b5cf6' }}>Geral: {d.todos.toFixed(1)}%</p>
                             </div>
                           );
                         }
@@ -435,16 +435,16 @@ const OverviewTabComponent = ({
                       }}
                     />
                     <Legend />
-                    <Line type="monotone" dataKey="todos" stroke="#8b5cf6" strokeWidth={2} name="Taxa Geral" />
-                    {showSMS && (
-                      <Line type="monotone" dataKey="saude" stroke="#ef4444" strokeWidth={2} name="Saúde" />
+                    {showSMAS && (
+                      <Line type="monotone" dataKey="assistencia" stroke="#10b981" strokeWidth={2} name="Assistência" />
                     )}
                     {showSME && (
                       <Line type="monotone" dataKey="educacao" stroke="#f59e0b" strokeWidth={2} name="Educação" />
                     )}
-                    {showSMAS && (
-                      <Line type="monotone" dataKey="assistencia" stroke="#10b981" strokeWidth={2} name="Assistência" />
+                    {showSMS && (
+                      <Line type="monotone" dataKey="saude" stroke="#ef4444" strokeWidth={2} name="Saúde" />
                     )}
+                    <Line type="monotone" dataKey="todos" stroke="#8b5cf6" strokeWidth={2} name="Taxa Geral" />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
