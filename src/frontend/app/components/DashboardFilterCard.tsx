@@ -169,17 +169,7 @@ const DashboardFilterCardComponent = ({
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             Filtros Regionais
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Bairro */}
-            <VirtualizedSelect
-              value={filters.bairro || "todos"}
-              onSelect={(v) => handleFilterUpdate("bairro", v)}
-              disabled={loading}
-              placeholder="Bairro"
-              defaultLabel="Todos os Bairros"
-              options={filteredOptions.bairros}
-            />
-
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {/* CAP (Saúde) */}
             <VirtualizedSelect
               value={filters.ap || "todas"}

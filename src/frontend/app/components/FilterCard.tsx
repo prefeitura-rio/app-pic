@@ -278,18 +278,6 @@ const FilterCardComponent = ({
               defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
             />
-
-            {/* LOCALIZAÇÃO */}
-            {/* Bairro */}
-            <VirtualizedSelect
-              value={(filters as any).bairro || "todos"}
-              onSelect={(v) => handleFilterUpdate("bairro", v)}
-              disabled={loading}
-              placeholder="Bairro"
-              defaultLabel="Todos os Bairros"
-              options={filteredOptions.bairros}
-              style={{ gridColumn: "span 2" }}
-            />
           </div>
         </div>
 
