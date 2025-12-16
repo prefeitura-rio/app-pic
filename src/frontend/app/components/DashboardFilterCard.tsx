@@ -37,6 +37,17 @@ const SECRETARIA_OPTIONS = [
   { id: "SMS", label: "Saúde (SMS)" },
 ];
 
+// Função para formatar labels de grupo
+const formatGrupoLabel = (id: string): string => {
+  const mapping: Record<string, string> = {
+    "criancas_com_bolsa_familia": "Crianças com Bolsa Família",
+    "criancas_sem_bolsa_familia": "Crianças sem Bolsa Família",
+    "gravidas_com_bolsa_familia": "Grávidas com Bolsa Família",
+    "gravidas_sem_bolsa_familia": "Grávidas sem Bolsa Família",
+  };
+  return mapping[id] || id;
+};
+
 const DashboardFilterCardComponent = ({
   filterOptions,
   filters,
@@ -59,9 +70,11 @@ const DashboardFilterCardComponent = ({
     onFilterChange({});
   }, [onFilterChange]);
 
-  // Pré-filtrar opções (remover vazios)
+  // Pré-filtrar opções (remover vazios) e formatar labels
   const filteredOptions = useMemo(() => ({
-    grupos: (filterOptions.grupos || []).filter((item) => item.id && item.id.trim() !== ""),
+    grupos: (filterOptions.grupos || [])
+      .filter((item) => item.id && item.id.trim() !== "")
+      .map((item) => ({ ...item, label: formatGrupoLabel(item.id) })),
     cohorts: (filterOptions.cohorts || []).filter((item) => item.id && item.id.trim() !== ""),
     status_list: (filterOptions.status_list || []).filter((item) => item.id && item.id.trim() !== ""),
     bairros: (filterOptions.bairros || []).filter((item) => item.id && item.id.trim() !== ""),
