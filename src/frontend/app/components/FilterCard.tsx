@@ -216,6 +216,17 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Bairro */}
+            <VirtualizedSelect
+              show={true}
+              value={(filters as any).bairro || "todos"}
+              onSelect={(v) => handleFilterUpdate("bairro", v)}
+              disabled={loading}
+              placeholder="Bairro"
+              defaultLabel="Todos os Bairros"
+              options={filteredOptions.bairros}
+            />
+
             {/* ASSISTÊNCIA SOCIAL */}
             {/* CAS */}
             <VirtualizedSelect
