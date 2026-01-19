@@ -330,9 +330,9 @@ export function UserForm({
             />
 
             {/* SAÚDE */}
-            {/* CAP (Coordenadoria de Área Programática) */}
+            {/* AP (Área Programática) */}
             <VirtualizedIdMultiSelect
-              label="CAP (Coordenadoria de Área Programática)"
+              label="AP ( Área Programática)"
               options={availableIds.aps}
               selected={selectedAps}
               onChange={setSelectedAps}

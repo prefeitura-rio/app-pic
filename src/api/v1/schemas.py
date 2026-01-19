@@ -35,7 +35,7 @@ class SortParams(BaseModel):
 class CommonFilters(BaseModel):
     bairro: Optional[str] = None
     cre: Optional[str] = None
-    ap: Optional[str] = None  # AP (Área Programática) - NOVO, substitui CAP
+    ap: Optional[str] = None  # AP (Área Programática)
     cas: Optional[str] = None  # CAS (Centro de Atenção à Saúde)
     cras: Optional[str] = None
     escola: Optional[str] = None
@@ -366,8 +366,8 @@ class Participante(BaseModel):
     nome_cre: Optional[str] = None
 
     # Equipamentos - SMS
-    id_ap: Optional[str] = None  # NOVO (substitui CAP)
-    nome_ap: Optional[str] = None  # NOVO (substitui CAP)
+    id_ap: Optional[str] = None
+    nome_ap: Optional[str] = None
     id_clinica_familia: Optional[str] = None
     nome_clinica_familia: Optional[str] = None
 

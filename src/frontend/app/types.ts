@@ -98,8 +98,8 @@ export interface Participante {
   nome_cre?: string;
 
   // Equipamentos - SMS
-  id_ap?: string; // NOVO (substitui CAP)
-  nome_ap?: string; // NOVO (substitui CAP)
+  id_ap?: string; 
+  nome_ap?: string; 
   id_clinica_familia?: string;
   nome_clinica_familia?: string;
 
@@ -319,7 +319,7 @@ export interface FiltroRegional {
 export interface DashboardFilters {
   bairro?: string;
   cre?: string;
-  ap?: string; // RENOMEADO de cap (AP substitui CAP)
+  ap?: string;
   cas?: string;
   cras?: string;
   escola?: string;
@@ -339,7 +339,7 @@ export interface DashboardFilters {
 export interface ParticipantFilters {
   bairro?: string;
   cre?: string;
-  ap?: string; // RENOMEADO de cap (AP substitui CAP)
+  ap?: string; 
   cas?: string;
   cras?: string;
   escola?: string;
@@ -433,7 +433,7 @@ export interface UserAccessRecord {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; // RENOMEADO de id_cap_list (AP substitui CAP)
+  id_ap_list?: IdWithName[] | null; 
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 
@@ -460,7 +460,7 @@ export interface CreateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; // RENOMEADO de id_cap_list (AP substitui CAP)
+  id_ap_list?: IdWithName[] | null; 
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 
@@ -482,7 +482,7 @@ export interface UpdateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; // RENOMEADO de id_cap_list (AP substitui CAP)
+  id_ap_list?: IdWithName[] | null; 
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { StatCard } from "./StatCard";
 import { Baby, Heart, Activity, BookOpen, Home, AlertTriangle, Users, BarChart3, LineChart } from "lucide-react";
-import { Individual, bairros, unidadesPorBairro, coordenadoriasCAP, coordenadoriasCRE, coordenadoriasCRAS } from "@/lib/csvLoader";
+import { Individual, bairros, unidadesPorBairro, coordenadoriasAP, coordenadoriasCRE, coordenadoriasCRAS } from "@/lib/csvLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,7 +15,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
   const [filtro, setFiltro] = useState<"todos" | "criancas" | "gestantes">("todos");
   const [graficoTipo, setGraficoTipo] = useState<"barras" | "linhas">("barras");
   const [selectedBairro, setSelectedBairro] = useState<string>("todos");
-  const [selectedCAP, setSelectedCAP] = useState<string>("todas");
+  const [selectedAP, setselectedAP] = useState<string>("todas");
   const [selectedCRE, setSelectedCRE] = useState<string>("todas");
   const [selectedCRAS, setSelectedCRAS] = useState<string>("todas");
   const [selectedCohort, setSelectedCohort] = useState<string>("todas");
@@ -32,10 +32,10 @@ export function OverviewTab({ data }: OverviewTabProps) {
     const filteredByRegion = data.filter(d => {
       if (d.status !== "ativo") return false;
       
-      // Filtro por CAP (Saúde)
-      if (selectedCAP !== "todas") {
-        const bairrosCAP = coordenadoriasCAP[selectedCAP] || [];
-        if (!bairrosCAP.includes(d.bairro)) return false;
+      // Filtro por AP (Saúde)
+      if (selectedAP !== "todas") {
+        const bairrosAP = coordenadoriasAP[selectedAP] || [];
+        if (!bairrosAP.includes(d.bairro)) return false;
       }
       
       // Filtro por CRE (Educação)
@@ -358,7 +358,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
       taxaResolucaoMensal,
       evolucaoTempoMedio
     };
-  }, [data, filtro, selectedBairro, selectedCAP, selectedCRE, selectedCRAS, selectedCohort, cohorts]);
+  }, [data, filtro, selectedBairro, selectedAP, selectedCRE, selectedCRAS, selectedCohort, cohorts]);
 
   return (
     <div className="space-y-8">
@@ -431,14 +431,14 @@ export function OverviewTab({ data }: OverviewTabProps) {
                 </SelectContent>
               </Select>
 
-              <Select value={selectedCAP} onValueChange={setSelectedCAP}>
+              <Select value={selectedAP} onValueChange={setselectedAP}>
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="CAP" />
+                  <SelectValue placeholder="AP" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  <SelectItem value="todas">Todas as CAP</SelectItem>
-                  {Object.keys(coordenadoriasCAP).map(cap => (
-                    <SelectItem key={cap} value={cap}>{cap}</SelectItem>
+                  <SelectItem value="todas">Todas as AP</SelectItem>
+                  {Object.keys(coordenadoriasAP).map(ap => (
+                    <SelectItem key={ap} value={ap}>{ap}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
