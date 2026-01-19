@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
  * OAuth2 Callback Handler for Keycloak/RMI
  *
  * This endpoint receives the authorization code from Keycloak and exchanges it for tokens.
- * Based on the working implementation from superapp.
+ * Based on the working implementation from app-pic.
  */
 export async function GET(req: NextRequest) {
   try {
