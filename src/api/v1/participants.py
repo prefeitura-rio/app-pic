@@ -45,7 +45,7 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "aps": {
         "column": "id_ap",
         "label_column": "nome_ap",
-    },  # ATUALIZADO: caps → aps, CAP → AP
+    },
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},
@@ -134,7 +134,9 @@ async def get_participants(
                 column_name = PARTICIPANT_FILTER_COLUMN_MAP[filter_key]
                 # Handle comma-separated values (multi-select from frontend)
                 if isinstance(filter_value, str) and "," in filter_value:
-                    filter_value = [v.strip() for v in filter_value.split(",") if v.strip()]
+                    filter_value = [
+                        v.strip() for v in filter_value.split(",") if v.strip()
+                    ]
                 column_filters[column_name] = filter_value
 
         # Validar e mapear coluna de ordenação

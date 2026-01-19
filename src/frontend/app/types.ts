@@ -140,7 +140,7 @@ export interface SmartFilterOptions {
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
   cres: FilterOptionItem[];
-  aps: FilterOptionItem[]; // RENOMEADO de caps (AP substitui CAP)
+  aps: FilterOptionItem[]; 
   cas_list: FilterOptionItem[];
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
@@ -412,7 +412,7 @@ export interface AvailableIds {
   cras: IdWithName[];
   escolas: IdWithName[];
   cres: IdWithName[];
-  aps: IdWithName[]; // RENOMEADO de caps (AP substitui CAP)
+  aps: IdWithName[]; 
   cas: IdWithName[];
   clinicas: IdWithName[];
 }

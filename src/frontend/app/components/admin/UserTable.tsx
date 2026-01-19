@@ -60,7 +60,7 @@ const UserTableComponent = ({
       counts.push(`${user.id_cre_list.length} CREs`);
     }
     if (user.id_ap_list?.length) {
-      counts.push(`${user.id_ap_list.length} CAPs`);
+      counts.push(`${user.id_ap_list.length} APs`);
     }
     if (user.id_cas_list?.length) {
       counts.push(`${user.id_cas_list.length} CAS`);

@@ -89,7 +89,7 @@ class SmartFilterOptions(BaseModel):
     status_list: List[FilterOptionItem] = []
     situacoes: List[FilterOptionItem] = []
     cres: List[FilterOptionItem] = []
-    aps: List[FilterOptionItem] = []  # RENOMEADO de caps (AP substitui CAP)
+    aps: List[FilterOptionItem] = []
     cas_list: List[FilterOptionItem] = []
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
@@ -134,6 +134,7 @@ class ResultadoProgramaPoint(BaseModel):
     Ponto de evolução temporal do programa por dimensão.
     Usado no gráfico de linha "Resultado do Programa".
     """
+
     mes: str  # "2025-12", "2025-11", etc.
     mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
     todos: float = 0.0  # % completude geral (todos protocolos)
@@ -147,6 +148,7 @@ class DistribuicaoTempoIrregularidade(BaseModel):
     Distribuição de participantes por faixa de tempo de irregularidade.
     Usado no histograma "Distribuição por Tempo de Irregularidade".
     """
+
     faixa: str  # "0-30", "31-60", "61-90", "90+"
     faixa_label: str = ""  # "0-30 dias", "31-60 dias", etc.
     count: int = 0  # Quantidade de participantes na faixa
@@ -158,6 +160,7 @@ class TempoMedioIrregularidade(BaseModel):
     Tempo médio de irregularidade por secretaria.
     Usado nos cards de tempo médio.
     """
+
     secretaria: str  # "geral", "smas", "sme", "sms"
     secretaria_label: str = ""  # "Geral", "Assistência Social", "Educação", "Saúde"
     tempo_medio_dias: float = 0.0  # Tempo médio em dias
@@ -169,6 +172,7 @@ class TaxaResolucaoMensalPoint(BaseModel):
     Ponto de taxa de resolução mensal por secretaria.
     Usado no gráfico de linha "Taxa de Resolução Mensal".
     """
+
     mes: str  # "2025-12", "2025-11", etc.
     mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
     todos: float = 0.0  # % resolução geral
@@ -187,6 +191,7 @@ class ProtocoloIndicador(BaseModel):
     Card de indicador individual de um protocolo.
     Calculado a partir de `valor_mais_recente` do BigQuery.
     """
+
     protocolo_id: str  # "sms_vacinacao_pentavalente"
     protocolo_descricao: str  # "Vacinação Pentavalente"
     protocolo_secretaria: str  # "SMS", "SME", "SMAS"
@@ -279,6 +284,7 @@ class FiltroEquipamento(BaseModel):
 
 class ProtocoloListagemItem(BaseModel):
     """Item individual da lista de protocolos do participante"""
+
     id: Optional[str] = None
     secretaria: Optional[str] = None
     descricao: Optional[str] = None
@@ -310,28 +316,36 @@ class Participante(BaseModel):
 
     # Protocolos - Contadores gerais
     total_protocolos: Optional[int] = None
-    total_protocolos_irregular: Optional[int] = None  # RENOMEADO de total_protocolos_violados
+    total_protocolos_irregular: Optional[int] = (
+        None  # RENOMEADO de total_protocolos_violados
+    )
     total_protocolos_atencao: Optional[int] = None  # NOVO
     total_protocolos_regular: Optional[int] = None  # NOVO
     total_fracao: Optional[str] = None
 
     # Protocolos - Assistência Social
     assistencia_protocolos_total: Optional[int] = None
-    assistencia_protocolos_irregular: Optional[int] = None  # RENOMEADO de assistencia_protocolos_violados
+    assistencia_protocolos_irregular: Optional[int] = (
+        None  # RENOMEADO de assistencia_protocolos_violados
+    )
     assistencia_protocolos_atencao: Optional[int] = None  # NOVO
     assistencia_protocolos_regular: Optional[int] = None  # NOVO
     assistencia_fracao: Optional[str] = None
 
     # Protocolos - Educação
     educacao_protocolos_total: Optional[int] = None
-    educacao_protocolos_irregular: Optional[int] = None  # RENOMEADO de educacao_protocolos_violados
+    educacao_protocolos_irregular: Optional[int] = (
+        None  # RENOMEADO de educacao_protocolos_violados
+    )
     educacao_protocolos_atencao: Optional[int] = None  # NOVO
     educacao_protocolos_regular: Optional[int] = None  # NOVO
     educacao_fracao: Optional[str] = None
 
     # Protocolos - Saúde
     saude_protocolos_total: Optional[int] = None
-    saude_protocolos_irregular: Optional[int] = None  # RENOMEADO de saude_protocolos_violados
+    saude_protocolos_irregular: Optional[int] = (
+        None  # RENOMEADO de saude_protocolos_violados
+    )
     saude_protocolos_atencao: Optional[int] = None  # NOVO
     saude_protocolos_regular: Optional[int] = None  # NOVO
     saude_fracao: Optional[str] = None
