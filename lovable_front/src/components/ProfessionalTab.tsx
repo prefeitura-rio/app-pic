@@ -388,7 +388,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
                 <SelectValue placeholder="AP (Saúde)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas as APs</SelectItem>
+                <SelectItem value="todas">Todas as CAPs</SelectItem>
                 {Object.keys(coordenadoriasAP).map(ap => (
                   <SelectItem key={ap} value={ap}>{ap}</SelectItem>
                 ))}
@@ -412,7 +412,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
                 <SelectValue placeholder="CRAS (Assistência)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todos os CAS</SelectItem>
+                <SelectItem value="todas">Todos as CAS</SelectItem>
                 {Object.keys(coordenadoriasCRAS).map(cras => (
                   <SelectItem key={cras} value={cras}>{cras}</SelectItem>
                 ))}

@@ -234,7 +234,7 @@ const FilterCardComponent = ({
               onSelect={(v) => handleFilterUpdate("cas", v)}
               disabled={loading}
               placeholder="CAS"
-              defaultLabel="Todos os CAS"
+              defaultLabel="Todos as CAS"
               options={filteredOptions.cas_list}
             />
 
@@ -275,8 +275,8 @@ const FilterCardComponent = ({
               value={(filters as any).ap || "todas"}
               onSelect={(v) => handleFilterUpdate("ap", v)}
               disabled={loading}
-              placeholder="AP"
-              defaultLabel="Todas as APs"
+              placeholder="CAP"
+              defaultLabel="Todas as CAPs"
               options={filteredOptions.aps}
             />
 
