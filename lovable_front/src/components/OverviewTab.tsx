@@ -460,7 +460,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
                   <SelectValue placeholder="CAS" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  <SelectItem value="todas">Todas as CAS</SelectItem>
+                  <SelectItem value="todas">Todos os CAS</SelectItem>
                   {Object.keys(coordenadoriasCRAS).map(cras => (
                     <SelectItem key={cras} value={cras}>{cras}</SelectItem>
                   ))}
