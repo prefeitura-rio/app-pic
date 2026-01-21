@@ -4,7 +4,7 @@ import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import { Button } from "@/app/components/ui/button";
-import { Filter, X, RefreshCw } from "lucide-react";
+import { Filter, X, RefreshCw, Download } from "lucide-react";
 import { SmartFilterOptions } from "@/app/types";
 
 /**
@@ -27,6 +27,7 @@ interface DashboardFilterCardProps {
   filters: DashboardFilterValues;
   onFilterChange: (filters: DashboardFilterValues) => void;
   onRefresh?: () => void;
+  onDownload?: () => void;
   loading?: boolean;
 }
 
@@ -53,6 +54,7 @@ const DashboardFilterCardComponent = ({
   filters,
   onFilterChange,
   onRefresh,
+  onDownload,
   loading = false,
 }: DashboardFilterCardProps) => {
 
@@ -91,6 +93,18 @@ const DashboardFilterCardComponent = ({
           Filtros
         </CardTitle>
         <div className="flex gap-2">
+          {onDownload && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDownload}
+              className="h-8 text-xs"
+              disabled={loading}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Baixar JSON
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
