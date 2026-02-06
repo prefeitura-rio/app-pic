@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,24 @@ export function UserForm({
 }: UserFormProps) {
   const isEditMode = !!user;
   const canEditSuperAdmin = currentUser.is_super_admin;
+
+  // Filter available IDs based on current user permissions
+  // Super admin sees all, segmented admin only sees their own IDs
+  const filteredAvailableIds = useMemo(() => {
+    if (currentUser.is_super_admin) {
+      return availableIds;
+    }
+
+    // Segmented admin: only show IDs they can assign (their own IDs)
+    return {
+      cras: currentUser.id_cras_list || [],
+      escolas: currentUser.id_escola_list || [],
+      cres: currentUser.id_cre_list || [],
+      aps: currentUser.id_ap_list || [],
+      cas: currentUser.id_cas_list || [],
+      clinicas: currentUser.id_clinica_familia_list || [],
+    };
+  }, [availableIds, currentUser]);
 
   // Form state
   const [cpf, setCpf] = useState("");
@@ -291,7 +309,7 @@ export function UserForm({
             {/* CAS */}
             <VirtualizedIdMultiSelect
               label="CAS (Centros de Assistência Social)"
-              options={availableIds.cas}
+              options={filteredAvailableIds.cas}
               selected={selectedCas}
               onChange={setSelectedCas}
               disabled={isLoading}
@@ -301,7 +319,7 @@ export function UserForm({
             {/* CRAS */}
             <VirtualizedIdMultiSelect
               label="CRAS"
-              options={availableIds.cras}
+              options={filteredAvailableIds.cras}
               selected={selectedCras}
               onChange={setSelectedCras}
               disabled={isLoading}
@@ -312,7 +330,7 @@ export function UserForm({
             {/* CRE (Coordenadoria Regional de Educação) */}
             <VirtualizedIdMultiSelect
               label="CRE (Coordenadoria Regional de Educação)"
-              options={availableIds.cres}
+              options={filteredAvailableIds.cres}
               selected={selectedCres}
               onChange={setSelectedCres}
               disabled={isLoading}
@@ -322,7 +340,7 @@ export function UserForm({
             {/* Escolas */}
             <VirtualizedIdMultiSelect
               label="Escolas"
-              options={availableIds.escolas}
+              options={filteredAvailableIds.escolas}
               selected={selectedEscolas}
               onChange={setSelectedEscolas}
               disabled={isLoading}
@@ -333,7 +351,7 @@ export function UserForm({
             {/* CAP (Coordenadoria de Área Programática) */}
             <VirtualizedIdMultiSelect
               label="CAP (Coordenadoria de Área Programática)"
-              options={availableIds.aps}
+              options={filteredAvailableIds.aps}
               selected={selectedAps}
               onChange={setSelectedAps}
               disabled={isLoading}
@@ -343,7 +361,7 @@ export function UserForm({
             {/* Clínicas da Família */}
             <VirtualizedIdMultiSelect
               label="Clínicas da Família"
-              options={availableIds.clinicas}
+              options={filteredAvailableIds.clinicas}
               selected={selectedClinicas}
               onChange={setSelectedClinicas}
               disabled={isLoading}

@@ -490,3 +490,108 @@ export interface UpdateUserRequest {
   active?: boolean | null;
   is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
 }
+
+// ============================================================================
+// BATCH IMPORT TYPES
+// ============================================================================
+
+/**
+ * Error for a specific row during batch import
+ */
+export interface BatchImportError {
+  row: number;
+  cpf?: string | null;
+  error: string;
+}
+
+/**
+ * Imported user with status
+ */
+export interface ImportedUser {
+  cpf: string;
+  nome?: string | null;
+  email?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  status: 'new' | 'exists' | 'error';
+  error_message?: string | null;
+}
+
+/**
+ * Result of batch import operation
+ */
+export interface BatchImportResult {
+  total: number;
+  imported: number;
+  skipped: number;
+  errors: BatchImportError[];
+  imported_users: ImportedUser[];
+}
+
+/**
+ * User data for batch permissions update
+ */
+export interface BatchUserData {
+  cpf: string;
+  nome?: string | null;
+  email?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+}
+
+/**
+ * Request for batch permissions update
+ */
+export interface BatchPermissionsRequest {
+  users: BatchUserData[];
+  is_admin?: boolean;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+}
+
+/**
+ * Error for a specific CPF during batch permissions update
+ */
+export interface BatchPermissionsError {
+  cpf: string;
+  error: string;
+}
+
+/**
+ * Result of batch permissions operation
+ */
+export interface BatchPermissionsResult {
+  total: number;
+  updated: number;
+  errors: BatchPermissionsError[];
+}
+
+/**
+ * Request to undo batch permissions
+ */
+export interface UndoBatchRequest {
+  cpfs: string[];
+}
+
+/**
+ * Imported user with local edits (for frontend state)
+ * Extends ImportedUser but adds 'done' status for post-permission assignment
+ */
+export interface ImportedUserWithEdits {
+  cpf: string;
+  nome?: string | null;
+  email?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  status: 'new' | 'exists' | 'error' | 'done';
+  error_message?: string | null;
+  edited?: {
+    nome?: string;
+    ocupacao?: string;
+    secretaria?: string;
+  };
+}

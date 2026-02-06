@@ -9,10 +9,11 @@ import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest } 
 import { UserTable } from "@/app/components/admin/UserTable";
 import { UserForm } from "@/app/components/admin/UserForm";
 import { UserTableSkeleton } from "@/app/components/admin/UserTableSkeleton";
+import { ImportTab } from "@/app/components/admin/ImportTab";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { AlertCircle, Users, UserCog, Search, X, RefreshCw, Filter } from "lucide-react";
+import { AlertCircle, Users, UserCog, Search, X, RefreshCw, Filter, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
@@ -21,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export default function AdminPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"users" | "form">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "form" | "import">("users");
   const [editingUser, setEditingUser] = useState<UserAccessRecord | null>(null);
 
   // Pagination state
@@ -312,7 +313,7 @@ export default function AdminPage() {
       <Tabs
         value={activeTab}
         onValueChange={(value) => {
-          setActiveTab(value as "users" | "form");
+          setActiveTab(value as "users" | "form" | "import");
           // Limpar estado de edição quando voltar para tab de usuários
           if (value === "users") {
             setEditingUser(null);
@@ -320,20 +321,27 @@ export default function AdminPage() {
         }}
         className="w-full"
       >
-        <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted rounded-md">
+        <TabsList className="inline-flex h-11 items-center justify-center rounded-lg bg-muted p-1 mb-8">
           <TabsTrigger
             value="users"
-            className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
           >
             <Users className="h-4 w-4 mr-2" />
-            Usuários
+            Usuarios
           </TabsTrigger>
           <TabsTrigger
             value="form"
-            className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
           >
             <UserCog className="h-4 w-4 mr-2" />
-            {editingUser ? "Editar Usuário" : "Novo Usuário"}
+            {editingUser ? "Editar Usuario" : "Novo Usuario"}
+          </TabsTrigger>
+          <TabsTrigger
+            value="import"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Importar
           </TabsTrigger>
         </TabsList>
 
@@ -521,6 +529,14 @@ export default function AdminPage() {
             onCancel={handleCancel}
             isLoading={upsertUserMutation.isPending}
             error={upsertUserMutation.error?.message}
+          />
+        </TabsContent>
+
+        {/* Import Tab */}
+        <TabsContent value="import" className="space-y-6">
+          <ImportTab
+            availableIds={availableIds}
+            currentUser={currentUser}
           />
         </TabsContent>
       </Tabs>

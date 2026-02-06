@@ -7,6 +7,10 @@ import {
   AvailableIds,
   UserAccessRecord,
   CreateUserRequest,
+  BatchImportResult,
+  BatchPermissionsRequest,
+  BatchPermissionsResult,
+  UndoBatchRequest,
 } from "../types";
 import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
@@ -354,5 +358,85 @@ export const apiService = {
 
     // Handle other responses
     await handleResponse<void>(res, fetchFn);
+  },
+
+  // ========================================================================
+  // BATCH IMPORT ENDPOINTS
+  // ========================================================================
+
+  /**
+   * Import users in batch from CSV or XLSX file
+   * Requires admin permission
+   *
+   * @param file - CSV or XLSX file
+   * @returns Batch import result with list of processed users
+   */
+  async batchImportUsers(file: File): Promise<BatchImportResult> {
+    const url = `${BASE_URL}/api/v1/admin/users/batch`;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+
+    const res = await fetchFn();
+
+    return handleResponse<BatchImportResult>(res, fetchFn);
+  },
+
+  /**
+   * Update permissions for multiple users in batch
+   * Requires admin permission
+   *
+   * @param request - Batch permissions request
+   * @returns Batch permissions result
+   */
+  async batchUpdatePermissions(
+    request: BatchPermissionsRequest
+  ): Promise<BatchPermissionsResult> {
+    const url = `${BASE_URL}/api/v1/admin/users/batch-permissions`;
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+    const res = await fetchFn();
+
+    return handleResponse<BatchPermissionsResult>(res, fetchFn);
+  },
+
+  /**
+   * Undo batch permissions (remove all IDs from users)
+   * Requires admin permission
+   *
+   * @param request - Undo batch request with list of CPFs
+   * @returns Batch permissions result
+   */
+  async undoBatchPermissions(
+    request: UndoBatchRequest
+  ): Promise<BatchPermissionsResult> {
+    const url = `${BASE_URL}/api/v1/admin/users/batch-permissions/undo`;
+
+    const fetchFn = () =>
+      fetch(url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+    const res = await fetchFn();
+
+    return handleResponse<BatchPermissionsResult>(res, fetchFn);
   },
 };
