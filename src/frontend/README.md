@@ -142,7 +142,7 @@ NextAuth v5 tinha problemas com validação de nonce do Keycloak. Implementamos 
 │         ▼                                                        │
 │  Redirect to Keycloak:                                          │
 │  https://auth-idriohom.../auth                                  │
-│    ?client_id=superapp                                          │
+│    ?client_id=app-pic                                          │
 │    &redirect_uri=http://localhost:3000/api/auth/callback/rmi   │
 │    &response_type=code                                          │
 │    &scope=openid+profile+email                                  │
@@ -496,7 +496,7 @@ useQuery({
 NEXTAUTH_URL=http://localhost:3000
 
 # RMI OAuth2 Configuration (Keycloak) - all server-side
-RMI_CLIENT_ID=superapp
+RMI_CLIENT_ID=app-pic
 RMI_CLIENT_SECRET=your-client-secret-here
 RMI_ISSUER=https://auth-idriohom.apps.rio.gov.br/auth/realms/idrio_cidadao
 

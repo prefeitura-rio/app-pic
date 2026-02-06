@@ -91,19 +91,41 @@ export async function POST(
   const params = await context.params;
   const path = params.path.join("/");
   const targetUrl = `${API_URL}/${path}`;
-  const body = await request.json();
 
+  // Check if this is a file upload (multipart/form-data)
+  const contentType = request.headers.get("content-type") || "";
+  const isMultipart = contentType.includes("multipart/form-data");
 
   try {
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
+    let response: Response;
+
+    if (isMultipart) {
+      // Handle file upload - forward the FormData as-is
+      const formData = await request.formData();
+
+      response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Don't set Content-Type for multipart - fetch will set it with boundary
+        },
+        body: formData,
+        cache: "no-store",
+      });
+    } else {
+      // Handle JSON request
+      const body = await request.json();
+
+      response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      });
+    }
 
     const data = await response.json();
 

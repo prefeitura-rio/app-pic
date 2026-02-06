@@ -52,7 +52,7 @@ export function UserFormDialog({
   const [selectedCras, setSelectedCras] = useState<IdWithName[]>([]);
   const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>([]);
   const [selectedCres, setSelectedCres] = useState<IdWithName[]>([]);
-  const [selectedAps, setSelectedCaps] = useState<IdWithName[]>([]);
+  const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
 
@@ -67,7 +67,7 @@ export function UserFormDialog({
       setSelectedCras(user.id_cras_list || []);
       setSelectedEscolas(user.id_escola_list || []);
       setSelectedCres(user.id_cre_list || []);
-      setSelectedCaps(user.id_ap_list || []);
+      setSelectedAps(user.id_ap_list || []);
       setSelectedCas(user.id_cas_list || []);
       setSelectedClinicas(user.id_clinica_familia_list || []);
     } else {
@@ -79,7 +79,7 @@ export function UserFormDialog({
       setSelectedCras([]);
       setSelectedEscolas([]);
       setSelectedCres([]);
-      setSelectedCaps([]);
+      setSelectedAps([]);
       setSelectedCas([]);
       setSelectedClinicas([]);
     }
@@ -273,10 +273,10 @@ export function UserFormDialog({
               />
 
               <VirtualizedIdMultiSelect
-                label="CAP (Coordenadorias de Área Programática)"
+                label="CAPs (Coordenadoria de Área Programática)"
                 options={availableIds.aps}
                 selected={selectedAps}
-                onChange={setSelectedCaps}
+                onChange={setSelectedAps}
                 disabled={isLoading}
               />
 

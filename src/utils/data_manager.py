@@ -35,7 +35,8 @@ class CachedDataset:
     - Polars DataFrame principal
     - Filter options pré-computadas
     """
-    __slots__ = ['df', 'filter_options_cache']
+
+    __slots__ = ["df", "filter_options_cache"]
 
     def __init__(
         self,
@@ -100,6 +101,7 @@ class DataManager:
 
         # Polars: converter para JSON string via to_dicts() + json.dumps()
         import json
+
         return json.dumps(df.to_dicts())
 
     @staticmethod
@@ -124,7 +126,7 @@ class DataManager:
 
         Pipeline:
             1. GET DATASET: Busca do cache/BigQuery (~0.2s em cache hit)
-            2. APPLY FILTERS: Aplica filtros case-insensitive (~0.05s)
+            2. APPLY FILTERS: Aplica filtras CASe-insensitive (~0.05s)
             3. APPLY SEARCH: Busca parcial em múltiplas colunas (~0.02s)
             4. CALCULATE FILTER OPTIONS: Valores únicos para cascata (~0.5s)
             5. PAGINATE: Slice + clean (~0.01s)
@@ -246,7 +248,9 @@ class DataManager:
         # 3.5. APPLY SORTING (ANTES da paginação!)
         if sort_by and sort_by in df_filtered.columns:
             sort_start = time.perf_counter()
-            df_filtered = df_filtered.sort(sort_by, descending=sort_descending, nulls_last=True)
+            df_filtered = df_filtered.sort(
+                sort_by, descending=sort_descending, nulls_last=True
+            )
             sort_time = time.perf_counter() - sort_start
             logger.info(
                 f"📊 Sort applied: {sort_by} {'DESC' if sort_descending else 'ASC'} in {sort_time:.3f}s"
@@ -261,17 +265,22 @@ class DataManager:
 
             # OTIMIZAÇÃO: Se temos filter options pré-computadas E não há filtros ativos,
             # retornar diretamente (instant!)
-            active_filter_count = len([
-                v for v in filters_dict.values()
-                if v and str(v) not in config.FILTER_IGNORE_VALUES
-            ])
+            active_filter_count = len(
+                [
+                    v
+                    for v in filters_dict.values()
+                    if v and str(v) not in config.FILTER_IGNORE_VALUES
+                ]
+            )
 
             if precomputed_filter_options and active_filter_count == 0:
                 # Converter dict para SmartFilterOptions (instant)
-                filter_options_dict = SmartFilterOptions(**{
-                    k: [FilterOptionItem(**opt) for opt in v]
-                    for k, v in precomputed_filter_options.items()
-                })
+                filter_options_dict = SmartFilterOptions(
+                    **{
+                        k: [FilterOptionItem(**opt) for opt in v]
+                        for k, v in precomputed_filter_options.items()
+                    }
+                )
                 logger.info("⚡ Using precomputed filter options (instant)")
             else:
                 # Fallback: calcular dinamicamente (quando há filtros ativos)
@@ -404,9 +413,7 @@ class DataManager:
                 )
                 return raw_data.df, True, raw_data.filter_options_cache
             elif isinstance(raw_data, pl.DataFrame):
-                logger.info(
-                    f"✅ Cache HIT (Polars DataFrame) - {cache_time:.3f}s"
-                )
+                logger.info(f"✅ Cache HIT (Polars DataFrame) - {cache_time:.3f}s")
                 return raw_data, True, None
             else:
                 # Fallback: cache antigo (dict/list) - converter para Polars DataFrame
@@ -437,9 +444,7 @@ class DataManager:
                     df, filter_columns_config
                 )
                 precompute_time = time.perf_counter() - precompute_start
-                logger.info(
-                    f"📊 Precomputed filter options: {precompute_time:.3f}s"
-                )
+                logger.info(f"📊 Precomputed filter options: {precompute_time:.3f}s")
 
             # 5. Criar CachedDataset otimizado
             cached_dataset = CachedDataset(
@@ -451,9 +456,7 @@ class DataManager:
             cache_write_start = time.perf_counter()
             query_cache.set(query, cached_dataset)
             cache_write_time = time.perf_counter() - cache_write_start
-            logger.info(
-                f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s"
-            )
+            logger.info(f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s")
 
             total_time = time.perf_counter() - start_time
             logger.info(
@@ -520,10 +523,9 @@ class DataManager:
             for value in unique_values:
                 value_str = str(value).strip()
                 if value_str:
-                    options.append({
-                        "id": value_str,
-                        "label": str(label_map.get(value, value))
-                    })
+                    options.append(
+                        {"id": value_str, "label": str(label_map.get(value, value))}
+                    )
 
             options.sort(key=lambda x: x["label"])
             result[result_key] = options
@@ -580,8 +582,7 @@ class DataManager:
         # 3. Extrair o campo do struct e filtrar
         field_expr = pl.col(array_col).struct.field(field_name)
         matching_idx = (
-            df_exploded
-            .filter(
+            df_exploded.filter(
                 field_expr.cast(pl.Utf8).str.to_lowercase().is_in(normalized_values)
             )
             .select("_temp_idx")
@@ -638,9 +639,7 @@ class DataManager:
         if not normalized_filters:
             return df
 
-        logger.info(
-            f"🔗 Combined array filter on '{array_col}': {normalized_filters}"
-        )
+        logger.info(f"🔗 Combined array filter on '{array_col}': {normalized_filters}")
 
         # Verificar se a coluna existe
         if array_col not in df.columns:
@@ -677,7 +676,9 @@ class DataManager:
             combined_expr = pl.lit(True)
             for field, values in normalized_filters.items():
                 field_expr = pl.col(array_col).struct.field(field)
-                combined_expr = combined_expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(values)
+                combined_expr = combined_expr & field_expr.cast(
+                    pl.Utf8
+                ).str.to_lowercase().is_in(values)
 
             df_filtered_items = df_exploded.filter(combined_expr)
 
@@ -693,11 +694,19 @@ class DataManager:
 
             for value in multi_values:
                 # Construir expressão: campo_principal = value E outros_campos
-                expr = pl.col(array_col).struct.field(multi_value_field).cast(pl.Utf8).str.to_lowercase() == value
+                expr = (
+                    pl.col(array_col)
+                    .struct.field(multi_value_field)
+                    .cast(pl.Utf8)
+                    .str.to_lowercase()
+                    == value
+                )
 
                 for field, values in single_value_filters.items():
                     field_expr = pl.col(array_col).struct.field(field)
-                    expr = expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(values)
+                    expr = expr & field_expr.cast(pl.Utf8).str.to_lowercase().is_in(
+                        values
+                    )
 
                 # Pegar índices que têm match para este valor específico
                 matched = df_exploded.filter(expr).select("_temp_idx").unique()
@@ -718,7 +727,9 @@ class DataManager:
                 logger.info(f"📊 Combined array filter matched 0 rows (no values)")
                 return df.head(0)
 
-        logger.info(f"📊 Combined array filter matched {matching_idx.height} unique rows")
+        logger.info(
+            f"📊 Combined array filter matched {matching_idx.height} unique rows"
+        )
 
         # Filtrar df original pelos índices que deram match
         result = df_with_idx.filter(
@@ -730,7 +741,7 @@ class DataManager:
     @staticmethod
     def apply_filters(df: pl.DataFrame, filters_dict: Dict[str, Any]) -> pl.DataFrame:
         """
-        Aplica filtros case-insensitive ao Polars DataFrame.
+        Aplica filtras CASe-insensitive ao Polars DataFrame.
 
         OTIMIZAÇÃO V2: Usa Polars que é muito mais rápido que Pandas.
 
@@ -786,7 +797,9 @@ class DataManager:
             filter_start = time.perf_counter()
 
             if array_col not in df.columns:
-                logger.warning(f"Array filter column '{array_col}' not found in DataFrame")
+                logger.warning(
+                    f"Array filter column '{array_col}' not found in DataFrame"
+                )
                 continue
 
             before_filter = len(df)
@@ -815,9 +828,7 @@ class DataManager:
             before_filter = df.filter(filter_expr).height
 
             # Normalizar valores de filtro (apenas lowercase - sem remover acentos)
-            normalized_filter_values = [
-                str(v).lower().strip() for v in filter_value
-            ]
+            normalized_filter_values = [str(v).lower().strip() for v in filter_value]
 
             # Polars: filtro case-insensitive nativo (muito rápido)
             col_expr = pl.col(col).cast(pl.Utf8).str.to_lowercase()
@@ -893,7 +904,9 @@ class DataManager:
         return df_searched
 
     @staticmethod
-    def _extract_unique_from_array_polars(df: pl.DataFrame, array_col: str, field_name: str) -> set:
+    def _extract_unique_from_array_polars(
+        df: pl.DataFrame, array_col: str, field_name: str
+    ) -> set:
         """
         Extrai valores únicos de um campo específico dentro de uma coluna de arrays (POLARS).
 
@@ -918,8 +931,9 @@ class DataManager:
 
         # Extrair campo do struct e pegar valores únicos (operação vetorizada)
         unique_values = (
-            df_exploded
-            .select(pl.col(array_col).struct.field(field_name).cast(pl.Utf8).alias("value"))
+            df_exploded.select(
+                pl.col(array_col).struct.field(field_name).cast(pl.Utf8).alias("value")
+            )
             .drop_nulls()
             .unique()
             .get_column("value")
@@ -929,7 +943,9 @@ class DataManager:
         # Filtrar valores vazios e converter para set
         result = {v.strip() for v in unique_values if v and v.strip()}
 
-        logger.info(f"Extracted {len(result)} unique values from {array_col}.{field_name}")
+        logger.info(
+            f"Extracted {len(result)} unique values from {array_col}.{field_name}"
+        )
         return result
 
     @staticmethod
@@ -973,7 +989,12 @@ class DataManager:
                 continue
             if values:
                 normalized_values = [str(v).lower().strip() for v in values]
-                field_expr = pl.col(array_col).struct.field(field).cast(pl.Utf8).str.to_lowercase()
+                field_expr = (
+                    pl.col(array_col)
+                    .struct.field(field)
+                    .cast(pl.Utf8)
+                    .str.to_lowercase()
+                )
                 filter_expr = filter_expr & field_expr.is_in(normalized_values)
 
         df_filtered = df_exploded.filter(filter_expr)
@@ -983,8 +1004,9 @@ class DataManager:
 
         # Extrair valores únicos do campo desejado
         unique_values = (
-            df_filtered
-            .select(pl.col(array_col).struct.field(field_name).cast(pl.Utf8).alias("value"))
+            df_filtered.select(
+                pl.col(array_col).struct.field(field_name).cast(pl.Utf8).alias("value")
+            )
             .drop_nulls()
             .unique()
             .get_column("value")
@@ -1016,7 +1038,9 @@ class DataManager:
             return SmartFilterOptions()
 
         # Usar df já filtrado se disponível, senão usar original
-        df_base_filtered = df_already_filtered if df_already_filtered is not None else df_original
+        df_base_filtered = (
+            df_already_filtered if df_already_filtered is not None else df_original
+        )
 
         # Identificar quais filtros estão ativos
         active_scalar_filters: Dict[str, list] = {}
@@ -1027,7 +1051,13 @@ class DataManager:
                 continue
 
             values = v if isinstance(v, list) else [v]
-            values = [val for val in values if val and str(val).strip() and str(val) not in config.FILTER_IGNORE_VALUES]
+            values = [
+                val
+                for val in values
+                if val
+                and str(val).strip()
+                and str(val) not in config.FILTER_IGNORE_VALUES
+            ]
             if not values:
                 continue
 
@@ -1062,7 +1092,9 @@ class DataManager:
                 for filter_col, filter_vals in active_scalar_filters.items():
                     if filter_col != column:
                         normalized = [str(v).lower().strip() for v in filter_vals]
-                        filter_expr = filter_expr & pl.col(filter_col).cast(pl.Utf8).str.to_lowercase().is_in(normalized)
+                        filter_expr = filter_expr & pl.col(filter_col).cast(
+                            pl.Utf8
+                        ).str.to_lowercase().is_in(normalized)
 
                 df_filtered = df_original.filter(filter_expr)
 
@@ -1076,13 +1108,18 @@ class DataManager:
             elif is_array_filter and array_field:
                 # Verificar se este campo de array tem filtro ativo
                 array_col_for_filter = column  # ex: "protocolo_listagem"
-                if array_col_for_filter in active_array_filters and array_field in active_array_filters[array_col_for_filter]:
+                if (
+                    array_col_for_filter in active_array_filters
+                    and array_field in active_array_filters[array_col_for_filter]
+                ):
                     # Precisa recalcular excluindo este campo do filtro de array
                     # Primeiro aplicar todos os filtros escalares
                     filter_expr = pl.lit(True)
                     for filter_col, filter_vals in active_scalar_filters.items():
                         normalized = [str(v).lower().strip() for v in filter_vals]
-                        filter_expr = filter_expr & pl.col(filter_col).cast(pl.Utf8).str.to_lowercase().is_in(normalized)
+                        filter_expr = filter_expr & pl.col(filter_col).cast(
+                            pl.Utf8
+                        ).str.to_lowercase().is_in(normalized)
 
                     df_filtered = df_original.filter(filter_expr)
 
@@ -1093,14 +1130,22 @@ class DataManager:
 
                         if arr_col == array_col_for_filter:
                             # Excluir o campo atual
-                            other_filters = {f: v for f, v in field_filters.items() if f != array_field}
+                            other_filters = {
+                                f: v
+                                for f, v in field_filters.items()
+                                if f != array_field
+                            }
                             if other_filters:
-                                df_filtered = DataManager._filter_array_column_combined_polars(
-                                    df_filtered, arr_col, other_filters
+                                df_filtered = (
+                                    DataManager._filter_array_column_combined_polars(
+                                        df_filtered, arr_col, other_filters
+                                    )
                                 )
                         else:
-                            df_filtered = DataManager._filter_array_column_combined_polars(
-                                df_filtered, arr_col, field_filters
+                            df_filtered = (
+                                DataManager._filter_array_column_combined_polars(
+                                    df_filtered, arr_col, field_filters
+                                )
                             )
                 else:
                     # Nenhum filtro ativo neste campo - usar DataFrame já filtrado
@@ -1116,12 +1161,14 @@ class DataManager:
                 if array_col_name in active_array_filters:
                     # Usar função que aplica filtros nos itens do array (cascata)
                     # Exclui o próprio campo para manter suas opções
-                    unique_values = DataManager._extract_unique_from_array_with_filter_polars(
-                        df_filtered,
-                        array_col_name,
-                        array_field,
-                        filter_fields=active_array_filters[array_col_name],
-                        exclude_field=array_field,  # Excluir próprio campo
+                    unique_values = (
+                        DataManager._extract_unique_from_array_with_filter_polars(
+                            df_filtered,
+                            array_col_name,
+                            array_field,
+                            filter_fields=active_array_filters[array_col_name],
+                            exclude_field=array_field,  # Excluir próprio campo
+                        )
                     )
                 else:
                     # Sem filtros de array ativos - extrair normalmente

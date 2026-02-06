@@ -4,7 +4,7 @@ import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import { Button } from "@/app/components/ui/button";
-import { Filter, X, RefreshCw } from "lucide-react";
+import { Filter, X, RefreshCw, Download } from "lucide-react";
 import { SmartFilterOptions } from "@/app/types";
 
 /**
@@ -27,6 +27,7 @@ interface DashboardFilterCardProps {
   filters: DashboardFilterValues;
   onFilterChange: (filters: DashboardFilterValues) => void;
   onRefresh?: () => void;
+  onDownload?: () => void;
   loading?: boolean;
 }
 
@@ -37,11 +38,23 @@ const SECRETARIA_OPTIONS = [
   { id: "SMS", label: "Saúde (SMS)" },
 ];
 
+// Função para formatar labels de grupo
+const formatGrupoLabel = (id: string): string => {
+  const mapping: Record<string, string> = {
+    "criancas_com_bolsa_familia": "Crianças com Bolsa Família",
+    "criancas_sem_bolsa_familia": "Crianças sem Bolsa Família",
+    "gravidas_com_bolsa_familia": "Grávidas com Bolsa Família",
+    "gravidas_sem_bolsa_familia": "Grávidas sem Bolsa Família",
+  };
+  return mapping[id] || id;
+};
+
 const DashboardFilterCardComponent = ({
   filterOptions,
   filters,
   onFilterChange,
   onRefresh,
+  onDownload,
   loading = false,
 }: DashboardFilterCardProps) => {
 
@@ -59,9 +72,11 @@ const DashboardFilterCardComponent = ({
     onFilterChange({});
   }, [onFilterChange]);
 
-  // Pré-filtrar opções (remover vazios)
+  // Pré-filtrar opções (remover vazios) e formatar labels
   const filteredOptions = useMemo(() => ({
-    grupos: (filterOptions.grupos || []).filter((item) => item.id && item.id.trim() !== ""),
+    grupos: (filterOptions.grupos || [])
+      .filter((item) => item.id && item.id.trim() !== "")
+      .map((item) => ({ ...item, label: formatGrupoLabel(item.id) })),
     cohorts: (filterOptions.cohorts || []).filter((item) => item.id && item.id.trim() !== ""),
     status_list: (filterOptions.status_list || []).filter((item) => item.id && item.id.trim() !== ""),
     bairros: (filterOptions.bairros || []).filter((item) => item.id && item.id.trim() !== ""),
@@ -78,6 +93,18 @@ const DashboardFilterCardComponent = ({
           Filtros
         </CardTitle>
         <div className="flex gap-2">
+          {onDownload && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDownload}
+              className="h-8 text-xs"
+              disabled={loading}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Baixar JSON
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -157,8 +184,9 @@ const DashboardFilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Bairro */}
+            {/* Bairro - oculto por padrão */}
             <VirtualizedSelect
+              show={true}
               value={filters.bairro || "todos"}
               onSelect={(v) => handleFilterUpdate("bairro", v)}
               disabled={loading}
@@ -167,12 +195,12 @@ const DashboardFilterCardComponent = ({
               options={filteredOptions.bairros}
             />
 
-            {/* CAP (Saúde) */}
+            {/* AP (Saúde) */}
             <VirtualizedSelect
               value={filters.ap || "todas"}
               onSelect={(v) => handleFilterUpdate("ap", v)}
               disabled={loading}
-              placeholder="CAP"
+              placeholder="AP"
               defaultLabel="Todas as CAPs"
               options={filteredOptions.aps}
             />
@@ -193,7 +221,7 @@ const DashboardFilterCardComponent = ({
               onSelect={(v) => handleFilterUpdate("cas", v)}
               disabled={loading}
               placeholder="CAS"
-              defaultLabel="Todas as CAS"
+              defaultLabel="Todos as CAS"
               options={filteredOptions.cas_list}
             />
           </div>

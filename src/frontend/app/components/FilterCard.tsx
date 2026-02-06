@@ -216,6 +216,17 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Bairro */}
+            <VirtualizedSelect
+              show={true}
+              value={(filters as any).bairro || "todos"}
+              onSelect={(v) => handleFilterUpdate("bairro", v)}
+              disabled={loading}
+              placeholder="Bairro"
+              defaultLabel="Todos os Bairros"
+              options={filteredOptions.bairros}
+            />
+
             {/* ASSISTÊNCIA SOCIAL */}
             {/* CAS */}
             <VirtualizedSelect
@@ -223,7 +234,7 @@ const FilterCardComponent = ({
               onSelect={(v) => handleFilterUpdate("cas", v)}
               disabled={loading}
               placeholder="CAS"
-              defaultLabel="Todas as CAS"
+              defaultLabel="Todos as CAS"
               options={filteredOptions.cas_list}
             />
 
@@ -259,7 +270,7 @@ const FilterCardComponent = ({
             />
 
             {/* SAÚDE */}
-            {/* CAP (Coordenadoria de Área Programática) */}
+            {/* AP (Área Programática) */}
             <VirtualizedSelect
               value={(filters as any).ap || "todas"}
               onSelect={(v) => handleFilterUpdate("ap", v)}
@@ -277,18 +288,6 @@ const FilterCardComponent = ({
               placeholder="Clínica da Família"
               defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
-            />
-
-            {/* LOCALIZAÇÃO */}
-            {/* Bairro */}
-            <VirtualizedSelect
-              value={(filters as any).bairro || "todos"}
-              onSelect={(v) => handleFilterUpdate("bairro", v)}
-              disabled={loading}
-              placeholder="Bairro"
-              defaultLabel="Todos os Bairros"
-              options={filteredOptions.bairros}
-              style={{ gridColumn: "span 2" }}
             />
           </div>
         </div>

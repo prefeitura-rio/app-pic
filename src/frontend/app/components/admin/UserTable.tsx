@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Edit2, Power, CheckCircle, XCircle, Shield, Crown, ChevronLeft, ChevronRight, Users } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -13,6 +14,7 @@ interface UserTableProps {
   users: UserAccessRecord[];
   availableIds: AvailableIds;
   currentUserCpf: string; // CPF do usuário logado
+  currentUserIsSuperAdmin: boolean; // Se o usuário logado é super admin
   meta: PaginationMeta; // Metadados de paginação do backend
   onEdit: (user: UserAccessRecord) => void;
   onToggleActive: (cpf: string, currentActive: boolean) => void;
@@ -20,12 +22,15 @@ interface UserTableProps {
   isToggling: boolean;
   isLoading?: boolean;
   pageSize?: number;
+  selectedCpfs?: Set<string>; // CPFs selecionados para ações em batch
+  onToggleSelect?: (cpf: string) => void; // Callback para toggle de seleção
 }
 
 const UserTableComponent = ({
   users,
   availableIds,
   currentUserCpf,
+  currentUserIsSuperAdmin,
   meta,
   onEdit,
   onToggleActive,
@@ -33,6 +38,8 @@ const UserTableComponent = ({
   isToggling,
   isLoading = false,
   pageSize = 100,
+  selectedCpfs = new Set(),
+  onToggleSelect,
 }: UserTableProps) => {
   const headerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -60,7 +67,7 @@ const UserTableComponent = ({
       counts.push(`${user.id_cre_list.length} CREs`);
     }
     if (user.id_ap_list?.length) {
-      counts.push(`${user.id_ap_list.length} CAPs`);
+      counts.push(`${user.id_ap_list.length} APs`);
     }
     if (user.id_cas_list?.length) {
       counts.push(`${user.id_cas_list.length} CAS`);
@@ -73,7 +80,7 @@ const UserTableComponent = ({
   };
 
   // Largura mínima total da tabela
-  const minTableWidth = 1150;
+  const minTableWidth = 1195;
 
   if (users.length === 0) {
     return (
@@ -114,6 +121,10 @@ const UserTableComponent = ({
               className="flex items-center bg-muted/50 border-b font-medium text-sm text-muted-foreground h-11"
               style={{ minWidth: minTableWidth }}
             >
+              {onToggleSelect && (
+                <div style={{ width: 40, minWidth: 40 }} className="px-2 text-center" />
+              )}
+              <div style={{ width: 45, minWidth: 45 }} className="px-2 text-center text-muted-foreground/70">#</div>
               <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2">CPF</div>
               <div style={{ flex: '1.5 1 0%', minWidth: 140 }} className="px-2">Nome</div>
               <div style={{ flex: '1.3 1 0%', minWidth: 150 }} className="px-2">Email</div>
@@ -134,12 +145,30 @@ const UserTableComponent = ({
             onScroll={handleListScroll}
           >
             <div style={{ minWidth: minTableWidth }}>
-              {users.map((user) => (
+              {users.map((user, index) => (
                 <div
                   key={user.cpf}
-                  className="flex items-center border-b hover:bg-muted/50 transition-colors text-sm"
+                  className={`flex items-center border-b hover:bg-muted/50 transition-colors text-sm ${
+                    selectedCpfs.has(user.cpf) ? "bg-primary/5" : ""
+                  }`}
                   style={{ minHeight: 56 }}
                 >
+                  {/* Checkbox */}
+                  {onToggleSelect && (
+                    <div style={{ width: 40, minWidth: 40 }} className="px-2 text-center">
+                      <Checkbox
+                        checked={selectedCpfs.has(user.cpf)}
+                        onCheckedChange={() => onToggleSelect(user.cpf)}
+                        disabled={user.cpf === currentUserCpf}
+                      />
+                    </div>
+                  )}
+
+                  {/* Index */}
+                  <div style={{ width: 45, minWidth: 45 }} className="px-2 text-center text-xs text-muted-foreground/50">
+                    {index + 1}
+                  </div>
+
                   {/* CPF */}
                   <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2 font-mono">
                     {formatCPF(user.cpf)}
@@ -216,40 +245,59 @@ const UserTableComponent = ({
 
                   {/* Actions */}
                   <div style={{ flex: '0.5 1 0%', minWidth: 70 }} className="px-2 text-center">
-                    <div className="flex justify-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onEdit(user)}
-                        disabled={user.is_super_admin || user.cpf === currentUserCpf}
-                        title={
-                          user.is_super_admin
-                            ? "Super admins não podem ser editados"
-                            : user.cpf === currentUserCpf
-                            ? "Você não pode editar suas próprias permissões"
-                            : "Editar usuário"
-                        }
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onToggleActive(user.cpf, user.active)}
-                        disabled={isToggling || user.is_super_admin || user.cpf === currentUserCpf}
-                        title={
-                          user.is_super_admin
-                            ? "Super admins não podem ser desativados"
-                            : user.cpf === currentUserCpf
-                            ? "Você não pode alterar seu próprio status"
-                            : user.active
-                            ? "Desativar usuário"
-                            : "Ativar usuário"
-                        }
-                      >
-                        <Power className={`h-4 w-4 ${user.active ? "text-orange-600" : "text-green-600"}`} />
-                      </Button>
-                    </div>
+                    {(() => {
+                      // Determinar se pode editar este usuário
+                      // Super admins não podem ser editados por ninguém
+                      // Admins só podem ser editados por super admins
+                      // Usuários podem ser editados por admins e super admins
+                      const canEdit = (() => {
+                        if (user.cpf === currentUserCpf) return false; // Não pode editar a si mesmo
+                        if (user.is_super_admin) return false; // Super admins não editáveis
+                        if (user.is_admin && !currentUserIsSuperAdmin) return false; // Admins só editáveis por super admin
+                        return true;
+                      })();
+
+                      const editTitle = (() => {
+                        if (user.cpf === currentUserCpf) return "Você não pode editar suas próprias permissões";
+                        if (user.is_super_admin) return "Super admins não podem ser editados";
+                        if (user.is_admin && !currentUserIsSuperAdmin) return "Admins só podem ser editados por super admins";
+                        return "Editar usuário";
+                      })();
+
+                      // Para toggle active (desativar):
+                      // Mesma regra de edição
+                      const canToggle = canEdit && !isToggling;
+
+                      const toggleTitle = (() => {
+                        if (user.cpf === currentUserCpf) return "Você não pode alterar seu próprio status";
+                        if (user.is_super_admin) return "Super admins não podem ser desativados";
+                        if (user.is_admin && !currentUserIsSuperAdmin) return "Admins só podem ser desativados por super admins";
+                        return user.active ? "Desativar usuário" : "Ativar usuário";
+                      })();
+
+                      return (
+                        <div className="flex justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onEdit(user)}
+                            disabled={!canEdit}
+                            title={editTitle}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onToggleActive(user.cpf, user.active)}
+                            disabled={!canToggle}
+                            title={toggleTitle}
+                          >
+                            <Power className={`h-4 w-4 ${user.active ? "text-orange-600" : "text-green-600"}`} />
+                          </Button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

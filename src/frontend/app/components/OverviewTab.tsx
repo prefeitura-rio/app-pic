@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useCallback } from "react";
 import { Users, Loader2, AlertTriangle, CheckCircle, Home, BookOpen, Activity, Heart, Clock, TrendingUp, PieChart as PieChartIcon } from "lucide-react";
 import {
   Dashboard,
@@ -79,6 +79,34 @@ const OverviewTabComponent = ({
   loading = false,
 }: OverviewTabProps) => {
 
+  /**
+   * Download dos dados do dashboard como JSON
+   * Nome do arquivo: visao_geral_YYYY_MM_DD_HH_MM_SS.json
+   */
+  const handleDownloadJson = useCallback(() => {
+    if (!data) return;
+
+    // Gerar timestamp no formato snake_case
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const timestamp = `${now.getFullYear()}_${pad(now.getMonth() + 1)}_${pad(now.getDate())}_${pad(now.getHours())}_${pad(now.getMinutes())}_${pad(now.getSeconds())}`;
+    const filename = `visao_geral_${timestamp}.json`;
+
+    // Converter dados para JSON
+    const jsonString = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+
+    // Criar link de download e acionar
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [data]);
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -116,6 +144,7 @@ const OverviewTabComponent = ({
         filters={filters}
         onFilterChange={onFilterChange}
         onRefresh={onRefresh}
+        onDownload={handleDownloadJson}
         loading={loading}
       />
 

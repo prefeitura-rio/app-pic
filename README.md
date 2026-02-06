@@ -10,7 +10,7 @@ O PIC (Pequenos Cariocas) e uma aplicacao fullstack que permite:
 - **Monitoramento de Protocolos**: Acompanhar o cumprimento de protocolos obrigatorios como vacinacao, frequencia escolar, atualizacao de CadUnico, entre outros
 - **Busca Individual**: Pesquisar participantes por nome ou CPF com filtros avancados e multi-selecao
 - **Analise Temporal**: Graficos de evolucao do programa, tempo medio de irregularidade e taxa de resolucao de alertas
-- **Gestao de Acessos**: Sistema de governanca com permissoes por unidade (CRAS, Escolas, Clinicas, CAP, CRE, CAS)
+- **Gestao de Acessos**: Sistema de governanca com permissoes por unidade (CRAS, Escolas, Clinicas, AP, CRE, CAS)
 
 ## Funcionalidades do Dashboard
 
@@ -201,7 +201,7 @@ O sistema possui 3 niveis de acesso:
 
 | Nivel | Descricao |
 |-------|-----------|
-| **user** | Ve apenas dados das unidades atribuidas (CRAS, Escolas, Clinicas, CAP, CRE, CAS) |
+| **user** | Ve apenas dados das unidades atribuidas (CRAS, Escolas, Clinicas, AP, CRE, CAS) |
 | **admin** | Pode gerenciar usuarios com subset de seus IDs |
 | **super_admin** | Acesso total, pode gerenciar qualquer usuario |
 

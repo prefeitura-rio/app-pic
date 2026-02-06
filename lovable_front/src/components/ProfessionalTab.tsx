@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Individual, bairros, unidadesPorBairro, coordenadoriasCAP, coordenadoriasCRE, coordenadoriasCRAS } from "@/lib/csvLoader";
+import { Individual, bairros, unidadesPorBairro, coordenadoriasAP, coordenadoriasCRE, coordenadoriasCRAS } from "@/lib/csvLoader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -42,7 +42,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
   const [selectedCRASUnidade, setSelectedCRASUnidade] = useState<string>("todas");
   const [selectedGrupo, setSelectedGrupo] = useState<string>("todos");
   const [selectedStatus, setSelectedStatus] = useState<string>("ativo");
-  const [selectedCAP, setSelectedCAP] = useState<string>("todas");
+  const [selectedAP, setselectedAP] = useState<string>("todas");
   const [selectedCRE, setSelectedCRE] = useState<string>("todas");
   const [selectedCRAS, setSelectedCRAS] = useState<string>("todas");
   const [selectedSituacao, setSelectedSituacao] = useState<string>("todos");
@@ -55,7 +55,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
   // Resetar página quando filtros mudarem
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedBairro, selectedEscola, selectedClinica, selectedCRASUnidade, selectedGrupo, selectedStatus, selectedCAP, selectedCRE, selectedCRAS, selectedSituacao, selectedProtocolos]);
+  }, [searchQuery, selectedBairro, selectedEscola, selectedClinica, selectedCRASUnidade, selectedGrupo, selectedStatus, selectedAP, selectedCRE, selectedCRAS, selectedSituacao, selectedProtocolos]);
 
   // Categorizar todas as unidades
   const todasUnidades = useMemo(() => {
@@ -180,9 +180,9 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
       if (d.status !== selectedStatus) return false;
       
       // Filtros de agrupadores regionais
-      if (selectedCAP !== "todas") {
-        const bairrosCAP = coordenadoriasCAP[selectedCAP] || [];
-        if (!bairrosCAP.includes(d.bairro)) return false;
+      if (selectedAP !== "todas") {
+        const bairrosAP = coordenadoriasAP[selectedAP] || [];
+        if (!bairrosAP.includes(d.bairro)) return false;
       }
       
       if (selectedCRE !== "todas") {
@@ -235,7 +235,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
       
       return true;
     });
-  }, [data, searchQuery, selectedBairro, selectedEscola, selectedClinica, selectedCRASUnidade, selectedGrupo, selectedStatus, selectedCAP, selectedCRE, selectedCRAS, selectedSituacao, selectedProtocolos]);
+  }, [data, searchQuery, selectedBairro, selectedEscola, selectedClinica, selectedCRASUnidade, selectedGrupo, selectedStatus, selectedAP, selectedCRE, selectedCRAS, selectedSituacao, selectedProtocolos]);
 
   // Paginação
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -383,14 +383,14 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
               Filtros Regionais
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Select value={selectedCAP} onValueChange={setSelectedCAP}>
+            <Select value={selectedAP} onValueChange={setselectedAP}>
               <SelectTrigger>
-                <SelectValue placeholder="CAP (Saúde)" />
+                <SelectValue placeholder="AP (Saúde)" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas as CAPs</SelectItem>
-                {Object.keys(coordenadoriasCAP).map(cap => (
-                  <SelectItem key={cap} value={cap}>{cap}</SelectItem>
+                {Object.keys(coordenadoriasAP).map(ap => (
+                  <SelectItem key={ap} value={ap}>{ap}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -412,7 +412,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
                 <SelectValue placeholder="CRAS (Assistência)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas as CAS</SelectItem>
+                <SelectItem value="todas">Todos as CAS</SelectItem>
                 {Object.keys(coordenadoriasCRAS).map(cras => (
                   <SelectItem key={cras} value={cras}>{cras}</SelectItem>
                 ))}
@@ -477,7 +477,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
             <p className="text-sm text-muted-foreground">
               {filteredData.length} pessoa(s) encontrada(s)
             </p>
-            {(searchQuery.trim() || selectedBairro !== "todos" || selectedEscola !== "todas" || selectedClinica !== "todas" || selectedCRASUnidade !== "todas" || selectedGrupo !== "todos" || selectedCAP !== "todas" || selectedCRE !== "todas" || selectedCRAS !== "todas" || selectedSituacao !== "todos" || selectedProtocolos.length > 0) && (
+            {(searchQuery.trim() || selectedBairro !== "todos" || selectedEscola !== "todas" || selectedClinica !== "todas" || selectedCRASUnidade !== "todas" || selectedGrupo !== "todos" || selectedAP !== "todas" || selectedCRE !== "todas" || selectedCRAS !== "todas" || selectedSituacao !== "todos" || selectedProtocolos.length > 0) && (
               <Button 
                 variant="outline" 
                 size="sm"
@@ -488,7 +488,7 @@ export function ProfessionalTab({ data }: ProfessionalTabProps) {
                   setSelectedClinica("todas");
                   setSelectedCRASUnidade("todas");
                   setSelectedGrupo("todos");
-                  setSelectedCAP("todas");
+                  setselectedAP("todas");
                   setSelectedCRE("todas");
                   setSelectedCRAS("todas");
                   setSelectedSituacao("todos");

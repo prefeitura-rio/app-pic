@@ -98,8 +98,8 @@ export interface Participante {
   nome_cre?: string;
 
   // Equipamentos - SMS
-  id_ap?: string; // NOVO (substitui CAP)
-  nome_ap?: string; // NOVO (substitui CAP)
+  id_ap?: string; 
+  nome_ap?: string; 
   id_clinica_familia?: string;
   nome_clinica_familia?: string;
 
@@ -140,7 +140,7 @@ export interface SmartFilterOptions {
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
   cres: FilterOptionItem[];
-  aps: FilterOptionItem[]; // RENOMEADO de caps (AP substitui CAP)
+  aps: FilterOptionItem[]; 
   cas_list: FilterOptionItem[];
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
@@ -319,7 +319,7 @@ export interface FiltroRegional {
 export interface DashboardFilters {
   bairro?: string;
   cre?: string;
-  ap?: string; // RENOMEADO de cap (AP substitui CAP)
+  ap?: string;
   cas?: string;
   cras?: string;
   escola?: string;
@@ -339,7 +339,7 @@ export interface DashboardFilters {
 export interface ParticipantFilters {
   bairro?: string;
   cre?: string;
-  ap?: string; // RENOMEADO de cap (AP substitui CAP)
+  ap?: string; 
   cas?: string;
   cras?: string;
   escola?: string;
@@ -412,7 +412,7 @@ export interface AvailableIds {
   cras: IdWithName[];
   escolas: IdWithName[];
   cres: IdWithName[];
-  aps: IdWithName[]; // RENOMEADO de caps (AP substitui CAP)
+  aps: IdWithName[]; 
   cas: IdWithName[];
   clinicas: IdWithName[];
 }
@@ -433,7 +433,7 @@ export interface UserAccessRecord {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; // RENOMEADO de id_cap_list (AP substitui CAP)
+  id_ap_list?: IdWithName[] | null; 
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 
@@ -460,7 +460,7 @@ export interface CreateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; // RENOMEADO de id_cap_list (AP substitui CAP)
+  id_ap_list?: IdWithName[] | null; 
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 
@@ -482,11 +482,128 @@ export interface UpdateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; // RENOMEADO de id_cap_list (AP substitui CAP)
+  id_ap_list?: IdWithName[] | null; 
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
 
   notes?: string | null;
   active?: boolean | null;
   is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
+}
+
+// ============================================================================
+// BATCH IMPORT TYPES
+// ============================================================================
+
+/**
+ * Error for a specific row during batch import
+ */
+export interface BatchImportError {
+  row: number;
+  cpf?: string | null;
+  error: string;
+}
+
+/**
+ * Imported user with status
+ */
+export interface ImportedUser {
+  cpf: string;
+  nome?: string | null;
+  email?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  status: 'new' | 'exists' | 'error';
+  error_message?: string | null;
+
+  // Permissões existentes (preenchido apenas para status="exists")
+  is_admin?: boolean | null;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+}
+
+/**
+ * Result of batch import operation
+ */
+export interface BatchImportResult {
+  total: number;
+  imported: number;
+  skipped: number;
+  errors: BatchImportError[];
+  imported_users: ImportedUser[];
+}
+
+/**
+ * User data for batch permissions update
+ */
+export interface BatchUserData {
+  cpf: string;
+  nome?: string | null;
+  email?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+}
+
+/**
+ * Request for batch permissions update
+ */
+export interface BatchPermissionsRequest {
+  users: BatchUserData[];
+  is_admin?: boolean;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
+}
+
+/**
+ * Error for a specific CPF during batch permissions update
+ */
+export interface BatchPermissionsError {
+  cpf: string;
+  error: string;
+}
+
+/**
+ * Result of batch permissions operation
+ */
+export interface BatchPermissionsResult {
+  total: number;
+  updated: number;
+  errors: BatchPermissionsError[];
+}
+
+/**
+ * Imported user with local edits (for frontend state)
+ * Extends ImportedUser but adds 'done' status for post-permission assignment
+ */
+export interface ImportedUserWithEdits {
+  cpf: string;
+  nome?: string | null;
+  email?: string | null;
+  ocupacao?: string | null;
+  secretaria?: string | null;
+  status: 'new' | 'exists' | 'error' | 'done';
+  error_message?: string | null;
+  edited?: {
+    nome?: string;
+    ocupacao?: string;
+    secretaria?: string;
+  };
+
+  // Permissões existentes (preenchido apenas para status="exists")
+  is_admin?: boolean | null;
+  is_super_admin?: boolean | null;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
 }

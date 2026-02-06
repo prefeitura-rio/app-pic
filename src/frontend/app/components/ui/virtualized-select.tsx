@@ -31,6 +31,8 @@ interface VirtualizedSelectProps {
   disabled?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  /** Controla a visibilidade do componente. Se false, retorna null. Default: true */
+  show?: boolean;
 }
 
 export function VirtualizedSelect({
@@ -41,7 +43,10 @@ export function VirtualizedSelect({
   disabled = false,
   className,
   style,
+  show = true,
 }: VirtualizedSelectProps) {
+  // Se show=false, não renderiza nada
+  if (!show) return null;
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const [triggerWidth, setTriggerWidth] = React.useState(0);
