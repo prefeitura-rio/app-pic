@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -55,8 +55,8 @@ export default function AdminPage() {
     staleTime: 10 * 60 * 1000, // 10 minutos (mesmo que DashboardHeader)
   });
 
-  // State para controlar bypass de cache (timestamp para forçar refetch)
-  const [bypassCacheTimestamp, setBypassCacheTimestamp] = useState<number | null>(null);
+  // Ref para controlar bypass de cache (não afeta o query key)
+  const bypassCacheRef = useRef(false);
 
   // Fetch users with backend pagination and filtering
   const {
@@ -66,11 +66,11 @@ export default function AdminPage() {
     error: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm, bypassCacheTimestamp],
-    queryFn: async ({ queryKey }) => {
-      // Extrair timestamp da queryKey para saber se deve fazer bypass
-      const timestamp = queryKey[queryKey.length - 1] as number | null;
-      const shouldBypassCache = timestamp !== null;
+    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm],
+    queryFn: async () => {
+      // Usar ref para bypass (não muda query key)
+      const shouldBypassCache = bypassCacheRef.current;
+      bypassCacheRef.current = false; // Reset após usar
 
       // Construir query params (seguindo padrão de participants)
       const params = new URLSearchParams();
@@ -303,9 +303,9 @@ export default function AdminPage() {
 
   // Handle refresh with cache bypass
   const handleRefreshWithBypass = () => {
-    // Invalidate TanStack Query cache to force refetch
-    queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    setBypassCacheTimestamp(Date.now());
+    // Marcar para bypass no próximo fetch e forçar refetch
+    bypassCacheRef.current = true;
+    refetchUsers();
   };
 
   // Batch selection handlers
@@ -438,8 +438,8 @@ export default function AdminPage() {
 
   // Loading state with skeletons - só mostrar na carga inicial, não em refetch
   // Isso evita desmontar o ImportTab e perder os dados importados
-  const isInitialLoading = (usersLoading && !usersResponse) || idsLoading || currentUserLoading;
-  if (isInitialLoading) {
+  const isInitialLoading = usersLoading || idsLoading || currentUserLoading;
+  if (isInitialLoading && !usersResponse) {
     return (
       <div className="space-y-6">
         {/* Header skeleton */}

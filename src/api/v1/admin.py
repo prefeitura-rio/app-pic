@@ -1237,12 +1237,6 @@ class BatchPermissionsResult(BaseModel):
     errors: List[BatchPermissionsError]
 
 
-class UndoBatchRequest(BaseModel):
-    """Request para desfazer última atribuição de permissões"""
-
-    cpfs: List[str]
-
-
 # ========================================================================
 # BATCH IMPORT ENDPOINTS
 # ========================================================================
@@ -1656,88 +1650,6 @@ async def batch_update_permissions(
     logger.info(
         f"🔐 Permissões processadas: {len(valid_users)} usuários em uma única query "
         f"({len(errors)} erros)"
-    )
-
-    return result
-
-
-@router.put("/users-batch/permissions/undo", response_model=BatchPermissionsResult)
-async def undo_batch_permissions(
-    request: UndoBatchRequest,
-    permissions: CurrentUserPermissions,
-):
-    """
-    Desfaz última atribuição de permissões (remove todos os IDs dos usuários).
-
-    Usado para reverter uma operação de batch-permissions.
-    Executa uma única query UPDATE para todos os CPFs.
-    """
-    require_admin(permissions)
-
-    if not request.cpfs:
-        raise HTTPException(status_code=400, detail="Lista de CPFs vazia")
-
-    logger.info(f"↩️ Desfazendo permissões em batch para {len(request.cpfs)} usuários")
-
-    errors: List[BatchPermissionsError] = []
-    valid_cpfs: List[str] = []
-
-    # Validar CPFs
-    for cpf_raw in request.cpfs:
-        cpf = _sanitize_cpf(cpf_raw)
-        if not cpf or len(cpf) != 11:
-            errors.append(BatchPermissionsError(cpf=cpf_raw, error="CPF inválido"))
-            continue
-        valid_cpfs.append(cpf)
-
-    if not valid_cpfs:
-        return BatchPermissionsResult(
-            total=len(request.cpfs),
-            updated=0,
-            errors=errors,
-        )
-
-    # Executar UPDATE único para todos os CPFs válidos
-    cpf_list_sql = ", ".join([f"'{cpf}'" for cpf in valid_cpfs])
-
-    update_query = f"""
-    UPDATE `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
-    SET
-        is_admin = FALSE,
-        permission = 'user',
-        id_cras_list = NULL,
-        id_escola_list = NULL,
-        id_cre_list = NULL,
-        id_ap_list = NULL,
-        id_cas_list = NULL,
-        id_clinica_familia_list = NULL,
-        updated_by = '{permissions.cpf}',
-        updated_at = CURRENT_TIMESTAMP()
-    WHERE cpf IN ({cpf_list_sql})
-    """
-
-    try:
-        logger.info(f"🚀 Executando UPDATE para {len(valid_cpfs)} usuários...")
-        execute_query(update_query)
-        logger.info(f"✅ UPDATE executado com sucesso!")
-    except Exception as e:
-        logger.error(f"❌ Erro no UPDATE: {e}")
-        import traceback
-        logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Erro ao desfazer batch: {str(e)}")
-
-    # Invalidar cache
-    refresh_governance_cache()
-
-    result = BatchPermissionsResult(
-        total=len(request.cpfs),
-        updated=len(valid_cpfs),
-        errors=errors,
-    )
-
-    logger.info(
-        f"↩️ Permissões removidas: {result.updated} de {result.total} em uma única query "
-        f"({len(result.errors)} erros)"
     )
 
     return result

@@ -10,7 +10,6 @@ import {
   BatchImportResult,
   BatchPermissionsRequest,
   BatchPermissionsResult,
-  UndoBatchRequest,
 } from "../types";
 import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
@@ -414,29 +413,4 @@ export const apiService = {
     return handleResponse<BatchPermissionsResult>(res, fetchFn);
   },
 
-  /**
-   * Undo batch permissions (remove all IDs from users)
-   * Requires admin permission
-   *
-   * @param request - Undo batch request with list of CPFs
-   * @returns Batch permissions result
-   */
-  async undoBatchPermissions(
-    request: UndoBatchRequest
-  ): Promise<BatchPermissionsResult> {
-    const url = `${BASE_URL}/api/v1/admin/users-batch/permissions/undo`;
-
-    const fetchFn = () =>
-      fetch(url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-      });
-
-    const res = await fetchFn();
-
-    return handleResponse<BatchPermissionsResult>(res, fetchFn);
-  },
 };

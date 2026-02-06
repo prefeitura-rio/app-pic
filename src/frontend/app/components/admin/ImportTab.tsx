@@ -40,7 +40,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Undo2,
   FileSpreadsheet,
   Lock,
 } from "lucide-react";
@@ -116,8 +115,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
 
-  // Undo state
-  const [lastBatchCpfs, setLastBatchCpfs] = useState<string[]>([]);
 
   // Populate importedUsers when prePopulatedUsers is provided
   useEffect(() => {
@@ -217,7 +214,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
           updatedCpfs.has(u.cpf) ? { ...u, status: "done" as UserStatus } : u
         )
       );
-      setLastBatchCpfs(Array.from(selectedCpfs));
       setSelectedCpfs(new Set());
 
       toast.success("Permissoes atribuidas", {
@@ -230,28 +226,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
     },
     onError: (error: Error) => {
       toast.error("Erro ao atribuir permissoes", { description: error.message });
-    },
-  });
-
-  const undoMutation = useMutation({
-    mutationFn: apiService.undoBatchPermissions,
-    onSuccess: (result) => {
-      // Mark undone users as "new" again
-      const undoneCpfs = new Set(lastBatchCpfs);
-      setImportedUsers((prev) =>
-        prev.map((u) =>
-          undoneCpfs.has(u.cpf) ? { ...u, status: "new" as UserStatus } : u
-        )
-      );
-      setLastBatchCpfs([]);
-
-      toast.success("Acao desfeita", {
-        description: `${result.updated} usuarios revertidos`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    },
-    onError: (error: Error) => {
-      toast.error("Erro ao desfazer", { description: error.message });
     },
   });
 
@@ -461,12 +435,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
       id_cas_list: selectedCas.length > 0 ? selectedCas : null,
       id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
     });
-  };
-
-  // Handle undo
-  const handleUndo = () => {
-    if (lastBatchCpfs.length === 0) return;
-    undoMutation.mutate({ cpfs: lastBatchCpfs });
   };
 
   // Handle inline edit
@@ -1111,19 +1079,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
                     : `Aplicar Permissoes (${selectedCpfs.size})`}
                 </Button>
 
-                {lastBatchCpfs.length > 0 && (
-                  <Button
-                    variant="outline"
-                    onClick={handleUndo}
-                    disabled={undoMutation.isPending}
-                    className="w-full"
-                  >
-                    <Undo2 className="h-4 w-4 mr-2" />
-                    {undoMutation.isPending
-                      ? "Desfazendo..."
-                      : `Desfazer ultima acao (${lastBatchCpfs.length})`}
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>

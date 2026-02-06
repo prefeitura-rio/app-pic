@@ -580,13 +580,6 @@ export interface BatchPermissionsResult {
 }
 
 /**
- * Request to undo batch permissions
- */
-export interface UndoBatchRequest {
-  cpfs: string[];
-}
-
-/**
  * Imported user with local edits (for frontend state)
  * Extends ImportedUser but adds 'done' status for post-permission assignment
  */
