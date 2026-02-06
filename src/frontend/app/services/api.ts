@@ -372,7 +372,7 @@ export const apiService = {
    * @returns Batch import result with list of processed users
    */
   async batchImportUsers(file: File): Promise<BatchImportResult> {
-    const url = `${BASE_URL}/api/v1/admin/users/batch`;
+    const url = `${BASE_URL}/api/v1/admin/users-batch`;
 
     const formData = new FormData();
     formData.append("file", file);
@@ -398,7 +398,7 @@ export const apiService = {
   async batchUpdatePermissions(
     request: BatchPermissionsRequest
   ): Promise<BatchPermissionsResult> {
-    const url = `${BASE_URL}/api/v1/admin/users/batch-permissions`;
+    const url = `${BASE_URL}/api/v1/admin/users-batch/permissions`;
 
     const fetchFn = () =>
       fetch(url, {
@@ -424,7 +424,7 @@ export const apiService = {
   async undoBatchPermissions(
     request: UndoBatchRequest
   ): Promise<BatchPermissionsResult> {
-    const url = `${BASE_URL}/api/v1/admin/users/batch-permissions/undo`;
+    const url = `${BASE_URL}/api/v1/admin/users-batch/permissions/undo`;
 
     const fetchFn = () =>
       fetch(url, {

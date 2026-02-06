@@ -515,6 +515,15 @@ export interface ImportedUser {
   secretaria?: string | null;
   status: 'new' | 'exists' | 'error';
   error_message?: string | null;
+
+  // Permissões existentes (preenchido apenas para status="exists")
+  is_admin?: boolean | null;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
 }
 
 /**
@@ -594,4 +603,14 @@ export interface ImportedUserWithEdits {
     ocupacao?: string;
     secretaria?: string;
   };
+
+  // Permissões existentes (preenchido apenas para status="exists")
+  is_admin?: boolean | null;
+  is_super_admin?: boolean | null;
+  id_cras_list?: IdWithName[] | null;
+  id_escola_list?: IdWithName[] | null;
+  id_cre_list?: IdWithName[] | null;
+  id_ap_list?: IdWithName[] | null;
+  id_cas_list?: IdWithName[] | null;
+  id_clinica_familia_list?: IdWithName[] | null;
 }

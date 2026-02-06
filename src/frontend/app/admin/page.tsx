@@ -13,7 +13,8 @@ import { ImportTab } from "@/app/components/admin/ImportTab";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { AlertCircle, Users, UserCog, Search, X, RefreshCw, Filter, Upload } from "lucide-react";
+import { AlertCircle, Users, UserCog, Search, X, RefreshCw, Filter, Upload, Download, Trash2, Edit, CheckCircle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
@@ -36,6 +37,12 @@ export default function AdminPage() {
   const [filterStatus, setFilterStatus] = useState<string>(""); // empty = all
   const [searchInput, setSearchInput] = useState(""); // Input do usuário
   const [searchTerm, setSearchTerm] = useState(""); // Termo de busca ativo (enviado ao backend)
+
+  // Selection state for batch actions
+  const [selectedCpfs, setSelectedCpfs] = useState<Set<string>>(new Set());
+
+  // Users to pass to ImportTab for batch update
+  const [usersForImport, setUsersForImport] = useState<UserAccessRecord[]>([]);
 
   // Fetch current user (compartilha cache com DashboardHeader via queryKey)
   const {
@@ -95,7 +102,7 @@ export default function AdminPage() {
         params.append("search", searchTerm);
       }
 
-      // Bypass cache se solicitado
+      // Bypass cache se solicitado (força refresh no backend)
       if (shouldBypassCache) {
         params.append("bypass_cache", "true");
       }
@@ -108,16 +115,12 @@ export default function AdminPage() {
         throw new Error(`API Error ${response.status}: ${errorText}`);
       }
 
-      // Reset bypass cache após uso
-      if (shouldBypassCache) {
-        setBypassCacheTimestamp(null);
-      }
-
       return response.json();
     },
     retry: false, // Don't retry on 403
-    staleTime: 5 * 60 * 1000, // 5 minutos (igual ao padrão da página principal)
-    placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (evita piscar)
+    staleTime: 0, // Sempre considera stale para garantir dados frescos após invalidação
+    refetchOnMount: true, // Refetch quando a aba/componente monta
+    refetchOnWindowFocus: false, // Não refetch ao focar a janela (evita requests desnecessários)
   });
 
   const users = Array.isArray(usersResponse?.data) ? usersResponse.data : [];
@@ -129,6 +132,56 @@ export default function AdminPage() {
     cache_hit: false,
   };
   const filterOptions = usersResponse?.filters ?? null;
+
+  // Compute which users can be ACTIVATED by current user
+  // Admin: pode ativar users e admins (não super_admin)
+  // Super Admin: pode ativar todos (users, admins, super_admins)
+  const activatableSelectedCpfs = useMemo(() => {
+    const activatable = new Set<string>();
+    const isSuperAdmin = currentUser?.is_super_admin;
+
+    selectedCpfs.forEach((cpf) => {
+      const user = users.find((u: UserAccessRecord) => u.cpf === cpf);
+      if (!user || user.cpf === currentUser?.cpf) return;
+
+      if (isSuperAdmin) {
+        // Super admin pode ativar qualquer um
+        activatable.add(cpf);
+      } else {
+        // Admin pode ativar users e admins (não super_admin)
+        if (!user.is_super_admin) {
+          activatable.add(cpf);
+        }
+      }
+    });
+    return activatable;
+  }, [selectedCpfs, users, currentUser?.cpf, currentUser?.is_super_admin]);
+
+  // Compute which users can be UPDATED/DEACTIVATED by current user
+  // Admin: pode editar apenas users (não admins, não super_admin)
+  // Super Admin: pode editar users e admins (não outros super_admins)
+  const editableSelectedCpfs = useMemo(() => {
+    const editable = new Set<string>();
+    const isSuperAdmin = currentUser?.is_super_admin;
+
+    selectedCpfs.forEach((cpf) => {
+      const user = users.find((u: UserAccessRecord) => u.cpf === cpf);
+      if (!user || user.cpf === currentUser?.cpf) return;
+
+      if (isSuperAdmin) {
+        // Super admin pode editar users e admins (não outros super_admins)
+        if (!user.is_super_admin) {
+          editable.add(cpf);
+        }
+      } else {
+        // Admin pode editar apenas users (não admins, não super_admin)
+        if (!user.is_admin && !user.is_super_admin) {
+          editable.add(cpf);
+        }
+      }
+    });
+    return editable;
+  }, [selectedCpfs, users, currentUser?.cpf, currentUser?.is_super_admin]);
 
   // Fetch available IDs
   const {
@@ -255,8 +308,138 @@ export default function AdminPage() {
     setBypassCacheTimestamp(Date.now());
   };
 
-  // Loading state with skeletons
-  if (usersLoading || idsLoading || currentUserLoading) {
+  // Batch selection handlers
+  const handleToggleSelect = (cpf: string) => {
+    const newSelection = new Set(selectedCpfs);
+    if (newSelection.has(cpf)) {
+      newSelection.delete(cpf);
+    } else {
+      newSelection.add(cpf);
+    }
+    setSelectedCpfs(newSelection);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedCpfs.size === users.length) {
+      // Deselect all
+      setSelectedCpfs(new Set());
+    } else {
+      // Select all visible users
+      setSelectedCpfs(new Set(users.map((u: UserAccessRecord) => u.cpf)));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedCpfs(new Set());
+  };
+
+  // Batch delete mutation
+  const batchDeleteMutation = useMutation({
+    mutationFn: async (cpfs: string[]) => {
+      // Delete users sequentially to avoid rate limiting
+      for (const cpf of cpfs) {
+        await apiService.deleteUser(cpf);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success(`${selectedCpfs.size} usuários desativados`);
+      setSelectedCpfs(new Set());
+      handleRefreshWithBypass();
+    },
+    onError: (error: Error) => {
+      toast.error("Erro ao desativar usuários", { description: error.message });
+    },
+  });
+
+  // Handle batch delete (only editable users)
+  const handleBatchDelete = () => {
+    if (editableSelectedCpfs.size === 0) return;
+    if (!confirm(`Desativar ${editableSelectedCpfs.size} usuário(s)?`)) return;
+    batchDeleteMutation.mutate(Array.from(editableSelectedCpfs));
+  };
+
+  // Handle batch update (go to import tab with editable users only)
+  const handleBatchUpdate = () => {
+    if (editableSelectedCpfs.size === 0) return;
+    // Store only editable users for import tab
+    const editableUsers = users.filter((u: UserAccessRecord) => editableSelectedCpfs.has(u.cpf));
+    setUsersForImport(editableUsers);
+    // Switch to import tab
+    setActiveTab("import");
+    toast.info(`${editableUsers.length} usuários carregados para atualização`);
+  };
+
+  // Batch activate mutation
+  const batchActivateMutation = useMutation({
+    mutationFn: async (cpfs: string[]) => {
+      for (const cpf of cpfs) {
+        await apiService.upsertUser(cpf, { active: true, is_update: true } as any);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success(`${selectedCpfs.size} usuários ativados`);
+      setSelectedCpfs(new Set());
+      handleRefreshWithBypass();
+    },
+    onError: (error: Error) => {
+      toast.error("Erro ao ativar usuários", { description: error.message });
+    },
+  });
+
+  // Handle batch activate (only activatable users)
+  const handleBatchActivate = () => {
+    if (activatableSelectedCpfs.size === 0) return;
+    if (!confirm(`Ativar ${activatableSelectedCpfs.size} usuário(s)?`)) return;
+    batchActivateMutation.mutate(Array.from(activatableSelectedCpfs));
+  };
+
+  // Handle download users as CSV
+  const handleDownloadUsers = () => {
+    const dataToDownload = selectedCpfs.size > 0
+      ? users.filter((u: UserAccessRecord) => selectedCpfs.has(u.cpf))
+      : users;
+
+    // CSV headers
+    const headers = ["cpf", "nome", "email", "ocupacao", "secretaria", "is_admin", "is_super_admin", "active"];
+
+    // Convert to CSV rows
+    const csvRows = [
+      headers.join(","),
+      ...dataToDownload.map((u: UserAccessRecord) => {
+        const values = [
+          u.cpf,
+          `"${(u.nome || "").replace(/"/g, '""')}"`,
+          `"${(u.email || "").replace(/"/g, '""')}"`,
+          `"${(u.ocupacao || "").replace(/"/g, '""')}"`,
+          `"${(u.secretaria || "").replace(/"/g, '""')}"`,
+          u.is_admin ? "true" : "false",
+          u.is_super_admin ? "true" : "false",
+          u.active ? "true" : "false",
+        ];
+        return values.join(",");
+      }),
+    ];
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `usuarios_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast.success(`${dataToDownload.length} usuários exportados como CSV`);
+  };
+
+  // Loading state with skeletons - só mostrar na carga inicial, não em refetch
+  // Isso evita desmontar o ImportTab e perder os dados importados
+  const isInitialLoading = (usersLoading && !usersResponse) || idsLoading || currentUserLoading;
+  if (isInitialLoading) {
     return (
       <div className="space-y-6">
         {/* Header skeleton */}
@@ -499,11 +682,95 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
+          {/* Action bar */}
+          <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center gap-4">
+              {/* Select all checkbox */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={users.length > 0 && selectedCpfs.size === users.length}
+                  onCheckedChange={handleSelectAll}
+                  disabled={users.length === 0}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {selectedCpfs.size > 0
+                    ? `${selectedCpfs.size} selecionado(s)`
+                    : "Selecionar todos"}
+                </span>
+              </div>
+
+              {/* Clear selection */}
+              {selectedCpfs.size > 0 && (
+                <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+                  <X className="h-4 w-4 mr-1" />
+                  Limpar
+                </Button>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              {/* Download button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadUsers}
+                disabled={users.length === 0}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                {selectedCpfs.size > 0 ? `Baixar (${selectedCpfs.size})` : "Baixar Todos"}
+              </Button>
+
+              {/* Batch actions (only when selection exists) */}
+              {selectedCpfs.size > 0 && (
+                <>
+                  {/* Atualizar - usa editableSelectedCpfs */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBatchUpdate}
+                    disabled={editableSelectedCpfs.size === 0}
+                    title={editableSelectedCpfs.size === 0 ? "Nenhum usuário editável selecionado" : ""}
+                  >
+                    <Edit className="h-4 w-4 mr-1" />
+                    Atualizar ({editableSelectedCpfs.size})
+                  </Button>
+
+                  {/* Ativar - usa activatableSelectedCpfs */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBatchActivate}
+                    disabled={batchActivateMutation.isPending || activatableSelectedCpfs.size === 0}
+                    className="text-green-600 border-green-600 hover:bg-green-50"
+                    title={activatableSelectedCpfs.size === 0 ? "Nenhum usuário ativável selecionado" : ""}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    {batchActivateMutation.isPending ? "Ativando..." : `Ativar (${activatableSelectedCpfs.size})`}
+                  </Button>
+
+                  {/* Desativar - usa editableSelectedCpfs */}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleBatchDelete}
+                    disabled={batchDeleteMutation.isPending || editableSelectedCpfs.size === 0}
+                    title={editableSelectedCpfs.size === 0 ? "Nenhum usuário desativável selecionado" : ""}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    {batchDeleteMutation.isPending ? "Desativando..." : `Desativar (${editableSelectedCpfs.size})`}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Users table */}
           <UserTable
             users={users}
             availableIds={availableIds}
             currentUserCpf={currentUser.cpf}
+            currentUserIsSuperAdmin={currentUser.is_super_admin}
             meta={meta}
             onEdit={handleEdit}
             onToggleActive={(cpf, currentActive) => {
@@ -516,6 +783,8 @@ export default function AdminPage() {
             isToggling={toggleActiveMutation.isPending}
             isLoading={usersFetching}
             pageSize={pageSize}
+            selectedCpfs={selectedCpfs}
+            onToggleSelect={handleToggleSelect}
           />
         </TabsContent>
 
@@ -537,6 +806,8 @@ export default function AdminPage() {
           <ImportTab
             availableIds={availableIds}
             currentUser={currentUser}
+            onPermissionsApplied={handleRefreshWithBypass}
+            prePopulatedUsers={usersForImport}
           />
         </TabsContent>
       </Tabs>

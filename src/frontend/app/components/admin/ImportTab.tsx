@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import Papa from "papaparse";
@@ -42,6 +42,7 @@ import {
   Clock,
   Undo2,
   FileSpreadsheet,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/app/utils/utils";
 
@@ -76,14 +77,16 @@ const STATUS_ICONS = {
 interface ImportTabProps {
   availableIds: AvailableIds;
   currentUser: UserAccessRecord;
+  onPermissionsApplied?: () => void; // Callback para atualizar tabela de usuários
+  prePopulatedUsers?: UserAccessRecord[]; // Usuários pré-selecionados da tabela de usuários
 }
 
 type UserStatus = "new" | "exists" | "error" | "done";
-type StatusFilter = "all" | UserStatus;
+type StatusFilter = "all" | UserStatus | "selectable" | "blocked";
 type SortBy = "nome" | "cpf" | "status";
 type SortOrder = "asc" | "desc";
 
-export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
+export function ImportTab({ availableIds, currentUser, onPermissionsApplied, prePopulatedUsers }: ImportTabProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -116,6 +119,38 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
   // Undo state
   const [lastBatchCpfs, setLastBatchCpfs] = useState<string[]>([]);
 
+  // Populate importedUsers when prePopulatedUsers is provided
+  useEffect(() => {
+    if (prePopulatedUsers && prePopulatedUsers.length > 0) {
+      // Deduplicar por CPF (manter primeiro)
+      const seen = new Set<string>();
+      const dedupedUsers = prePopulatedUsers.filter((u) => {
+        if (seen.has(u.cpf)) return false;
+        seen.add(u.cpf);
+        return true;
+      });
+      const usersWithStatus: ImportedUserWithEdits[] = dedupedUsers.map((user) => ({
+        cpf: user.cpf,
+        nome: user.nome,
+        email: user.email,
+        ocupacao: user.ocupacao,
+        secretaria: user.secretaria,
+        status: "exists" as const,
+        is_admin: user.is_admin,
+        is_super_admin: user.is_super_admin,
+        id_cras_list: user.id_cras_list,
+        id_escola_list: user.id_escola_list,
+        id_cre_list: user.id_cre_list,
+        id_ap_list: user.id_ap_list,
+        id_cas_list: user.id_cas_list,
+        id_clinica_familia_list: user.id_clinica_familia_list,
+      }));
+      setImportedUsers(usersWithStatus);
+      // Select all pre-populated users
+      setSelectedCpfs(new Set(dedupedUsers.map((u) => u.cpf)));
+    }
+  }, [prePopulatedUsers]);
+
   // Filter available IDs based on current user permissions
   // Super admin sees all, segmented admin only sees their own IDs
   const filteredAvailableIds = useMemo(() => {
@@ -145,15 +180,23 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
     mutationFn: (file: File) => apiService.batchImportUsers(file),
     onSuccess: (result) => {
       setImportResult(result);
+      // Deduplicar por CPF (manter primeiro)
+      const seen = new Set<string>();
+      const dedupedUsers = result.imported_users.filter((u) => {
+        if (seen.has(u.cpf)) return false;
+        seen.add(u.cpf);
+        return true;
+      });
       setImportedUsers(
-        result.imported_users.map((u) => ({
+        dedupedUsers.map((u) => ({
           ...u,
           status: u.status as UserStatus,
         }))
       );
       setSelectedCpfs(new Set());
+      const dupCount = result.imported_users.length - dedupedUsers.length;
       toast.success("Importacao concluida", {
-        description: `${result.imported} importados, ${result.skipped} pulados, ${result.errors.length} erros`,
+        description: `${result.imported} importados, ${result.skipped} pulados, ${result.errors.length} erros${dupCount > 0 ? `, ${dupCount} duplicados removidos` : ""}`,
       });
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
     },
@@ -181,6 +224,9 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
         description: `${result.updated} usuarios atualizados`,
       });
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+
+      // Atualizar tabela de usuários com bypass de cache
+      onPermissionsApplied?.();
     },
     onError: (error: Error) => {
       toast.error("Erro ao atribuir permissoes", { description: error.message });
@@ -213,6 +259,11 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
   const filteredUsers = useMemo(() => {
     let users = [...importedUsers];
 
+    // Se não for super admin, esconder super admins da lista
+    if (!currentUser.is_super_admin) {
+      users = users.filter((u) => !u.is_super_admin);
+    }
+
     // Filter by search
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -226,7 +277,32 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
 
     // Filter by status
     if (statusFilter !== "all") {
-      users = users.filter((u) => u.status === statusFilter);
+      if (statusFilter === "selectable") {
+        // Mostrar apenas usuários que podem ser editados
+        users = users.filter((u) => {
+          if (u.status !== "new" && u.status !== "exists") return false;
+          if (u.status === "new") return true;
+          const targetIsAdmin = u.is_admin === true;
+          const targetIsSuperAdmin = u.is_super_admin === true;
+          if (currentUser.is_super_admin) {
+            return !targetIsSuperAdmin;
+          }
+          return !targetIsAdmin && !targetIsSuperAdmin;
+        });
+      } else if (statusFilter === "blocked") {
+        // Mostrar apenas usuários bloqueados (existem mas não podem ser editados)
+        users = users.filter((u) => {
+          if (u.status !== "exists") return false;
+          const targetIsAdmin = u.is_admin === true;
+          const targetIsSuperAdmin = u.is_super_admin === true;
+          if (currentUser.is_super_admin) {
+            return targetIsSuperAdmin;
+          }
+          return targetIsAdmin || targetIsSuperAdmin;
+        });
+      } else {
+        users = users.filter((u) => u.status === statusFilter);
+      }
     }
 
     // Sort
@@ -260,12 +336,33 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
     });
 
     return users;
-  }, [importedUsers, searchTerm, statusFilter, sortBy, sortOrder]);
+  }, [importedUsers, searchTerm, statusFilter, sortBy, sortOrder, currentUser.is_super_admin]);
 
   // Count selectable users (new = insert, exists = update)
+  // Aplica regras de permissão:
+  // - Admin: pode editar apenas users (não admins nem super_admins)
+  // - Super Admin: pode editar users e admins (não outros super_admins)
   const selectableUsers = useMemo(
-    () => filteredUsers.filter((u) => u.status === "new" || u.status === "exists"),
-    [filteredUsers]
+    () => filteredUsers.filter((u) => {
+      // Só pode selecionar status "new" ou "exists"
+      if (u.status !== "new" && u.status !== "exists") return false;
+
+      // Novos usuários sempre podem ser selecionados
+      if (u.status === "new") return true;
+
+      // Para usuários existentes, aplicar regras de permissão
+      const targetIsAdmin = u.is_admin === true;
+      const targetIsSuperAdmin = u.is_super_admin === true;
+
+      if (currentUser.is_super_admin) {
+        // Super admin pode editar users e admins, não outros super_admins
+        return !targetIsSuperAdmin;
+      } else {
+        // Admin pode editar apenas users (não admins nem super_admins)
+        return !targetIsAdmin && !targetIsSuperAdmin;
+      }
+    }),
+    [filteredUsers, currentUser.is_super_admin]
   );
 
   // Handle file selection
@@ -321,6 +418,21 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
       newSelection.delete(cpf);
     } else {
       newSelection.add(cpf);
+
+      // Se for o primeiro usuário "exists" selecionado, preencher permissões existentes
+      const user = importedUsers.find((u) => u.cpf === cpf);
+      if (user?.status === "exists" && newSelection.size === 1) {
+        // Preencher com permissões existentes do usuário
+        if (user.is_admin !== undefined && user.is_admin !== null) {
+          setIsAdmin(user.is_admin);
+        }
+        if (user.id_cras_list) setSelectedCras(user.id_cras_list);
+        if (user.id_escola_list) setSelectedEscolas(user.id_escola_list);
+        if (user.id_cre_list) setSelectedCres(user.id_cre_list);
+        if (user.id_ap_list) setSelectedAps(user.id_ap_list);
+        if (user.id_cas_list) setSelectedCas(user.id_cas_list);
+        if (user.id_clinica_familia_list) setSelectedClinicas(user.id_clinica_familia_list);
+      }
     }
     setSelectedCpfs(newSelection);
   };
@@ -596,9 +708,9 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
 
       {/* Two-panel layout */}
       {importedUsers.length > 0 && (
-        <div className="flex flex-col xl:flex-row gap-6">
+        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '1.5rem' }}>
           {/* Left panel - Users (60%) */}
-          <Card className="w-full xl:w-[60%]">
+          <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Usuarios Importados</CardTitle>
 
@@ -626,6 +738,8 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="new">Novos</SelectItem>
                       <SelectItem value="exists">Existentes</SelectItem>
+                      <SelectItem value="selectable">Editáveis</SelectItem>
+                      <SelectItem value="blocked">Bloqueados</SelectItem>
                       <SelectItem value="done">Feitos</SelectItem>
                       <SelectItem value="error">Erros</SelectItem>
                     </SelectContent>
@@ -687,25 +801,46 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
                   <thead className="bg-muted sticky top-0">
                     <tr>
                       <th className="p-2 w-8"></th>
+                      <th className="p-2 w-10 text-center text-muted-foreground">#</th>
                       <th className="p-2 text-left">Status</th>
                       <th className="p-2 text-left">CPF</th>
                       <th className="p-2 text-left">Nome</th>
+                      <th className="p-2 text-left">Email</th>
+                      <th className="p-2 text-left">Tipo</th>
                       <th className="p-2 text-left">Ocupacao</th>
                       <th className="p-2 text-left">Secretaria</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((user) => {
-                      // Allow selection of "new" (insert) and "exists" (update)
-                      const isSelectable = user.status === "new" || user.status === "exists";
+                    {filteredUsers.map((user, index) => {
+                      // Aplicar mesma lógica de selectableUsers para determinar se é selecionável
+                      const isSelectable = (() => {
+                        if (user.status !== "new" && user.status !== "exists") return false;
+                        if (user.status === "new") return true;
+                        // Para usuários existentes, aplicar regras de permissão
+                        const targetIsAdmin = user.is_admin === true;
+                        const targetIsSuperAdmin = user.is_super_admin === true;
+                        if (currentUser.is_super_admin) {
+                          return !targetIsSuperAdmin;
+                        } else {
+                          return !targetIsAdmin && !targetIsSuperAdmin;
+                        }
+                      })();
                       const isSelected = selectedCpfs.has(user.cpf);
+
+                      // Determinar se é bloqueado (existe mas não pode editar por falta de permissão)
+                      const isBlocked = user.status === "exists" && !isSelectable;
+
+                      // Determinar tipo do usuário
+                      const userType = user.is_super_admin ? "Super Admin" : user.is_admin ? "Admin" : "Usuário";
 
                       return (
                         <tr
-                          key={user.cpf}
+                          key={`${user.cpf}-${index}`}
                           className={cn(
                             "border-t transition-colors",
-                            !isSelectable && STATUS_ROW_COLORS[user.status as keyof typeof STATUS_ROW_COLORS],
+                            isBlocked && "bg-red-50/50",
+                            !isSelectable && !isBlocked && STATUS_ROW_COLORS[user.status as keyof typeof STATUS_ROW_COLORS],
                             isSelected && "bg-primary/10"
                           )}
                         >
@@ -715,18 +850,37 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
                               checked={isSelected}
                               onCheckedChange={() => handleToggleSelect(user.cpf)}
                               disabled={!isSelectable}
+                              className={cn(
+                                !isSelectable && "opacity-30",
+                                isBlocked && "border-red-300"
+                              )}
                             />
+                          </td>
+
+                          {/* Index */}
+                          <td className="p-2 w-10 text-center text-xs text-muted-foreground/60">
+                            {index + 1}
                           </td>
 
                           {/* Status */}
                           <td className="p-2">
-                            <Badge
-                              variant="outline"
-                              className={cn("text-xs", STATUS_COLORS[user.status])}
-                            >
-                              {STATUS_ICONS[user.status]}
-                              <span className="ml-1">{STATUS_LABELS[user.status]}</span>
-                            </Badge>
+                            {isBlocked ? (
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-red-50 text-red-600 border-red-200"
+                              >
+                                <Lock className="h-3 w-3" />
+                                <span className="ml-1">Bloqueado</span>
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className={cn("text-xs", STATUS_COLORS[user.status])}
+                              >
+                                {STATUS_ICONS[user.status]}
+                                <span className="ml-1">{STATUS_LABELS[user.status]}</span>
+                              </Badge>
+                            )}
                           </td>
 
                           {/* CPF */}
@@ -768,6 +922,25 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
                               >
                                 {user.edited?.nome || user.nome || "-"}
                               </span>
+                            )}
+                          </td>
+
+                          {/* Email - Display only */}
+                          <td className="p-2 text-xs text-muted-foreground">
+                            {user.email || "-"}
+                          </td>
+
+                          {/* Tipo */}
+                          <td className="p-2">
+                            {user.status === "new" ? (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            ) : (
+                              <Badge
+                                variant={user.is_super_admin ? "destructive" : user.is_admin ? "default" : "secondary"}
+                                className="text-xs"
+                              >
+                                {userType}
+                              </Badge>
                             )}
                           </td>
 
@@ -854,7 +1027,7 @@ export function ImportTab({ availableIds, currentUser }: ImportTabProps) {
           </Card>
 
           {/* Right panel - Permissions (40%) */}
-          <Card className="w-full xl:w-[40%]">
+          <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Permissoes</CardTitle>
             </CardHeader>
