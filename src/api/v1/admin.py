@@ -10,9 +10,10 @@ REGRAS:
 - Auditoria completa: created_by, updated_by em todas as operações
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, File, Path
 from typing import List, Optional, Dict
 import polars as pl
+import io
 from datetime import datetime, timezone
 
 from src.core.security.jwt import CurrentUserPermissions
@@ -690,7 +691,9 @@ async def list_users(
 
 @router.put("/users/{cpf}", response_model=UserAccessRecord)
 async def upsert_user(
-    cpf: str, request: UpsertUserRequest, permissions: CurrentUserPermissions
+    request: UpsertUserRequest,
+    permissions: CurrentUserPermissions,
+    cpf: str = Path(..., pattern=r"^\d{11}$"),
 ):
     """
     Cria ou atualiza usuário (UPSERT).
@@ -737,25 +740,27 @@ async def upsert_user(
     existing_user = governance_df.filter(pl.col("cpf") == cpf)
     user_exists = not existing_user.is_empty()
 
-    # PROTEÇÃO: Impedir criação acidental de usuário que já existe (se não for update intencional)
-    if user_exists and not request.is_update:
-        existing_row = existing_user.row(0, named=True)
-        nome_existente = existing_row.get("nome", "Sem nome")
-        raise HTTPException(
-            status_code=409,  # Conflict
-            detail=f"CPF {cpf} já está cadastrado no sistema (Usuário: {nome_existente}). Use a função de edição para atualizar este usuário.",
-        )
+    # COMPORTAMENTO UPSERT: Se já existe, atualiza; se não existe, cria
+    # Não bloqueamos mais - sempre fazemos upsert
 
-    # PROTEÇÃO: Impedir edição de super admins
+    # PROTEÇÃO: Impedir edição de super admins e admins (dependendo de quem está editando)
     if user_exists:
         existing_row = existing_user.row(0, named=True)
-        is_target_super_admin = bool(existing_row["is_super_admin"])
-        # Apenas permite editar se o próprio usuário for super admin, mas ainda assim com cuidado
-        # (regra atual: super admins não editáveis via UI)
+        is_target_super_admin = bool(existing_row.get("is_super_admin", False))
+        is_target_admin = bool(existing_row.get("is_admin", False))
+
+        # Super admins NÃO podem editar outros super admins
         if is_target_super_admin:
             raise HTTPException(
                 status_code=403,
-                detail="Super admins não podem ser editados via interface",
+                detail="Super admins não podem ser editados",
+            )
+
+        # Admins NÃO podem editar outros admins (apenas super admin pode)
+        if is_target_admin and not permissions.is_super_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Admins não podem editar outros admins",
             )
 
     # PROTEÇÃO: Impedir que admin edite a si mesmo
@@ -1075,7 +1080,10 @@ async def upsert_user(
 
 
 @router.delete("/users/{cpf}", status_code=204)
-async def delete_user(cpf: str, permissions: CurrentUserPermissions):
+async def delete_user(
+    permissions: CurrentUserPermissions,
+    cpf: str = Path(..., pattern=r"^\d{11}$"),
+):
     """
     Soft-delete de um usuário (marca active=FALSE).
 
@@ -1086,11 +1094,37 @@ async def delete_user(cpf: str, permissions: CurrentUserPermissions):
 
     logger.info(f"Admin deletando usuário")
 
-    # Verificar que usuário existe
-    try:
-        DataManager.get_user_permissions(cpf)
-    except:
+    # Verificar que usuário existe e obter suas permissões
+    governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+    existing_user = governance_df.filter(pl.col("cpf") == cpf)
+
+    if existing_user.is_empty():
         raise HTTPException(status_code=404, detail=f"Usuário {cpf} não encontrado")
+
+    existing_row = existing_user.row(0, named=True)
+    is_target_super_admin = bool(existing_row.get("is_super_admin", False))
+    is_target_admin = bool(existing_row.get("is_admin", False))
+
+    # Super admins NÃO podem deletar outros super admins
+    if is_target_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Super admins não podem ser deletados",
+        )
+
+    # Admins NÃO podem deletar outros admins (apenas super admin pode)
+    if is_target_admin and not permissions.is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Admins não podem deletar outros admins",
+        )
+
+    # Impedir que usuário delete a si mesmo
+    if cpf == permissions.cpf:
+        raise HTTPException(
+            status_code=403,
+            detail="Você não pode deletar a si mesmo",
+        )
 
     # SEGURANÇA: Soft delete com parametrized query
     query = f"""
@@ -1118,3 +1152,504 @@ async def delete_user(cpf: str, permissions: CurrentUserPermissions):
     except Exception as e:
         logger.error(f"❌ Erro ao deletar usuário: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========================================================================
+# BATCH IMPORT SCHEMAS
+# ========================================================================
+
+
+class BatchImportError(BaseModel):
+    """Erro de importação para uma linha específica"""
+
+    row: int
+    cpf: Optional[str] = None
+    error: str
+
+
+class ImportedUser(BaseModel):
+    """Usuário importado com status"""
+
+    cpf: str
+    nome: Optional[str] = None
+    email: Optional[str] = None
+    ocupacao: Optional[str] = None
+    secretaria: Optional[str] = None
+    status: str  # "new" | "exists" | "error"
+    error_message: Optional[str] = None
+
+    # Permissões existentes (preenchido apenas para status="exists")
+    is_admin: Optional[bool] = None
+    is_super_admin: Optional[bool] = None
+    id_cras_list: Optional[List[IdWithName]] = None
+    id_escola_list: Optional[List[IdWithName]] = None
+    id_cre_list: Optional[List[IdWithName]] = None
+    id_ap_list: Optional[List[IdWithName]] = None
+    id_cas_list: Optional[List[IdWithName]] = None
+    id_clinica_familia_list: Optional[List[IdWithName]] = None
+
+
+class BatchImportResult(BaseModel):
+    """Resultado da importação em batch"""
+
+    total: int
+    imported: int
+    skipped: int
+    errors: List[BatchImportError]
+    imported_users: List[ImportedUser]
+
+
+class BatchUserData(BaseModel):
+    """Dados de um usuário para atualização em batch"""
+
+    cpf: str
+    nome: Optional[str] = None
+    email: Optional[str] = None
+    ocupacao: Optional[str] = None
+    secretaria: Optional[str] = None
+
+
+class BatchPermissionsRequest(BaseModel):
+    """Request para atribuir permissões em batch"""
+
+    users: List[BatchUserData]
+    is_admin: bool = False
+    id_cras_list: Optional[List[IdWithName]] = None
+    id_escola_list: Optional[List[IdWithName]] = None
+    id_cre_list: Optional[List[IdWithName]] = None
+    id_ap_list: Optional[List[IdWithName]] = None
+    id_cas_list: Optional[List[IdWithName]] = None
+    id_clinica_familia_list: Optional[List[IdWithName]] = None
+
+
+class BatchPermissionsError(BaseModel):
+    """Erro ao atribuir permissão para um CPF"""
+
+    cpf: str
+    error: str
+
+
+class BatchPermissionsResult(BaseModel):
+    """Resultado da atribuição de permissões em batch"""
+
+    total: int
+    updated: int
+    errors: List[BatchPermissionsError]
+
+
+# ========================================================================
+# BATCH IMPORT ENDPOINTS
+# ========================================================================
+
+
+def _sanitize_cpf(cpf_raw: str) -> str:
+    """Remove pontos, traços e espaços do CPF e garante 11 dígitos com zeros à esquerda"""
+    if not cpf_raw:
+        return ""
+    # Extrair apenas dígitos
+    digits = "".join(c for c in str(cpf_raw) if c.isdigit())
+    # Pad com zeros à esquerda se necessário (CPFs podem começar com 0)
+    if digits and len(digits) < 11:
+        digits = digits.zfill(11)
+    return digits
+
+
+def _validate_cpf(cpf: str) -> Optional[str]:
+    """Valida CPF e retorna mensagem de erro ou None se válido"""
+    if not cpf:
+        return "CPF vazio"
+    if len(cpf) != 11:
+        return f"CPF deve ter 11 dígitos (tem {len(cpf)})"
+    if not cpf.isdigit():
+        return "CPF deve conter apenas números"
+    return None
+
+
+@router.post("/users-batch", response_model=BatchImportResult)
+async def batch_import_users(
+    permissions: CurrentUserPermissions,
+    file: UploadFile = File(...),
+):
+    """
+    Importa usuários em batch a partir de arquivo CSV ou XLSX.
+
+    O arquivo deve conter as colunas:
+    - cpf (obrigatório): 11 dígitos
+    - nome, email, ocupacao, secretaria, notes (opcionais)
+
+    Comportamento:
+    - CPFs duplicados são pulados (não sobrescritos)
+    - Usuários são criados com is_admin=false, sem IDs de permissão
+    - Retorna lista de todos os usuários processados com status
+    """
+    require_admin(permissions)
+
+    logger.info(f"📦 Iniciando importação em batch - arquivo: {file.filename}")
+
+    # Validar extensão
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Nome do arquivo não informado")
+
+    filename_lower = file.filename.lower()
+    if not (filename_lower.endswith(".csv") or filename_lower.endswith(".xlsx")):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de arquivo inválido. Use CSV ou XLSX.",
+        )
+
+    try:
+        # Ler conteúdo do arquivo
+        content = await file.read()
+
+        # Parse do arquivo
+        if filename_lower.endswith(".csv"):
+            # Tentar detectar encoding
+            try:
+                df = pl.read_csv(io.BytesIO(content))
+            except Exception:
+                # Tentar com encoding latin1
+                df = pl.read_csv(io.BytesIO(content), encoding="latin1")
+        else:
+            # XLSX - usar openpyxl via pandas e converter para polars
+            import pandas as pd
+            import openpyxl  # noqa: F401 - necessário para pandas ler xlsx
+
+            pd_df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
+            df = pl.from_pandas(pd_df)
+
+        logger.info(f"📄 Arquivo lido: {len(df)} linhas, colunas: {df.columns}")
+
+        # Verificar coluna CPF obrigatória
+        if "cpf" not in df.columns:
+            raise HTTPException(
+                status_code=400,
+                detail="Coluna 'cpf' não encontrada no arquivo",
+            )
+
+        # Limitar a 1000 linhas
+        if len(df) > 1000:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Arquivo contém {len(df)} linhas. Máximo permitido: 1000",
+            )
+
+        # Buscar CPFs existentes
+        governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+        existing_cpfs = set(governance_df["cpf"].to_list())
+
+        # Processar cada linha
+        errors: List[BatchImportError] = []
+        imported_users: List[ImportedUser] = []
+        users_to_insert: List[dict] = []
+
+        for row_idx, row in enumerate(df.to_dicts(), start=1):
+            cpf_raw = row.get("cpf", "")
+            # Converter para string (pode vir como int do CSV/Excel)
+            cpf_raw_str = str(cpf_raw) if cpf_raw is not None else ""
+            cpf = _sanitize_cpf(cpf_raw_str)
+
+            # Validar CPF
+            cpf_error = _validate_cpf(cpf)
+            if cpf_error:
+                errors.append(BatchImportError(row=row_idx, cpf=cpf_raw_str, error=cpf_error))
+                imported_users.append(
+                    ImportedUser(
+                        cpf=cpf_raw_str or "",
+                        nome=row.get("nome"),
+                        email=row.get("email"),
+                        ocupacao=row.get("ocupacao"),
+                        secretaria=row.get("secretaria"),
+                        status="error",
+                        error_message=cpf_error,
+                    )
+                )
+                continue
+
+            # Verificar se já existe
+            if cpf in existing_cpfs:
+                # Buscar permissões existentes do usuário
+                existing_user_row = governance_df.filter(pl.col("cpf") == cpf)
+                existing_perms = {}
+                if not existing_user_row.is_empty():
+                    user_dict = existing_user_row.row(0, named=True)
+                    existing_perms = {
+                        "is_admin": user_dict.get("is_admin", False),
+                        "is_super_admin": user_dict.get("is_super_admin", False),
+                        "id_cras_list": user_dict.get("id_cras_list"),
+                        "id_escola_list": user_dict.get("id_escola_list"),
+                        "id_cre_list": user_dict.get("id_cre_list"),
+                        "id_ap_list": user_dict.get("id_ap_list"),
+                        "id_cas_list": user_dict.get("id_cas_list"),
+                        "id_clinica_familia_list": user_dict.get("id_clinica_familia_list"),
+                    }
+
+                imported_users.append(
+                    ImportedUser(
+                        cpf=cpf,
+                        nome=row.get("nome") or user_dict.get("nome"),
+                        email=row.get("email") or user_dict.get("email"),
+                        ocupacao=row.get("ocupacao") or user_dict.get("ocupacao"),
+                        secretaria=row.get("secretaria") or user_dict.get("secretaria"),
+                        status="exists",
+                        **existing_perms,
+                    )
+                )
+                continue
+
+            # Marcar como novo (será inserido ao aplicar permissões)
+            imported_users.append(
+                ImportedUser(
+                    cpf=cpf,
+                    nome=row.get("nome"),
+                    email=row.get("email"),
+                    ocupacao=row.get("ocupacao"),
+                    secretaria=row.get("secretaria"),
+                    status="new",
+                )
+            )
+
+        # Contar novos (não inserimos aqui, apenas validamos)
+        new_count = len([u for u in imported_users if u.status == "new"])
+
+        result = BatchImportResult(
+            total=len(df),
+            imported=new_count,  # Quantidade de novos (prontos para receber permissões)
+            skipped=len([u for u in imported_users if u.status == "exists"]),
+            errors=errors,
+            imported_users=imported_users,
+        )
+
+        logger.info(
+            f"📦 Validação concluída: {result.imported} novos, "
+            f"{result.skipped} já existem, {len(result.errors)} erros"
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro na importação em batch: {e}")
+        import traceback
+
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/users-batch/permissions", response_model=BatchPermissionsResult)
+async def batch_update_permissions(
+    request: BatchPermissionsRequest,
+    permissions: CurrentUserPermissions,
+):
+    """
+    Atribui permissões em batch para múltiplos usuários usando uma única query MERGE.
+
+    Todos os usuários recebem as mesmas permissões de IDs.
+    Os dados individuais (nome, ocupacao, secretaria) são atualizados por usuário.
+
+    UPSERT: Insere novos usuários ou atualiza existentes em uma única operação.
+    """
+    require_admin(permissions)
+
+    if not request.users:
+        raise HTTPException(status_code=400, detail="Lista de usuários vazia")
+
+    logger.info(f"🔐 Atualizando permissões em batch para {len(request.users)} usuários (MERGE)")
+
+    # Validar que admin segmentado pode atribuir esses IDs
+    target_ids_dict = {
+        "id_cras_list": request.id_cras_list,
+        "id_escola_list": request.id_escola_list,
+        "id_cre_list": request.id_cre_list,
+        "id_ap_list": request.id_ap_list,
+        "id_cas_list": request.id_cas_list,
+        "id_clinica_familia_list": request.id_clinica_familia_list,
+    }
+    target_ids_to_validate = {k: v for k, v in target_ids_dict.items() if v is not None}
+
+    if target_ids_to_validate:
+        validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
+
+    # Calcular permission string
+    permission_value = calculate_permission(request.is_admin, False)
+
+    # Preparar arrays de IDs como strings SQL
+    id_cras_sql = _convert_id_list_to_bq_struct(request.id_cras_list)
+    id_escola_sql = _convert_id_list_to_bq_struct(request.id_escola_list)
+    id_cre_sql = _convert_id_list_to_bq_struct(request.id_cre_list)
+    id_ap_sql = _convert_id_list_to_bq_struct(request.id_ap_list)
+    id_cas_sql = _convert_id_list_to_bq_struct(request.id_cas_list)
+    id_clinica_sql = _convert_id_list_to_bq_struct(request.id_clinica_familia_list)
+
+    # Fase 1: Validar CPFs e coletar dados
+    errors: List[BatchPermissionsError] = []
+    valid_users: List[dict] = []  # Usuários válidos para processar
+
+    # Sanitizar e validar CPFs
+    cpf_to_user_data: dict = {}
+    for user_data in request.users:
+        cpf = _sanitize_cpf(user_data.cpf)
+        if not cpf or len(cpf) != 11:
+            errors.append(BatchPermissionsError(cpf=user_data.cpf, error="CPF inválido"))
+            continue
+        cpf_to_user_data[cpf] = user_data
+
+    cpfs_to_check = list(cpf_to_user_data.keys())
+    logger.info(f"🔍 CPFs válidos para verificar: {len(cpfs_to_check)}")
+
+    # Buscar CPFs existentes COM suas permissões para validação
+    existing_users: dict = {}  # cpf -> {"is_admin": bool, "is_super_admin": bool}
+    if cpfs_to_check:
+        cpf_list_sql = ", ".join([f"'{cpf}'" for cpf in cpfs_to_check])
+        check_query = f"""
+        SELECT cpf, is_admin, is_super_admin
+        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
+        WHERE cpf IN ({cpf_list_sql})
+        """
+        result_df = execute_query(check_query)
+        logger.info(f"🔍 {len(result_df)} CPFs já existem no banco")
+        if not result_df.is_empty():
+            for row in result_df.iter_rows(named=True):
+                existing_users[row["cpf"]] = {
+                    "is_admin": row.get("is_admin", False) or False,
+                    "is_super_admin": row.get("is_super_admin", False) or False,
+                }
+
+    # Fase 2: Validar permissões e construir lista de usuários válidos
+    for cpf, user_data in cpf_to_user_data.items():
+        # Validar permissão para editar usuário existente
+        if cpf in existing_users:
+            target_user = existing_users[cpf]
+            target_is_admin = target_user["is_admin"]
+            target_is_super_admin = target_user["is_super_admin"]
+
+            # Super admins NÃO podem editar outros super admins
+            if permissions.is_super_admin and target_is_super_admin:
+                errors.append(BatchPermissionsError(
+                    cpf=cpf,
+                    error="Super admins não podem editar outros super admins"
+                ))
+                continue
+
+            # Admins NÃO podem editar outros admins ou super admins
+            if not permissions.is_super_admin and (target_is_admin or target_is_super_admin):
+                errors.append(BatchPermissionsError(
+                    cpf=cpf,
+                    error="Admins não podem editar outros admins ou super admins"
+                ))
+                continue
+
+        # Escapar valores para SQL
+        def escape_sql(val: Optional[str]) -> str:
+            if val is None:
+                return "NULL"
+            # Escapar aspas simples
+            escaped = val.replace("'", "\\'")
+            return f"'{escaped}'"
+
+        valid_users.append({
+            "cpf": cpf,
+            "nome": escape_sql(user_data.nome),
+            "email": escape_sql(user_data.email),
+            "ocupacao": escape_sql(user_data.ocupacao),
+            "secretaria": escape_sql(user_data.secretaria),
+        })
+
+    if not valid_users:
+        logger.warning("⚠️ Nenhum usuário válido para processar")
+        return BatchPermissionsResult(
+            total=len(request.users),
+            updated=0,
+            errors=errors,
+        )
+
+    logger.info(f"✅ {len(valid_users)} usuários válidos para MERGE")
+
+    # Fase 3: Construir e executar query MERGE
+    # Criar source data como SELECT ... UNION ALL
+    source_rows = []
+    for u in valid_users:
+        source_rows.append(
+            f"SELECT '{u['cpf']}' as cpf, {u['nome']} as nome, {u['email']} as email, "
+            f"{u['ocupacao']} as ocupacao, {u['secretaria']} as secretaria"
+        )
+
+    source_query = " UNION ALL ".join(source_rows)
+
+    merge_query = f"""
+    MERGE `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}` AS T
+    USING (
+        {source_query}
+    ) AS S
+    ON T.cpf = S.cpf
+
+    WHEN MATCHED THEN
+        UPDATE SET
+            is_admin = {str(request.is_admin).upper()},
+            permission = '{permission_value}',
+            id_cras_list = {id_cras_sql},
+            id_escola_list = {id_escola_sql},
+            id_cre_list = {id_cre_sql},
+            id_ap_list = {id_ap_sql},
+            id_cas_list = {id_cas_sql},
+            id_clinica_familia_list = {id_clinica_sql},
+            nome = COALESCE(S.nome, T.nome),
+            email = COALESCE(S.email, T.email),
+            ocupacao = COALESCE(S.ocupacao, T.ocupacao),
+            secretaria = COALESCE(S.secretaria, T.secretaria),
+            updated_by = '{permissions.cpf}',
+            updated_at = CURRENT_TIMESTAMP()
+
+    WHEN NOT MATCHED THEN
+        INSERT (cpf, nome, email, ocupacao, secretaria, is_admin, is_super_admin, permission,
+                id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
+                notes, active, created_at, updated_at, created_by, updated_by)
+        VALUES (
+            S.cpf,
+            S.nome,
+            S.email,
+            S.ocupacao,
+            S.secretaria,
+            {str(request.is_admin).upper()},
+            FALSE,
+            '{permission_value}',
+            {id_cras_sql},
+            {id_escola_sql},
+            {id_cre_sql},
+            {id_ap_sql},
+            {id_cas_sql},
+            {id_clinica_sql},
+            NULL,
+            TRUE,
+            CURRENT_TIMESTAMP(),
+            CURRENT_TIMESTAMP(),
+            '{permissions.cpf}',
+            '{permissions.cpf}'
+        )
+    """
+
+    try:
+        logger.info(f"🚀 Executando MERGE para {len(valid_users)} usuários...")
+        execute_query(merge_query)
+        logger.info(f"✅ MERGE executado com sucesso!")
+    except Exception as e:
+        logger.error(f"❌ Erro no MERGE: {e}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Erro ao processar batch: {str(e)}")
+
+    # Invalidar cache
+    refresh_governance_cache()
+
+    result = BatchPermissionsResult(
+        total=len(request.users),
+        updated=len(valid_users),
+        errors=errors,
+    )
+
+    logger.info(
+        f"🔐 Permissões processadas: {len(valid_users)} usuários em uma única query "
+        f"({len(errors)} erros)"
+    )
+
+    return result
