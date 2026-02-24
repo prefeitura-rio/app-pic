@@ -156,7 +156,7 @@ const ProfessionalTabComponent = ({
           Busca Individual
         </h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Busque por CPF ou nome para ver os detalhes de uma pessoa específica
+          Busque por CPF, Nome ou ID Membro Família (CadÚnico) para ver os detalhes de uma pessoa específica
         </p>
       </div>
 
@@ -297,48 +297,56 @@ const ProfessionalTabComponent = ({
                 {/* Informações Básicas */}
                 <div>
                   <h3 className="text-lg font-semibold mb-3 text-foreground">Informações Básicas</h3>
-                  <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+                  <div className="bg-muted/50 p-4 rounded-lg space-y-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Nome</p>
                       <p className="font-medium">{selectedParticipant.nome || "-"}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">CPF</p>
-                      <p className="font-mono font-medium">{selectedParticipant.cpf || "-"}</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">CPF</p>
+                        <p className="font-mono font-medium">{selectedParticipant.cpf || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">ID Membro Família (CadÚnico)</p>
+                        <p className="font-mono font-medium">{selectedParticipant.id_membro_familia || "-"}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Grupo</p>
-                      <p className="font-medium">{renderGrupoCompleto(selectedParticipant.grupo)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Idade</p>
-                      <p className="font-medium">{selectedParticipant.idade != null ? `${selectedParticipant.idade} anos` : "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bairro</p>
-                      <p className="font-medium">{selectedParticipant.bairro || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Escola</p>
-                      <p className="font-medium">{selectedParticipant.nome_escola || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Clínica da Família</p>
-                      <p className="font-medium">{selectedParticipant.nome_clinica_familia || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">CRAS</p>
-                      <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
-                      <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <Badge variant={selectedParticipant.status?.toLowerCase() === "ativo" ? "success" : "destructive"}>
-                        {selectedParticipant.status || "-"}
-                      </Badge>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Grupo</p>
+                        <p className="font-medium">{renderGrupoCompleto(selectedParticipant.grupo)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Idade</p>
+                        <p className="font-medium">{selectedParticipant.idade != null ? `${selectedParticipant.idade} anos` : "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bairro</p>
+                        <p className="font-medium">{selectedParticipant.bairro || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Escola</p>
+                        <p className="font-medium">{selectedParticipant.nome_escola || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Clínica da Família</p>
+                        <p className="font-medium">{selectedParticipant.nome_clinica_familia || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">CRAS</p>
+                        <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
+                        <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <Badge variant={selectedParticipant.status?.toLowerCase() === "ativo" ? "success" : "destructive"}>
+                          {selectedParticipant.status || "-"}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 </div>
