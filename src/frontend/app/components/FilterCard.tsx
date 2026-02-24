@@ -124,7 +124,7 @@ const FilterCardComponent = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Buscar por CPF, Nome ou ID Membro Família (CadÚnico)..."
+              placeholder="Buscar por CPF, Nome, ID Membro Família ou ID Família (CadÚnico)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}

@@ -37,6 +37,7 @@ export interface Participante {
   // Identificação
   cpf?: string;
   id_membro_familia?: string;
+  id_familia?: string;
   nome?: string;
   sexo?: string;
 
@@ -110,6 +111,7 @@ export interface Participante {
 export interface ProtocoloDetalhes {
   cpf?: string;
   id_membro_familia?: string;
+  id_familia?: string;
   nome?: string;
   grupo?: string;
   protocolo_id?: string;
