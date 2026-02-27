@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Heart, User, Shield, Home } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { UserAreaDialog } from "@/app/components/UserAreaDialog";
+import { SessionMonitor } from "@/app/components/SessionMonitor";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { useRouter, usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +48,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
   const router = useRouter();
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
+  const [userAreaOpen, setUserAreaOpen] = useState(false);
 
   // Fetch complete user info (including permissions) from backend
   // IMPORTANTE: Usa mesma queryKey que DashboardClient para compartilhar cache
@@ -73,68 +76,87 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
 
   const isAdmin = currentUserAccess?.is_admin || false;
 
-  return (
-    <header className="bg-primary text-primary-foreground shadow-lg">
-      <div className="container mx-auto px-6 py-6">
-        <div className="flex items-center justify-between">
-          {/* Logo - clicável para voltar à página principal */}
-          <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-4 hover:opacity-80 transition-opacity"
-          >
-            <div className="bg-primary-foreground/10 p-3 rounded-lg">
-              <Heart className="h-8 w-8" fill="currentColor" />
-            </div>
-            <div className="text-left">
-              <h1 className="text-3xl font-bold">Pequenos Cariocas</h1>
-              <p className="text-primary-foreground/80 text-sm">
-                Primeira Infância Integrada • Prefeitura do Rio de Janeiro
-              </p>
-            </div>
-          </button>
+  // Callback para SessionMonitor abrir a área do usuário
+  const handleOpenUserArea = () => {
+    setUserAreaOpen(true);
+  };
 
-          <div className="flex items-center gap-2">
-            {showUserControls && (
-              <>
-                {/* Conditional navigation button based on current page */}
-                {isAdminPage ? (
-                  // Show Home icon when in admin page
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => router.push("/")}
-                    className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
-                  >
-                    <Home className="h-5 w-5" />
-                  </Button>
-                ) : (
-                  // Show Admin icon when in main page (only if user is admin)
-                  isAdmin && (
+  return (
+    <>
+      <header className="bg-primary text-primary-foreground shadow-lg">
+        <div className="container mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            {/* Logo - clicável para voltar à página principal */}
+            <button
+              onClick={() => router.push("/")}
+              className="flex items-center gap-4 hover:opacity-80 transition-opacity"
+            >
+              <div className="bg-primary-foreground/10 p-3 rounded-lg">
+                <Heart className="h-8 w-8" fill="currentColor" />
+              </div>
+              <div className="text-left">
+                <h1 className="text-3xl font-bold">Pequenos Cariocas</h1>
+                <p className="text-primary-foreground/80 text-sm">
+                  Primeira Infância Integrada • Prefeitura do Rio de Janeiro
+                </p>
+              </div>
+            </button>
+
+            <div className="flex items-center gap-2">
+              {showUserControls && (
+                <>
+                  {/* Conditional navigation button based on current page */}
+                  {isAdminPage ? (
+                    // Show Home icon when in admin page
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => router.push("/admin")}
+                      onClick={() => router.push("/")}
                       className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     >
-                      <Shield className="h-5 w-5" />
+                      <Home className="h-5 w-5" />
                     </Button>
-                  )
-                )}
-              </>
-            )}
+                  ) : (
+                    // Show Admin icon when in main page (only if user is admin)
+                    isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => router.push("/admin")}
+                        className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                      >
+                        <Shield className="h-5 w-5" />
+                      </Button>
+                    )
+                  )}
+                </>
+              )}
 
-            <ThemeToggle />
+              <ThemeToggle />
 
-            {showUserControls && (
-              <UserAreaDialog userInfo={effectiveUserInfo}>
-                <Button variant="ghost" size="icon" className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground">
-                  <User className="h-5 w-5" />
-                </Button>
-              </UserAreaDialog>
-            )}
+              {showUserControls && (
+                <UserAreaDialog
+                  userInfo={effectiveUserInfo}
+                  open={userAreaOpen}
+                  onOpenChange={setUserAreaOpen}
+                >
+                  <Button variant="ghost" size="icon" className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground">
+                    <User className="h-5 w-5" />
+                  </Button>
+                </UserAreaDialog>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Session Monitor - only show when user is authenticated */}
+      {showUserControls && effectiveUserInfo?.exp && (
+        <SessionMonitor
+          tokenExpiration={effectiveUserInfo.exp}
+          onOpenUserArea={handleOpenUserArea}
+        />
+      )}
+    </>
   );
 }

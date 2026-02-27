@@ -52,14 +52,13 @@ print(TABLE_ID_DATA_ACCESS)
 
 # CPF do super admin inicial (sem pontos ou traços)
 # Este CPF deve corresponder ao campo 'preferred_username' do JWT após login gov.br
-SUPER_ADMIN_CPF = "12345678900"  # Ex: "12345678900"
+SUPER_ADMIN_CPF = "13653390761"  # Ex: "12345678900"
 
 # Informações completas do super admin
-SUPER_ADMIN_NAME = "ASD"
-SUPER_ADMIN_EMAIL = "asd@asd.asd"  # Email do super admin
-SUPER_ADMIN_OCUPACAO = "ASD"  # Ocupação/cargo
-SUPER_ADMIN_SECRETARIA = "ASD"  # Secretaria/órgão
-
+SUPER_ADMIN_NAME = "Rodolpho Souza Santo"
+SUPER_ADMIN_EMAIL = "rodolpho.souza@prefeitura.rio"  # Email do super admin
+SUPER_ADMIN_OCUPACAO = "PM"  # Ocupação/cargo
+SUPER_ADMIN_SECRETARIA = "IPLAN"  # Secretaria/órgão
 # ========================================================================
 # VALIDAÇÕES
 # ========================================================================
@@ -145,26 +144,48 @@ def create_table():
         return False
 
 
-def check_super_admin_exists(cpf: str) -> bool:
-    """Verifica se já existe um super admin com este CPF"""
+def check_user_exists(cpf: str) -> tuple[bool, bool]:
+    """
+    Verifica se já existe um usuário com este CPF.
+
+    Returns:
+        tuple[bool, bool]: (exists, is_super_admin)
+    """
     query = f"""
-    SELECT COUNT(*) as count
+    SELECT COUNT(*) as count, LOGICAL_OR(is_super_admin) as is_super
     FROM `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
-    WHERE cpf = '{cpf}' AND is_super_admin = TRUE AND active = TRUE
+    WHERE cpf = '{cpf}' AND active = TRUE
     """
 
     try:
         result = execute_query(query)
-        # Polars DataFrame: usar row() ou item() ao invés de iloc
-        return result.row(0)[0] > 0
+        row = result.row(0)
+        exists = row[0] > 0
+        is_super = row[1] if row[1] is not None else False
+        return exists, is_super
     except Exception as e:
-        logger.error(f"❌ Erro ao verificar super admin existente: {e}")
-        return False
+        logger.error(f"❌ Erro ao verificar usuário existente: {e}")
+        return False, False
 
 
-def update_super_admin(cpf: str):
-    """Atualiza as informações de um super admin existente"""
-    print(f"\n🔄 Atualizando informações do super admin {cpf}...")
+def update_to_super_admin(cpf: str, was_super: bool):
+    """
+    Atualiza/promove um usuário existente para super admin.
+
+    Args:
+        cpf: CPF do usuário
+        was_super: Se já era super admin (só atualiza info) ou se está sendo promovido
+
+    IMPORTANTE: Ao promover para super admin, LIMPA os id_*_list porque:
+    - Super admin tem acesso TOTAL, não precisa de IDs específicos
+    - Mantém o banco consistente e limpo
+    - Evita confusão em auditorias
+    - Se rebaixado no futuro, não herda permissões antigas
+    """
+    action = "Atualizando" if was_super else "Promovendo usuário para"
+    print(f"\n🔄 {action} super admin {cpf}...")
+
+    note_text = "atualizado" if was_super else "promovido"
 
     query = f"""
     UPDATE `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
@@ -173,19 +194,34 @@ def update_super_admin(cpf: str):
         ocupacao = '{SUPER_ADMIN_OCUPACAO}',
         secretaria = '{SUPER_ADMIN_SECRETARIA}',
         email = '{SUPER_ADMIN_EMAIL}',
+        is_admin = TRUE,
+        is_super_admin = TRUE,
+        permission = 'super_admin',
+        -- Limpar IDs específicos (super admin = acesso total)
+        id_cras_list = NULL,
+        id_escola_list = NULL,
+        id_cre_list = NULL,
+        id_ap_list = NULL,
+        id_cas_list = NULL,
+        id_clinica_familia_list = NULL,
+        -- Auditoria
         updated_by = 'SYSTEM_BOOTSTRAP',
         updated_at = CURRENT_TIMESTAMP(),
-        notes = 'Super admin atualizado via bootstrap script - Acesso total ao sistema'
-    WHERE cpf = '{cpf}' AND is_super_admin = TRUE AND active = TRUE
+        notes = 'Super admin {note_text} via bootstrap script - Acesso total ao sistema'
+    WHERE cpf = '{cpf}' AND active = TRUE
     """
 
     try:
         execute_query(query)
-        print("✅ Informações do super admin atualizadas com sucesso!\n")
+        if was_super:
+            print("✅ Informações do super admin atualizadas com sucesso!\n")
+        else:
+            print("✅ Usuário promovido para super admin com sucesso!")
+            print("   🧹 IDs específicos removidos (super admin = acesso total)\n")
         return True
     except Exception as e:
-        print(f"❌ ERRO ao atualizar super admin: {e}\n")
-        logger.error(f"❌ Erro ao atualizar super admin: {e}")
+        print(f"❌ ERRO ao atualizar/promover super admin: {e}\n")
+        logger.error(f"❌ Erro ao atualizar/promover super admin: {e}")
         return False
 
 
@@ -224,22 +260,29 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
     else:
         print(f"✅ Tabela {TABLE_ID_DATA_ACCESS} já existe\n")
 
-    # Verificar se já existe super admin
-    if check_super_admin_exists(SUPER_ADMIN_CPF):
-        print("⚠️  AVISO: Já existe um super admin ativo com este CPF!")
-        print("   Você pode atualizar as informações dele com os dados configurados.\n")
+    # Verificar se usuário já existe (super admin ou não)
+    user_exists, is_super = check_user_exists(SUPER_ADMIN_CPF)
+
+    if user_exists:
+        if is_super:
+            print("⚠️  AVISO: Já existe um super admin ativo com este CPF!")
+            print("   Você pode atualizar as informações dele com os dados configurados.\n")
+        else:
+            print("⚠️  AVISO: Já existe um USUÁRIO COMUM ativo com este CPF!")
+            print("   Você pode PROMOVÊ-LO para super admin e atualizar suas informações.\n")
 
         if not skip_confirmation:
+            action = "atualizar" if is_super else "promover para super admin"
             update_confirm = (
                 input(
-                    "Deseja atualizar as informações do super admin existente? [s/N]: "
+                    f"Deseja {action} este usuário? [s/N]: "
                 )
                 .strip()
                 .lower()
             )
 
             if update_confirm in ["s", "sim", "y", "yes"]:
-                if update_super_admin(SUPER_ADMIN_CPF):
+                if update_to_super_admin(SUPER_ADMIN_CPF, was_super=is_super):
                     # Refresh cache de governança
                     try:
                         from src.utils.data_manager import DataManager
@@ -256,17 +299,18 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
                         )
 
                     print("=" * 70)
-                    print("🎉 ATUALIZAÇÃO CONCLUÍDA")
+                    print("🎉 ATUALIZAÇÃO/PROMOÇÃO CONCLUÍDA")
                     print("=" * 70 + "\n")
                 sys.exit(0)
             else:
-                print("\n❌ Atualização cancelada. Nenhuma ação realizada.\n")
+                print("\n❌ Operação cancelada. Nenhuma ação realizada.\n")
                 sys.exit(0)
         else:
+            action = "atualizando" if is_super else "promovendo para"
             print(
-                "⚠️  Modo não-interativo: atualizando super admin sem confirmação...\n"
+                f"⚠️  Modo não-interativo: {action} super admin sem confirmação...\n"
             )
-            if update_super_admin(SUPER_ADMIN_CPF):
+            if update_to_super_admin(SUPER_ADMIN_CPF, was_super=is_super):
                 # Refresh cache de governança
                 try:
                     from src.utils.data_manager import DataManager
@@ -281,7 +325,7 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
                     )
 
                 print("=" * 70)
-                print("🎉 ATUALIZAÇÃO CONCLUÍDA")
+                print("🎉 ATUALIZAÇÃO/PROMOÇÃO CONCLUÍDA")
                 print("=" * 70 + "\n")
             sys.exit(0)
 
