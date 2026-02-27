@@ -98,7 +98,6 @@ async def get_dashboard_metrics(
     logger.info("Fetching dashboard metrics from pre-aggregated table")
     logger.info(f"🔑 Permissions: {per_log}")
     logger.info(f"☰ Filters: {filters_dict}")
-    logger.info(f"🏘️ Bairro filter type: {type(filters_dict.get('bairro'))}, value: {filters_dict.get('bairro')}")
 
     try:
         start_time = time.perf_counter()

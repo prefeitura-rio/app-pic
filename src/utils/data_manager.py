@@ -827,11 +827,6 @@ class DataManager:
 
             before_filter = df.filter(filter_expr).height
 
-            # Log sample values for bairro debugging
-            if col == "bairro":
-                unique_bairros = df[col].drop_nulls().unique().to_list()[:20]
-                logger.info(f"📍 Sample unique bairros in data (first 20): {unique_bairros}")
-
             # Normalizar valores de filtro (apenas lowercase - sem remover acentos)
             normalized_filter_values = [str(v).lower().strip() for v in filter_value]
 
@@ -841,12 +836,6 @@ class DataManager:
 
             filter_time = time.perf_counter() - filter_start
             filter_times[col] = filter_time
-
-            # Log detalhado para debugging
-            if col == "bairro":
-                logger.info(f"🏘️ Filtering {col}: looking for {normalized_filter_values}")
-                after_this_filter = df.filter(filter_expr).height
-                logger.info(f"   After bairro filter: {before_filter} -> {after_this_filter} rows")
 
         # Aplicar filtro final de colunas escalares
         df_filtered = df.filter(filter_expr)
@@ -1057,9 +1046,6 @@ class DataManager:
         active_scalar_filters: Dict[str, list] = {}
         active_array_filters: Dict[str, Dict[str, list]] = {}
 
-        logger.info(f"📊 DataFrame columns: {df_original.columns[:10]}...")  # First 10 columns
-        logger.info(f"🎯 Active filters received: {list(active_filters.keys())}")
-
         for k, v in active_filters.items():
             if v in [None, "", "todos", "todas"]:
                 continue
@@ -1083,7 +1069,6 @@ class DataManager:
             else:
                 if k in df_original.columns:
                     active_scalar_filters[k] = values
-                    logger.info(f"🔍 Added active scalar filter: {k} = {values}")
                 else:
                     logger.warning(f"⚠️ Filter key '{k}' not found in DataFrame columns")
 
