@@ -124,6 +124,7 @@ async def get_participants(
     try:
         # Converter filtros de API para colunas do DataFrame
         filters_dict = filters.model_dump(exclude_none=True)
+        logger.info(f"📋 Raw filters from Pydantic: {filters_dict}")
 
         # Extrair search_term se existir
         search_term = filters_dict.pop("search", None)
@@ -137,7 +138,10 @@ async def get_participants(
                     filter_value = [
                         v.strip() for v in filter_value.split(",") if v.strip()
                     ]
+                    logger.info(f"🔄 Parsed multi-select for {filter_key}: {filter_value}")
                 column_filters[column_name] = filter_value
+
+        logger.info(f"🗺️ Mapped column filters: {column_filters}")
 
         # Validar e mapear coluna de ordenação
         sort_column = None

@@ -216,13 +216,18 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Bairro */}
-            <VirtualizedSelect
-              show={true}
-              value={(filters as any).bairro || "todos"}
-              onSelect={(v) => handleFilterUpdate("bairro", v)}
+            {/* Bairro - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).bairro)
+                  ? (filters as any).bairro
+                  : (filters as any).bairro
+                    ? [(filters as any).bairro]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("bairro", values)}
               disabled={loading}
-              placeholder="Bairro"
+              placeholder="Bairros"
               defaultLabel="Todos os Bairros"
               options={filteredOptions.bairros}
             />

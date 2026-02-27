@@ -59,7 +59,7 @@ async def get_dashboard_metrics(
     grupo: Optional[str] = Query(None, description="Filtrar por grupo (crianca, gestante)"),
     cohort: Optional[str] = Query(None, description="Filtrar por safra"),
     status: Optional[str] = Query(None, description="Filtrar por status (ativo, inativo)"),
-    bairro: Optional[str] = Query(None, description="Filtrar por bairro"),
+    bairro: Optional[str] = Query(None, description="Filtrar por bairro(s) - pode ser string separada por vírgula"),
     cre: Optional[str] = Query(None, description="Filtrar por CRE"),
     ap: Optional[str] = Query(None, description="Filtrar por AP"),
     cas: Optional[str] = Query(None, description="Filtrar por CAS"),
@@ -86,7 +86,8 @@ async def get_dashboard_metrics(
     if status:
         filters_dict["pic_status"] = status
     if bairro:
-        filters_dict["bairro"] = bairro
+        # Parse comma-separated bairros (multi-select support)
+        filters_dict["bairro"] = [b.strip() for b in bairro.split(",")] if "," in bairro else bairro
     if cre:
         filters_dict["id_cre"] = cre
     if ap:
@@ -97,6 +98,7 @@ async def get_dashboard_metrics(
     logger.info("Fetching dashboard metrics from pre-aggregated table")
     logger.info(f"🔑 Permissions: {per_log}")
     logger.info(f"☰ Filters: {filters_dict}")
+    logger.info(f"🏘️ Bairro filter type: {type(filters_dict.get('bairro'))}, value: {filters_dict.get('bairro')}")
 
     try:
         start_time = time.perf_counter()

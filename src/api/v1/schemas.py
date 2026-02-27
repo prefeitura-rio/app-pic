@@ -33,7 +33,7 @@ class SortParams(BaseModel):
 
 
 class CommonFilters(BaseModel):
-    bairro: Optional[str] = None
+    bairro: Optional[str] = None  # Multi-select via comma-separated string
     cre: Optional[str] = None
     ap: Optional[str] = None  # AP (Área Programática)
     cas: Optional[str] = None  # CAS (Centro de Atenção à Saúde)
