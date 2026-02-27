@@ -774,12 +774,22 @@ class DataManager:
             if not isinstance(filter_value, list):
                 filter_value = [filter_value]
 
+            # Log para debug de filtros booleanos
+            if col == "active":
+                logger.info(f"🔍 [apply_filters] Processing 'active' filter: value={filter_value}, types={[type(v).__name__ for v in filter_value]}")
+
             # Pular valores vazios ou valores especiais (todos, todas)
-            filter_value = [
-                v
-                for v in filter_value
-                if v and str(v).strip() and str(v) not in config.FILTER_IGNORE_VALUES
-            ]
+            # IMPORTANTE: Manter False (boolean) pois é valor válido para filtros boolean
+            cleaned_values = []
+            for v in filter_value:
+                # Sempre manter valores booleanos (True e False são válidos)
+                if isinstance(v, bool):
+                    cleaned_values.append(v)
+                # Para outros tipos, aplicar validação normal
+                elif v and str(v).strip() and str(v) not in config.FILTER_IGNORE_VALUES:
+                    cleaned_values.append(v)
+
+            filter_value = cleaned_values
             if not filter_value:
                 continue
 
@@ -827,12 +837,36 @@ class DataManager:
 
             before_filter = df.filter(filter_expr).height
 
-            # Normalizar valores de filtro (apenas lowercase - sem remover acentos)
-            normalized_filter_values = [str(v).lower().strip() for v in filter_value]
+            # Detectar tipo da coluna para aplicar filtro adequado
+            col_dtype = df[col].dtype
 
-            # Polars: filtro case-insensitive nativo (muito rápido)
-            col_expr = pl.col(col).cast(pl.Utf8).str.to_lowercase()
-            filter_expr = filter_expr & col_expr.is_in(normalized_filter_values)
+            # Tratamento especial para colunas booleanas
+            if col_dtype == pl.Boolean:
+                # Converter valores do filtro para boolean
+                bool_values = []
+                for v in filter_value:
+                    if isinstance(v, bool):
+                        bool_values.append(v)
+                    elif isinstance(v, str):
+                        # Aceitar "true"/"false" (case insensitive) ou "1"/"0"
+                        v_lower = v.lower().strip()
+                        if v_lower in ["true", "1", "yes", "sim"]:
+                            bool_values.append(True)
+                        elif v_lower in ["false", "0", "no", "não", "nao"]:
+                            bool_values.append(False)
+                    elif isinstance(v, (int, float)):
+                        bool_values.append(bool(v))
+
+                if bool_values:
+                    rows_before = df.filter(filter_expr).height
+                    filter_expr = filter_expr & pl.col(col).is_in(bool_values)
+                    rows_after = df.filter(filter_expr).height
+                    logger.info(f"🔍 Boolean filter on '{col}': {bool_values} -> {rows_before} to {rows_after} rows")
+            else:
+                # Filtro padrão para strings (case-insensitive)
+                normalized_filter_values = [str(v).lower().strip() for v in filter_value]
+                col_expr = pl.col(col).cast(pl.Utf8).str.to_lowercase()
+                filter_expr = filter_expr & col_expr.is_in(normalized_filter_values)
 
             filter_time = time.perf_counter() - filter_start
             filter_times[col] = filter_time

@@ -79,7 +79,11 @@ export default function AdminPage() {
 
       // Filtro de status ativo/inativo
       if (filterStatus && filterStatus !== "todos") {
-        params.append("active", filterStatus === "active" ? "true" : "false");
+        const activeValue = filterStatus === "active" ? "true" : "false";
+        console.log(`[AdminPage] Applying active filter: filterStatus="${filterStatus}" -> active="${activeValue}"`);
+        params.append("active", activeValue);
+      } else {
+        console.log(`[AdminPage] No active filter: filterStatus="${filterStatus}"`);
       }
 
       // Filtro de ocupação (valor direto do backend)

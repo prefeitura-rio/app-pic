@@ -597,6 +597,9 @@ async def list_users(
 
         if active is not None:
             filters_dict["active"] = active
+            logger.info(f"✅ Active filter applied: active={active} (type: {type(active).__name__})")
+        else:
+            logger.info(f"⚠️ No active filter: active={active}")
         if ocupacao:
             filters_dict["ocupacao"] = ocupacao
         if secretaria:

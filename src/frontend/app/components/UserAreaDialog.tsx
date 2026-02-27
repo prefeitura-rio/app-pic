@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,8 @@ import {
   DialogTrigger,
 } from "@/app/components/ui/dialog";
 import { Button } from "@/app/components/ui/button";
-import { User, Shield, LogOut, Mail, IdCard, Calendar, Key, Clock } from "lucide-react";
+import { Alert, AlertDescription } from "@/app/components/ui/alert";
+import { User, Shield, LogOut, Mail, IdCard, Calendar, Key, Clock, RefreshCw, AlertTriangle } from "lucide-react";
 
 import { IdWithName } from "@/app/types";
 
@@ -45,15 +47,56 @@ interface UserInfo {
 interface UserAreaDialogProps {
   children: React.ReactNode;
   userInfo?: UserInfo | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
+export function UserAreaDialog({ children, userInfo, open, onOpenChange }: UserAreaDialogProps) {
   const router = useRouter();
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleLogout = () => {
     // Just redirect to logout endpoint - it will handle Keycloak logout and redirect back to /login
     window.location.href = "/api/auth/logout";
   };
+
+  const handleRefreshSession = async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        // Token renovado com sucesso - recarregar página para pegar novo token
+        window.location.reload();
+      } else {
+        console.error("Failed to refresh session");
+        // Se falhar, redirecionar para login
+        handleLogout();
+      }
+    } catch (error) {
+      console.error("Error refreshing session:", error);
+      handleLogout();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Countdown em tempo real
+  useEffect(() => {
+    if (!userInfo?.exp) return;
+
+    const interval = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = Math.max(0, userInfo.exp! - now);
+      setTimeRemaining(remaining);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [userInfo?.exp]);
 
   // Formatar datas
   const formatDate = (timestamp?: number) => {
@@ -67,25 +110,20 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
     }).format(new Date(timestamp * 1000));
   };
 
-  // Calcular tempo restante
-  const getTimeRemaining = (exp?: number) => {
-    if (!exp) return "Não disponível";
-    const now = Math.floor(Date.now() / 1000);
-    const remaining = exp - now;
+  // Formatar tempo restante (sempre MM:SS)
+  const formatTimeRemaining = (seconds: number): string => {
+    if (seconds <= 0) return "00:00";
 
-    if (remaining <= 0) return "Expirado";
-
-    const hours = Math.floor(remaining / 3600);
-    const minutes = Math.floor((remaining % 3600) / 60);
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}min`;
-    }
-    return `${minutes}min`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // Verificar se está próximo da expiração (menos de 60 segundos)
+  const isExpiringSoon = timeRemaining > 0 && timeRemaining <= 60;
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -100,6 +138,107 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
+
+          {/* Alerta de Expiração (só aparece quando falta menos de 30 minutos) */}
+          {isExpiringSoon && (
+            <Alert variant="destructive" className="border-2">
+              <AlertTriangle className="h-5 w-5" />
+              <AlertDescription className="ml-2">
+                <div>
+                  <strong>Atenção!</strong>
+                </div>
+                <div>
+                  Sua sessão será encerrada automaticamente em {formatTimeRemaining(timeRemaining)}.
+                </div>
+                <div>
+                  Clique em <strong>Renovar Sessão</strong> para continuar.
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Informações da Sessão - SEMPRE VISÍVEL NO TOPO */}
+          <div className={`rounded-lg border p-4 ${isExpiringSoon ? 'bg-amber-500/5 border-amber-500/50' : 'bg-muted/30'}`}>
+            <h4 className="flex items-center gap-2 font-semibold mb-3">
+              <Clock className={`h-4 w-4 ${isExpiringSoon ? 'text-amber-500' : 'text-primary'}`} />
+              Sessão Atual
+            </h4>
+            <div className="space-y-3">
+              {/* Countdown Destacado */}
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted-foreground">Tempo Restante</p>
+                <div className={`flex items-center gap-3 rounded-lg px-4 py-3 ${
+                  isExpiringSoon
+                    ? 'bg-amber-500/10 ring-1 ring-amber-500/20'
+                    : 'bg-primary/5 ring-1 ring-primary/10'
+                }`}>
+                  <Clock className={`h-5 w-5 ${isExpiringSoon ? 'text-amber-500' : 'text-primary'}`} />
+                  <span className={`text-2xl font-mono font-bold ${
+                    isExpiringSoon
+                      ? 'text-amber-600 dark:text-amber-500'
+                      : 'text-primary'
+                  }`}>
+                    {formatTimeRemaining(timeRemaining)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Botões de Ação */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem', width: '100%' }}>
+                <Button
+                  onClick={handleRefreshSession}
+                  disabled={isRefreshing}
+                  className="gap-2"
+                  variant={isExpiringSoon ? "default" : "default"}
+                >
+                  {isRefreshing ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Renovando...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      Renovar Sessão
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleLogout}
+                  disabled={isRefreshing}
+                  className="gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </Button>
+              </div>
+
+              {/* Outras informações da sessão */}
+              <div className="pt-2 border-t space-y-2 text-sm">
+                {userInfo?.iat && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Login Realizado em</p>
+                    <p className="font-medium">{formatDate(userInfo.iat)}</p>
+                  </div>
+                )}
+
+                {userInfo?.exp && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Sessão Expira em</p>
+                    <p className="font-medium">{formatDate(userInfo.exp)}</p>
+                  </div>
+                )}
+
+                {userInfo?.sub && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">ID da Sessão</p>
+                    <p className="font-medium font-mono text-xs break-all">{userInfo.sub.substring(0, 24)}...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="space-y-4">
             {/* Dados Pessoais */}
             <div className="rounded-lg border p-4">
@@ -152,48 +291,6 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
                     <div className="flex-1">
                       <p className="text-xs text-muted-foreground">CPF</p>
                       <p className="font-medium font-mono">{userInfo.preferred_username}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Informações da Sessão */}
-            <div className="rounded-lg border p-4 bg-muted/30">
-              <h4 className="flex items-center gap-2 font-semibold mb-3">
-                <Key className="h-4 w-4 text-primary" />
-                Sessão Atual
-              </h4>
-              <div className="text-sm space-y-2">
-                {userInfo?.sub && (
-                  <div className="flex items-start gap-2">
-                    <Key className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-xs text-muted-foreground">ID da Sessão</p>
-                      <p className="font-medium font-mono text-xs break-all">{userInfo.sub.substring(0, 24)}...</p>
-                    </div>
-                  </div>
-                )}
-
-                {userInfo?.iat && (
-                  <div className="flex items-start gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-xs text-muted-foreground">Login Realizado em</p>
-                      <p className="font-medium">{formatDate(userInfo.iat)}</p>
-                    </div>
-                  </div>
-                )}
-
-                {userInfo?.exp && (
-                  <div className="flex items-start gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-xs text-muted-foreground">Sessão Expira em</p>
-                      <p className="font-medium">{formatDate(userInfo.exp)}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Tempo restante: <span className="text-primary font-semibold">{getTimeRemaining(userInfo.exp)}</span>
-                      </p>
                     </div>
                   </div>
                 )}
@@ -314,12 +411,6 @@ export function UserAreaDialog({ children, userInfo }: UserAreaDialogProps) {
               </div>
             </div>
           </div>
-        </div>
-        <div className="flex justify-end pt-2 border-t">
-          <Button variant="destructive" onClick={handleLogout} className="gap-2">
-            <LogOut className="h-4 w-4" />
-            Sair
-          </Button>
         </div>
       </DialogContent>
     </Dialog>
