@@ -1,20 +1,31 @@
 """
-Bootstrap script para criar o primeiro super admin no sistema de governança.
+Bootstrap script para criar ou atualizar super admins no sistema de governança.
 
 Este script:
 1. Cria a tabela data_access automaticamente se não existir
-2. Cria o primeiro super admin com acesso total ao sistema
-3. O super admin poderá criar outros admins via interface web
+2. Cria o primeiro super admin com acesso total ao sistema E TODOS OS CAMPOS PREENCHIDOS
+3. Atualiza informações de super admins existentes (se já existir um com o CPF configurado)
+4. O super admin poderá criar outros admins via interface web
 
 CONFIGURAÇÃO:
-- Edite a variável SUPER_ADMIN_CPF com o CPF do super admin inicial (linha 39)
+- Edite as variáveis SUPER_ADMIN_* nas linhas 42-48:
+  * SUPER_ADMIN_CPF: CPF do super admin (11 dígitos, sem pontos/traços)
+  * SUPER_ADMIN_NAME: Nome completo
+  * SUPER_ADMIN_EMAIL: Email corporativo
+  * SUPER_ADMIN_OCUPACAO: Cargo/função
+  * SUPER_ADMIN_SECRETARIA: Secretaria/órgão
 - CPF deve ser o mesmo que vem do login gov.br (campo preferred_username do JWT)
 
 EXECUÇÃO:
     python scripts/bootstrap_super_admin.py
 
-    Ou sem confirmação:
+    Ou sem confirmação (modo não-interativo):
     python scripts/bootstrap_super_admin.py --yes
+
+ATUALIZAÇÃO DE SUPER ADMIN EXISTENTE:
+    Se já existe um super admin com o CPF configurado, o script perguntará
+    se você deseja atualizar as informações dele. Útil para completar
+    campos que estavam NULL ou vazios.
 
 VALIDAÇÃO:
     Após executar, tente fazer login com o CPF configurado.
@@ -41,10 +52,13 @@ print(TABLE_ID_DATA_ACCESS)
 
 # CPF do super admin inicial (sem pontos ou traços)
 # Este CPF deve corresponder ao campo 'preferred_username' do JWT após login gov.br
-SUPER_ADMIN_CPF = "05912622746"  # Ex: "12345678900"
+SUPER_ADMIN_CPF = "12345678900"  # Ex: "12345678900"
 
-# Nome do super admin (opcional, apenas para auditoria)
-SUPER_ADMIN_NAME = "Thiago Trabach"
+# Informações completas do super admin
+SUPER_ADMIN_NAME = "ASD"
+SUPER_ADMIN_EMAIL = "asd@asd.asd"  # Email do super admin
+SUPER_ADMIN_OCUPACAO = "ASD"  # Ocupação/cargo
+SUPER_ADMIN_SECRETARIA = "ASD"  # Secretaria/órgão
 
 # ========================================================================
 # VALIDAÇÕES
@@ -148,6 +162,33 @@ def check_super_admin_exists(cpf: str) -> bool:
         return False
 
 
+def update_super_admin(cpf: str):
+    """Atualiza as informações de um super admin existente"""
+    print(f"\n🔄 Atualizando informações do super admin {cpf}...")
+
+    query = f"""
+    UPDATE `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
+    SET
+        nome = '{SUPER_ADMIN_NAME}',
+        ocupacao = '{SUPER_ADMIN_OCUPACAO}',
+        secretaria = '{SUPER_ADMIN_SECRETARIA}',
+        email = '{SUPER_ADMIN_EMAIL}',
+        updated_by = 'SYSTEM_BOOTSTRAP',
+        updated_at = CURRENT_TIMESTAMP(),
+        notes = 'Super admin atualizado via bootstrap script - Acesso total ao sistema'
+    WHERE cpf = '{cpf}' AND is_super_admin = TRUE AND active = TRUE
+    """
+
+    try:
+        execute_query(query)
+        print("✅ Informações do super admin atualizadas com sucesso!\n")
+        return True
+    except Exception as e:
+        print(f"❌ ERRO ao atualizar super admin: {e}\n")
+        logger.error(f"❌ Erro ao atualizar super admin: {e}")
+        return False
+
+
 def bootstrap_super_admin(skip_confirmation: bool = False):
     """Cria o super admin inicial"""
 
@@ -168,6 +209,9 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
     print(f"📋 CPF do super admin: {SUPER_ADMIN_CPF}")
     print(f"📋 Nome: {SUPER_ADMIN_NAME}")
+    print(f"📋 Email: {SUPER_ADMIN_EMAIL}")
+    print(f"📋 Ocupação: {SUPER_ADMIN_OCUPACAO}")
+    print(f"📋 Secretaria: {SUPER_ADMIN_SECRETARIA}")
     print(f"📋 Projeto: {env.BQ_PROJECT_ID}")
     print(f"📋 Dataset: {env.BQ_DATASET_ID}")
     print(f"📋 Tabela: {TABLE_ID_DATA_ACCESS}\n")
@@ -183,8 +227,63 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
     # Verificar se já existe super admin
     if check_super_admin_exists(SUPER_ADMIN_CPF):
         print("⚠️  AVISO: Já existe um super admin ativo com este CPF!")
-        print("   Nenhuma ação necessária.\n")
-        sys.exit(0)
+        print("   Você pode atualizar as informações dele com os dados configurados.\n")
+
+        if not skip_confirmation:
+            update_confirm = (
+                input(
+                    "Deseja atualizar as informações do super admin existente? [s/N]: "
+                )
+                .strip()
+                .lower()
+            )
+
+            if update_confirm in ["s", "sim", "y", "yes"]:
+                if update_super_admin(SUPER_ADMIN_CPF):
+                    # Refresh cache de governança
+                    try:
+                        from src.utils.data_manager import DataManager
+                        from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+
+                        DataManager.get_dataset(
+                            GOVERNANCE_TABLE_QUERY, bypass_cache=True
+                        )
+                        print("✅ Cache de governança atualizado\n")
+                    except Exception as e:
+                        print(f"⚠️  Aviso: Não foi possível atualizar cache: {e}")
+                        print(
+                            "   O cache será atualizado automaticamente na próxima request.\n"
+                        )
+
+                    print("=" * 70)
+                    print("🎉 ATUALIZAÇÃO CONCLUÍDA")
+                    print("=" * 70 + "\n")
+                sys.exit(0)
+            else:
+                print("\n❌ Atualização cancelada. Nenhuma ação realizada.\n")
+                sys.exit(0)
+        else:
+            print(
+                "⚠️  Modo não-interativo: atualizando super admin sem confirmação...\n"
+            )
+            if update_super_admin(SUPER_ADMIN_CPF):
+                # Refresh cache de governança
+                try:
+                    from src.utils.data_manager import DataManager
+                    from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+
+                    DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)
+                    print("✅ Cache de governança atualizado\n")
+                except Exception as e:
+                    print(f"⚠️  Aviso: Não foi possível atualizar cache: {e}")
+                    print(
+                        "   O cache será atualizado automaticamente na próxima request.\n"
+                    )
+
+                print("=" * 70)
+                print("🎉 ATUALIZAÇÃO CONCLUÍDA")
+                print("=" * 70 + "\n")
+            sys.exit(0)
 
     # Confirmar com usuário
     if not skip_confirmation:
@@ -209,17 +308,49 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
     query = f"""
     INSERT INTO `{env.BQ_PROJECT_ID}.{env.BQ_DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
-    (cpf, email, is_admin, is_super_admin, permission, created_by, active, notes, created_at)
+    (
+        cpf,
+        nome,
+        ocupacao,
+        secretaria,
+        email,
+        is_admin,
+        is_super_admin,
+        permission,
+        id_cras_list,
+        id_escola_list,
+        id_cre_list,
+        id_ap_list,
+        id_cas_list,
+        id_clinica_familia_list,
+        created_by,
+        created_at,
+        updated_by,
+        updated_at,
+        active,
+        notes
+    )
     VALUES (
         '{SUPER_ADMIN_CPF}',
-        NULL,
+        '{SUPER_ADMIN_NAME}',
+        '{SUPER_ADMIN_OCUPACAO}',
+        '{SUPER_ADMIN_SECRETARIA}',
+        '{SUPER_ADMIN_EMAIL}',
         TRUE,
         TRUE,
         'super_admin',
+        [],  -- Super admin tem acesso total, não precisa de IDs específicos
+        [],
+        [],
+        [],
+        [],
+        [],
         'SYSTEM_BOOTSTRAP',
+        CURRENT_TIMESTAMP(),
+        'SYSTEM_BOOTSTRAP',
+        CURRENT_TIMESTAMP(),
         TRUE,
-        'Super admin criado via bootstrap script - {SUPER_ADMIN_NAME}',
-        CURRENT_TIMESTAMP()
+        'Super admin criado via bootstrap script - Acesso total ao sistema'
     )
     """
 
@@ -245,10 +376,15 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
         print("📝 Próximos passos:")
         print("   1. Faça login no sistema usando gov.br com o CPF configurado")
         print(f"      CPF: {SUPER_ADMIN_CPF}")
+        print(f"      Nome: {SUPER_ADMIN_NAME}")
+        print(f"      Email: {SUPER_ADMIN_EMAIL}")
         print("   2. Você deve ver o menu 'Admin' na interface")
         print("   3. Use o menu Admin para criar outros usuários e admins\n")
         print("⚠️  IMPORTANTE: Guarde este CPF em local seguro!")
-        print("   Este é o único super admin do sistema.\n")
+        print("   Este é o único super admin do sistema.")
+        print("\n💡 Para editar as informações do super admin:")
+        print("   - Edite as variáveis no início deste script")
+        print("   - Execute o script novamente (ele atualizará as informações)\n")
 
     except Exception as e:
         print(f"\n❌ ERRO ao criar super admin: {e}\n")

@@ -33,7 +33,7 @@ class SortParams(BaseModel):
 
 
 class CommonFilters(BaseModel):
-    bairro: Optional[str] = None
+    bairro: Optional[str] = None  # Multi-select via comma-separated string
     cre: Optional[str] = None
     ap: Optional[str] = None  # AP (Área Programática)
     cas: Optional[str] = None  # CAS (Centro de Atenção à Saúde)
@@ -297,6 +297,7 @@ class Participante(BaseModel):
     # Identificação
     cpf: Optional[str] = None
     id_membro_familia: Optional[str] = None
+    id_familia: Optional[str] = None
     nome: Optional[str] = None
     sexo: Optional[str] = None
 
@@ -378,6 +379,7 @@ class Participante(BaseModel):
 class ProtocoloDetalhes(BaseModel):
     cpf: Optional[str] = None
     id_membro_familia: Optional[str] = None
+    id_familia: Optional[str] = None
     nome: Optional[str] = None
     grupo: Optional[str] = None
     protocolo_id: Optional[str] = None

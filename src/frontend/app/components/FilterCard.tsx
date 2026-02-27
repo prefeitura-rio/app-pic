@@ -124,7 +124,7 @@ const FilterCardComponent = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Buscar por CPF ou nome..."
+              placeholder="Buscar por CPF, Nome, ID Membro Família ou ID Família (CadÚnico)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -216,13 +216,18 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Bairro */}
-            <VirtualizedSelect
-              show={true}
-              value={(filters as any).bairro || "todos"}
-              onSelect={(v) => handleFilterUpdate("bairro", v)}
+            {/* Bairro - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).bairro)
+                  ? (filters as any).bairro
+                  : (filters as any).bairro
+                    ? [(filters as any).bairro]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("bairro", values)}
               disabled={loading}
-              placeholder="Bairro"
+              placeholder="Bairros"
               defaultLabel="Todos os Bairros"
               options={filteredOptions.bairros}
             />

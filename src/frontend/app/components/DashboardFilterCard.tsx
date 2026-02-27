@@ -3,6 +3,7 @@
 import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { Button } from "@/app/components/ui/button";
 import { Filter, X, RefreshCw, Download } from "lucide-react";
 import { SmartFilterOptions } from "@/app/types";
@@ -12,14 +13,14 @@ import { SmartFilterOptions } from "@/app/types";
  * Mapeados para as colunas da tabela de dashboard pré-agregada
  */
 export interface DashboardFilterValues {
-  grupo?: string;       // pic_grupo
-  cohort?: string;      // pic_cohort (safra)
-  status?: string;      // pic_status
-  secretaria?: string;  // secretaria (SMAS, SME, SMS)
-  bairro?: string;      // bairro
-  cre?: string;         // id_cre
-  ap?: string;          // id_ap
-  cas?: string;         // id_cas
+  grupo?: string;               // pic_grupo
+  cohort?: string;              // pic_cohort (safra)
+  status?: string;              // pic_status
+  secretaria?: string;          // secretaria (SMAS, SME, SMS)
+  bairro?: string | string[];   // bairro (multi-select)
+  cre?: string;                 // id_cre
+  ap?: string;                  // id_ap
+  cas?: string;                 // id_cas
 }
 
 interface DashboardFilterCardProps {
@@ -64,6 +65,17 @@ const DashboardFilterCardComponent = ({
       delete newFilters[key];
     } else {
       newFilters[key] = value;
+    }
+    onFilterChange(newFilters);
+  }, [filters, onFilterChange]);
+
+  // Callback para filtros multi-select (arrays)
+  const handleMultiFilterUpdate = useCallback((key: keyof DashboardFilterValues, values: string[]) => {
+    const newFilters = { ...filters };
+    if (values.length > 0) {
+      newFilters[key] = values as any;
+    } else {
+      delete newFilters[key];
     }
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
@@ -184,13 +196,18 @@ const DashboardFilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Bairro - oculto por padrão */}
-            <VirtualizedSelect
-              show={true}
-              value={filters.bairro || "todos"}
-              onSelect={(v) => handleFilterUpdate("bairro", v)}
+            {/* Bairro - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray(filters.bairro)
+                  ? filters.bairro
+                  : filters.bairro
+                    ? [filters.bairro]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("bairro", values)}
               disabled={loading}
-              placeholder="Bairro"
+              placeholder="Bairros"
               defaultLabel="Todos os Bairros"
               options={filteredOptions.bairros}
             />

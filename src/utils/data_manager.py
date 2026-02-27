@@ -1069,6 +1069,8 @@ class DataManager:
             else:
                 if k in df_original.columns:
                     active_scalar_filters[k] = values
+                else:
+                    logger.warning(f"⚠️ Filter key '{k}' not found in DataFrame columns")
 
         filter_options_dict = {}
 

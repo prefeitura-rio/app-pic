@@ -161,7 +161,7 @@ async def get_participants(
             page_size=pagination.page_size,
             filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
             search_term=search_term,
-            search_columns=["nome", "cpf"] if search_term else None,
+            search_columns=["nome", "cpf", "id_membro_familia", "id_familia"] if search_term else None,
             user_permissions=permissions,  # NOVO: Pass user permissions
             bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
             sort_by=sort_column,  # NOVO: Coluna para ordenação
