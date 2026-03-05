@@ -1,5 +1,5 @@
 """
-Admin endpoints para gerenciamento de governança de dados.
+Admin endpoints para gerenciamento de governança de dados
 
 Permite admins criar/editar/deletar permissões de CPFs, controlando
 quais IDs (CRAS, escolas, CRE, etc) cada usuário pode acessar.
@@ -245,7 +245,9 @@ def _filter_manageable_users(
             admin_ids = admin_id_sets[id_type]
 
             # Se usuário não tem IDs desse tipo, ok (pula)
-            if user_id_list is None or (isinstance(user_id_list, list) and len(user_id_list) == 0):
+            if user_id_list is None or (
+                isinstance(user_id_list, list) and len(user_id_list) == 0
+            ):
                 continue
 
             # Extrair IDs do usuário
@@ -597,7 +599,9 @@ async def list_users(
 
         if active is not None:
             filters_dict["active"] = active
-            logger.info(f"✅ Active filter applied: active={active} (type: {type(active).__name__})")
+            logger.info(
+                f"✅ Active filter applied: active={active} (type: {type(active).__name__})"
+            )
         else:
             logger.info(f"⚠️ No active filter: active={active}")
         if ocupacao:
@@ -1354,7 +1358,9 @@ async def batch_import_users(
             # Validar CPF
             cpf_error = _validate_cpf(cpf)
             if cpf_error:
-                errors.append(BatchImportError(row=row_idx, cpf=cpf_raw_str, error=cpf_error))
+                errors.append(
+                    BatchImportError(row=row_idx, cpf=cpf_raw_str, error=cpf_error)
+                )
                 imported_users.append(
                     ImportedUser(
                         cpf=cpf_raw_str or "",
@@ -1383,7 +1389,9 @@ async def batch_import_users(
                         "id_cre_list": user_dict.get("id_cre_list"),
                         "id_ap_list": user_dict.get("id_ap_list"),
                         "id_cas_list": user_dict.get("id_cas_list"),
-                        "id_clinica_familia_list": user_dict.get("id_clinica_familia_list"),
+                        "id_clinica_familia_list": user_dict.get(
+                            "id_clinica_familia_list"
+                        ),
                     }
 
                 imported_users.append(
@@ -1457,7 +1465,9 @@ async def batch_update_permissions(
     if not request.users:
         raise HTTPException(status_code=400, detail="Lista de usuários vazia")
 
-    logger.info(f"🔐 Atualizando permissões em batch para {len(request.users)} usuários (MERGE)")
+    logger.info(
+        f"🔐 Atualizando permissões em batch para {len(request.users)} usuários (MERGE)"
+    )
 
     # Validar que admin segmentado pode atribuir esses IDs
     target_ids_dict = {
@@ -1493,7 +1503,9 @@ async def batch_update_permissions(
     for user_data in request.users:
         cpf = _sanitize_cpf(user_data.cpf)
         if not cpf or len(cpf) != 11:
-            errors.append(BatchPermissionsError(cpf=user_data.cpf, error="CPF inválido"))
+            errors.append(
+                BatchPermissionsError(cpf=user_data.cpf, error="CPF inválido")
+            )
             continue
         cpf_to_user_data[cpf] = user_data
 
@@ -1528,18 +1540,24 @@ async def batch_update_permissions(
 
             # Super admins NÃO podem editar outros super admins
             if permissions.is_super_admin and target_is_super_admin:
-                errors.append(BatchPermissionsError(
-                    cpf=cpf,
-                    error="Super admins não podem editar outros super admins"
-                ))
+                errors.append(
+                    BatchPermissionsError(
+                        cpf=cpf,
+                        error="Super admins não podem editar outros super admins",
+                    )
+                )
                 continue
 
             # Admins NÃO podem editar outros admins ou super admins
-            if not permissions.is_super_admin and (target_is_admin or target_is_super_admin):
-                errors.append(BatchPermissionsError(
-                    cpf=cpf,
-                    error="Admins não podem editar outros admins ou super admins"
-                ))
+            if not permissions.is_super_admin and (
+                target_is_admin or target_is_super_admin
+            ):
+                errors.append(
+                    BatchPermissionsError(
+                        cpf=cpf,
+                        error="Admins não podem editar outros admins ou super admins",
+                    )
+                )
                 continue
 
         # Escapar valores para SQL
@@ -1550,13 +1568,15 @@ async def batch_update_permissions(
             escaped = val.replace("'", "\\'")
             return f"'{escaped}'"
 
-        valid_users.append({
-            "cpf": cpf,
-            "nome": escape_sql(user_data.nome),
-            "email": escape_sql(user_data.email),
-            "ocupacao": escape_sql(user_data.ocupacao),
-            "secretaria": escape_sql(user_data.secretaria),
-        })
+        valid_users.append(
+            {
+                "cpf": cpf,
+                "nome": escape_sql(user_data.nome),
+                "email": escape_sql(user_data.email),
+                "ocupacao": escape_sql(user_data.ocupacao),
+                "secretaria": escape_sql(user_data.secretaria),
+            }
+        )
 
     if not valid_users:
         logger.warning("⚠️ Nenhum usuário válido para processar")
@@ -1638,8 +1658,11 @@ async def batch_update_permissions(
     except Exception as e:
         logger.error(f"❌ Erro no MERGE: {e}")
         import traceback
+
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Erro ao processar batch: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Erro ao processar batch: {str(e)}"
+        )
 
     # Invalidar cache
     refresh_governance_cache()

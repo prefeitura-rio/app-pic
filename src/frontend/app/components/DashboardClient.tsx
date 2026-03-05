@@ -35,7 +35,7 @@ interface UserInfo {
 const PAGE_SIZE = 50;
 
 /**
- * Main Dashboard Orchestrator Component
+ * Main Dashboard Orchestrator Component.
  *
  * Arquitetura Híbrida (OTIMIZADA):
  * 1. Inicialização: Carrega currentUser + dashboard + participants em PARALELO
