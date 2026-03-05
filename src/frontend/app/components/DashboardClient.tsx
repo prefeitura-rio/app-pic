@@ -420,6 +420,8 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     cohorts: [],
     status_list: [],
     situacoes: [],
+    subprefeituras: [],
+    regioes_administrativas: [],
     cres: [],
     aps: [],
     cas_list: [],

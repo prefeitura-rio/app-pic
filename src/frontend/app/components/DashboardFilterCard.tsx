@@ -17,7 +17,7 @@ export interface DashboardFilterValues {
   grupo?: string | string[];               // pic_grupo (multi-select)
   cohort?: string | string[];              // pic_cohort (safra) (multi-select)
   status?: string | string[];              // pic_status (multi-select)
-  secretaria?: string | string[];          // secretaria (SMAS, SME, SMS) (multi-select)
+  secretaria?: string;                     // secretaria (SMAS, SME, SMS) (single-select apenas)
   subprefeitura?: string | string[];       // subprefeitura (multi-select)
   regiao_administrativa?: string | string[]; // regiao_administrativa (multi-select)
   bairro?: string | string[];              // bairro (multi-select)
