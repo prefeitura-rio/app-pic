@@ -222,6 +222,195 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   }, [queryClient]);
 
   /**
+   * Convert JSON array to CSV string with protocol expansion
+   * Each participant with N protocols becomes N rows
+   * Optimized for protocol-level analysis in Excel
+   */
+  const jsonToCSV = useCallback((data: any[]): string => {
+    if (data.length === 0) return '';
+
+    // Define headers for expanded format
+    // Participant fields + Protocol fields
+    const participantFields = [
+      'cpf',
+      'id_membro_familia',
+      'id_familia',
+      'nome',
+      'sexo',
+      'nascimento_data',
+      'idade',
+      'subprefeitura',
+      'regiao_administrativa',
+      'bairro',
+      'grupo',
+      'cohort',
+      'status',
+      'status_inativo_motivo',
+      'situacao',
+      // Totalizadores gerais
+      'total_protocolos',
+      'total_protocolos_regular',
+      'total_protocolos_irregular',
+      'total_protocolos_atencao',
+      'total_fracao',
+      // Totalizadores por secretaria
+      'assistencia_protocolos_total',
+      'assistencia_protocolos_regular',
+      'assistencia_protocolos_irregular',
+      'assistencia_fracao',
+      'educacao_protocolos_total',
+      'educacao_protocolos_regular',
+      'educacao_protocolos_irregular',
+      'educacao_fracao',
+      'saude_protocolos_total',
+      'saude_protocolos_regular',
+      'saude_protocolos_irregular',
+      'saude_fracao',
+      // Equipamentos
+      'id_cras',
+      'nome_cras',
+      'id_cas',
+      'nome_cas',
+      'id_escola',
+      'nome_escola',
+      'id_cre',
+      'nome_cre',
+      'id_ap',
+      'nome_ap',
+      'id_clinica_familia',
+      'nome_clinica_familia',
+    ];
+
+    const protocolFields = [
+      'protocolo_id',
+      'protocolo_secretaria',
+      'protocolo_descricao',
+      'protocolo_status',
+      'protocolo_irregular_indicador',
+      'protocolo_status_label',
+    ];
+
+    const headers = [...participantFields, ...protocolFields];
+
+    // Helper to escape CSV values
+    const escapeCSV = (value: any): string => {
+      if (value === null || value === undefined) return '';
+
+      const str = String(value);
+
+      // Wrap in quotes if contains comma, quote, or newline
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+
+      return str;
+    };
+
+    // Create CSV header row
+    const csvRows = [headers.join(',')];
+
+    // Expand each participant into multiple rows (one per protocol)
+    data.forEach(participant => {
+      const protocolos = participant.protocolo_listagem || [];
+
+      // If participant has protocols, create one row per protocol
+      if (protocolos.length > 0) {
+        protocolos.forEach((protocolo: any) => {
+          const row = headers.map(header => {
+            // Protocol fields
+            if (header === 'protocolo_id') return escapeCSV(protocolo.id);
+            if (header === 'protocolo_secretaria') return escapeCSV(protocolo.secretaria);
+            if (header === 'protocolo_descricao') return escapeCSV(protocolo.descricao);
+            if (header === 'protocolo_status') return escapeCSV(protocolo.status);
+            if (header === 'protocolo_irregular_indicador') return escapeCSV(protocolo.irregular_indicador);
+            if (header === 'protocolo_status_label') return escapeCSV(protocolo.protocolo_status_label);
+
+            // Participant fields
+            return escapeCSV(participant[header]);
+          });
+
+          csvRows.push(row.join(','));
+        });
+      } else {
+        // If no protocols, create single row with participant data
+        const row = headers.map(header => {
+          // Protocol fields will be empty
+          if (header.startsWith('protocolo_')) return '';
+
+          // Participant fields
+          return escapeCSV(participant[header]);
+        });
+
+        csvRows.push(row.join(','));
+      }
+    });
+
+    return csvRows.join('\n');
+  }, []);
+
+  /**
+   * Handle download all filtered participants (no pagination)
+   * Uses page_size=-1 to bypass pagination limit and get all data
+   * Downloads as CSV for better Excel compatibility
+   */
+  const handleDownloadParticipants = useCallback(async () => {
+    const startTime = performance.now();
+
+    try {
+      toast.info("📥 Buscando dados...", { duration: 30000 });
+
+      // Fetch ALL data without pagination using page_size=-1
+      // -1 is a special value that bypasses pagination and returns all filtered data
+      const result = await apiService.getParticipants(
+        {
+          ...professionalFilters,
+          ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
+        },
+        1,
+        -1 // Special value: -1 = return all data (bypass pagination)
+      );
+
+      const fetchTime = ((performance.now() - startTime) / 1000).toFixed(1);
+      toast.info(`⚙️ Processando ${result.meta.total_rows.toLocaleString('pt-BR')} participantes...`);
+
+      // Convert to CSV (expanded format: 1 row per protocol)
+      const csvData = jsonToCSV(result.data);
+
+      // Count total lines (including header)
+      const totalLines = csvData.split('\n').length - 1; // -1 for header
+
+      // Add BOM for Excel UTF-8 compatibility
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Generate filename with timestamp and filter count
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const filterCount = Object.keys(professionalFilters).filter(k => k !== 'bypass_cache').length;
+      const filename = `participantes_${timestamp}_${result.meta.total_rows}rows${filterCount > 0 ? `_${filterCount}filters` : ''}.csv`;
+      link.download = filename;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
+      const fileSize = (blob.size / 1024 / 1024).toFixed(1); // MB
+
+      toast.success(
+        `✅ ${result.meta.total_rows.toLocaleString('pt-BR')} participantes expandidos em ${totalLines.toLocaleString('pt-BR')} linhas (${fileSize} MB em ${totalTime}s)`,
+        { duration: 5000 }
+      );
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error("❌ Erro ao baixar dados. Tente novamente.");
+    }
+  }, [professionalFilters, sortBy, sortOrder, jsonToCSV]);
+
+  /**
    * Memoizar filter options vazias para evitar re-criação
    */
   const emptyFilterOptions = useMemo<SmartFilterOptions>(() => ({
@@ -320,6 +509,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
                 onRefresh={handleProfessionalRefresh}
+                onDownload={handleDownloadParticipants}
                 loading={participantsFetching}
                 pageSize={PAGE_SIZE}
                 sortBy={sortBy}

@@ -119,9 +119,17 @@ async def get_participants(
 
     query = PARTICIPANTS_TABLE_QUERY
 
-    logger.info(
-        f"Fetching participants - Page: {pagination.page}, Size: {pagination.page_size}"
-    )
+    # Log download mode if page_size=-1
+    if pagination.page_size == -1:
+        logger.warning(
+            f"⬇️ DOWNLOAD MODE: Fetching ALL participants (no pagination limit). "
+            f"Filters: {len([k for k, v in filters.model_dump(exclude_none=True).items() if v])} active"
+        )
+    else:
+        logger.info(
+            f"Fetching participants - Page: {pagination.page}, Size: {pagination.page_size}"
+        )
+
     logger.info(f"Filters: {filters.model_dump(exclude_none=True)}")
     logger.info(f"Sort: {sort.sort_by} {sort.sort_order}")
     logger.info(f"🔄 Bypass Cache: {bypass_cache}")

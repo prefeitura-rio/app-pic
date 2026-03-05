@@ -82,28 +82,35 @@ async def get_dashboard_metrics(
     }
 
     # Construir dict de filtros (mapeando para colunas da tabela)
+    # Todos os filtros suportam multi-select (comma-separated)
     filters_dict = {}
+
+    # Helper para parse de multi-select
+    def parse_multi_select(value: Optional[str]) -> Optional[str | list[str]]:
+        if not value:
+            return None
+        if "," in value:
+            return [v.strip() for v in value.split(",") if v.strip()]
+        return value
+
     if grupo:
-        filters_dict["pic_grupo"] = grupo
+        filters_dict["pic_grupo"] = parse_multi_select(grupo)
     if cohort:
-        filters_dict["pic_cohort"] = cohort
+        filters_dict["pic_cohort"] = parse_multi_select(cohort)
     if status:
-        filters_dict["pic_status"] = status
+        filters_dict["pic_status"] = parse_multi_select(status)
     if subprefeitura:
-        # Parse comma-separated subprefeituras (multi-select support)
-        filters_dict["subprefeitura"] = [s.strip() for s in subprefeitura.split(",")] if "," in subprefeitura else subprefeitura
+        filters_dict["subprefeitura"] = parse_multi_select(subprefeitura)
     if regiao_administrativa:
-        # Parse comma-separated regiões administrativas (multi-select support)
-        filters_dict["regiao_administrativa"] = [r.strip() for r in regiao_administrativa.split(",")] if "," in regiao_administrativa else regiao_administrativa
+        filters_dict["regiao_administrativa"] = parse_multi_select(regiao_administrativa)
     if bairro:
-        # Parse comma-separated bairros (multi-select support)
-        filters_dict["bairro"] = [b.strip() for b in bairro.split(",")] if "," in bairro else bairro
+        filters_dict["bairro"] = parse_multi_select(bairro)
     if cre:
-        filters_dict["id_cre"] = cre
+        filters_dict["id_cre"] = parse_multi_select(cre)
     if ap:
-        filters_dict["id_ap"] = ap
+        filters_dict["id_ap"] = parse_multi_select(ap)
     if cas:
-        filters_dict["id_cas"] = cas
+        filters_dict["id_cas"] = parse_multi_select(cas)
 
     logger.info("Fetching dashboard metrics from pre-aggregated table")
     logger.info(f"🔑 Permissions: {per_log}")
