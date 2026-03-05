@@ -201,18 +201,12 @@ const DashboardFilterCardComponent = ({
               options={filteredOptions.cohorts}
             />
 
-            {/* Secretaria - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray(filters.secretaria)
-                  ? filters.secretaria
-                  : filters.secretaria
-                    ? [filters.secretaria]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("secretaria", values)}
+            {/* Secretaria - Single select */}
+            <VirtualizedSelect
+              value={filters.secretaria || "todas"}
+              onSelect={(v) => handleFilterUpdate("secretaria", v)}
               disabled={loading}
-              placeholder="Secretarias"
+              placeholder="Secretaria"
               defaultLabel="Todas as Secretarias"
               options={SECRETARIA_OPTIONS}
             />

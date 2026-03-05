@@ -61,6 +61,7 @@ async def get_dashboard_metrics(
     grupo: Optional[str] = Query(None, description="Filtrar por grupo (crianca, gestante)"),
     cohort: Optional[str] = Query(None, description="Filtrar por safra"),
     status: Optional[str] = Query(None, description="Filtrar por status (ativo, inativo)"),
+    secretaria: Optional[str] = Query(None, description="Filtrar métricas por secretaria (SMAS, SME, SMS) - filtra gráficos, não dados"),
     subprefeitura: Optional[str] = Query(None, description="Filtrar por subprefeitura(s) - pode ser string separada por vírgula"),
     regiao_administrativa: Optional[str] = Query(None, description="Filtrar por região administrativa(s) - pode ser string separada por vírgula"),
     bairro: Optional[str] = Query(None, description="Filtrar por bairro(s) - pode ser string separada por vírgula"),
@@ -143,8 +144,9 @@ async def get_dashboard_metrics(
             )
 
         # Calcular métricas a partir dos dados pré-agregados
+        # Passar filtro de secretaria para filtrar gráficos (não dados)
         metrics_start = time.perf_counter()
-        dashboard_metrics = _calculate_dashboard_metrics(df_filtered)
+        dashboard_metrics = _calculate_dashboard_metrics(df_filtered, filtro_secretaria=secretaria)
         metrics_time = time.perf_counter() - metrics_start
         logger.info(f"⏱️ [TIMING] Metrics calculation: {metrics_time:.3f}s")
 
@@ -178,7 +180,7 @@ def _format_mes_label(mes: str) -> str:
     return mes
 
 
-def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
+def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[str] = None) -> Dashboard:
     """
     Calcula métricas do dashboard a partir de dados pré-agregados do BigQuery.
 
@@ -526,7 +528,16 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     # 6. Tempo Médio de Irregularidade
     mapa_labels = {"geral": "Geral", "smas": "Assistência Social", "sme": "Educação", "sms": "Saúde"}
     tempo_medio_lista: List[TempoMedioIrregularidade] = []
-    for secretaria in ["geral", "smas", "sme", "sms"]:
+
+    # Determinar quais secretarias incluir baseado no filtro
+    if filtro_secretaria:
+        # Normalizar filtro para lowercase (SMAS -> smas)
+        filtro_norm = filtro_secretaria.lower()
+        secretarias_incluir = ["geral", filtro_norm]
+    else:
+        secretarias_incluir = ["geral", "smas", "sme", "sms"]
+
+    for secretaria in secretarias_incluir:
         valores = tempo_irregular_por_secretaria.get(secretaria, [])
         tempo_medio = sum(valores) / len(valores) if valores else 0.0
         tempo_medio_lista.append(

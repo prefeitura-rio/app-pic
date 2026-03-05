@@ -225,11 +225,11 @@ const FilterCardComponent = ({
               value={(filters as any).protocolo_secretaria || "todas"}
               onSelect={(v) => handleFilterUpdate("protocolo_secretaria", v)}
               disabled={loading}
-              placeholder="Secretaria (Protocolos)"
-              defaultLabel="Todas as Secretarias"
+              placeholder="Filtrar Protocolos por Secretaria"
+              defaultLabel="Todos os Protocolos por Secretaria"
               options={[
                 { id: "SME", label: "Educação (SME)" },
-                { id: "SMAS", label: "Assistência Social (SMAS)" },
+                { id: "SMAS", label: "Assistência (SMAS)" },
                 { id: "SMS", label: "Saúde (SMS)" },
               ]}
             />
