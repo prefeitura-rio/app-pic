@@ -44,6 +44,8 @@ export interface Participante {
   // Dados demográficos
   nascimento_data?: string; // ISO date string
   idade?: number;
+  subprefeitura?: string;
+  regiao_administrativa?: string;
   bairro?: string;
 
   // Programa
@@ -137,12 +139,14 @@ export interface FilterOptionItem {
 export interface SmartFilterOptions {
   // Filtros de participantes
   bairros: FilterOptionItem[];
+  subprefeituras: FilterOptionItem[];
+  regioes_administrativas: FilterOptionItem[];
   grupos: FilterOptionItem[];
   cohorts: FilterOptionItem[];
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
   cres: FilterOptionItem[];
-  aps: FilterOptionItem[]; 
+  aps: FilterOptionItem[];
   cas_list: FilterOptionItem[];
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
@@ -319,6 +323,8 @@ export interface FiltroRegional {
  * Active filters for the dashboard/overview tab
  */
 export interface DashboardFilters {
+  subprefeitura?: string | string[]; // Multi-select
+  regiao_administrativa?: string | string[]; // Multi-select
   bairro?: string | string[]; // Multi-select
   cre?: string;
   ap?: string;
@@ -339,6 +345,8 @@ export interface DashboardFilters {
  * Active filters for the professional/participant search tab
  */
 export interface ParticipantFilters {
+  subprefeitura?: string | string[]; // Multi-select
+  regiao_administrativa?: string | string[]; // Multi-select
   bairro?: string | string[]; // Multi-select
   cre?: string;
   ap?: string;
@@ -354,6 +362,7 @@ export interface ParticipantFilters {
   bypass_cache?: boolean;
   protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
   protocolo_status?: string; // Filtro por status do protocolo
+  protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
   sort_by?: string; // Coluna para ordenação
   sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }

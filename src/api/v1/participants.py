@@ -19,6 +19,8 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 
 # Configuração de filtros para participantes (definido no endpoint, não no DataManager)
 PARTICIPANT_FILTER_COLUMN_MAP = {
+    "subprefeitura": "subprefeitura",
+    "regiao_administrativa": "regiao_administrativa",
     "bairro": "bairro",
     "cre": "id_cre",
     "ap": "id_ap",
@@ -33,9 +35,12 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     # Filtros de array (protocolo_listagem) - usa dot notation para indicar campo do array
     "protocolo_descricao": "protocolo_listagem.descricao",
     "protocolo_status": "protocolo_listagem.protocolo_status_label",
+    "protocolo_secretaria": "protocolo_listagem.secretaria",
 }
 
 PARTICIPANT_FILTER_OPTIONS_CONFIG = {
+    "subprefeituras": {"column": "subprefeitura"},
+    "regioes_administrativas": {"column": "regiao_administrativa"},
     "bairros": {"column": "bairro"},
     "grupos": {"column": "grupo"},
     "cohorts": {"column": "cohort"},

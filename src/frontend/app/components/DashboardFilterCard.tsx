@@ -17,6 +17,8 @@ export interface DashboardFilterValues {
   cohort?: string;              // pic_cohort (safra)
   status?: string;              // pic_status
   secretaria?: string;          // secretaria (SMAS, SME, SMS)
+  subprefeitura?: string | string[]; // subprefeitura (multi-select)
+  regiao_administrativa?: string | string[]; // regiao_administrativa (multi-select)
   bairro?: string | string[];   // bairro (multi-select)
   cre?: string;                 // id_cre
   ap?: string;                  // id_ap
@@ -91,6 +93,8 @@ const DashboardFilterCardComponent = ({
       .map((item) => ({ ...item, label: formatGrupoLabel(item.id) })),
     cohorts: (filterOptions.cohorts || []).filter((item) => item.id && item.id.trim() !== ""),
     status_list: (filterOptions.status_list || []).filter((item) => item.id && item.id.trim() !== ""),
+    subprefeituras: (filterOptions.subprefeituras || []).filter((item) => item.id && item.id.trim() !== ""),
+    regioes_administrativas: (filterOptions.regioes_administrativas || []).filter((item) => item.id && item.id.trim() !== ""),
     bairros: (filterOptions.bairros || []).filter((item) => item.id && item.id.trim() !== ""),
     cres: (filterOptions.cres || []).filter((item) => item.id && item.id.trim() !== ""),
     aps: (filterOptions.aps || []).filter((item) => item.id && item.id.trim() !== ""),
@@ -196,6 +200,38 @@ const DashboardFilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Subprefeitura - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray(filters.subprefeitura)
+                  ? filters.subprefeitura
+                  : filters.subprefeitura
+                    ? [filters.subprefeitura]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("subprefeitura", values)}
+              disabled={loading}
+              placeholder="Subprefeituras"
+              defaultLabel="Todas as Subprefeituras"
+              options={filteredOptions.subprefeituras}
+            />
+
+            {/* Região Administrativa - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray(filters.regiao_administrativa)
+                  ? filters.regiao_administrativa
+                  : filters.regiao_administrativa
+                    ? [filters.regiao_administrativa]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("regiao_administrativa", values)}
+              disabled={loading}
+              placeholder="Regiões Administrativas"
+              defaultLabel="Todas as Regiões Adm."
+              options={filteredOptions.regioes_administrativas}
+            />
+
             {/* Bairro - Multi-select */}
             <VirtualizedMultiSelect
               value={

@@ -34,6 +34,8 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "grupos": {"column": "pic_grupo"},
     "cohorts": {"column": "pic_cohort"},
     "status_list": {"column": "pic_status"},
+    "subprefeituras": {"column": "subprefeitura"},
+    "regioes_administrativas": {"column": "regiao_administrativa"},
     "bairros": {"column": "bairro"},
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
     "aps": {"column": "id_ap", "label_column": "nome_ap"},
@@ -59,6 +61,8 @@ async def get_dashboard_metrics(
     grupo: Optional[str] = Query(None, description="Filtrar por grupo (crianca, gestante)"),
     cohort: Optional[str] = Query(None, description="Filtrar por safra"),
     status: Optional[str] = Query(None, description="Filtrar por status (ativo, inativo)"),
+    subprefeitura: Optional[str] = Query(None, description="Filtrar por subprefeitura(s) - pode ser string separada por vírgula"),
+    regiao_administrativa: Optional[str] = Query(None, description="Filtrar por região administrativa(s) - pode ser string separada por vírgula"),
     bairro: Optional[str] = Query(None, description="Filtrar por bairro(s) - pode ser string separada por vírgula"),
     cre: Optional[str] = Query(None, description="Filtrar por CRE"),
     ap: Optional[str] = Query(None, description="Filtrar por AP"),
@@ -85,6 +89,12 @@ async def get_dashboard_metrics(
         filters_dict["pic_cohort"] = cohort
     if status:
         filters_dict["pic_status"] = status
+    if subprefeitura:
+        # Parse comma-separated subprefeituras (multi-select support)
+        filters_dict["subprefeitura"] = [s.strip() for s in subprefeitura.split(",")] if "," in subprefeitura else subprefeitura
+    if regiao_administrativa:
+        # Parse comma-separated regiões administrativas (multi-select support)
+        filters_dict["regiao_administrativa"] = [r.strip() for r in regiao_administrativa.split(",")] if "," in regiao_administrativa else regiao_administrativa
     if bairro:
         # Parse comma-separated bairros (multi-select support)
         filters_dict["bairro"] = [b.strip() for b in bairro.split(",")] if "," in bairro else bairro

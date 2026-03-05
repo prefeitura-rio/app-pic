@@ -33,6 +33,8 @@ class SortParams(BaseModel):
 
 
 class CommonFilters(BaseModel):
+    subprefeitura: Optional[str] = None  # Multi-select via comma-separated string
+    regiao_administrativa: Optional[str] = None  # Multi-select via comma-separated string
     bairro: Optional[str] = None  # Multi-select via comma-separated string
     cre: Optional[str] = None
     ap: Optional[str] = None  # AP (Área Programática)
@@ -47,6 +49,7 @@ class CommonFilters(BaseModel):
     search: Optional[str] = None  # CPF or name search
     protocolo_descricao: Optional[str] = None  # Filtro por descrição do protocolo
     protocolo_status: Optional[str] = None  # Filtro por status do protocolo
+    protocolo_secretaria: Optional[str] = None  # Filtro por secretaria do protocolo (SME, SMAS, SMS)
 
 
 # --- Response Models ---
@@ -84,6 +87,8 @@ class SmartFilterOptions(BaseModel):
 
     # Filtros de participantes
     bairros: List[FilterOptionItem] = []
+    subprefeituras: List[FilterOptionItem] = []
+    regioes_administrativas: List[FilterOptionItem] = []
     grupos: List[FilterOptionItem] = []
     cohorts: List[FilterOptionItem] = []
     status_list: List[FilterOptionItem] = []
@@ -304,6 +309,8 @@ class Participante(BaseModel):
     # Dados demográficos
     nascimento_data: Optional[date] = None
     idade: Optional[int] = None
+    subprefeitura: Optional[str] = None
+    regiao_administrativa: Optional[str] = None
     bairro: Optional[str] = None
 
     # Programa

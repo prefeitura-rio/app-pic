@@ -77,6 +77,8 @@ const FilterCardComponent = ({
     aps: filterOptions.aps.filter((item) => item.id && item.id.trim() !== ""),
     cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
     cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
+    subprefeituras: (filterOptions.subprefeituras || []).filter((item) => item.id && item.id.trim() !== ""),
+    regioes_administrativas: (filterOptions.regioes_administrativas || []).filter((item) => item.id && item.id.trim() !== ""),
     bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
     escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
     clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
@@ -180,6 +182,20 @@ const FilterCardComponent = ({
               options={filteredOptions.cohorts}
             />
 
+            {/* Secretaria de Protocolo */}
+            <VirtualizedSelect
+              value={(filters as any).protocolo_secretaria || "todas"}
+              onSelect={(v) => handleFilterUpdate("protocolo_secretaria", v)}
+              disabled={loading}
+              placeholder="Secretaria"
+              defaultLabel="Todas as Secretarias"
+              options={[
+                { id: "SME", label: "Educação (SME)" },
+                { id: "SMAS", label: "Assistência Social (SMAS)" },
+                { id: "SMS", label: "Saúde (SMS)" },
+              ]}
+            />
+
             {/* Protocolo (Multi-select) */}
             <VirtualizedMultiSelect
               value={
@@ -194,7 +210,6 @@ const FilterCardComponent = ({
               placeholder="Protocolos"
               defaultLabel="Todos os Protocolos"
               options={filteredOptions.protocolo_descricoes}
-              style={{ gridColumn: "span 2" }}
             />
 
             {/* Status Protocolo */}
@@ -205,7 +220,6 @@ const FilterCardComponent = ({
               placeholder="Status Protocolo"
               defaultLabel="Todos os Status de Protocolos"
               options={filteredOptions.protocolo_status_list}
-              style={{ gridColumn: "span 2" }}
             />
           </div>
         </div>
@@ -216,6 +230,38 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Subprefeitura - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).subprefeitura)
+                  ? (filters as any).subprefeitura
+                  : (filters as any).subprefeitura
+                    ? [(filters as any).subprefeitura]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("subprefeitura", values)}
+              disabled={loading}
+              placeholder="Subprefeituras"
+              defaultLabel="Todas as Subprefeituras"
+              options={filteredOptions.subprefeituras}
+            />
+
+            {/* Região Administrativa - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).regiao_administrativa)
+                  ? (filters as any).regiao_administrativa
+                  : (filters as any).regiao_administrativa
+                    ? [(filters as any).regiao_administrativa]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("regiao_administrativa", values)}
+              disabled={loading}
+              placeholder="Regiões Administrativas"
+              defaultLabel="Todas as Regiões Adm."
+              options={filteredOptions.regioes_administrativas}
+            />
+
             {/* Bairro - Multi-select */}
             <VirtualizedMultiSelect
               value={
