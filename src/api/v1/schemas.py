@@ -12,9 +12,9 @@ class PaginationParams(BaseModel):
     page: int = Field(1, ge=1, description="Page number")
     page_size: int = Field(
         config.DEFAULT_PAGE_SIZE,
-        ge=config.MIN_PAGE_SIZE,
+        ge=-1,  # -1 significa "todos os dados" (bypass paginação)
         le=config.MAX_PAGE_SIZE,
-        description="Items per page",
+        description="Items per page (-1 para todos os dados)",
     )
 
 
@@ -33,20 +33,24 @@ class SortParams(BaseModel):
 
 
 class CommonFilters(BaseModel):
-    bairro: Optional[str] = None  # Multi-select via comma-separated string
-    cre: Optional[str] = None
-    ap: Optional[str] = None  # AP (Área Programática)
-    cas: Optional[str] = None  # CAS (Centro de Atenção à Saúde)
-    cras: Optional[str] = None
-    escola: Optional[str] = None
-    clinica: Optional[str] = None
-    safra: Optional[str] = None  # Keeping as string for flexibility in query params
-    grupo: Optional[str] = None
-    status: Optional[str] = None
-    situacao: Optional[str] = None  # Regular, Atenção, Irregular
-    search: Optional[str] = None  # CPF or name search
-    protocolo_descricao: Optional[str] = None  # Filtro por descrição do protocolo
-    protocolo_status: Optional[str] = None  # Filtro por status do protocolo
+    # Todos os filtros suportam multi-select via comma-separated string
+    subprefeitura: Optional[str] = None  # Multi-select
+    regiao_administrativa: Optional[str] = None  # Multi-select
+    bairro: Optional[str] = None  # Multi-select
+    cre: Optional[str] = None  # Multi-select
+    ap: Optional[str] = None  # Multi-select
+    cas: Optional[str] = None  # Multi-select
+    cras: Optional[str] = None  # Multi-select
+    escola: Optional[str] = None  # Multi-select
+    clinica: Optional[str] = None  # Multi-select
+    safra: Optional[str] = None  # Multi-select
+    grupo: Optional[str] = None  # Multi-select
+    status: Optional[str] = None  # Multi-select
+    situacao: Optional[str] = None  # Multi-select
+    search: Optional[str] = None  # CPF or name search (NOT multi-select)
+    protocolo_descricao: Optional[str] = None  # Multi-select
+    protocolo_status: Optional[str] = None  # Multi-select
+    protocolo_secretaria: Optional[str] = None  # Filtro por secretaria do protocolo (SME, SMAS, SMS)
 
 
 # --- Response Models ---
@@ -84,6 +88,8 @@ class SmartFilterOptions(BaseModel):
 
     # Filtros de participantes
     bairros: List[FilterOptionItem] = []
+    subprefeituras: List[FilterOptionItem] = []
+    regioes_administrativas: List[FilterOptionItem] = []
     grupos: List[FilterOptionItem] = []
     cohorts: List[FilterOptionItem] = []
     status_list: List[FilterOptionItem] = []
@@ -304,6 +310,8 @@ class Participante(BaseModel):
     # Dados demográficos
     nascimento_data: Optional[date] = None
     idade: Optional[int] = None
+    subprefeitura: Optional[str] = None
+    regiao_administrativa: Optional[str] = None
     bairro: Optional[str] = None
 
     # Programa

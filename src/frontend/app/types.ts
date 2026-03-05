@@ -44,6 +44,8 @@ export interface Participante {
   // Dados demográficos
   nascimento_data?: string; // ISO date string
   idade?: number;
+  subprefeitura?: string;
+  regiao_administrativa?: string;
   bairro?: string;
 
   // Programa
@@ -137,12 +139,14 @@ export interface FilterOptionItem {
 export interface SmartFilterOptions {
   // Filtros de participantes
   bairros: FilterOptionItem[];
+  subprefeituras: FilterOptionItem[];
+  regioes_administrativas: FilterOptionItem[];
   grupos: FilterOptionItem[];
   cohorts: FilterOptionItem[];
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
   cres: FilterOptionItem[];
-  aps: FilterOptionItem[]; 
+  aps: FilterOptionItem[];
   cas_list: FilterOptionItem[];
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
@@ -317,43 +321,50 @@ export interface FiltroRegional {
 
 /**
  * Active filters for the dashboard/overview tab
+ * Todos os filtros suportam multi-select
  */
 export interface DashboardFilters {
+  subprefeitura?: string | string[]; // Multi-select
+  regiao_administrativa?: string | string[]; // Multi-select
   bairro?: string | string[]; // Multi-select
-  cre?: string;
-  ap?: string;
-  cas?: string;
-  cras?: string;
-  escola?: string;
-  clinica?: string;
-  safra?: string;
-  grupo?: string;
-  status?: string;
-  situacao?: string;
+  cre?: string | string[]; // Multi-select
+  ap?: string | string[]; // Multi-select
+  cas?: string | string[]; // Multi-select
+  cras?: string | string[]; // Multi-select
+  escola?: string | string[]; // Multi-select
+  clinica?: string | string[]; // Multi-select
+  safra?: string | string[]; // Multi-select
+  grupo?: string | string[]; // Multi-select
+  status?: string | string[]; // Multi-select
+  situacao?: string | string[]; // Multi-select
   bypass_cache?: boolean;
   protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
-  protocolo_status?: string; // Filtro por status do protocolo
+  protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 }
 
 /**
  * Active filters for the professional/participant search tab
+ * Todos os filtros suportam multi-select
  */
 export interface ParticipantFilters {
+  subprefeitura?: string | string[]; // Multi-select
+  regiao_administrativa?: string | string[]; // Multi-select
   bairro?: string | string[]; // Multi-select
-  cre?: string;
-  ap?: string;
-  cas?: string;
-  cras?: string;
-  escola?: string;
-  clinica?: string;
-  safra?: string;
-  grupo?: string;
-  status?: string;
-  situacao?: string;
+  cre?: string | string[]; // Multi-select
+  ap?: string | string[]; // Multi-select
+  cas?: string | string[]; // Multi-select
+  cras?: string | string[]; // Multi-select
+  escola?: string | string[]; // Multi-select
+  clinica?: string | string[]; // Multi-select
+  safra?: string | string[]; // Multi-select
+  grupo?: string | string[]; // Multi-select
+  status?: string | string[]; // Multi-select
+  situacao?: string | string[]; // Multi-select
   search?: string; // CPF or name search
   bypass_cache?: boolean;
   protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
-  protocolo_status?: string; // Filtro por status do protocolo
+  protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
+  protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
   sort_by?: string; // Coluna para ordenação
   sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }

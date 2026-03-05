@@ -185,8 +185,9 @@ class DataManager:
         if page < 1:
             raise ValidationError(f"page must be >= 1, got {page}")
 
-        # Se page_size é None, não validar (retorna todos os dados)
-        if page_size is not None:
+        # Se page_size é None ou -1, não validar (retorna todos os dados)
+        # -1 é usado para download/export de todos os dados (bypass paginação)
+        if page_size is not None and page_size != -1:
             if page_size < config.MIN_PAGE_SIZE:
                 raise ValidationError(
                     f"page_size must be >= {config.MIN_PAGE_SIZE}, got {page_size}"
@@ -299,14 +300,15 @@ class DataManager:
                 filter_opts_time, config.PROFILING_DECIMAL_PLACES
             )
 
-        # 4. PAGINATE (última etapa) - ou pular se page_size=None
+        # 4. PAGINATE (última etapa) - ou pular se page_size=None ou page_size=-1
         paginate_start = time.perf_counter()
         total_rows = len(df_filtered)
-        # Se page_size é None, retornar TODOS os dados (sem paginação)
-        if page_size is None:
+        # Se page_size é None ou -1, retornar TODOS os dados (sem paginação)
+        # -1 é usado por download/export para bypass do limite de paginação
+        if page_size is None or page_size == -1:
             total_pages = 1
             df_result = df_filtered
-            logger.info(f"Returning ALL {total_rows} rows (no pagination)")
+            logger.info(f"⬇️ Returning ALL {total_rows} rows (no pagination, download mode)")
         else:
             total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
             start_idx = (page - 1) * page_size
@@ -354,7 +356,7 @@ class DataManager:
             df_result,
             PaginationMeta(
                 page=page,
-                page_size=page_size,
+                page_size=page_size if page_size != -1 else None,  # -1 -> None na metadata
                 total_rows=total_rows,
                 total_pages=total_pages,
                 cache_hit=cache_hit,

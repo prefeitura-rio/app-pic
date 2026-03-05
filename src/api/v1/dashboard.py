@@ -34,6 +34,8 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "grupos": {"column": "pic_grupo"},
     "cohorts": {"column": "pic_cohort"},
     "status_list": {"column": "pic_status"},
+    "subprefeituras": {"column": "subprefeitura"},
+    "regioes_administrativas": {"column": "regiao_administrativa"},
     "bairros": {"column": "bairro"},
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
     "aps": {"column": "id_ap", "label_column": "nome_ap"},
@@ -59,6 +61,9 @@ async def get_dashboard_metrics(
     grupo: Optional[str] = Query(None, description="Filtrar por grupo (crianca, gestante)"),
     cohort: Optional[str] = Query(None, description="Filtrar por safra"),
     status: Optional[str] = Query(None, description="Filtrar por status (ativo, inativo)"),
+    secretaria: Optional[str] = Query(None, description="Filtrar métricas por secretaria (SMAS, SME, SMS) - filtra gráficos, não dados"),
+    subprefeitura: Optional[str] = Query(None, description="Filtrar por subprefeitura(s) - pode ser string separada por vírgula"),
+    regiao_administrativa: Optional[str] = Query(None, description="Filtrar por região administrativa(s) - pode ser string separada por vírgula"),
     bairro: Optional[str] = Query(None, description="Filtrar por bairro(s) - pode ser string separada por vírgula"),
     cre: Optional[str] = Query(None, description="Filtrar por CRE"),
     ap: Optional[str] = Query(None, description="Filtrar por AP"),
@@ -78,22 +83,35 @@ async def get_dashboard_metrics(
     }
 
     # Construir dict de filtros (mapeando para colunas da tabela)
+    # Todos os filtros suportam multi-select (comma-separated)
     filters_dict = {}
+
+    # Helper para parse de multi-select
+    def parse_multi_select(value: Optional[str]) -> Optional[str | list[str]]:
+        if not value:
+            return None
+        if "," in value:
+            return [v.strip() for v in value.split(",") if v.strip()]
+        return value
+
     if grupo:
-        filters_dict["pic_grupo"] = grupo
+        filters_dict["pic_grupo"] = parse_multi_select(grupo)
     if cohort:
-        filters_dict["pic_cohort"] = cohort
+        filters_dict["pic_cohort"] = parse_multi_select(cohort)
     if status:
-        filters_dict["pic_status"] = status
+        filters_dict["pic_status"] = parse_multi_select(status)
+    if subprefeitura:
+        filters_dict["subprefeitura"] = parse_multi_select(subprefeitura)
+    if regiao_administrativa:
+        filters_dict["regiao_administrativa"] = parse_multi_select(regiao_administrativa)
     if bairro:
-        # Parse comma-separated bairros (multi-select support)
-        filters_dict["bairro"] = [b.strip() for b in bairro.split(",")] if "," in bairro else bairro
+        filters_dict["bairro"] = parse_multi_select(bairro)
     if cre:
-        filters_dict["id_cre"] = cre
+        filters_dict["id_cre"] = parse_multi_select(cre)
     if ap:
-        filters_dict["id_ap"] = ap
+        filters_dict["id_ap"] = parse_multi_select(ap)
     if cas:
-        filters_dict["id_cas"] = cas
+        filters_dict["id_cas"] = parse_multi_select(cas)
 
     logger.info("Fetching dashboard metrics from pre-aggregated table")
     logger.info(f"🔑 Permissions: {per_log}")
@@ -126,8 +144,9 @@ async def get_dashboard_metrics(
             )
 
         # Calcular métricas a partir dos dados pré-agregados
+        # Passar filtro de secretaria para filtrar gráficos (não dados)
         metrics_start = time.perf_counter()
-        dashboard_metrics = _calculate_dashboard_metrics(df_filtered)
+        dashboard_metrics = _calculate_dashboard_metrics(df_filtered, filtro_secretaria=secretaria)
         metrics_time = time.perf_counter() - metrics_start
         logger.info(f"⏱️ [TIMING] Metrics calculation: {metrics_time:.3f}s")
 
@@ -161,7 +180,7 @@ def _format_mes_label(mes: str) -> str:
     return mes
 
 
-def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
+def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[str] = None) -> Dashboard:
     """
     Calcula métricas do dashboard a partir de dados pré-agregados do BigQuery.
 
@@ -509,7 +528,16 @@ def _calculate_dashboard_metrics(df: pl.DataFrame) -> Dashboard:
     # 6. Tempo Médio de Irregularidade
     mapa_labels = {"geral": "Geral", "smas": "Assistência Social", "sme": "Educação", "sms": "Saúde"}
     tempo_medio_lista: List[TempoMedioIrregularidade] = []
-    for secretaria in ["geral", "smas", "sme", "sms"]:
+
+    # Determinar quais secretarias incluir baseado no filtro
+    if filtro_secretaria:
+        # Normalizar filtro para lowercase (SMAS -> smas)
+        filtro_norm = filtro_secretaria.lower()
+        secretarias_incluir = ["geral", filtro_norm]
+    else:
+        secretarias_incluir = ["geral", "smas", "sme", "sms"]
+
+    for secretaria in secretarias_incluir:
         valores = tempo_irregular_por_secretaria.get(secretaria, [])
         tempo_medio = sum(valores) / len(valores) if valores else 0.0
         tempo_medio_lista.append(

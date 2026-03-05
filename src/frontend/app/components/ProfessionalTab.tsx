@@ -102,6 +102,7 @@ interface ProfessionalTabProps {
   onFilterChange: (filters: ParticipantFilters) => void;
   onPageChange: (page: number) => void;
   onRefresh?: () => void;
+  onDownload?: () => void;
   loading?: boolean;
   pageSize: number;
   sortBy?: string | null;
@@ -119,6 +120,7 @@ const ProfessionalTabComponent = ({
   onFilterChange,
   onPageChange,
   onRefresh,
+  onDownload,
   loading = false,
   pageSize,
   sortBy,
@@ -165,6 +167,7 @@ const ProfessionalTabComponent = ({
         filters={filters}
         onFilterChange={onFilterChange}
         onRefresh={onRefresh}
+        onDownload={onDownload}
         loading={loading}
         showSearch
         totalResults={meta?.total_rows}

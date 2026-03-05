@@ -6,7 +6,7 @@ import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { Filter, X, RefreshCw, Search } from "lucide-react";
+import { Filter, X, RefreshCw, Search, Download } from "lucide-react";
 import { SmartFilterOptions, DashboardFilters, ParticipantFilters } from "@/app/types";
 
 type FilterType = DashboardFilters | ParticipantFilters;
@@ -16,6 +16,7 @@ interface FilterCardProps {
   filters: FilterType;
   onFilterChange: (filters: FilterType) => void;
   onRefresh?: () => void;
+  onDownload?: () => void;
   loading?: boolean;
   showSearch?: boolean;
   totalResults?: number;
@@ -26,6 +27,7 @@ const FilterCardComponent = ({
   filters,
   onFilterChange,
   onRefresh,
+  onDownload,
   loading = false,
   showSearch = false,
   totalResults,
@@ -77,6 +79,8 @@ const FilterCardComponent = ({
     aps: filterOptions.aps.filter((item) => item.id && item.id.trim() !== ""),
     cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
     cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
+    subprefeituras: (filterOptions.subprefeituras || []).filter((item) => item.id && item.id.trim() !== ""),
+    regioes_administrativas: (filterOptions.regioes_administrativas || []).filter((item) => item.id && item.id.trim() !== ""),
     bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
     escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
     clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
@@ -93,6 +97,18 @@ const FilterCardComponent = ({
           {showSearch ? "Filtros e Busca" : "Filtros"}
         </CardTitle>
         <div className="flex gap-2">
+          {onDownload && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDownload}
+              className="h-8 text-xs"
+              disabled={loading}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Baixar Dados
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -140,44 +156,82 @@ const FilterCardComponent = ({
             Filtros Principais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Grupo */}
-            <VirtualizedSelect
-              value={(filters as any).grupo || "todos"}
-              onSelect={(v) => handleFilterUpdate("grupo", v)}
+            {/* Grupo - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).grupo)
+                  ? (filters as any).grupo
+                  : (filters as any).grupo
+                    ? [(filters as any).grupo]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("grupo", values)}
               disabled={loading}
-              placeholder="Grupo"
+              placeholder="Grupos"
               defaultLabel="Todos os Grupos"
               options={filteredOptions.grupos}
             />
 
-            {/* Status */}
-            <VirtualizedSelect
-              value={(filters as any).status || "todos"}
-              onSelect={(v) => handleFilterUpdate("status", v)}
+            {/* Status - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).status)
+                  ? (filters as any).status
+                  : (filters as any).status
+                    ? [(filters as any).status]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("status", values)}
               disabled={loading}
               placeholder="Status"
               defaultLabel="Todos os Status"
               options={filteredOptions.status_list}
             />
 
-            {/* Situação */}
-            <VirtualizedSelect
-              value={(filters as any).situacao || "todas"}
-              onSelect={(v) => handleFilterUpdate("situacao", v)}
+            {/* Situação - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).situacao)
+                  ? (filters as any).situacao
+                  : (filters as any).situacao
+                    ? [(filters as any).situacao]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("situacao", values)}
               disabled={loading}
-              placeholder="Situação"
+              placeholder="Situações"
               defaultLabel="Todas as Situações"
               options={filteredOptions.situacoes}
             />
 
-            {/* Mês de Ingresso no Programa */}
-            <VirtualizedSelect
-              value={(filters as any).safra || "todas"}
-              onSelect={(v) => handleFilterUpdate("safra", v)}
+            {/* Mês de Ingresso no Programa - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).safra)
+                  ? (filters as any).safra
+                  : (filters as any).safra
+                    ? [(filters as any).safra]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("safra", values)}
               disabled={loading}
-              placeholder="Mês de Ingresso"
+              placeholder="Meses de Ingresso"
               defaultLabel="Todos os Meses de Ingresso"
               options={filteredOptions.cohorts}
+            />
+
+            {/* Secretaria de Protocolo */}
+            <VirtualizedSelect
+              value={(filters as any).protocolo_secretaria || "todas"}
+              onSelect={(v) => handleFilterUpdate("protocolo_secretaria", v)}
+              disabled={loading}
+              placeholder="Filtrar Protocolos por Secretaria"
+              defaultLabel="Todos os Protocolos por Secretaria"
+              options={[
+                { id: "SME", label: "Educação (SME)" },
+                { id: "SMAS", label: "Assistência (SMAS)" },
+                { id: "SMS", label: "Saúde (SMS)" },
+              ]}
             />
 
             {/* Protocolo (Multi-select) */}
@@ -194,18 +248,22 @@ const FilterCardComponent = ({
               placeholder="Protocolos"
               defaultLabel="Todos os Protocolos"
               options={filteredOptions.protocolo_descricoes}
-              style={{ gridColumn: "span 2" }}
             />
 
-            {/* Status Protocolo */}
-            <VirtualizedSelect
-              value={(filters as any).protocolo_status || "todos"}
-              onSelect={(v) => handleFilterUpdate("protocolo_status", v)}
+            {/* Status Protocolo - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).protocolo_status)
+                  ? (filters as any).protocolo_status
+                  : (filters as any).protocolo_status
+                    ? [(filters as any).protocolo_status]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("protocolo_status", values)}
               disabled={loading}
-              placeholder="Status Protocolo"
+              placeholder="Status Protocolos"
               defaultLabel="Todos os Status de Protocolos"
               options={filteredOptions.protocolo_status_list}
-              style={{ gridColumn: "span 2" }}
             />
           </div>
         </div>
@@ -216,6 +274,38 @@ const FilterCardComponent = ({
             Filtros Regionais
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {/* Subprefeitura - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).subprefeitura)
+                  ? (filters as any).subprefeitura
+                  : (filters as any).subprefeitura
+                    ? [(filters as any).subprefeitura]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("subprefeitura", values)}
+              disabled={loading}
+              placeholder="Subprefeituras"
+              defaultLabel="Todas as Subprefeituras"
+              options={filteredOptions.subprefeituras}
+            />
+
+            {/* Região Administrativa - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).regiao_administrativa)
+                  ? (filters as any).regiao_administrativa
+                  : (filters as any).regiao_administrativa
+                    ? [(filters as any).regiao_administrativa]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("regiao_administrativa", values)}
+              disabled={loading}
+              placeholder="Regiões Administrativas"
+              defaultLabel="Todas as Regiões Adm."
+              options={filteredOptions.regioes_administrativas}
+            />
+
             {/* Bairro - Multi-select */}
             <VirtualizedMultiSelect
               value={
@@ -233,20 +323,32 @@ const FilterCardComponent = ({
             />
 
             {/* ASSISTÊNCIA SOCIAL */}
-            {/* CAS */}
-            <VirtualizedSelect
-              value={(filters as any).cas || "todas"}
-              onSelect={(v) => handleFilterUpdate("cas", v)}
+            {/* CAS - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).cas)
+                  ? (filters as any).cas
+                  : (filters as any).cas
+                    ? [(filters as any).cas]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("cas", values)}
               disabled={loading}
               placeholder="CAS"
-              defaultLabel="Todos as CAS"
+              defaultLabel="Todas as CAS"
               options={filteredOptions.cas_list}
             />
 
-            {/* CRAS */}
-            <VirtualizedSelect
-              value={(filters as any).cras || "todas"}
-              onSelect={(v) => handleFilterUpdate("cras", v)}
+            {/* CRAS - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).cras)
+                  ? (filters as any).cras
+                  : (filters as any).cras
+                    ? [(filters as any).cras]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("cras", values)}
               disabled={loading}
               placeholder="CRAS"
               defaultLabel="Todos os CRAS"
@@ -254,43 +356,67 @@ const FilterCardComponent = ({
             />
 
             {/* EDUCAÇÃO */}
-            {/* CRE (Coordenadoria Regional de Educação) */}
-            <VirtualizedSelect
-              value={(filters as any).cre || "todas"}
-              onSelect={(v) => handleFilterUpdate("cre", v)}
+            {/* CRE (Coordenadoria Regional de Educação) - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).cre)
+                  ? (filters as any).cre
+                  : (filters as any).cre
+                    ? [(filters as any).cre]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("cre", values)}
               disabled={loading}
-              placeholder="CRE"
+              placeholder="CREs"
               defaultLabel="Todas as CREs"
               options={filteredOptions.cres}
             />
 
-            {/* Escolas */}
-            <VirtualizedSelect
-              value={(filters as any).escola || "todas"}
-              onSelect={(v) => handleFilterUpdate("escola", v)}
+            {/* Escolas - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).escola)
+                  ? (filters as any).escola
+                  : (filters as any).escola
+                    ? [(filters as any).escola]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("escola", values)}
               disabled={loading}
-              placeholder="Escola"
+              placeholder="Escolas"
               defaultLabel="Todas as Escolas"
               options={filteredOptions.escolas}
             />
 
             {/* SAÚDE */}
-            {/* AP (Área Programática) */}
-            <VirtualizedSelect
-              value={(filters as any).ap || "todas"}
-              onSelect={(v) => handleFilterUpdate("ap", v)}
+            {/* AP (Área Programática) - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).ap)
+                  ? (filters as any).ap
+                  : (filters as any).ap
+                    ? [(filters as any).ap]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("ap", values)}
               disabled={loading}
-              placeholder="CAP"
+              placeholder="CAPs"
               defaultLabel="Todas as CAPs"
               options={filteredOptions.aps}
             />
 
-            {/* Clínicas da Família */}
-            <VirtualizedSelect
-              value={(filters as any).clinica || "todas"}
-              onSelect={(v) => handleFilterUpdate("clinica", v)}
+            {/* Clínicas da Família - Multi-select */}
+            <VirtualizedMultiSelect
+              value={
+                Array.isArray((filters as any).clinica)
+                  ? (filters as any).clinica
+                  : (filters as any).clinica
+                    ? [(filters as any).clinica]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("clinica", values)}
               disabled={loading}
-              placeholder="Clínica da Família"
+              placeholder="Clínicas da Família"
               defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
             />
