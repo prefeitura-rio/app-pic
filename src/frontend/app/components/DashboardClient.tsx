@@ -50,18 +50,117 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  // State para filtros e paginação
-  const [overviewFilters, setOverviewFilters] = useState<DashboardFilterValues>({});
-  const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>({});
-  const [professionalPage, setProfessionalPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<"overview" | "professional">("overview");
+  // Chave para sessionStorage
+  const STORAGE_KEY = "dashboard-state";
+
+  // State para filtros e paginação (com restauração do sessionStorage)
+  const [overviewFilters, setOverviewFilters] = useState<DashboardFilterValues>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.overviewFilters || {};
+      }
+    } catch (e) {
+      console.error("Error restoring overview filters:", e);
+    }
+    return {};
+  });
+
+  const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.professionalFilters || {};
+      }
+    } catch (e) {
+      console.error("Error restoring professional filters:", e);
+    }
+    return {};
+  });
+
+  const [professionalPage, setProfessionalPage] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.professionalPage || 1;
+      }
+    } catch (e) {
+      console.error("Error restoring professional page:", e);
+    }
+    return 1;
+  });
+
+  const [activeTab, setActiveTab] = useState<"overview" | "professional">(() => {
+    if (typeof window === "undefined") return "overview";
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.activeTab || "overview";
+      }
+    } catch (e) {
+      console.error("Error restoring active tab:", e);
+    }
+    return "overview";
+  });
+
   const [isPending, startTransition] = useTransition();
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
   const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
 
-  // State para ordenação
-  const [sortBy, setSortBy] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  // State para ordenação (com restauração do sessionStorage)
+  const [sortBy, setSortBy] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.sortBy || null;
+      }
+    } catch (e) {
+      console.error("Error restoring sortBy:", e);
+    }
+    return null;
+  });
+
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
+    if (typeof window === "undefined") return "asc";
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.sortOrder || "asc";
+      }
+    } catch (e) {
+      console.error("Error restoring sortOrder:", e);
+    }
+    return "asc";
+  });
+
+  // Persistir estado no sessionStorage sempre que mudar
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const state = {
+        overviewFilters,
+        professionalFilters,
+        professionalPage,
+        activeTab,
+        sortBy,
+        sortOrder,
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.error("Error saving state to sessionStorage:", e);
+    }
+  }, [overviewFilters, professionalFilters, professionalPage, activeTab, sortBy, sortOrder]);
 
 
   // Verificação prévia de permissões (evita chamadas desnecessárias)
