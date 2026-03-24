@@ -50,11 +50,28 @@ const renderGrupoCompleto = (grupo?: string) => {
 
 
 // Função para calcular completude total
+// Usa a primeira coluna não-null disponível (total, educacao, saude, ou assistencia)
 const calcularCompletude = (participant: Participante) => {
-  const total = participant.total_protocolos || 0;
-  const regular = participant.total_protocolos_regular || 0;
-  if (total === 0) return 0;
-  return Math.round((regular / total) * 100);
+  // Tentar usar total primeiro (se disponível)
+  let total = participant.total_protocolos;
+  let regular = participant.total_protocolos_regular;
+
+  // Se total é null, usar a secretaria disponível
+  if (total == null) {
+    if (participant.educacao_protocolos_total != null) {
+      total = participant.educacao_protocolos_total;
+      regular = participant.educacao_protocolos_regular;
+    } else if (participant.saude_protocolos_total != null) {
+      total = participant.saude_protocolos_total;
+      regular = participant.saude_protocolos_regular;
+    } else if (participant.assistencia_protocolos_total != null) {
+      total = participant.assistencia_protocolos_total;
+      regular = participant.assistencia_protocolos_regular;
+    }
+  }
+
+  if (!total || total === 0) return 0;
+  return Math.round(((regular || 0) / total) * 100);
 };
 
 // Função para obter badge variant baseado no status do protocolo

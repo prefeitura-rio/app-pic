@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
+import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 
 interface UserFormProps {
   availableIds: AvailableIds;
@@ -51,6 +52,43 @@ export function UserForm({
     };
   }, [availableIds, currentUser]);
 
+  // Filter secretaria access options based on current user permissions
+  const secretariaAccessOptions = useMemo(() => {
+    const allOptions = [
+      { id: "NULL", label: "🚫 Sem Acesso a Protocolos" },
+      { id: "TODOS", label: "🌐 Todos os Protocolos (TODOS)" },
+      { id: "SME", label: "📚 Apenas Educação (SME)" },
+      { id: "SMS", label: "🏥 Apenas Saúde (SMS)" },
+      { id: "SMAS", label: "🤝 Apenas Assistência Social (SMAS)" },
+    ];
+
+    // Super admin sees all options
+    if (currentUser?.is_super_admin) {
+      return allOptions;
+    }
+
+    // Segmented admin can assign NULL or their own secretaria_acesso
+    if (currentUser?.is_admin) {
+      const userSecretaria = currentUser?.secretaria_acesso;
+
+      // Admin with TODOS can see all options (same as super admin for this field)
+      if (userSecretaria === "TODOS") {
+        return allOptions;
+      }
+
+      // If admin has no secretaria_acesso set, they can only assign NULL
+      if (!userSecretaria || userSecretaria === "NULL") {
+        return allOptions.filter(opt => opt.id === "NULL");
+      }
+
+      // Admin can assign NULL or their own secretariat (not TODOS, not other secretariats)
+      return allOptions.filter(opt => opt.id === "NULL" || opt.id === userSecretaria);
+    }
+
+    // Non-admin users can't change this field
+    return [];
+  }, [currentUser]);
+
   // Form state
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
@@ -67,6 +105,7 @@ export function UserForm({
   const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
+  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
 
   // Initialize form with user data if editing
   useEffect(() => {
@@ -86,6 +125,7 @@ export function UserForm({
       setSelectedAps(user.id_ap_list || []);
       setSelectedCas(user.id_cas_list || []);
       setSelectedClinicas(user.id_clinica_familia_list || []);
+      setSecretariaAcesso(user.secretaria_acesso || "NULL");
     } else {
       // Reset form
       setCpf("");
@@ -102,6 +142,7 @@ export function UserForm({
       setSelectedAps([]);
       setSelectedCas([]);
       setSelectedClinicas([]);
+      setSecretariaAcesso("NULL");
     }
   }, [user]);
 
@@ -137,6 +178,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
         notes: notes || null,
       };
       onSubmit(updateData);
@@ -156,6 +198,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
         notes: notes || null,
       };
       onSubmit(createData);
@@ -301,6 +344,28 @@ export function UserForm({
             <h3 className="text-sm font-medium" title="Defina quais unidades o usuário pode visualizar no sistema">Permissões de Acesso</h3>
             <p className="text-xs text-muted-foreground">
               Selecione os IDs aos quais o usuário terá acesso. Deixe vazio para sem restrições nesse tipo.
+            </p>
+          </div>
+
+          {/* Acesso a Protocolos - PRIMEIRO CAMPO */}
+          <div className="space-y-2">
+            <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
+              Acesso a Protocolos
+            </Label>
+            <VirtualizedSelect
+              value={secretariaAcesso}
+              onSelect={setSecretariaAcesso}
+              options={secretariaAccessOptions}
+              placeholder="Selecione o acesso"
+              disabled={isLoading || (!currentUser?.is_admin && !currentUser?.is_super_admin)}
+              showAllOption={false}
+            />
+            <p className="text-xs text-muted-foreground">
+              {currentUser?.is_super_admin
+                ? "Controla quais protocolos o usuário pode visualizar e filtrar"
+                : currentUser?.is_admin
+                ? "Você pode atribuir acesso a protocolos específicos de cada secretaria"
+                : "Somente administradores podem alterar o acesso a protocolos"}
             </p>
           </div>
 

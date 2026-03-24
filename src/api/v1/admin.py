@@ -96,6 +96,8 @@ class UserAccessRecord(BaseModel):
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
+
     active: bool = True
     notes: Optional[str] = None
     created_by: str
@@ -120,6 +122,8 @@ class UpsertUserRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
 
     notes: Optional[str] = None
     active: bool = True
@@ -181,6 +185,7 @@ def _filter_manageable_users(
     logger.info(f"🔍 Verificando permissões do admin:")
     logger.info(f"  - is_super_admin: {admin_permissions.is_super_admin}")
     logger.info(f"  - is_admin: {admin_permissions.is_admin}")
+    logger.info(f"  - secretaria_acesso: {admin_permissions.secretaria_acesso}")
     logger.info(f"  - CRAS: {len(admin_permissions.id_cras_list or [])}")
     logger.info(f"  - Escolas: {len(admin_permissions.id_escola_list or [])}")
     logger.info(f"  - CRE: {len(admin_permissions.id_cre_list or [])}")
@@ -205,9 +210,32 @@ def _filter_manageable_users(
         logger.warning(f"❌ Admin não possui nenhum ID - não pode gerenciar usuários")
         return df.head(0)  # Retorna DataFrame vazio
 
-    # OTIMIZAÇÃO: Usar operação vetorizada ao invés de iterrows()
-    # Primeiro filtro: remover super admins (operação vetorizada)
+    # FILTRO 1: Remover super admins (admin segmentado não pode gerenciar super admins)
     df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
+
+    # FILTRO 2: Filtrar por secretaria_acesso
+    from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+
+    admin_secretaria = admin_permissions.secretaria_acesso
+
+    if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
+        # Admin com NULL: vê APENAS usuários NULL
+        logger.info(f"🔒 Admin com NULL - Filtrando APENAS usuários com NULL")
+        df_non_super_admin = df_non_super_admin.filter(
+            (pl.col("secretaria_acesso").is_null()) |
+            (pl.col("secretaria_acesso") == SECRETARIA_NULL)
+        )
+        logger.info(f"   Usuários após filtro NULL: {len(df_non_super_admin)}")
+    elif admin_secretaria not in [SECRETARIA_TODOS]:
+        # Admin de secretaria específica (SME/SMS/SMAS): vê NULL + sua secretaria
+        logger.info(f"🔒 Filtrando usuários por secretaria_acesso = {admin_secretaria} ou NULL")
+        df_non_super_admin = df_non_super_admin.filter(
+            (pl.col("secretaria_acesso") == admin_secretaria) |
+            (pl.col("secretaria_acesso").is_null()) |
+            (pl.col("secretaria_acesso") == SECRETARIA_NULL)
+        )
+        logger.info(f"   Usuários após filtro de secretaria: {len(df_non_super_admin)}")
+    # else: Admin com TODOS vê todos os usuários (sem filtro adicional)
 
     if df_non_super_admin.is_empty():
         logger.info("Nenhum usuário gerenciável (todos são super admins)")
@@ -277,6 +305,126 @@ def _filter_manageable_users(
     )
 
     return df_filtered
+
+
+def validate_equipment_secretaria_consistency(
+    target_ids: Dict[str, List[IdWithName]],
+    target_secretaria_acesso: Optional[str]
+):
+    """
+    Valida consistência entre equipamentos atribuídos e secretaria_acesso.
+
+    REGRAS:
+    - secretaria_acesso = "SME" → Só pode ter CRE e Escolas
+    - secretaria_acesso = "SMS" → Só pode ter AP e Clínicas
+    - secretaria_acesso = "SMAS" → Só pode ter CAS e CRAS
+    - secretaria_acesso = "TODOS" → Pode ter qualquer equipamento
+    - secretaria_acesso = "NULL" ou None → Pode ter qualquer equipamento (sem acesso a protocolos)
+    """
+    from src.utils.constants import (
+        SECRETARIA_NULL,
+        SECRETARIA_TODOS,
+        SECRETARIA_EQUIPMENT,
+        SECRETARIA_EQUIPMENT_LABELS,
+    )
+
+    # Se não tem secretaria_acesso definido, permitir qualquer equipamento
+    if not target_secretaria_acesso or target_secretaria_acesso == SECRETARIA_NULL or target_secretaria_acesso == SECRETARIA_TODOS:
+        return
+
+    logger.info(f"🔍 Validando consistência equipamentos <-> secretaria_acesso")
+    logger.info(f"   secretaria_acesso: {target_secretaria_acesso}")
+
+    # Equipamentos permitidos para essa secretaria
+    allowed = SECRETARIA_EQUIPMENT.get(target_secretaria_acesso, [])
+
+    # Verificar se algum equipamento não permitido foi atribuído
+    for id_type, id_list in target_ids.items():
+        if id_list and len(id_list) > 0:  # Se tem equipamentos atribuídos
+            if id_type not in allowed:
+                # Mapear nome amigável do equipamento
+                equipment_names = {
+                    "id_cre_list": "CRE",
+                    "id_escola_list": "Escolas",
+                    "id_ap_list": "AP",
+                    "id_clinica_familia_list": "Clínicas",
+                    "id_cas_list": "CAS",
+                    "id_cras_list": "CRAS",
+                }
+
+                equipment_name = equipment_names.get(id_type, id_type)
+                allowed_names = SECRETARIA_EQUIPMENT_LABELS.get(target_secretaria_acesso, "nenhum equipamento")
+
+                logger.warning(
+                    f"   ❌ BLOQUEADO: Tentando atribuir {equipment_name} "
+                    f"para usuário com acesso {target_secretaria_acesso}"
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Inconsistência: Não é permitido atribuir {equipment_name} para usuário com acesso {target_secretaria_acesso}. "
+                    f"Usuários com acesso {target_secretaria_acesso} só podem ter: {allowed_names}. "
+                    f"Remova os equipamentos incompatíveis ou altere o acesso a protocolos.",
+                )
+
+    logger.info(f"   ✅ Consistência OK")
+
+
+def validate_secretaria_acesso_permission(
+    admin_permissions: UserPermissions, target_secretaria_acesso: Optional[str]
+):
+    """
+    Valida que admin segmentado só pode atribuir secretaria_acesso que ele possui.
+
+    REGRAS:
+    - Super admin: Pode atribuir qualquer valor (NULL, TODOS, SME, SMS, SMAS)
+    - Admin com secretaria_acesso = "TODOS": Pode atribuir qualquer valor
+    - Admin segmentado: Pode atribuir NULL ou sua própria secretaria_acesso
+    - Admin sem secretaria_acesso: Pode atribuir apenas NULL
+    """
+    if admin_permissions.is_super_admin:
+        return  # Super admin pode tudo
+
+    # Admin com acesso TODOS também pode atribuir qualquer valor
+    if admin_permissions.secretaria_acesso == "TODOS":
+        logger.info(f"✅ Admin com acesso TODOS pode atribuir qualquer valor")
+        return
+
+    # Se target é None ou NULL, permitir (remover acesso é sempre permitido)
+    if not target_secretaria_acesso or target_secretaria_acesso == "NULL":
+        return
+
+    logger.info(f"🔍 Validando atribuição de secretaria_acesso")
+    logger.info(f"   Admin tem: {admin_permissions.secretaria_acesso}")
+    logger.info(f"   Tentando atribuir: {target_secretaria_acesso}")
+
+    # Admin tentando atribuir TODOS (exclusivo de super admin e admin TODOS)
+    if target_secretaria_acesso == "TODOS":
+        logger.warning(f"   ❌ BLOQUEADO: Admin segmentado não pode atribuir TODOS")
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas super admins ou admins com acesso TODOS podem atribuir acesso TODOS aos protocolos",
+        )
+
+    # Admin sem secretaria_acesso não pode atribuir nada além de NULL
+    if not admin_permissions.secretaria_acesso or admin_permissions.secretaria_acesso == "NULL":
+        logger.warning(f"   ❌ BLOQUEADO: Admin sem secretaria_acesso tentando atribuir {target_secretaria_acesso}")
+        raise HTTPException(
+            status_code=403,
+            detail="Você não possui acesso a protocolos e não pode atribuir acesso a outros usuários",
+        )
+
+    # Admin só pode atribuir sua própria secretaria
+    if target_secretaria_acesso != admin_permissions.secretaria_acesso:
+        logger.warning(
+            f"   ❌ BLOQUEADO: Admin {admin_permissions.secretaria_acesso} "
+            f"tentando atribuir {target_secretaria_acesso}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Você só pode atribuir acesso {admin_permissions.secretaria_acesso} (sua própria secretaria)",
+        )
+
+    logger.info(f"   ✅ Validação OK: {target_secretaria_acesso}")
 
 
 def validate_segmented_admin_can_manage(
@@ -529,6 +677,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
         id_ap_list=permissions.id_ap_list,
         id_cas_list=permissions.id_cas_list,
         id_clinica_familia_list=permissions.id_clinica_familia_list,
+        secretaria_acesso=permissions.secretaria_acesso,
         active=permissions.active,
         notes=permissions.notes if hasattr(permissions, "notes") else None,
         created_by=permissions.cpf,  # Placeholder (não temos essa info em UserPermissions)
@@ -544,6 +693,7 @@ USER_FILTER_OPTIONS_CONFIG = {
     "permissions": {
         "column": "permission"
     },  # super_admin, admin, user (coluna gerada no BQ)
+    "secretaria_acesso_list": {"column": "secretaria_acesso"},  # SME, SMS, SMAS, TODOS, NULL
 }
 
 
@@ -558,6 +708,9 @@ async def list_users(
     secretaria: Optional[str] = Query(None, description="Filtrar por secretaria"),
     permission: Optional[str] = Query(
         None, description="Filtrar por tipo de permissão (super_admin/admin/user)"
+    ),
+    secretaria_acesso: Optional[str] = Query(
+        None, description="Filtrar por acesso a protocolos (SME/SMS/SMAS/TODOS/NULL)"
     ),
     search: Optional[str] = Query(None, description="Buscar por CPF ou nome"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
@@ -576,6 +729,7 @@ async def list_users(
     - ocupacao: string (filtra por ocupação)
     - secretaria: string (filtra por secretaria)
     - permission: super_admin/admin/user (filtra por tipo de permissão)
+    - secretaria_acesso: SME/SMS/SMAS/TODOS/NULL (filtra por acesso a protocolos)
     - search: busca parcial em CPF ou nome
     - page, page_size: paginação
     - bypass_cache: força refresh do cache (usado pelo botão Atualizar do frontend)
@@ -610,6 +764,8 @@ async def list_users(
             filters_dict["secretaria"] = secretaria
         if permission:
             filters_dict["permission"] = permission
+        if secretaria_acesso:
+            filters_dict["secretaria_acesso"] = secretaria_acesso
 
         # Pipeline completo: fetch → filter → search → filter_options → paginate
         # IMPORTANTE: Para admins segmentados, aplicar governança APÓS buscar dados
@@ -681,6 +837,22 @@ async def list_users(
                 raise
 
         logger.info(f"Retornando {len(users)} usuários (página {pagination.page})")
+
+        # Filtrar opções de secretaria_acesso baseado nas permissões do usuário
+        if filter_options and hasattr(filter_options, 'secretaria_acesso_list'):
+            from src.utils.secretaria_access import get_allowed_secretaria_options
+
+            # Obter valores permitidos para esse admin
+            allowed_values = get_allowed_secretaria_options(
+                permissions.is_super_admin,
+                permissions.secretaria_acesso
+            )
+
+            # Filtrar opções disponíveis
+            filter_options.secretaria_acesso_list = [
+                opt for opt in filter_options.secretaria_acesso_list
+                if opt.id in allowed_values
+            ]
 
         return PaginatedResponse(
             data=users,
@@ -770,6 +942,37 @@ async def upsert_user(
                 detail="Admins não podem editar outros admins",
             )
 
+        # PROTEÇÃO: Admin segmentado só pode editar usuários da mesma secretaria ou NULL
+        if not permissions.is_super_admin:
+            from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+
+            admin_secretaria = permissions.secretaria_acesso
+            target_secretaria = existing_row.get("secretaria_acesso")
+
+            if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
+                # Admin com NULL: só pode editar usuários NULL
+                can_edit = (
+                    target_secretaria is None or
+                    target_secretaria == SECRETARIA_NULL
+                )
+                if not can_edit:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Você não tem acesso a protocolos e só pode gerenciar usuários sem acesso (NULL).",
+                    )
+            elif admin_secretaria not in [SECRETARIA_TODOS]:
+                # Admin de secretaria específica (SME/SMS/SMAS): só pode editar NULL + sua secretaria
+                can_edit = (
+                    target_secretaria == admin_secretaria or
+                    target_secretaria is None or
+                    target_secretaria == SECRETARIA_NULL
+                )
+                if not can_edit:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Você não pode editar usuários de outras secretarias. Você tem acesso apenas a {admin_secretaria}.",
+                    )
+
     # PROTEÇÃO: Impedir que admin edite a si mesmo
     if cpf == permissions.cpf:
         raise HTTPException(
@@ -811,6 +1014,15 @@ async def upsert_user(
     if target_ids_to_validate:
         validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
 
+    # Validar secretaria_acesso (se foi enviado)
+    if request.secretaria_acesso is not None:
+        validate_secretaria_acesso_permission(permissions, request.secretaria_acesso)
+
+    # Validar consistência entre equipamentos e secretaria_acesso
+    # Importante: validar TODOS os equipamentos (mesmo que seja None), porque
+    # estamos verificando se há inconsistência entre o que foi atribuído
+    validate_equipment_secretaria_consistency(target_ids_dict, request.secretaria_acesso)
+
     try:
         if user_exists:
             # UPDATE - Dinâmico (só atualiza campos não nulos)
@@ -833,12 +1045,17 @@ async def upsert_user(
             if request.secretaria is not None:
                 update_dict["secretaria"] = request.secretaria
 
+            if request.secretaria_acesso is not None:
+                # Converter "NULL" (string) para None (SQL NULL)
+                update_dict["secretaria_acesso"] = None if request.secretaria_acesso == "NULL" else request.secretaria_acesso
+
             # Detectar se é full update ou apenas toggle de active
             is_full_update = (
                 request.email is not None
                 or request.nome is not None
                 or request.ocupacao is not None
                 or request.secretaria is not None
+                or request.secretaria_acesso is not None
                 or request.id_cras_list is not None
                 or request.id_escola_list is not None
             )
@@ -971,6 +1188,7 @@ async def upsert_user(
             (
                 cpf, email, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
+                secretaria_acesso,
                 created_by, active, notes, created_at
             )
             VALUES (
@@ -982,11 +1200,15 @@ async def upsert_user(
                 {_convert_id_list_to_bq_struct(request.id_ap_list)},
                 {_convert_id_list_to_bq_struct(request.id_cas_list)},
                 {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
+                @secretaria_acesso,
                 @created_by, @active, @notes, CURRENT_TIMESTAMP()
             )
             """
 
             # Build parameters list
+            # Converter "NULL" (string) para None (SQL NULL) para secretaria_acesso
+            secretaria_acesso_value = None if request.secretaria_acesso == "NULL" else request.secretaria_acesso
+
             parameters = [
                 bigquery.ScalarQueryParameter("cpf", "STRING", cpf),
                 bigquery.ScalarQueryParameter("email", "STRING", request.email),
@@ -1000,6 +1222,7 @@ async def upsert_user(
                     "is_super_admin", "BOOL", request.is_super_admin
                 ),
                 bigquery.ScalarQueryParameter("permission", "STRING", permission_value),
+                bigquery.ScalarQueryParameter("secretaria_acesso", "STRING", secretaria_acesso_value),
                 bigquery.ScalarQueryParameter("created_by", "STRING", permissions.cpf),
                 bigquery.ScalarQueryParameter("active", "BOOL", request.active),
                 bigquery.ScalarQueryParameter("notes", "STRING", request.notes),
@@ -1126,6 +1349,37 @@ async def delete_user(
             detail="Admins não podem deletar outros admins",
         )
 
+    # PROTEÇÃO: Admin segmentado só pode deletar usuários da mesma secretaria ou NULL
+    if not permissions.is_super_admin:
+        from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+
+        admin_secretaria = permissions.secretaria_acesso
+        target_secretaria = existing_row.get("secretaria_acesso")
+
+        if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
+            # Admin com NULL: só pode deletar usuários NULL
+            can_delete = (
+                target_secretaria is None or
+                target_secretaria == SECRETARIA_NULL
+            )
+            if not can_delete:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Você não tem acesso a protocolos e só pode gerenciar usuários sem acesso (NULL).",
+                )
+        elif admin_secretaria not in [SECRETARIA_TODOS]:
+            # Admin de secretaria específica (SME/SMS/SMAS): só pode deletar NULL + sua secretaria
+            can_delete = (
+                target_secretaria == admin_secretaria or
+                target_secretaria is None or
+                target_secretaria == SECRETARIA_NULL
+            )
+            if not can_delete:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Você não pode deletar usuários de outras secretarias. Você tem acesso apenas a {admin_secretaria}.",
+                )
+
     # Impedir que usuário delete a si mesmo
     if cpf == permissions.cpf:
         raise HTTPException(
@@ -1194,6 +1448,7 @@ class ImportedUser(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    secretaria_acesso: Optional[str] = None
 
 
 class BatchImportResult(BaseModel):
@@ -1227,6 +1482,7 @@ class BatchPermissionsRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    secretaria_acesso: Optional[str] = None
 
 
 class BatchPermissionsError(BaseModel):
@@ -1392,6 +1648,7 @@ async def batch_import_users(
                         "id_clinica_familia_list": user_dict.get(
                             "id_clinica_familia_list"
                         ),
+                        "secretaria_acesso": user_dict.get("secretaria_acesso"),
                     }
 
                 imported_users.append(
@@ -1483,6 +1740,13 @@ async def batch_update_permissions(
     if target_ids_to_validate:
         validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
 
+    # Validar secretaria_acesso (se foi enviado)
+    if request.secretaria_acesso is not None:
+        validate_secretaria_acesso_permission(permissions, request.secretaria_acesso)
+
+    # Validar consistência entre equipamentos e secretaria_acesso
+    validate_equipment_secretaria_consistency(target_ids_dict, request.secretaria_acesso)
+
     # Calcular permission string
     permission_value = calculate_permission(request.is_admin, False)
 
@@ -1493,6 +1757,12 @@ async def batch_update_permissions(
     id_ap_sql = _convert_id_list_to_bq_struct(request.id_ap_list)
     id_cas_sql = _convert_id_list_to_bq_struct(request.id_cas_list)
     id_clinica_sql = _convert_id_list_to_bq_struct(request.id_clinica_familia_list)
+
+    # Preparar secretaria_acesso para SQL (converter "NULL" string para SQL NULL)
+    if not request.secretaria_acesso or request.secretaria_acesso == "NULL":
+        secretaria_acesso_sql = "NULL"
+    else:
+        secretaria_acesso_sql = f"'{request.secretaria_acesso}'"
 
     # Fase 1: Validar CPFs e coletar dados
     errors: List[BatchPermissionsError] = []
@@ -1616,6 +1886,7 @@ async def batch_update_permissions(
             id_ap_list = {id_ap_sql},
             id_cas_list = {id_cas_sql},
             id_clinica_familia_list = {id_clinica_sql},
+            secretaria_acesso = {secretaria_acesso_sql},
             nome = COALESCE(S.nome, T.nome),
             email = COALESCE(S.email, T.email),
             ocupacao = COALESCE(S.ocupacao, T.ocupacao),
@@ -1626,7 +1897,7 @@ async def batch_update_permissions(
     WHEN NOT MATCHED THEN
         INSERT (cpf, nome, email, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
-                notes, active, created_at, updated_at, created_by, updated_by)
+                secretaria_acesso, notes, active, created_at, updated_at, created_by, updated_by)
         VALUES (
             S.cpf,
             S.nome,
@@ -1642,6 +1913,7 @@ async def batch_update_permissions(
             {id_ap_sql},
             {id_cas_sql},
             {id_clinica_sql},
+            {secretaria_acesso_sql},
             NULL,
             TRUE,
             CURRENT_TIMESTAMP(),

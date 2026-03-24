@@ -114,6 +114,7 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
   const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
+  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
 
 
   // Populate importedUsers when prePopulatedUsers is provided
@@ -141,6 +142,7 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
         id_ap_list: user.id_ap_list,
         id_cas_list: user.id_cas_list,
         id_clinica_familia_list: user.id_clinica_familia_list,
+        secretaria_acesso: user.secretaria_acesso,
       }));
       setImportedUsers(usersWithStatus);
       // Select all pre-populated users
@@ -406,6 +408,10 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
         if (user.id_ap_list) setSelectedAps(user.id_ap_list);
         if (user.id_cas_list) setSelectedCas(user.id_cas_list);
         if (user.id_clinica_familia_list) setSelectedClinicas(user.id_clinica_familia_list);
+        // Preencher secretaria_acesso se existir
+        if (user.secretaria_acesso) {
+          setSecretariaAcesso(user.secretaria_acesso);
+        }
       }
     }
     setSelectedCpfs(newSelection);
@@ -434,6 +440,7 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
       id_ap_list: selectedAps.length > 0 ? selectedAps : null,
       id_cas_list: selectedCas.length > 0 ? selectedCas : null,
       id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+      secretaria_acesso: secretariaAcesso,
     });
   };
 
@@ -1009,6 +1016,34 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
                   onCheckedChange={(checked) => setIsAdmin(!!checked)}
                 />
                 <Label htmlFor="is-admin">Tornar admin</Label>
+              </div>
+
+              {/* Secretaria Acesso - MOVIDO PARA O TOPO */}
+              <div className="space-y-2">
+                <Label>Acesso a Protocolos</Label>
+                <Select
+                  value={secretariaAcesso}
+                  onValueChange={setSecretariaAcesso}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o acesso" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NULL">🚫 Sem Acesso a Protocolos</SelectItem>
+                    {(currentUser.is_super_admin || currentUser.secretaria_acesso === "TODOS") && (
+                      <SelectItem value="TODOS">🌐 Todos os Protocolos (TODOS)</SelectItem>
+                    )}
+                    {(!currentUser.secretaria_acesso || currentUser.secretaria_acesso === "TODOS" || currentUser.secretaria_acesso === "SME") && (
+                      <SelectItem value="SME">📚 Apenas Educação (SME)</SelectItem>
+                    )}
+                    {(!currentUser.secretaria_acesso || currentUser.secretaria_acesso === "TODOS" || currentUser.secretaria_acesso === "SMS") && (
+                      <SelectItem value="SMS">🏥 Apenas Saúde (SMS)</SelectItem>
+                    )}
+                    {(!currentUser.secretaria_acesso || currentUser.secretaria_acesso === "TODOS" || currentUser.secretaria_acesso === "SMAS") && (
+                      <SelectItem value="SMAS">🤝 Apenas Assistência Social (SMAS)</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* ID selectors */}

@@ -63,6 +63,7 @@ class PaginationMeta(BaseModel):
     total_pages: int
     cache_hit: bool
     profiling: Optional[Any] = None
+    can_view_dashboard: Optional[bool] = None  # Indica se o usuário pode visualizar a aba Dashboard
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
@@ -108,6 +109,7 @@ class SmartFilterOptions(BaseModel):
     secretarias: List[FilterOptionItem] = []
     status_ativo: List[FilterOptionItem] = []
     permissions: List[FilterOptionItem] = []
+    secretaria_acesso_list: List[FilterOptionItem] = []
 
 
 # Shared / Nested Models

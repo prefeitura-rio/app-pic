@@ -72,19 +72,19 @@ const FilterCardComponent = ({
 
   // OTIMIZAÇÃO CRÍTICA: Pré-filtrar todas as opções de filtro UMA VEZ
   const filteredOptions = useMemo(() => ({
-    grupos: filterOptions.grupos.filter((item) => item.id && item.id.trim() !== ""),
-    status_list: filterOptions.status_list.filter((item) => item.id && item.id.trim() !== ""),
-    situacoes: filterOptions.situacoes.filter((item) => item.id && item.id.trim() !== ""),
-    cohorts: filterOptions.cohorts.filter((item) => item.id && item.id.trim() !== ""),
-    aps: filterOptions.aps.filter((item) => item.id && item.id.trim() !== ""),
-    cres: filterOptions.cres.filter((item) => item.id && item.id.trim() !== ""),
-    cas_list: filterOptions.cas_list.filter((item) => item.id && item.id.trim() !== ""),
+    grupos: (filterOptions.grupos || []).filter((item) => item.id && item.id.trim() !== ""),
+    status_list: (filterOptions.status_list || []).filter((item) => item.id && item.id.trim() !== ""),
+    situacoes: (filterOptions.situacoes || []).filter((item) => item.id && item.id.trim() !== ""),
+    cohorts: (filterOptions.cohorts || []).filter((item) => item.id && item.id.trim() !== ""),
+    aps: (filterOptions.aps || []).filter((item) => item.id && item.id.trim() !== ""),
+    cres: (filterOptions.cres || []).filter((item) => item.id && item.id.trim() !== ""),
+    cas_list: (filterOptions.cas_list || []).filter((item) => item.id && item.id.trim() !== ""),
     subprefeituras: (filterOptions.subprefeituras || []).filter((item) => item.id && item.id.trim() !== ""),
     regioes_administrativas: (filterOptions.regioes_administrativas || []).filter((item) => item.id && item.id.trim() !== ""),
-    bairros: filterOptions.bairros.filter((item) => item.id && item.id.trim() !== ""),
-    escolas: filterOptions.escolas.filter((item) => item.id && item.id.trim() !== ""),
-    clinicas: filterOptions.clinicas.filter((item) => item.id && item.id.trim() !== ""),
-    cras: filterOptions.cras.filter((item) => item.id && item.id.trim() !== ""),
+    bairros: (filterOptions.bairros || []).filter((item) => item.id && item.id.trim() !== ""),
+    escolas: (filterOptions.escolas || []).filter((item) => item.id && item.id.trim() !== ""),
+    clinicas: (filterOptions.clinicas || []).filter((item) => item.id && item.id.trim() !== ""),
+    cras: (filterOptions.cras || []).filter((item) => item.id && item.id.trim() !== ""),
     protocolo_descricoes: (filterOptions.protocolo_descricoes || []).filter((item) => item.id && item.id.trim() !== ""),
     protocolo_status_list: (filterOptions.protocolo_status_list || []).filter((item) => item.id && item.id.trim() !== ""),
   }), [filterOptions]);
@@ -324,94 +324,105 @@ const FilterCardComponent = ({
 
             {/* ASSISTÊNCIA SOCIAL */}
             {/* CAS - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray((filters as any).cas)
-                  ? (filters as any).cas
-                  : (filters as any).cas
-                    ? [(filters as any).cas]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("cas", values)}
-              disabled={loading}
-              placeholder="CAS"
-              defaultLabel="Todas as CAS"
-              options={filteredOptions.cas_list}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).cas)
+                    ? (filters as any).cas
+                    : (filters as any).cas
+                      ? [(filters as any).cas]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("cas", values)}
+                disabled={loading}
+                placeholder="CAS"
+                defaultLabel="Todas as CAS"
+                options={filteredOptions.cas_list}
+              />
+            )}
 
             {/* CRAS - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray((filters as any).cras)
-                  ? (filters as any).cras
-                  : (filters as any).cras
-                    ? [(filters as any).cras]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("cras", values)}
-              disabled={loading}
-              placeholder="CRAS"
-              defaultLabel="Todos os CRAS"
-              options={filteredOptions.cras}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).cras)
+                    ? (filters as any).cras
+                    : (filters as any).cras
+                      ? [(filters as any).cras]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("cras", values)}
+                disabled={loading}
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
+              />
+            )}
 
             {/* EDUCAÇÃO */}
             {/* CRE (Coordenadoria Regional de Educação) - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray((filters as any).cre)
-                  ? (filters as any).cre
-                  : (filters as any).cre
-                    ? [(filters as any).cre]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("cre", values)}
-              disabled={loading}
-              placeholder="CREs"
-              defaultLabel="Todas as CREs"
-              options={filteredOptions.cres}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).cre)
+                    ? (filters as any).cre
+                    : (filters as any).cre
+                      ? [(filters as any).cre]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("cre", values)}
+                disabled={loading}
+                placeholder="CREs"
+                defaultLabel="Todas as CREs"
+                options={filteredOptions.cres}
+              />
+            )}
 
             {/* Escolas - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray((filters as any).escola)
-                  ? (filters as any).escola
-                  : (filters as any).escola
-                    ? [(filters as any).escola]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("escola", values)}
-              disabled={loading}
-              placeholder="Escolas"
-              defaultLabel="Todas as Escolas"
-              options={filteredOptions.escolas}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).escola)
+                    ? (filters as any).escola
+                    : (filters as any).escola
+                      ? [(filters as any).escola]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("escola", values)}
+                disabled={loading}
+                placeholder="Escolas"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
+              />
+            )}
 
             {/* SAÚDE */}
             {/* AP (Área Programática) - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray((filters as any).ap)
-                  ? (filters as any).ap
-                  : (filters as any).ap
-                    ? [(filters as any).ap]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("ap", values)}
-              disabled={loading}
-              placeholder="CAPs"
-              defaultLabel="Todas as CAPs"
-              options={filteredOptions.aps}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).ap)
+                    ? (filters as any).ap
+                    : (filters as any).ap
+                      ? [(filters as any).ap]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("ap", values)}
+                disabled={loading}
+                placeholder="CAPs"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.aps}
+              />
+            )}
 
             {/* Clínicas da Família - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray((filters as any).clinica)
-                  ? (filters as any).clinica
-                  : (filters as any).clinica
-                    ? [(filters as any).clinica]
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).clinica)
+                    ? (filters as any).clinica
+                    : (filters as any).clinica
+                      ? [(filters as any).clinica]
                     : []
               }
               onSelect={(values) => handleMultiFilterUpdate("clinica", values)}
@@ -420,6 +431,7 @@ const FilterCardComponent = ({
               defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
             />
+            )}
           </div>
         </div>
 

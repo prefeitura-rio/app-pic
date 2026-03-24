@@ -35,6 +35,7 @@ export default function AdminPage() {
   const [filterSecretaria, setFilterSecretaria] = useState("");
   const [filterPermission, setFilterPermission] = useState<string>(""); // empty = all (super_admin/admin/user)
   const [filterStatus, setFilterStatus] = useState<string>(""); // empty = all
+  const [filterSecretariaAcesso, setFilterSecretariaAcesso] = useState<string>(""); // empty = all
   const [searchInput, setSearchInput] = useState(""); // Input do usuário
   const [searchTerm, setSearchTerm] = useState(""); // Termo de busca ativo (enviado ao backend)
 
@@ -66,7 +67,7 @@ export default function AdminPage() {
     error: usersError,
     refetch: refetchUsers,
   } = useQuery({
-    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, searchTerm],
+    queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, filterSecretariaAcesso, searchTerm],
     queryFn: async () => {
       // Usar ref para bypass (não muda query key)
       const shouldBypassCache = bypassCacheRef.current;
@@ -99,6 +100,11 @@ export default function AdminPage() {
       // Filtro de permissão (valor direto: super_admin/admin/user)
       if (filterPermission && filterPermission !== "todas") {
         params.append("permission", filterPermission);
+      }
+
+      // Filtro de secretaria_acesso (valor direto do backend)
+      if (filterSecretariaAcesso && filterSecretariaAcesso !== "todas") {
+        params.append("secretaria_acesso", filterSecretariaAcesso);
       }
 
       // Busca por CPF ou nome
@@ -582,6 +588,7 @@ export default function AdminPage() {
                     setFilterSecretaria("");
                     setFilterPermission("");
                     setFilterStatus("");
+                    setFilterSecretariaAcesso("");
                     setSearchInput("");
                     setSearchTerm("");
                     handleFilterChange();
@@ -620,7 +627,7 @@ export default function AdminPage() {
               </div>
 
               {/* Filtros */}
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
                 {/* Ocupação */}
                 <VirtualizedSelect
                   value={filterOcupacao || "todas"}
@@ -658,6 +665,34 @@ export default function AdminPage() {
                   placeholder="Permissão"
                   defaultLabel="Todas as Permissões"
                   options={filterOptions?.permissions || []}
+                />
+
+                {/* Acesso Protocolos */}
+                <VirtualizedSelect
+                  value={filterSecretariaAcesso || "todas"}
+                  onSelect={(value) => {
+                    setFilterSecretariaAcesso(value === "todas" ? "" : value);
+                    handleFilterChange();
+                  }}
+                  disabled={usersFetching}
+                  placeholder="Acesso Protocolos"
+                  defaultLabel="Todos os Acessos"
+                  options={
+                    filterOptions?.secretaria_acesso_list?.map((opt: any) => ({
+                      id: opt.id,
+                      label: opt.id === "NULL" || !opt.id
+                        ? "🚫 Sem Acesso"
+                        : opt.id === "TODOS"
+                        ? "🌐 Todos"
+                        : opt.id === "SME"
+                        ? "📚 Educação"
+                        : opt.id === "SMS"
+                        ? "🏥 Saúde"
+                        : opt.id === "SMAS"
+                        ? "🤝 Assistência"
+                        : opt.id,
+                    })) || []
+                  }
                 />
 
                 {/* Status */}

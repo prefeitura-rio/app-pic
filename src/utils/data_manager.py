@@ -7,6 +7,7 @@ from src.utils.bigquery import execute_query
 from src.utils.log import logger
 from src.utils.cache_manager import query_cache
 from src.utils.text_utils import TextNormalizer
+from src.utils.secretaria_access import filter_and_recalculate_by_secretaria
 from src.utils.data_manager_config import (
     DataManagerConfig as config,
     DataManagerError,
@@ -266,6 +267,8 @@ class DataManager:
 
             # OTIMIZAÇÃO: Se temos filter options pré-computadas E não há filtros ativos,
             # retornar diretamente (instant!)
+            # IMPORTANTE: Não usar precomputed se há governança ativa (usuário não-super-admin)
+            # porque as options pré-computadas contêm TODOS os dados (cache compartilhado)
             active_filter_count = len(
                 [
                     v
@@ -274,7 +277,11 @@ class DataManager:
                 ]
             )
 
-            if precomputed_filter_options and active_filter_count == 0:
+            # Verificar se pode usar cache: sem filtros E sem governança (ou super admin)
+            has_governance = user_permissions and not user_permissions.has_full_access()
+            can_use_precomputed = precomputed_filter_options and active_filter_count == 0 and not has_governance
+
+            if can_use_precomputed:
                 # Converter dict para SmartFilterOptions (instant)
                 filter_options_dict = SmartFilterOptions(
                     **{
@@ -282,7 +289,7 @@ class DataManager:
                         for k, v in precomputed_filter_options.items()
                     }
                 )
-                logger.info("⚡ Using precomputed filter options (instant)")
+                logger.info("⚡ Using precomputed filter options (instant, with equipment filtering)")
             else:
                 # Fallback: calcular dinamicamente (quando há filtros ativos)
                 # OTIMIZAÇÃO: Passar AMBOS DataFrames para evitar recálculos
@@ -1222,7 +1229,12 @@ class DataManager:
                 continue
 
             # Pegar valores únicos - Polars
-            unique_values = df_filtered[column].drop_nulls().unique().to_list()
+            # Para secretaria_acesso, incluir NULL como opção válida
+            if column == "secretaria_acesso":
+                # Incluir NULL/None como valor
+                unique_values = df_filtered[column].unique().to_list()
+            else:
+                unique_values = df_filtered[column].drop_nulls().unique().to_list()
 
             # Criar label map se necessário
             label_map = {}
@@ -1238,11 +1250,16 @@ class DataManager:
             # Criar opções
             options = []
             for value in unique_values:
-                value_str = str(value).strip()
+                # Converter None para "NULL" string para secretaria_acesso
+                if value is None and column == "secretaria_acesso":
+                    value_str = "NULL"
+                else:
+                    value_str = str(value).strip() if value is not None else ""
+
                 if value_str:
                     options.append(
                         FilterOptionItem(
-                            id=value_str, label=str(label_map.get(value, value))
+                            id=value_str, label=str(label_map.get(value, value_str))
                         )
                     )
 
@@ -1394,6 +1411,12 @@ class DataManager:
                 filter_expr = filter_expr | pl.col(id_type).is_in(ids)
 
         df_filtered = df.filter(filter_expr)
+
+        # Apply protocol filtering by secretaria_acesso
+        df_filtered = filter_and_recalculate_by_secretaria(
+            df_filtered,
+            user_permissions.secretaria_acesso
+        )
 
         logger.info(
             f"Governance filters applied: {len(df)} -> {len(df_filtered)} rows "

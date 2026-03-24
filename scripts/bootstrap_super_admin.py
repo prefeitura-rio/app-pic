@@ -117,6 +117,9 @@ def create_table():
       id_cas_list ARRAY<STRUCT<id STRING, nome STRING>>,
       id_clinica_familia_list ARRAY<STRUCT<id STRING, nome STRING>>,
 
+      -- Controle de acesso a protocolos
+      secretaria_acesso STRING,
+
       -- Auditoria
       created_by STRING NOT NULL,
       created_at TIMESTAMP NOT NULL,
@@ -204,6 +207,7 @@ def update_to_super_admin(cpf: str, was_super: bool):
         id_ap_list = NULL,
         id_cas_list = NULL,
         id_clinica_familia_list = NULL,
+        secretaria_acesso = 'TODOS',
         -- Auditoria
         updated_by = 'SYSTEM_BOOTSTRAP',
         updated_at = CURRENT_TIMESTAMP(),
@@ -367,6 +371,7 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
         id_ap_list,
         id_cas_list,
         id_clinica_familia_list,
+        secretaria_acesso,
         created_by,
         created_at,
         updated_by,
@@ -389,6 +394,7 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
         [],
         [],
         [],
+        'TODOS',  -- Super admin tem acesso a todos os protocolos
         'SYSTEM_BOOTSTRAP',
         CURRENT_TIMESTAMP(),
         'SYSTEM_BOOTSTRAP',
