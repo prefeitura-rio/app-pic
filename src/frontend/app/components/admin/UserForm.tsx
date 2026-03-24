@@ -358,6 +358,7 @@ export function UserForm({
               options={secretariaAccessOptions}
               placeholder="Selecione o acesso"
               disabled={isLoading || (!currentUser?.is_admin && !currentUser?.is_super_admin)}
+              showAllOption={false}
             />
             <p className="text-xs text-muted-foreground">
               {currentUser?.is_super_admin
