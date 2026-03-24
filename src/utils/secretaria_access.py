@@ -74,12 +74,12 @@ def filter_and_recalculate_by_secretaria(
         .alias("protocolo_listagem")
     ])
 
-    # 2. Remover participantes sem protocolos da secretaria
-    df_filtered = df_filtered.filter(
-        pl.col("protocolo_listagem").list.len() > 0
-    )
+    # 2. MANTER participantes mesmo sem protocolos da secretaria
+    # Motivo: Usuário pode ter acesso via equipamento (ex: escola) a participantes
+    # que não têm protocolos da secretaria dele (ex: SME vê escola com aluno só com protocolo SMS)
+    # Os contadores ficarão zerados mas o participante continua visível
 
-    # 3. Recalcular contadores totais
+    # 3. Recalcular contadores totais (podem ser 0 se não houver protocolos da secretaria)
     df_filtered = _recalculate_total_counters(df_filtered)
 
     # 4. Recalcular situacao (ANTES de dropar colunas total_*)
@@ -91,7 +91,7 @@ def filter_and_recalculate_by_secretaria(
     # 6. Recalcular frações
     df_filtered = _recalculate_fractions(df_filtered)
 
-    logger.info(f"✅ Filtrado: {len(df_filtered)} participantes com protocolos {secretaria_acesso}")
+    logger.info(f"✅ Filtrado: {len(df_filtered)} participantes (protocolos filtrados para {secretaria_acesso})")
 
     return df_filtered
 
