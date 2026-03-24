@@ -185,6 +185,7 @@ def _filter_manageable_users(
     logger.info(f"🔍 Verificando permissões do admin:")
     logger.info(f"  - is_super_admin: {admin_permissions.is_super_admin}")
     logger.info(f"  - is_admin: {admin_permissions.is_admin}")
+    logger.info(f"  - secretaria_acesso: {admin_permissions.secretaria_acesso}")
     logger.info(f"  - CRAS: {len(admin_permissions.id_cras_list or [])}")
     logger.info(f"  - Escolas: {len(admin_permissions.id_escola_list or [])}")
     logger.info(f"  - CRE: {len(admin_permissions.id_cre_list or [])}")
@@ -209,9 +210,32 @@ def _filter_manageable_users(
         logger.warning(f"❌ Admin não possui nenhum ID - não pode gerenciar usuários")
         return df.head(0)  # Retorna DataFrame vazio
 
-    # OTIMIZAÇÃO: Usar operação vetorizada ao invés de iterrows()
-    # Primeiro filtro: remover super admins (operação vetorizada)
+    # FILTRO 1: Remover super admins (admin segmentado não pode gerenciar super admins)
     df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
+
+    # FILTRO 2: Filtrar por secretaria_acesso
+    from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+
+    admin_secretaria = admin_permissions.secretaria_acesso
+
+    if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
+        # Admin com NULL: vê APENAS usuários NULL
+        logger.info(f"🔒 Admin com NULL - Filtrando APENAS usuários com NULL")
+        df_non_super_admin = df_non_super_admin.filter(
+            (pl.col("secretaria_acesso").is_null()) |
+            (pl.col("secretaria_acesso") == SECRETARIA_NULL)
+        )
+        logger.info(f"   Usuários após filtro NULL: {len(df_non_super_admin)}")
+    elif admin_secretaria not in [SECRETARIA_TODOS]:
+        # Admin de secretaria específica (SME/SMS/SMAS): vê NULL + sua secretaria
+        logger.info(f"🔒 Filtrando usuários por secretaria_acesso = {admin_secretaria} ou NULL")
+        df_non_super_admin = df_non_super_admin.filter(
+            (pl.col("secretaria_acesso") == admin_secretaria) |
+            (pl.col("secretaria_acesso").is_null()) |
+            (pl.col("secretaria_acesso") == SECRETARIA_NULL)
+        )
+        logger.info(f"   Usuários após filtro de secretaria: {len(df_non_super_admin)}")
+    # else: Admin com TODOS vê todos os usuários (sem filtro adicional)
 
     if df_non_super_admin.is_empty():
         logger.info("Nenhum usuário gerenciável (todos são super admins)")
@@ -918,6 +942,37 @@ async def upsert_user(
                 detail="Admins não podem editar outros admins",
             )
 
+        # PROTEÇÃO: Admin segmentado só pode editar usuários da mesma secretaria ou NULL
+        if not permissions.is_super_admin:
+            from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+
+            admin_secretaria = permissions.secretaria_acesso
+            target_secretaria = existing_row.get("secretaria_acesso")
+
+            if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
+                # Admin com NULL: só pode editar usuários NULL
+                can_edit = (
+                    target_secretaria is None or
+                    target_secretaria == SECRETARIA_NULL
+                )
+                if not can_edit:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Você não tem acesso a protocolos e só pode gerenciar usuários sem acesso (NULL).",
+                    )
+            elif admin_secretaria not in [SECRETARIA_TODOS]:
+                # Admin de secretaria específica (SME/SMS/SMAS): só pode editar NULL + sua secretaria
+                can_edit = (
+                    target_secretaria == admin_secretaria or
+                    target_secretaria is None or
+                    target_secretaria == SECRETARIA_NULL
+                )
+                if not can_edit:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Você não pode editar usuários de outras secretarias. Você tem acesso apenas a {admin_secretaria}.",
+                    )
+
     # PROTEÇÃO: Impedir que admin edite a si mesmo
     if cpf == permissions.cpf:
         raise HTTPException(
@@ -1293,6 +1348,37 @@ async def delete_user(
             status_code=403,
             detail="Admins não podem deletar outros admins",
         )
+
+    # PROTEÇÃO: Admin segmentado só pode deletar usuários da mesma secretaria ou NULL
+    if not permissions.is_super_admin:
+        from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+
+        admin_secretaria = permissions.secretaria_acesso
+        target_secretaria = existing_row.get("secretaria_acesso")
+
+        if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
+            # Admin com NULL: só pode deletar usuários NULL
+            can_delete = (
+                target_secretaria is None or
+                target_secretaria == SECRETARIA_NULL
+            )
+            if not can_delete:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Você não tem acesso a protocolos e só pode gerenciar usuários sem acesso (NULL).",
+                )
+        elif admin_secretaria not in [SECRETARIA_TODOS]:
+            # Admin de secretaria específica (SME/SMS/SMAS): só pode deletar NULL + sua secretaria
+            can_delete = (
+                target_secretaria == admin_secretaria or
+                target_secretaria is None or
+                target_secretaria == SECRETARIA_NULL
+            )
+            if not can_delete:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Você não pode deletar usuários de outras secretarias. Você tem acesso apenas a {admin_secretaria}.",
+                )
 
     # Impedir que usuário delete a si mesmo
     if cpf == permissions.cpf:
