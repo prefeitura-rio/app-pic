@@ -533,6 +533,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
         id_ap_list=permissions.id_ap_list,
         id_cas_list=permissions.id_cas_list,
         id_clinica_familia_list=permissions.id_clinica_familia_list,
+        secretaria_acesso=permissions.secretaria_acesso,
         active=permissions.active,
         notes=permissions.notes if hasattr(permissions, "notes") else None,
         created_by=permissions.cpf,  # Placeholder (não temos essa info em UserPermissions)

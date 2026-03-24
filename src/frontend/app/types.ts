@@ -9,6 +9,7 @@ export interface PaginationMeta {
   total_pages: number;
   cache_hit: boolean;
   profiling?: any;
+  can_view_dashboard?: boolean; // Indica se o usuário pode visualizar a aba Dashboard
 }
 
 export interface PaginatedResponse<T> {

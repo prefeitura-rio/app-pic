@@ -97,28 +97,19 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   });
 
   const [activeTab, setActiveTab] = useState<"overview" | "professional">(() => {
-    if (typeof window === "undefined") return "overview";
+    if (typeof window === "undefined") return "professional";
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return parsed.activeTab || "overview";
+        return parsed.activeTab || "professional";
       }
     } catch (e) {
       console.error("Error restoring active tab:", e);
     }
-    return "overview";
+    return "professional";
   });
 
-  // Check if user can view dashboard (only TODOS users)
-  const canViewDashboard = !userInfo?.secretaria_acesso || userInfo.secretaria_acesso === "TODOS";
-
-  // Force professional tab if user cannot view dashboard
-  useEffect(() => {
-    if (!canViewDashboard && activeTab === "overview") {
-      setActiveTab("professional");
-    }
-  }, [canViewDashboard, activeTab]);
 
   const [isPending, startTransition] = useTransition();
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
@@ -261,6 +252,17 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
+
+  // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
+  // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
+  const canViewDashboard = dashboardResponse?.meta?.can_view_dashboard !== false;
+
+  // Force professional tab if user cannot view dashboard
+  useEffect(() => {
+    if (dashboardResponse && !canViewDashboard && activeTab === "overview") {
+      setActiveTab("professional");
+    }
+  }, [dashboardResponse, canViewDashboard, activeTab]);
 
   /**
    * Handle authentication errors

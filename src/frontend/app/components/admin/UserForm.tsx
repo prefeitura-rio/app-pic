@@ -52,6 +52,31 @@ export function UserForm({
     };
   }, [availableIds, currentUser]);
 
+  // Filter secretaria access options based on current user permissions
+  const secretariaAccessOptions = useMemo(() => {
+    const allOptions = [
+      { id: "NULL", label: "Sem Acesso a Protocolos" },
+      { id: "TODOS", label: "Todos os Protocolos (Admin)" },
+      { id: "SME", label: "Apenas Educação (SME)" },
+      { id: "SMS", label: "Apenas Saúde (SMS)" },
+      { id: "SMAS", label: "Apenas Assistência Social (SMAS)" },
+    ];
+
+    // Super admin sees all options
+    if (currentUser?.is_super_admin) {
+      return allOptions;
+    }
+
+    // Segmented admin can assign NULL + any secretariat (but not TODOS)
+    // They can create users for any secretariat within their equipment scope
+    if (currentUser?.is_admin) {
+      return allOptions.filter(opt => opt.id !== "TODOS");
+    }
+
+    // Non-admin users can't change this field
+    return [];
+  }, [currentUser]);
+
   // Form state
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
@@ -310,6 +335,27 @@ export function UserForm({
             </p>
           </div>
 
+          {/* Acesso a Protocolos - PRIMEIRO CAMPO */}
+          <div className="space-y-2">
+            <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
+              Acesso a Protocolos
+            </Label>
+            <VirtualizedSelect
+              value={secretariaAcesso}
+              onSelect={setSecretariaAcesso}
+              options={secretariaAccessOptions}
+              placeholder="Selecione o acesso"
+              disabled={isLoading || (!currentUser?.is_admin && !currentUser?.is_super_admin)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {currentUser?.is_super_admin
+                ? "Controla quais protocolos o usuário pode visualizar e filtrar"
+                : currentUser?.is_admin
+                ? "Você pode atribuir acesso a protocolos específicos de cada secretaria"
+                : "Somente administradores podem alterar o acesso a protocolos"}
+            </p>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             {/* ASSISTÊNCIA SOCIAL */}
             {/* CAS */}
@@ -374,29 +420,6 @@ export function UserForm({
               tooltip="Clínicas da Família e unidades de saúde que o usuário poderá acessar"
             />
           </div>
-        </div>
-
-        {/* Secretaria Access Control */}
-        <div className="space-y-2">
-          <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
-            Acesso a Protocolos
-          </Label>
-          <VirtualizedSelect
-            value={secretariaAcesso}
-            onSelect={setSecretariaAcesso}
-            options={[
-              { id: "NULL", label: "Sem Acesso a Protocolos" },
-              { id: "TODOS", label: "Todos os Protocolos (Admin)" },
-              { id: "SME", label: "Apenas Educação (SME)" },
-              { id: "SMS", label: "Apenas Saúde (SMS)" },
-              { id: "SMAS", label: "Apenas Assistência Social (SMAS)" },
-            ]}
-            placeholder="Selecione o acesso"
-            disabled={isLoading}
-          />
-          <p className="text-xs text-muted-foreground">
-            Controla quais protocolos o usuário pode visualizar e filtrar
-          </p>
         </div>
 
         {/* Notes */}

@@ -130,6 +130,7 @@ async def get_dashboard_metrics(
                 "total_pages": 0,
                 "total_rows": 0,
                 "cache_hit": False,
+                "can_view_dashboard": False,  # Backend indica que usuário não pode ver dashboard
             },
             data=[empty_dashboard],
             filters={},
@@ -155,6 +156,8 @@ async def get_dashboard_metrics(
         # Se vazio após filtros, retornar métricas zeradas
         if df_filtered.is_empty():
             empty_dashboard = _create_empty_dashboard()
+            # Adicionar flag indicando que usuário pode ver dashboard
+            meta["can_view_dashboard"] = True
             return PaginatedResponse(
                 meta=meta,
                 data=[empty_dashboard],
@@ -171,6 +174,8 @@ async def get_dashboard_metrics(
         total_time = time.perf_counter() - start_time
         logger.info(f"⏱️ [TIMING] Total dashboard request: {total_time:.3f}s")
 
+        # Adicionar flag indicando que usuário pode ver dashboard
+        meta["can_view_dashboard"] = True
         return PaginatedResponse(
             meta=meta,
             data=[dashboard_metrics],
