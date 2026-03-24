@@ -827,6 +827,29 @@ async def list_users(
 
         logger.info(f"Retornando {len(users)} usuários (página {pagination.page})")
 
+        # Filtrar opções de secretaria_acesso baseado nas permissões do usuário
+        if filter_options and hasattr(filter_options, 'secretaria_acesso_list'):
+            user_secretaria = permissions.secretaria_acesso
+
+            # Super admin vê todas as opções
+            if permissions.is_super_admin:
+                pass  # Mantém todas as opções
+            # Admin com TODOS vê todas as opções
+            elif user_secretaria == "TODOS":
+                pass  # Mantém todas as opções
+            # Admin com secretaria específica vê apenas NULL e sua secretaria
+            elif user_secretaria in ["SME", "SMS", "SMAS"]:
+                filter_options.secretaria_acesso_list = [
+                    opt for opt in filter_options.secretaria_acesso_list
+                    if opt.id == "NULL" or opt.id == user_secretaria
+                ]
+            # Admin sem secretaria_acesso vê apenas NULL
+            else:
+                filter_options.secretaria_acesso_list = [
+                    opt for opt in filter_options.secretaria_acesso_list
+                    if opt.id == "NULL"
+                ]
+
         return PaginatedResponse(
             data=users,
             meta=meta,
