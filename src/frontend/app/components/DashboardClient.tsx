@@ -97,18 +97,19 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   });
 
   const [activeTab, setActiveTab] = useState<"overview" | "professional">(() => {
-    if (typeof window === "undefined") return "overview";
+    if (typeof window === "undefined") return "professional";
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return parsed.activeTab || "overview";
+        return parsed.activeTab || "professional";
       }
     } catch (e) {
       console.error("Error restoring active tab:", e);
     }
-    return "overview";
+    return "professional";
   });
+
 
   const [isPending, startTransition] = useTransition();
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
@@ -251,6 +252,17 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
+
+  // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
+  // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
+  const canViewDashboard = dashboardResponse?.meta?.can_view_dashboard !== false;
+
+  // Force professional tab if user cannot view dashboard
+  useEffect(() => {
+    if (dashboardResponse && !canViewDashboard && activeTab === "overview") {
+      setActiveTab("professional");
+    }
+  }, [dashboardResponse, canViewDashboard, activeTab]);
 
   /**
    * Handle authentication errors
@@ -570,14 +582,16 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           }}
           className="w-full"
         >
-          <TabsList className="grid w-full grid-cols-2 mb-8 h-auto p-1 bg-muted rounded-md">
-            <TabsTrigger
-              value="overview"
-              className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
-            >
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Visão Geral
-            </TabsTrigger>
+          <TabsList className={`grid w-full ${canViewDashboard ? "grid-cols-2" : "grid-cols-1"} mb-8 h-auto p-1 bg-muted rounded-md`}>
+            {canViewDashboard && (
+              <TabsTrigger
+                value="overview"
+                className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
+              >
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Visão Geral
+              </TabsTrigger>
+            )}
             <TabsTrigger
               value="professional"
               className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
@@ -587,7 +601,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
             </TabsTrigger>
           </TabsList>
 
-          {activeTab === "overview" && (
+          {canViewDashboard && activeTab === "overview" && (
             <TabsContent value="overview" className="mt-6">
               <OverviewTab
                 data={dashboardResponse?.data?.[0] || null}

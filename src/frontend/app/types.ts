@@ -9,6 +9,7 @@ export interface PaginationMeta {
   total_pages: number;
   cache_hit: boolean;
   profiling?: any;
+  can_view_dashboard?: boolean; // Indica se o usuário pode visualizar a aba Dashboard
 }
 
 export interface PaginatedResponse<T> {
@@ -446,9 +447,11 @@ export interface UserAccessRecord {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; 
+  id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+
+  secretaria_acesso?: string | null;
 
   active: boolean;
   notes?: string | null;
@@ -473,9 +476,11 @@ export interface CreateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; 
+  id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+
+  secretaria_acesso?: string | null;
 
   notes?: string | null;
   is_update?: boolean; // Indica se é uma atualização intencional (vs criação)

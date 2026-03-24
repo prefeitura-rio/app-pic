@@ -33,6 +33,8 @@ interface VirtualizedSelectProps {
   style?: React.CSSProperties;
   /** Controla a visibilidade do componente. Se false, retorna null. Default: true */
   show?: boolean;
+  /** Mostra opção "Todos" no topo. Default: true */
+  showAllOption?: boolean;
 }
 
 export function VirtualizedSelect({
@@ -44,6 +46,7 @@ export function VirtualizedSelect({
   className,
   style,
   show = true,
+  showAllOption = true,
 }: VirtualizedSelectProps) {
   // Se show=false, não renderiza nada
   if (!show) return null;
@@ -145,23 +148,25 @@ export function VirtualizedSelect({
               <CommandEmpty>Nenhum resultado.</CommandEmpty>
             )}
 
-            {/* Opção "Todos" fixa no topo */}
-            <CommandItem
-              value="todos"
-              onSelect={() => {
-                onSelect("todos");
-                setOpen(false);
-              }}
-              className="mx-1"
-            >
-              <Check
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  (value === "todos" || value === "todas" || !value) ? "opacity-100" : "opacity-0"
-                )}
-              />
-              {defaultLabel}
-            </CommandItem>
+            {/* Opção "Todos" fixa no topo (opcional) */}
+            {showAllOption && (
+              <CommandItem
+                value="todos"
+                onSelect={() => {
+                  onSelect("todos");
+                  setOpen(false);
+                }}
+                className="mx-1"
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    (value === "todos" || value === "todas" || !value) ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                {defaultLabel}
+              </CommandItem>
+            )}
 
             {/* Lista virtualizada */}
             {filteredOptions.length > 0 && (

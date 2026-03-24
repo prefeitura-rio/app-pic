@@ -268,52 +268,58 @@ const DashboardFilterCardComponent = ({
             />
 
             {/* AP (Saúde) - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray(filters.ap)
-                  ? filters.ap
-                  : filters.ap
-                    ? [filters.ap]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("ap", values)}
-              disabled={loading}
-              placeholder="CAPs"
-              defaultLabel="Todas as CAPs"
-              options={filteredOptions.aps}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.ap)
+                    ? filters.ap
+                    : filters.ap
+                      ? [filters.ap]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("ap", values)}
+                disabled={loading}
+                placeholder="CAPs"
+                defaultLabel="Todas as CAPs"
+                options={filteredOptions.aps}
+              />
+            )}
 
             {/* CRE (Educação) - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray(filters.cre)
-                  ? filters.cre
-                  : filters.cre
-                    ? [filters.cre]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("cre", values)}
-              disabled={loading}
-              placeholder="CREs"
-              defaultLabel="Todas as CREs"
-              options={filteredOptions.cres}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.cre)
+                    ? filters.cre
+                    : filters.cre
+                      ? [filters.cre]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("cre", values)}
+                disabled={loading}
+                placeholder="CREs"
+                defaultLabel="Todas as CREs"
+                options={filteredOptions.cres}
+              />
+            )}
 
             {/* CAS (Assistência Social) - Multi-select */}
-            <VirtualizedMultiSelect
-              value={
-                Array.isArray(filters.cas)
-                  ? filters.cas
-                  : filters.cas
-                    ? [filters.cas]
-                    : []
-              }
-              onSelect={(values) => handleMultiFilterUpdate("cas", values)}
-              disabled={loading}
-              placeholder="CAS"
-              defaultLabel="Todas as CAS"
-              options={filteredOptions.cas_list}
-            />
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.cas)
+                    ? filters.cas
+                    : filters.cas
+                      ? [filters.cas]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("cas", values)}
+                disabled={loading}
+                placeholder="CAS"
+                defaultLabel="Todas as CAS"
+                options={filteredOptions.cas_list}
+              />
+            )}
           </div>
         </div>
       </CardContent>
