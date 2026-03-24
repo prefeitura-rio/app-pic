@@ -682,6 +682,7 @@ USER_FILTER_OPTIONS_CONFIG = {
     "permissions": {
         "column": "permission"
     },  # super_admin, admin, user (coluna gerada no BQ)
+    "secretaria_acesso_list": {"column": "secretaria_acesso"},  # SME, SMS, SMAS, TODOS, NULL
 }
 
 
@@ -696,6 +697,9 @@ async def list_users(
     secretaria: Optional[str] = Query(None, description="Filtrar por secretaria"),
     permission: Optional[str] = Query(
         None, description="Filtrar por tipo de permissão (super_admin/admin/user)"
+    ),
+    secretaria_acesso: Optional[str] = Query(
+        None, description="Filtrar por acesso a protocolos (SME/SMS/SMAS/TODOS/NULL)"
     ),
     search: Optional[str] = Query(None, description="Buscar por CPF ou nome"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
@@ -714,6 +718,7 @@ async def list_users(
     - ocupacao: string (filtra por ocupação)
     - secretaria: string (filtra por secretaria)
     - permission: super_admin/admin/user (filtra por tipo de permissão)
+    - secretaria_acesso: SME/SMS/SMAS/TODOS/NULL (filtra por acesso a protocolos)
     - search: busca parcial em CPF ou nome
     - page, page_size: paginação
     - bypass_cache: força refresh do cache (usado pelo botão Atualizar do frontend)
@@ -748,6 +753,8 @@ async def list_users(
             filters_dict["secretaria"] = secretaria
         if permission:
             filters_dict["permission"] = permission
+        if secretaria_acesso:
+            filters_dict["secretaria_acesso"] = secretaria_acesso
 
         # Pipeline completo: fetch → filter → search → filter_options → paginate
         # IMPORTANTE: Para admins segmentados, aplicar governança APÓS buscar dados
@@ -1352,6 +1359,7 @@ class ImportedUser(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    secretaria_acesso: Optional[str] = None
 
 
 class BatchImportResult(BaseModel):
@@ -1551,6 +1559,7 @@ async def batch_import_users(
                         "id_clinica_familia_list": user_dict.get(
                             "id_clinica_familia_list"
                         ),
+                        "secretaria_acesso": user_dict.get("secretaria_acesso"),
                     }
 
                 imported_users.append(

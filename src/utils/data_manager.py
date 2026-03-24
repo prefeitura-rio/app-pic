@@ -1248,7 +1248,12 @@ class DataManager:
                 continue
 
             # Pegar valores únicos - Polars
-            unique_values = df_filtered[column].drop_nulls().unique().to_list()
+            # Para secretaria_acesso, incluir NULL como opção válida
+            if column == "secretaria_acesso":
+                # Incluir NULL/None como valor
+                unique_values = df_filtered[column].unique().to_list()
+            else:
+                unique_values = df_filtered[column].drop_nulls().unique().to_list()
 
             # Criar label map se necessário
             label_map = {}
@@ -1264,11 +1269,16 @@ class DataManager:
             # Criar opções
             options = []
             for value in unique_values:
-                value_str = str(value).strip()
+                # Converter None para "NULL" string para secretaria_acesso
+                if value is None and column == "secretaria_acesso":
+                    value_str = "NULL"
+                else:
+                    value_str = str(value).strip() if value is not None else ""
+
                 if value_str:
                     options.append(
                         FilterOptionItem(
-                            id=value_str, label=str(label_map.get(value, value))
+                            id=value_str, label=str(label_map.get(value, value_str))
                         )
                     )
 

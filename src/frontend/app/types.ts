@@ -544,6 +544,7 @@ export interface ImportedUser {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  secretaria_acesso?: string | null;
 }
 
 /**
@@ -580,6 +581,7 @@ export interface BatchPermissionsRequest {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  secretaria_acesso?: string | null;
 }
 
 /**
@@ -626,4 +628,5 @@ export interface ImportedUserWithEdits {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  secretaria_acesso?: string | null;
 }

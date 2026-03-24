@@ -55,11 +55,11 @@ export function UserForm({
   // Filter secretaria access options based on current user permissions
   const secretariaAccessOptions = useMemo(() => {
     const allOptions = [
-      { id: "NULL", label: "Sem Acesso a Protocolos" },
-      { id: "TODOS", label: "Todos os Protocolos (Admin)" },
-      { id: "SME", label: "Apenas Educação (SME)" },
-      { id: "SMS", label: "Apenas Saúde (SMS)" },
-      { id: "SMAS", label: "Apenas Assistência Social (SMAS)" },
+      { id: "NULL", label: "🚫 Sem Acesso a Protocolos" },
+      { id: "TODOS", label: "🌐 Todos os Protocolos (TODOS)" },
+      { id: "SME", label: "📚 Apenas Educação (SME)" },
+      { id: "SMS", label: "🏥 Apenas Saúde (SMS)" },
+      { id: "SMAS", label: "🤝 Apenas Assistência Social (SMAS)" },
     ];
 
     // Super admin sees all options

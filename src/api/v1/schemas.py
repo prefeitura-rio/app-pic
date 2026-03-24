@@ -109,6 +109,7 @@ class SmartFilterOptions(BaseModel):
     secretarias: List[FilterOptionItem] = []
     status_ativo: List[FilterOptionItem] = []
     permissions: List[FilterOptionItem] = []
+    secretaria_acesso_list: List[FilterOptionItem] = []
 
 
 # Shared / Nested Models
