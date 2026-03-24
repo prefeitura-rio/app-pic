@@ -23,6 +23,7 @@ from src.api.v1.schemas import (
     TempoMedioIrregularidade,
     TaxaResolucaoMensalPoint,
     PaginatedResponse,
+    SmartFilterOptions,
 )
 from src.utils.data_manager import DataManager
 from src.api.v1.queries import DASHBOARD_TABLE_QUERY
@@ -134,6 +135,13 @@ async def get_dashboard_metrics(
         fetch_time = time.perf_counter() - start_time
         logger.info(f"⏱️ [TIMING] Data fetch + filter: {fetch_time:.3f}s ({len(df_filtered)} rows)")
 
+        # Filter filter_options by secretaria_acesso (equipment access already filtered by governance)
+        filter_options = _filter_filter_options_by_secretaria(
+            filter_options,
+            secretaria_acesso=permissions.secretaria_acesso,
+            is_super_admin=permissions.is_super_admin
+        )
+
         # Se vazio após filtros, retornar métricas zeradas
         if df_filtered.is_empty():
             empty_dashboard = _create_empty_dashboard()
@@ -144,11 +152,26 @@ async def get_dashboard_metrics(
             )
 
         # Calcular métricas a partir dos dados pré-agregados
-        # Passar filtro de secretaria para filtrar gráficos (não dados)
+        # Use secretaria_acesso from user permissions (not query param) to recalculate totals
+        # NOTE: Arrays filtered in apply_governance_filters (data_manager.py)
+        # STRUCTs filtered here after df_to_json
         metrics_start = time.perf_counter()
-        dashboard_metrics = _calculate_dashboard_metrics(df_filtered, filtro_secretaria=secretaria)
+        dashboard_metrics = _calculate_dashboard_metrics(
+            df_filtered,
+            filtro_secretaria=permissions.secretaria_acesso  # Use user's secretaria_acesso, not query param
+        )
         metrics_time = time.perf_counter() - metrics_start
         logger.info(f"⏱️ [TIMING] Metrics calculation: {metrics_time:.3f}s")
+
+        # Filter resultado_programa graph lines by secretaria_acesso
+        filter_start = time.perf_counter()
+        dashboard_metrics = _filter_dashboard_graphs_by_secretaria(
+            dashboard_metrics,
+            secretaria_acesso=permissions.secretaria_acesso,
+            is_super_admin=permissions.is_super_admin
+        )
+        filter_time = time.perf_counter() - filter_start
+        logger.info(f"⏱️ [TIMING] Dashboard graph filtering: {filter_time:.3f}s")
 
         total_time = time.perf_counter() - start_time
         logger.info(f"⏱️ [TIMING] Total dashboard request: {total_time:.3f}s")
@@ -251,7 +274,19 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     # =========================================================================
     section_start = perf_time.perf_counter()
 
-    # Extrair numerador/denominador diretamente do Struct usando Polars nativo
+    # IMPORTANT: When filtro_secretaria is active (from user's secretaria_acesso),
+    # we already filtered out aggregated rows without protocols from that secretaria.
+    # Now sum the indicators from remaining rows.
+
+    # NOTE: indicador_participantes_qtd_total has the exact count of unique participants
+    # in each aggregated row. This is the most accurate total after filtering.
+    total_participantes_from_qtd = df.select(
+        pl.col("indicador_participantes_qtd_total").cast(pl.Int64).fill_null(1).sum()
+    ).item() or 0
+
+    # Sum pre-aggregated indicators from filtered rows
+    # NOTE: These were calculated considering ALL protocols, not just filtered secretaria
+    # So regular/irregular % will be approximate
     participantes_regular_num = df.select(
         pl.col("indicador_participantes_percentual_regular").struct.field("numerador").sum()
     ).item() or 0
@@ -267,6 +302,18 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     participantes_irregular_den = df.select(
         pl.col("indicador_participantes_percentual_irregular").struct.field("denominador").sum()
     ).item() or 0
+
+    # Use qtd_total as the most accurate total (it counts unique participants in filtered rows)
+    # Override denominators if they differ significantly
+    if total_participantes_from_qtd > 0:
+        logger.info(
+            f"📊 Using qtd_total={total_participantes_from_qtd} as total "
+            f"(pre-agg denominators: regular={participantes_regular_den}, irregular={participantes_irregular_den})"
+        )
+        # Keep numerators from pre-aggregated data but use qtd_total as denominator
+        # This gives us at least the correct total even if regular/irregular % is approximate
+        participantes_regular_den = total_participantes_from_qtd
+        participantes_irregular_den = total_participantes_from_qtd
 
     logger.info(f"⚡ Seção 1 (Indicadores): {perf_time.perf_counter() - section_start:.3f}s")
 
@@ -595,6 +642,188 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         distribuicao_tempo_irregularidade=distribuicao_tempo,
         taxa_resolucao_mensal=taxa_resolucao_lista,
     )
+
+
+def _filter_dashboard_graphs_by_secretaria(
+    dashboard: Dashboard,
+    secretaria_acesso: Optional[str],
+    is_super_admin: bool
+) -> Dashboard:
+    """
+    Filter dashboard graph lines and lists by secretaria_acesso.
+
+    Filters:
+    - resultado_programa: zeros out other secretaria lines
+    - taxa_resolucao_mensal: zeros out other secretaria lines
+    - tempo_medio_irregularidade: removes other secretaria items from list
+
+    Applied AFTER _calculate_dashboard_metrics to avoid affecting calculations.
+
+    Args:
+        dashboard: Calculated dashboard metrics
+        secretaria_acesso: SME, SMS, SMAS, TODOS, or NULL
+        is_super_admin: If True, bypass filtering
+
+    Returns:
+        Dashboard with filtered graph lines
+    """
+    # Super admin or TODOS: no filtering
+    if is_super_admin or secretaria_acesso == "TODOS":
+        return dashboard
+
+    # NULL: remove all secretaria-specific lines (keep only "geral/TODOS")
+    if not secretaria_acesso:
+        # Remove graph lines by setting to None (excluded from JSON)
+        for ponto in dashboard.resultado_programa:
+            ponto.educacao = None
+            ponto.saude = None
+            ponto.assistencia = None
+
+        for ponto in dashboard.taxa_resolucao_mensal:
+            ponto.educacao = None
+            ponto.saude = None
+            ponto.assistencia = None
+
+        # Keep only "geral" in tempo_medio_irregularidade list
+        dashboard.tempo_medio_irregularidade = [
+            item for item in dashboard.tempo_medio_irregularidade
+            if item.secretaria.lower() == "geral"
+        ]
+
+        return dashboard
+
+    # Map secretaria to field name and lowercase key
+    secretaria_map = {"SME": "educacao", "SMS": "saude", "SMAS": "assistencia"}
+    secretaria_lower_map = {"SME": "sme", "SMS": "sms", "SMAS": "smas"}
+
+    allowed_field = secretaria_map.get(secretaria_acesso)
+    allowed_key = secretaria_lower_map.get(secretaria_acesso)
+
+    if not allowed_field or not allowed_key:
+        # Unknown secretaria: remove everything
+        for ponto in dashboard.resultado_programa:
+            ponto.educacao = None
+            ponto.saude = None
+            ponto.assistencia = None
+
+        for ponto in dashboard.taxa_resolucao_mensal:
+            ponto.educacao = None
+            ponto.saude = None
+            ponto.assistencia = None
+
+        dashboard.tempo_medio_irregularidade = [
+            item for item in dashboard.tempo_medio_irregularidade
+            if item.secretaria.lower() == "geral"
+        ]
+
+        return dashboard
+
+    # Remove OTHER secretarias from graph lines (keep only allowed one)
+    # Also remove "todos" (geral) when user has access to only one secretaria
+    for ponto in dashboard.resultado_programa:
+        ponto.todos = None  # Remove "geral" line
+        if allowed_field != "educacao":
+            ponto.educacao = None
+        if allowed_field != "saude":
+            ponto.saude = None
+        if allowed_field != "assistencia":
+            ponto.assistencia = None
+
+    for ponto in dashboard.taxa_resolucao_mensal:
+        ponto.todos = None  # Remove "geral" line
+        if allowed_field != "educacao":
+            ponto.educacao = None
+        if allowed_field != "saude":
+            ponto.saude = None
+        if allowed_field != "assistencia":
+            ponto.assistencia = None
+
+    # Filter tempo_medio_irregularidade list: keep only allowed secretaria (remove "geral")
+    dashboard.tempo_medio_irregularidade = [
+        item for item in dashboard.tempo_medio_irregularidade
+        if item.secretaria.lower() == allowed_key
+    ]
+
+    logger.info(
+        f"📊 Dashboard graphs filtered: keeping ONLY '{allowed_field}' line "
+        f"(removed 'todos' and other secretarias, all set to None and excluded from JSON)"
+    )
+
+    return dashboard
+
+
+def _filter_filter_options_by_secretaria(
+    filter_options: SmartFilterOptions,
+    secretaria_acesso: Optional[str],
+    is_super_admin: bool
+) -> SmartFilterOptions:
+    """
+    Filter equipment and protocol options based on secretaria_acesso.
+
+    SME: keep only CRE, Escolas, and SME protocols
+    SMS: keep only AP, Clínicas, and SMS protocols
+    SMAS: keep only CAS, CRAS, and SMAS protocols
+    TODOS/super_admin: keep all
+    NULL: remove all equipment and protocols
+
+    Always keep: bairros, subprefeituras, regioes_administrativas, grupos, cohorts, status_list
+
+    NOTE: User's equipment access is already filtered by governance filters before filter_options are calculated.
+    """
+    # Super admin or TODOS: no filtering
+    if is_super_admin or secretaria_acesso == "TODOS":
+        return filter_options
+
+    # NULL: remove all equipment and protocols
+    if not secretaria_acesso:
+        filter_options.cres = []
+        filter_options.aps = []
+        filter_options.cas_list = []
+        filter_options.cras = []
+        filter_options.escolas = []
+        filter_options.clinicas = []
+        filter_options.protocolo_descricoes = []
+        logger.info("🔒 Filter options: secretaria_acesso=NULL, removed all equipment and protocols")
+        return filter_options
+
+    # Map secretaria to allowed equipment and protocol prefix
+    equipment_map = {
+        "SME": {"keep": ["cres", "escolas"], "remove": ["aps", "cas_list", "cras", "clinicas"]},
+        "SMS": {"keep": ["aps", "clinicas"], "remove": ["cres", "escolas", "cas_list", "cras"]},
+        "SMAS": {"keep": ["cas_list", "cras"], "remove": ["cres", "escolas", "aps", "clinicas"]},
+    }
+
+    equipment_config = equipment_map.get(secretaria_acesso)
+    if not equipment_config:
+        # Unknown secretaria: remove everything
+        filter_options.cres = []
+        filter_options.aps = []
+        filter_options.cas_list = []
+        filter_options.cras = []
+        filter_options.escolas = []
+        filter_options.clinicas = []
+        filter_options.protocolo_descricoes = []
+        logger.info(f"🔒 Filter options: unknown secretaria={secretaria_acesso}, removed all equipment")
+        return filter_options
+
+    # Remove equipment types not allowed for this secretaria
+    for field in equipment_config["remove"]:
+        setattr(filter_options, field, [])
+
+    # Filter protocols by secretaria prefix (sme_, sms_, smas_)
+    protocol_prefix = secretaria_acesso.lower() + "_"
+    filter_options.protocolo_descricoes = [
+        p for p in filter_options.protocolo_descricoes
+        if p.id.startswith(protocol_prefix)
+    ]
+
+    logger.info(
+        f"🔒 Filter options filtered for secretaria={secretaria_acesso}: "
+        f"kept {equipment_config['keep']}, removed {equipment_config['remove']}, "
+        f"kept {len(filter_options.protocolo_descricoes)} protocols with prefix '{protocol_prefix}'"
+    )
+
+    return filter_options
 
 
 def _create_empty_dashboard() -> Dashboard:

@@ -39,6 +39,9 @@ class UserPermissions(BaseModel):
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 
+    # Protocol access control
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, or NULL
+
     active: bool = True
     notes: Optional[str] = None
 

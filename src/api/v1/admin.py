@@ -96,6 +96,8 @@ class UserAccessRecord(BaseModel):
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, or NULL
+
     active: bool = True
     notes: Optional[str] = None
     created_by: str
@@ -120,6 +122,8 @@ class UpsertUserRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, or NULL
 
     notes: Optional[str] = None
     active: bool = True
@@ -155,6 +159,59 @@ def calculate_permission(is_admin: bool, is_super_admin: bool) -> str:
         return "admin"
     else:
         return "user"
+
+
+def _filter_available_ids_by_secretaria(
+    available_ids: AvailableIds, secretaria_acesso: Optional[str]
+) -> AvailableIds:
+    """
+    Filtra available_ids baseado em secretaria_acesso.
+
+    - SME: apenas escolas e cres
+    - SMS: apenas aps e clinicas
+    - SMAS: apenas cas
+    - TODOS/NULL: todos (sem filtro)
+
+    Args:
+        available_ids: IDs disponíveis
+        secretaria_acesso: SME, SMS, SMAS, TODOS, ou NULL
+
+    Returns:
+        AvailableIds filtrado
+    """
+    if not secretaria_acesso or secretaria_acesso == "TODOS":
+        return available_ids
+
+    if secretaria_acesso == "SME":
+        return AvailableIds(
+            cras=[],
+            escolas=available_ids.escolas,
+            cres=available_ids.cres,
+            aps=[],
+            cas=[],
+            clinicas=[],
+        )
+    elif secretaria_acesso == "SMS":
+        return AvailableIds(
+            cras=[],
+            escolas=[],
+            cres=[],
+            aps=available_ids.aps,
+            cas=[],
+            clinicas=available_ids.clinicas,
+        )
+    elif secretaria_acesso == "SMAS":
+        return AvailableIds(
+            cras=[],
+            escolas=[],
+            cres=[],
+            aps=[],
+            cas=available_ids.cas,
+            clinicas=[],
+        )
+    else:
+        # Desconhecido: sem acesso
+        return AvailableIds()
 
 
 def _filter_manageable_users(
@@ -469,7 +526,22 @@ async def get_available_ids(permissions: CurrentUserPermissions):
             )
 
             logger.info(
-                f"Super admin - Retornando {len(available_ids.cras)} CRAS, "
+                f"Super admin - IDs antes do filtro de secretaria: {len(available_ids.cras)} CRAS, "
+                f"{len(available_ids.escolas)} escolas, "
+                f"{len(available_ids.cres)} CREs, "
+                f"{len(available_ids.aps)} APs, "
+                f"{len(available_ids.cas)} CAS, "
+                f"{len(available_ids.clinicas)} clínicas"
+            )
+
+            # Filtrar por secretaria_acesso (mesmo super admin respeita se tiver secretaria específica)
+            available_ids = _filter_available_ids_by_secretaria(
+                available_ids, permissions.secretaria_acesso
+            )
+
+            logger.info(
+                f"Após filtro secretaria_acesso={permissions.secretaria_acesso}: "
+                f"{len(available_ids.cras)} CRAS, "
                 f"{len(available_ids.escolas)} escolas, "
                 f"{len(available_ids.cres)} CREs, "
                 f"{len(available_ids.aps)} APs, "
@@ -491,7 +563,22 @@ async def get_available_ids(permissions: CurrentUserPermissions):
             )
 
             logger.info(
-                f"Admin segmentado - Retornando apenas IDs que o admin possui: "
+                f"Admin segmentado - IDs do admin antes do filtro: "
+                f"{len(available_ids.cras)} CRAS, "
+                f"{len(available_ids.escolas)} escolas, "
+                f"{len(available_ids.cres)} CREs, "
+                f"{len(available_ids.aps)} APs, "
+                f"{len(available_ids.cas)} CAS, "
+                f"{len(available_ids.clinicas)} clínicas"
+            )
+
+            # Filtrar por secretaria_acesso
+            available_ids = _filter_available_ids_by_secretaria(
+                available_ids, permissions.secretaria_acesso
+            )
+
+            logger.info(
+                f"Após filtro secretaria_acesso={permissions.secretaria_acesso}: "
                 f"{len(available_ids.cras)} CRAS, "
                 f"{len(available_ids.escolas)} escolas, "
                 f"{len(available_ids.cres)} CREs, "
@@ -544,6 +631,7 @@ USER_FILTER_OPTIONS_CONFIG = {
     "permissions": {
         "column": "permission"
     },  # super_admin, admin, user (coluna gerada no BQ)
+    "secretarias_acesso": {"column": "secretaria_acesso"},  # SME, SMS, SMAS, TODOS, NULL
 }
 
 
@@ -636,7 +724,17 @@ async def list_users(
                 f"🚨 Admin segmentado detectado - aplicando filtro de usuários gerenciáveis"
             )
             df_data = _filter_manageable_users(df_data, permissions)
-            # Recalcular meta após filtro de governança
+
+            # Filtrar por secretaria_acesso (admin SME só vê usuários SME)
+            if permissions.secretaria_acesso and permissions.secretaria_acesso != "TODOS":
+                logger.info(
+                    f"🔒 Filtrando usuários por secretaria_acesso={permissions.secretaria_acesso}"
+                )
+                df_data = df_data.filter(
+                    pl.col("secretaria_acesso") == permissions.secretaria_acesso
+                )
+
+            # Recalcular meta após filtros
             total_after_filter = len(df_data)
             meta.total_rows = total_after_filter
             meta.total_pages = (
@@ -833,12 +931,16 @@ async def upsert_user(
             if request.secretaria is not None:
                 update_dict["secretaria"] = request.secretaria
 
+            if request.secretaria_acesso is not None:
+                update_dict["secretaria_acesso"] = request.secretaria_acesso
+
             # Detectar se é full update ou apenas toggle de active
             is_full_update = (
                 request.email is not None
                 or request.nome is not None
                 or request.ocupacao is not None
                 or request.secretaria is not None
+                or request.secretaria_acesso is not None
                 or request.id_cras_list is not None
                 or request.id_escola_list is not None
             )
@@ -971,7 +1073,7 @@ async def upsert_user(
             (
                 cpf, email, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
-                created_by, active, notes, created_at
+                secretaria_acesso, created_by, active, notes, created_at
             )
             VALUES (
                 @cpf, @email, @nome, @ocupacao, @secretaria,
@@ -982,7 +1084,7 @@ async def upsert_user(
                 {_convert_id_list_to_bq_struct(request.id_ap_list)},
                 {_convert_id_list_to_bq_struct(request.id_cas_list)},
                 {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
-                @created_by, @active, @notes, CURRENT_TIMESTAMP()
+                @secretaria_acesso, @created_by, @active, @notes, CURRENT_TIMESTAMP()
             )
             """
 
@@ -1000,6 +1102,7 @@ async def upsert_user(
                     "is_super_admin", "BOOL", request.is_super_admin
                 ),
                 bigquery.ScalarQueryParameter("permission", "STRING", permission_value),
+                bigquery.ScalarQueryParameter("secretaria_acesso", "STRING", request.secretaria_acesso),
                 bigquery.ScalarQueryParameter("created_by", "STRING", permissions.cpf),
                 bigquery.ScalarQueryParameter("active", "BOOL", request.active),
                 bigquery.ScalarQueryParameter("notes", "STRING", request.notes),

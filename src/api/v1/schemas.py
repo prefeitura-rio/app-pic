@@ -143,10 +143,12 @@ class ResultadoProgramaPoint(BaseModel):
 
     mes: str  # "2025-12", "2025-11", etc.
     mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
-    todos: float = 0.0  # % completude geral (todos protocolos)
-    saude: float = 0.0  # % completude SMS
-    educacao: float = 0.0  # % completude SME
-    assistencia: float = 0.0  # % completude SMAS
+    todos: Optional[float] = None  # % completude geral (todos protocolos)
+    saude: Optional[float] = None  # % completude SMS
+    educacao: Optional[float] = None  # % completude SME
+    assistencia: Optional[float] = None  # % completude SMAS
+
+    model_config = {"exclude_none": True}
 
 
 class DistribuicaoTempoIrregularidade(BaseModel):
@@ -181,10 +183,12 @@ class TaxaResolucaoMensalPoint(BaseModel):
 
     mes: str  # "2025-12", "2025-11", etc.
     mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
-    todos: float = 0.0  # % resolução geral
-    saude: float = 0.0  # % resolução SMS
-    educacao: float = 0.0  # % resolução SME
-    assistencia: float = 0.0  # % resolução SMAS
+    todos: Optional[float] = None  # % resolução geral
+    saude: Optional[float] = None  # % resolução SMS
+    educacao: Optional[float] = None  # % resolução SME
+    assistencia: Optional[float] = None  # % resolução SMAS
+
+    model_config = {"exclude_none": True}
 
 
 # ========================================================================

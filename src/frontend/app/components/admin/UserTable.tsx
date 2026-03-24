@@ -80,7 +80,7 @@ const UserTableComponent = ({
   };
 
   // Largura mínima total da tabela
-  const minTableWidth = 1195;
+  const minTableWidth = 1295;
 
   if (users.length === 0) {
     return (
@@ -130,6 +130,7 @@ const UserTableComponent = ({
               <div style={{ flex: '1.3 1 0%', minWidth: 150 }} className="px-2">Email</div>
               <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Ocupação</div>
               <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Secretaria</div>
+              <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Acesso Protocolos</div>
               <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-2">Tipo</div>
               <div style={{ flex: '1.3 1 0%', minWidth: 140 }} className="px-2">Permissões</div>
               <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center">Status</div>
@@ -192,6 +193,33 @@ const UserTableComponent = ({
                   {/* Secretaria */}
                   <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2 text-muted-foreground">
                     <span className="line-clamp-2">{user.secretaria || "—"}</span>
+                  </div>
+
+                  {/* Acesso Protocolos */}
+                  <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">
+                    {user.secretaria_acesso === "TODOS" && (
+                      <Badge variant="outline" className="text-xs h-5 px-1.5">
+                        Todos
+                      </Badge>
+                    )}
+                    {user.secretaria_acesso === "SME" && (
+                      <Badge variant="outline" className="text-xs h-5 px-1.5 text-blue-600">
+                        SME
+                      </Badge>
+                    )}
+                    {user.secretaria_acesso === "SMS" && (
+                      <Badge variant="outline" className="text-xs h-5 px-1.5 text-green-600">
+                        SMS
+                      </Badge>
+                    )}
+                    {user.secretaria_acesso === "SMAS" && (
+                      <Badge variant="outline" className="text-xs h-5 px-1.5 text-purple-600">
+                        SMAS
+                      </Badge>
+                    )}
+                    {!user.secretaria_acesso && (
+                      <span className="text-xs text-muted-foreground">Sem acesso</span>
+                    )}
                   </div>
 
                   {/* Type */}

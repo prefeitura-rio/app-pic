@@ -36,6 +36,7 @@ interface UserInfo {
   is_admin?: boolean;
   is_super_admin?: boolean;
   active?: boolean;
+  secretaria_acesso?: string | null;  // SME, SMS, SMAS, TODOS, or NULL
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;

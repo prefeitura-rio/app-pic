@@ -442,6 +442,7 @@ export interface UserAccessRecord {
   is_admin: boolean;
   is_super_admin: boolean;
   permission?: string | null;
+  secretaria_acesso?: string | null; // SME, SMS, SMAS, TODOS, or NULL
 
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
@@ -469,6 +470,7 @@ export interface CreateUserRequest {
   secretaria?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
+  secretaria_acesso?: string | null; // SME, SMS, SMAS, TODOS, or NULL
 
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
@@ -491,6 +493,7 @@ export interface UpdateUserRequest {
   secretaria?: string | null;
   is_admin?: boolean | null;
   is_super_admin?: boolean | null;
+  secretaria_acesso?: string | null; // SME, SMS, SMAS, TODOS, or NULL
 
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional, Union
+import polars as pl
 
 from src.core.security.jwt import verify_jwt, CurrentUserPermissions
 from src.utils.log import logger
@@ -10,6 +11,7 @@ from src.api.v1.schemas import (
     CommonFilters,
     PaginationParams,
     SortParams,
+    SmartFilterOptions,
 )
 from src.utils.data_manager import DataManager
 from src.utils.data_manager_config import DataManagerConfig as config
@@ -86,6 +88,84 @@ PARTICIPANT_SORTABLE_COLUMNS = {
     "saude_fracao": "saude_protocolos_regular",
     "situacao": "situacao",
 }
+
+
+def _filter_filter_options_by_secretaria(
+    filter_options: SmartFilterOptions,
+    secretaria_acesso: Optional[str],
+    is_super_admin: bool
+) -> SmartFilterOptions:
+    """
+    Filter equipment and protocol options based on secretaria_acesso.
+
+    SME: keep only CRE, Escolas, and SME protocols
+    SMS: keep only AP, Clínicas, and SMS protocols
+    SMAS: keep only CAS, CRAS, and SMAS protocols
+    TODOS/super_admin: keep all
+    NULL: remove all equipment and protocols
+
+    Always keep: bairros, subprefeituras, regioes_administrativas, grupos, cohorts, status_list, situacoes
+
+    NOTE: User's equipment access is already filtered by governance filters before filter_options are calculated.
+    """
+    # Super admin or TODOS: no filtering
+    if is_super_admin or secretaria_acesso == "TODOS":
+        return filter_options
+
+    # NULL: remove all equipment and protocols
+    if not secretaria_acesso:
+        filter_options.cres = []
+        filter_options.aps = []
+        filter_options.cas_list = []
+        filter_options.cras = []
+        filter_options.escolas = []
+        filter_options.clinicas = []
+        filter_options.protocolo_descricoes = []
+        filter_options.protocolo_status_list = []
+        logger.info("🔒 Filter options: secretaria_acesso=NULL, removed all equipment and protocols")
+        return filter_options
+
+    # Map secretaria to allowed equipment and protocol prefix
+    equipment_map = {
+        "SME": {"keep": ["cres", "escolas"], "remove": ["aps", "cas_list", "cras", "clinicas"]},
+        "SMS": {"keep": ["aps", "clinicas"], "remove": ["cres", "escolas", "cas_list", "cras"]},
+        "SMAS": {"keep": ["cas_list", "cras"], "remove": ["cres", "escolas", "aps", "clinicas"]},
+    }
+
+    equipment_config = equipment_map.get(secretaria_acesso)
+    if not equipment_config:
+        # Unknown secretaria: remove everything
+        filter_options.cres = []
+        filter_options.aps = []
+        filter_options.cas_list = []
+        filter_options.cras = []
+        filter_options.escolas = []
+        filter_options.clinicas = []
+        filter_options.protocolo_descricoes = []
+        filter_options.protocolo_status_list = []
+        logger.info(f"🔒 Filter options: unknown secretaria={secretaria_acesso}, removed all equipment")
+        return filter_options
+
+    # Remove equipment types not allowed for this secretaria
+    for field in equipment_config["remove"]:
+        setattr(filter_options, field, [])
+
+    # Filter protocols by secretaria prefix (sme_, sms_, smas_)
+    protocol_prefix = secretaria_acesso.lower() + "_"
+    filter_options.protocolo_descricoes = [
+        p for p in filter_options.protocolo_descricoes
+        if p.id.startswith(protocol_prefix)
+    ]
+
+    # Keep protocol_status_list as is (it's generic: regular, irregular, attention)
+
+    logger.info(
+        f"🔒 Filter options filtered for secretaria={secretaria_acesso}: "
+        f"kept {equipment_config['keep']}, removed {equipment_config['remove']}, "
+        f"kept {len(filter_options.protocolo_descricoes)} protocols with prefix '{protocol_prefix}'"
+    )
+
+    return filter_options
 
 
 @router.get(
@@ -181,7 +261,15 @@ async def get_participants(
             sort_descending=sort_descending,  # NOVO: Direção da ordenação
         )
 
+        # Filter filter_options by secretaria_acesso (equipment access already filtered by governance)
+        filter_options = _filter_filter_options_by_secretaria(
+            filter_options,
+            secretaria_acesso=permissions.secretaria_acesso,
+            is_super_admin=permissions.is_super_admin
+        )
+
         # Converter DataFrame para JSON e retornar resposta
+        # NOTE: Secretaria filtering now done in apply_governance_filters (data_manager.py)
         json_start = time.perf_counter()
         data_json = DataManager.df_to_json(df_data)
         json_time = time.perf_counter() - json_start

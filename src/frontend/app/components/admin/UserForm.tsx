@@ -57,6 +57,7 @@ export function UserForm({
   const [nome, setNome] = useState("");
   const [ocupacao, setOcupacao] = useState("");
   const [secretaria, setSecretaria] = useState("");
+  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [notes, setNotes] = useState("");
@@ -76,6 +77,7 @@ export function UserForm({
       setNome(user.nome || "");
       setOcupacao(user.ocupacao || "");
       setSecretaria(user.secretaria || "");
+      setSecretariaAcesso(user.secretaria_acesso || "");
       setIsAdmin(user.is_admin);
       setIsSuperAdmin(user.is_super_admin);
       setNotes(user.notes || "");
@@ -93,6 +95,7 @@ export function UserForm({
       setNome("");
       setOcupacao("");
       setSecretaria("");
+      setSecretariaAcesso("");
       setIsAdmin(false);
       setIsSuperAdmin(false);
       setNotes("");
@@ -129,6 +132,7 @@ export function UserForm({
         nome: nome || null,
         ocupacao: ocupacao || null,
         secretaria: secretaria || null,
+        secretaria_acesso: secretariaAcesso || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
         id_cras_list: selectedCras.length > 0 ? selectedCras : null,
@@ -148,6 +152,7 @@ export function UserForm({
         nome: nome || null,
         ocupacao: ocupacao || null,
         secretaria: secretaria || null,
+        secretaria_acesso: secretariaAcesso || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
         id_cras_list: selectedCras.length > 0 ? selectedCras : null,
@@ -296,11 +301,35 @@ export function UserForm({
         </div>
 
         {/* ID Selections */}
-        <div className="space-y-4">
+        <div className="space-y-4 rounded-lg border p-4">
           <div className="space-y-2">
             <h3 className="text-sm font-medium" title="Defina quais unidades o usuário pode visualizar no sistema">Permissões de Acesso</h3>
             <p className="text-xs text-muted-foreground">
-              Selecione os IDs aos quais o usuário terá acesso. Deixe vazio para sem restrições nesse tipo.
+              Controle quais protocolos e equipamentos o usuário pode visualizar no sistema.
+            </p>
+          </div>
+
+          {/* Secretaria Acesso - PRIMEIRO CAMPO */}
+          <div className="space-y-2">
+            <Label htmlFor="secretaria_acesso" title="Define quais protocolos o usuário pode visualizar no sistema">
+              Acesso a Protocolos *
+            </Label>
+            <select
+              id="secretaria_acesso"
+              value={secretariaAcesso}
+              onChange={(e) => setSecretariaAcesso(e.target.value)}
+              disabled={isLoading}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Controla quais protocolos (SME, SMS, SMAS) o usuário pode visualizar"
+            >
+              <option value="">Sem Acesso a Protocolos</option>
+              <option value="TODOS">Todos os Protocolos</option>
+              <option value="SME">Apenas SME (Educação)</option>
+              <option value="SMS">Apenas SMS (Saúde)</option>
+              <option value="SMAS">Apenas SMAS (Assistência Social)</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Controla a visibilidade de protocolos no dashboard e na lista de participantes
             </p>
           </div>
 

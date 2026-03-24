@@ -216,10 +216,16 @@ class DataManager:
         # 1.5. APPLY GOVERNANCE FILTERS (FIRST, before everything else)
         # CRITICAL: Applied AFTER cache to not affect shared cache
         if user_permissions:
+            rows_before_governance = len(df)
             governance_start = time.perf_counter()
             df = DataManager.apply_governance_filters(df, user_permissions)
             governance_time = time.perf_counter() - governance_start
-            logger.info(f"⚖️ Governance filters applied in {governance_time:.3f}s")
+            rows_after_governance = len(df)
+            logger.info(
+                f"⚖️ Governance filters applied in {governance_time:.3f}s: "
+                f"{rows_before_governance} -> {rows_after_governance} rows "
+                f"(removed {rows_before_governance - rows_after_governance})"
+            )
             profiling.rows_before_filter = len(df)  # Update count after governance
 
         # 2. APPLY FILTERS
@@ -264,7 +270,7 @@ class DataManager:
         if filter_columns_config:
             filter_opts_start = time.perf_counter()
 
-            # OTIMIZAÇÃO: Se temos filter options pré-computadas E não há filtros ativos,
+            # OTIMIZAÇÃO: Se temos filter options pré-computadas E não há filtros ativos E não há governance,
             # retornar diretamente (instant!)
             active_filter_count = len(
                 [
@@ -274,7 +280,11 @@ class DataManager:
                 ]
             )
 
-            if precomputed_filter_options and active_filter_count == 0:
+            # IMPORTANTE: Não usar precomputed se user_permissions foi aplicado (governance filters)
+            # porque precomputed foi calculado ANTES dos governance filters
+            has_governance = user_permissions and not user_permissions.has_full_access()
+
+            if precomputed_filter_options and active_filter_count == 0 and not has_governance:
                 # Converter dict para SmartFilterOptions (instant)
                 filter_options_dict = SmartFilterOptions(
                     **{
@@ -1380,6 +1390,11 @@ class DataManager:
 
         # Polars: Construir expressão OR entre todos os IDs autorizados
         filter_expr = pl.lit(False)
+        has_any_ids = False
+        applied_filters = []
+
+        # Get available columns in the DataFrame
+        available_columns = set(df.columns)
 
         for id_type in [
             "id_cras",
@@ -1390,14 +1405,421 @@ class DataManager:
             "id_clinica_familia",
         ]:
             ids = user_permissions.get_filter_ids(id_type)
+
+            # Log what IDs user has configured
+            if ids:
+                logger.info(f"  User has {len(ids)} {id_type} configured")
+
+            # Only apply filter if column exists in DataFrame
+            if id_type not in available_columns:
+                if ids:
+                    logger.warning(f"  ⚠️ Column '{id_type}' not in DataFrame, skipping filter for this type")
+                continue
+
             if ids:
                 filter_expr = filter_expr | pl.col(id_type).is_in(ids)
+                has_any_ids = True
+                applied_filters.append(f"{id_type}={len(ids)}")
 
-        df_filtered = df.filter(filter_expr)
+        logger.info(f"Applied equipment filters: {', '.join(applied_filters) if applied_filters else 'NONE'}")
+
+        # If no IDs configured, don't filter by equipment (return all data)
+        # This allows filtering by secretaria_acesso only
+        if has_any_ids:
+            df_filtered = df.filter(filter_expr)
+        else:
+            logger.warning(
+                f"⚠️ No equipment IDs configured for user {user_permissions.cpf}. "
+                f"Skipping equipment filter (will filter by secretaria_acesso only)"
+            )
+            df_filtered = df
 
         logger.info(
             f"Governance filters applied: {len(df)} -> {len(df_filtered)} rows "
             f"(CPF: {user_permissions.cpf})"
         )
 
+        # DEBUG: Log if dataframe is empty after equipment filters
+        if df_filtered.is_empty():
+            logger.warning(
+                f"⚠️ DataFrame EMPTY after equipment governance filters! "
+                f"User may not have any equipment IDs configured. "
+                f"secretaria_acesso={user_permissions.secretaria_acesso}"
+            )
+
+        # Apply secretaria access filters (protocol filtering)
+        df_filtered = DataManager._apply_secretaria_filters_polars(
+            df_filtered,
+            user_permissions.secretaria_acesso,
+            user_permissions.is_super_admin
+        )
+
         return df_filtered
+
+    @staticmethod
+    def _apply_secretaria_filters_polars(
+        df: pl.DataFrame,
+        secretaria_acesso: Optional[str],
+        is_super_admin: bool
+    ) -> pl.DataFrame:
+        """
+        Apply secretaria access filters to protocol arrays in Polars.
+
+        This filters protocols based on user's secretaria_acesso and recalculates
+        counters. Applied after equipment governance filters.
+
+        Performance: ~200-350ms for 150k rows (acceptable with caching)
+
+        Args:
+            df: DataFrame (participants or dashboard table)
+            secretaria_acesso: SME, SMS, SMAS, TODOS, or NULL
+            is_super_admin: If True, bypass filtering
+
+        Returns:
+            DataFrame with filtered protocols and recalculated counters
+        """
+        import time
+
+        if is_super_admin or secretaria_acesso == "TODOS":
+            logger.info("🔓 Secretaria filter: BYPASS (super admin ou TODOS)")
+            return df
+
+        start_time = time.perf_counter()
+        available_columns = set(df.columns)
+
+        # PARTICIPANTS TABLE - protocolo_listagem
+        if "protocolo_listagem" in available_columns:
+            logger.info(f"🔒 Filtering protocolo_listagem for secretaria_acesso={secretaria_acesso}")
+            df = DataManager._filter_protocolo_listagem_polars(df, secretaria_acesso)
+
+        # DASHBOARD TABLE - indicador_protocolos_percentual_regular
+        if "indicador_protocolos_percentual_regular" in available_columns:
+            logger.info(f"🔒 Filtering indicador_protocolos for secretaria_acesso={secretaria_acesso}")
+            df = DataManager._filter_indicador_protocolos_polars(df, secretaria_acesso)
+
+        # DASHBOARD TABLE - indicador_tempo_irregular
+        if "indicador_tempo_irregular" in available_columns:
+            logger.info(f"🔒 Filtering tempo_irregular for secretaria_acesso={secretaria_acesso}")
+            df = DataManager._filter_tempo_irregular_polars(df, secretaria_acesso)
+
+        # DASHBOARD TABLE - serie_resolucao_alertas_percentual
+        if "serie_resolucao_alertas_percentual" in available_columns:
+            logger.info(f"🔒 Filtering resolucao_alertas for secretaria_acesso={secretaria_acesso}")
+            df = DataManager._filter_resolucao_alertas_polars(df, secretaria_acesso)
+
+        # REMOVE rows without any protocols from allowed secretaria
+        # For PARTICIPANTS table: filter by protocolo_listagem
+        if "protocolo_listagem" in available_columns:
+            rows_before = len(df)
+            df = df.filter(
+                pl.col("protocolo_listagem").list.len() > 0
+            )
+            rows_after = len(df)
+            removed = rows_before - rows_after
+            if removed > 0:
+                logger.info(
+                    f"🗑️ Removed {removed} participants without protocols from secretaria={secretaria_acesso} "
+                    f"({rows_before} -> {rows_after} rows)"
+                )
+
+            # RECALCULATE situacao based on filtered protocols only
+            logger.info("🔄 Recalculating 'situacao' based on filtered protocols...")
+            df = DataManager._recalculate_situacao(df)
+
+        # For DASHBOARD table: filter by indicador_protocolos_percentual_regular
+        elif "indicador_protocolos_percentual_regular" in available_columns:
+            rows_before = len(df)
+            df = df.filter(
+                pl.col("indicador_protocolos_percentual_regular").list.len() > 0
+            )
+            rows_after = len(df)
+            removed = rows_before - rows_after
+            if removed > 0:
+                logger.info(
+                    f"🗑️ Removed {removed} aggregated rows without protocols from secretaria={secretaria_acesso} "
+                    f"({rows_before} -> {rows_after} rows)"
+                )
+
+        elapsed = time.perf_counter() - start_time
+        logger.info(f"⏱️ [TIMING] Secretaria filters (Polars): {elapsed:.3f}s")
+
+        return df
+
+    @staticmethod
+    def _filter_protocolo_listagem_polars(
+        df: pl.DataFrame,
+        secretaria_acesso: Optional[str]
+    ) -> pl.DataFrame:
+        """
+        Filter protocolo_listagem array and recalculate counters.
+
+        Opção A: Calculate only relevant secretaria counters, zero others.
+        """
+        if df.is_empty():
+            return df
+
+        # NULL: remove all protocols
+        if not secretaria_acesso:
+            logger.info("  → secretaria_acesso=NULL: removing all protocols")
+            return DataManager._zero_all_protocol_counters(df)
+
+        # Filter protocolo_listagem by secretaria field
+        logger.info(f"  → Filtering protocols where secretaria={secretaria_acesso}")
+        df = df.with_columns([
+            pl.when(pl.col("protocolo_listagem").is_not_null())
+            .then(
+                pl.col("protocolo_listagem").list.eval(
+                    pl.element().filter(
+                        pl.element().struct.field("secretaria") == secretaria_acesso
+                    )
+                )
+            )
+            .otherwise(pl.lit([]))
+            .alias("protocolo_listagem")
+        ])
+
+        # Recalculate counters - ONLY for allowed secretaria
+        df = DataManager._recalculate_protocol_counters_option_a(df, secretaria_acesso)
+
+        return df
+
+    @staticmethod
+    def _zero_all_protocol_counters(df: pl.DataFrame) -> pl.DataFrame:
+        """Zero all protocol counters (for secretaria_acesso=NULL)"""
+        return df.with_columns([
+            pl.lit([]).alias("protocolo_listagem"),
+            pl.lit(0).alias("total_protocolos"),
+            pl.lit(0).alias("total_protocolos_irregular"),
+            pl.lit(0).alias("total_protocolos_atencao"),
+            pl.lit(0).alias("total_protocolos_regular"),
+            pl.lit("0/0").alias("total_fracao"),
+            pl.lit(0).alias("assistencia_protocolos_total"),
+            pl.lit(0).alias("assistencia_protocolos_irregular"),
+            pl.lit(0).alias("assistencia_protocolos_atencao"),
+            pl.lit(0).alias("assistencia_protocolos_regular"),
+            pl.lit("0/0").alias("assistencia_fracao"),
+            pl.lit(0).alias("educacao_protocolos_total"),
+            pl.lit(0).alias("educacao_protocolos_irregular"),
+            pl.lit(0).alias("educacao_protocolos_atencao"),
+            pl.lit(0).alias("educacao_protocolos_regular"),
+            pl.lit("0/0").alias("educacao_fracao"),
+            pl.lit(0).alias("saude_protocolos_total"),
+            pl.lit(0).alias("saude_protocolos_irregular"),
+            pl.lit(0).alias("saude_protocolos_atencao"),
+            pl.lit(0).alias("saude_protocolos_regular"),
+            pl.lit("0/0").alias("saude_fracao"),
+        ])
+
+    @staticmethod
+    def _recalculate_protocol_counters_option_a(
+        df: pl.DataFrame,
+        secretaria_acesso: str
+    ) -> pl.DataFrame:
+        """
+        Opção A: Calculate counters ONLY for allowed secretaria, zero others.
+
+        This ensures we don't leak data and don't waste CPU on irrelevant calculations.
+        """
+        if df.is_empty():
+            return df
+
+        # Calculate general totals from filtered protocolo_listagem
+        df = df.with_columns([
+            pl.col("protocolo_listagem").list.len().alias("total_protocolos"),
+
+            pl.col("protocolo_listagem").list.eval(
+                pl.element().filter(pl.element().struct.field("irregular_indicador") == True)
+            ).list.len().alias("total_protocolos_irregular"),
+
+            pl.col("protocolo_listagem").list.eval(
+                pl.element().filter(
+                    (pl.element().struct.field("irregular_indicador") == False) |
+                    (pl.element().struct.field("irregular_indicador").is_null())
+                )
+            ).list.len().alias("total_protocolos_regular"),
+
+            pl.col("protocolo_listagem").list.eval(
+                pl.element().filter(
+                    pl.element().struct.field("protocolo_status_label").str.to_lowercase().str.contains("aten")
+                )
+            ).list.len().alias("total_protocolos_atencao"),
+        ])
+
+        # Calculate total fraction
+        df = df.with_columns([
+            pl.when(pl.col("total_protocolos") > 0)
+            .then(
+                pl.col("total_protocolos_regular").cast(pl.Utf8) + "/" + pl.col("total_protocolos").cast(pl.Utf8)
+            )
+            .otherwise(pl.lit("0/0"))
+            .alias("total_fracao")
+        ])
+
+        # Map secretaria to prefix
+        secretaria_map = {
+            "SME": "educacao",
+            "SMS": "saude",
+            "SMAS": "assistencia"
+        }
+
+        allowed_prefix = secretaria_map.get(secretaria_acesso)
+
+        if not allowed_prefix:
+            # Unknown secretaria: zero everything
+            return DataManager._zero_all_protocol_counters(df)
+
+        # For each secretaria prefix
+        for secret, prefix in secretaria_map.items():
+            if secret == secretaria_acesso:
+                # Allowed secretaria: copy from totals
+                df = df.with_columns([
+                    pl.col("total_protocolos").alias(f"{prefix}_protocolos_total"),
+                    pl.col("total_protocolos_irregular").alias(f"{prefix}_protocolos_irregular"),
+                    pl.col("total_protocolos_atencao").alias(f"{prefix}_protocolos_atencao"),
+                    pl.col("total_protocolos_regular").alias(f"{prefix}_protocolos_regular"),
+                    pl.col("total_fracao").alias(f"{prefix}_fracao"),
+                ])
+            else:
+                # Other secretarias: ZERO (Opção A)
+                df = df.with_columns([
+                    pl.lit(0).alias(f"{prefix}_protocolos_total"),
+                    pl.lit(0).alias(f"{prefix}_protocolos_irregular"),
+                    pl.lit(0).alias(f"{prefix}_protocolos_atencao"),
+                    pl.lit(0).alias(f"{prefix}_protocolos_regular"),
+                    pl.lit("0/0").alias(f"{prefix}_fracao"),
+                ])
+
+        return df
+
+    @staticmethod
+    def _filter_indicador_protocolos_polars(
+        df: pl.DataFrame,
+        secretaria_acesso: Optional[str]
+    ) -> pl.DataFrame:
+        """Filter indicador_protocolos_percentual_regular array by protocolo_secretaria"""
+        if df.is_empty():
+            return df
+
+        if not secretaria_acesso:
+            # NULL: empty array
+            return df.with_columns([
+                pl.lit([]).alias("indicador_protocolos_percentual_regular")
+            ])
+
+        # Filter array by protocolo_secretaria field
+        df = df.with_columns([
+            pl.when(pl.col("indicador_protocolos_percentual_regular").is_not_null())
+            .then(
+                pl.col("indicador_protocolos_percentual_regular").list.eval(
+                    pl.element().filter(
+                        pl.element().struct.field("protocolo_secretaria") == secretaria_acesso
+                    )
+                )
+            )
+            .otherwise(pl.lit([]))
+            .alias("indicador_protocolos_percentual_regular")
+        ])
+
+        return df
+
+    @staticmethod
+    def _filter_tempo_irregular_polars(
+        df: pl.DataFrame,
+        secretaria_acesso: Optional[str]
+    ) -> pl.DataFrame:
+        """Filter indicador_tempo_irregular array by secretaria field"""
+        if df.is_empty():
+            return df
+
+        if not secretaria_acesso:
+            # NULL: empty array
+            return df.with_columns([
+                pl.lit([]).alias("indicador_tempo_irregular")
+            ])
+
+        # Filter array by secretaria field (lowercase)
+        secretaria_lower = secretaria_acesso.lower()
+        df = df.with_columns([
+            pl.when(pl.col("indicador_tempo_irregular").is_not_null())
+            .then(
+                pl.col("indicador_tempo_irregular").list.eval(
+                    pl.element().filter(
+                        pl.element().struct.field("secretaria") == secretaria_lower
+                    )
+                )
+            )
+            .otherwise(pl.lit([]))
+            .alias("indicador_tempo_irregular")
+        ])
+
+        return df
+
+    @staticmethod
+    def _filter_resolucao_alertas_polars(
+        df: pl.DataFrame,
+        secretaria_acesso: Optional[str]
+    ) -> pl.DataFrame:
+        """Filter serie_resolucao_alertas_percentual array by secretaria field"""
+        if df.is_empty():
+            return df
+
+        if not secretaria_acesso:
+            # NULL: empty array
+            return df.with_columns([
+                pl.lit([]).alias("serie_resolucao_alertas_percentual")
+            ])
+
+        # Filter array by secretaria field (lowercase)
+        secretaria_lower = secretaria_acesso.lower()
+        df = df.with_columns([
+            pl.when(pl.col("serie_resolucao_alertas_percentual").is_not_null())
+            .then(
+                pl.col("serie_resolucao_alertas_percentual").list.eval(
+                    pl.element().filter(
+                        pl.element().struct.field("secretaria") == secretaria_lower
+                    )
+                )
+            )
+            .otherwise(pl.lit([]))
+            .alias("serie_resolucao_alertas_percentual")
+        ])
+
+        return df
+
+    @staticmethod
+    def _recalculate_situacao(df: pl.DataFrame) -> pl.DataFrame:
+        """
+        Recalculate 'situacao' column based on current protocol counts.
+
+        Logic:
+        - If total_protocolos == 0: "Sem protocolos"
+        - If total_protocolos_irregular == 0: "Regular"
+        - If total_protocolos_irregular > 0 and total_protocolos_atencao == 0: "Irregular"
+        - If total_protocolos_atencao > 0: "Atenção"
+
+        This ensures situacao reflects only the filtered protocols.
+        """
+        if df.is_empty():
+            return df
+
+        # Check if required columns exist
+        required_cols = ["total_protocolos", "total_protocolos_irregular", "total_protocolos_atencao"]
+        if not all(col in df.columns for col in required_cols):
+            logger.warning("⚠️ Cannot recalculate situacao: required columns missing")
+            return df
+
+        df = df.with_columns([
+            pl.when(pl.col("total_protocolos") == 0)
+            .then(pl.lit("Sem protocolos"))
+            .when(pl.col("total_protocolos_irregular") == 0)
+            .then(pl.lit("Regular"))
+            .when((pl.col("total_protocolos_irregular") > 0) & (pl.col("total_protocolos_atencao") == 0))
+            .then(pl.lit("Irregular"))
+            .when(pl.col("total_protocolos_atencao") > 0)
+            .then(pl.lit("Atenção"))
+            .otherwise(pl.lit("Indefinido"))
+            .alias("situacao")
+        ])
+
+        logger.info("✅ Situacao recalculated based on filtered protocols")
+        return df
