@@ -79,8 +79,8 @@ const UserTableComponent = ({
     return counts.length > 0 ? counts.join(", ") : "Sem permissões específicas";
   };
 
-  // Largura mínima total da tabela
-  const minTableWidth = 1195;
+  // Largura mínima total da tabela (updated to include secretaria_acesso column)
+  const minTableWidth = 1305;
 
   if (users.length === 0) {
     return (
@@ -131,6 +131,7 @@ const UserTableComponent = ({
               <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Ocupação</div>
               <div style={{ flex: '1 1 0%', minWidth: 100 }} className="px-2">Secretaria</div>
               <div style={{ flex: '0.8 1 0%', minWidth: 90 }} className="px-2">Tipo</div>
+              <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2">Acesso Protocolos</div>
               <div style={{ flex: '1.3 1 0%', minWidth: 140 }} className="px-2">Permissões</div>
               <div style={{ flex: '0.6 1 0%', minWidth: 70 }} className="px-2 text-center">Status</div>
               <div style={{ flex: '0.8 1 0%', minWidth: 80 }} className="px-2">Criado</div>
@@ -213,6 +214,21 @@ const UserTableComponent = ({
                         <Badge variant="secondary" className="text-xs h-5 px-1.5">Usuário</Badge>
                       )}
                     </div>
+                  </div>
+
+                  {/* Secretaria Acesso */}
+                  <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2">
+                    {user.secretaria_acesso === "TODOS" ? (
+                      <Badge variant="default" className="text-xs h-5 px-1.5">Todos</Badge>
+                    ) : user.secretaria_acesso === "SME" ? (
+                      <Badge variant="outline" className="bg-blue-50 text-xs h-5 px-1.5">SME</Badge>
+                    ) : user.secretaria_acesso === "SMS" ? (
+                      <Badge variant="outline" className="bg-green-50 text-xs h-5 px-1.5">SMS</Badge>
+                    ) : user.secretaria_acesso === "SMAS" ? (
+                      <Badge variant="outline" className="bg-purple-50 text-xs h-5 px-1.5">SMAS</Badge>
+                    ) : (
+                      <Badge variant="destructive" className="text-xs h-5 px-1.5">Sem Acesso</Badge>
+                    )}
                   </div>
 
                   {/* Permissions summary */}

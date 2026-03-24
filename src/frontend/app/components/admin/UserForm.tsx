@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
+import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 
 interface UserFormProps {
   availableIds: AvailableIds;
@@ -67,6 +68,7 @@ export function UserForm({
   const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
+  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
 
   // Initialize form with user data if editing
   useEffect(() => {
@@ -86,6 +88,7 @@ export function UserForm({
       setSelectedAps(user.id_ap_list || []);
       setSelectedCas(user.id_cas_list || []);
       setSelectedClinicas(user.id_clinica_familia_list || []);
+      setSecretariaAcesso(user.secretaria_acesso || "NULL");
     } else {
       // Reset form
       setCpf("");
@@ -102,6 +105,7 @@ export function UserForm({
       setSelectedAps([]);
       setSelectedCas([]);
       setSelectedClinicas([]);
+      setSecretariaAcesso("NULL");
     }
   }, [user]);
 
@@ -137,6 +141,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+        secretaria_acesso: secretariaAcesso === "NULL" ? null : secretariaAcesso,
         notes: notes || null,
       };
       onSubmit(updateData);
@@ -156,6 +161,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+        secretaria_acesso: secretariaAcesso === "NULL" ? null : secretariaAcesso,
         notes: notes || null,
       };
       onSubmit(createData);
@@ -368,6 +374,29 @@ export function UserForm({
               tooltip="Clínicas da Família e unidades de saúde que o usuário poderá acessar"
             />
           </div>
+        </div>
+
+        {/* Secretaria Access Control */}
+        <div className="space-y-2">
+          <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
+            Acesso a Protocolos
+          </Label>
+          <VirtualizedSelect
+            value={secretariaAcesso}
+            onSelect={setSecretariaAcesso}
+            options={[
+              { id: "NULL", label: "Sem Acesso a Protocolos" },
+              { id: "TODOS", label: "Todos os Protocolos (Admin)" },
+              { id: "SME", label: "Apenas Educação (SME)" },
+              { id: "SMS", label: "Apenas Saúde (SMS)" },
+              { id: "SMAS", label: "Apenas Assistência Social (SMAS)" },
+            ]}
+            placeholder="Selecione o acesso"
+            disabled={isLoading}
+          />
+          <p className="text-xs text-muted-foreground">
+            Controla quais protocolos o usuário pode visualizar e filtrar
+          </p>
         </div>
 
         {/* Notes */}

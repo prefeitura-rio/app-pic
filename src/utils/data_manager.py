@@ -7,6 +7,10 @@ from src.utils.bigquery import execute_query
 from src.utils.log import logger
 from src.utils.cache_manager import query_cache
 from src.utils.text_utils import TextNormalizer
+from src.utils.secretaria_access import (
+    filter_and_recalculate_by_secretaria,
+    filter_equipment_options_by_secretaria,
+)
 from src.utils.data_manager_config import (
     DataManagerConfig as config,
     DataManagerError,
@@ -266,6 +270,8 @@ class DataManager:
 
             # OTIMIZAÇÃO: Se temos filter options pré-computadas E não há filtros ativos,
             # retornar diretamente (instant!)
+            # IMPORTANTE: Não usar precomputed se há governança ativa (usuário não-super-admin)
+            # porque as options pré-computadas contêm TODOS os dados (cache compartilhado)
             active_filter_count = len(
                 [
                     v
@@ -274,15 +280,24 @@ class DataManager:
                 ]
             )
 
-            if precomputed_filter_options and active_filter_count == 0:
+            # Verificar se pode usar cache: sem filtros E sem governança (ou super admin)
+            has_governance = user_permissions and not user_permissions.has_full_access()
+            can_use_precomputed = precomputed_filter_options and active_filter_count == 0 and not has_governance
+
+            if can_use_precomputed:
                 # Converter dict para SmartFilterOptions (instant)
+                # Mas ainda aplicar filtro de equipamentos por secretaria
+                filtered_precomputed = filter_equipment_options_by_secretaria(
+                    precomputed_filter_options,
+                    user_permissions.secretaria_acesso if user_permissions else None
+                )
                 filter_options_dict = SmartFilterOptions(
                     **{
                         k: [FilterOptionItem(**opt) for opt in v]
-                        for k, v in precomputed_filter_options.items()
+                        for k, v in filtered_precomputed.items()
                     }
                 )
-                logger.info("⚡ Using precomputed filter options (instant)")
+                logger.info("⚡ Using precomputed filter options (instant, with equipment filtering)")
             else:
                 # Fallback: calcular dinamicamente (quando há filtros ativos)
                 # OTIMIZAÇÃO: Passar AMBOS DataFrames para evitar recálculos
@@ -294,6 +309,17 @@ class DataManager:
                     filter_columns_config=filter_columns_config,
                     active_filters=filters_dict,  # Filtros atualmente ativos
                 )
+
+            # Aplicar filtro de equipamentos por secretaria_acesso
+            # Zera listas de equipamentos que não pertencem à secretaria do usuário
+            if filter_options_dict and user_permissions:
+                # Converter SmartFilterOptions para dict, filtrar, e converter de volta
+                filter_opts_dict = filter_options_dict.model_dump()
+                filter_opts_dict = filter_equipment_options_by_secretaria(
+                    filter_opts_dict,
+                    user_permissions.secretaria_acesso
+                )
+                filter_options_dict = SmartFilterOptions(**filter_opts_dict)
 
             filter_opts_time = time.perf_counter() - filter_opts_start
             profiling.filter_options_s = round(
@@ -1394,6 +1420,12 @@ class DataManager:
                 filter_expr = filter_expr | pl.col(id_type).is_in(ids)
 
         df_filtered = df.filter(filter_expr)
+
+        # Apply protocol filtering by secretaria_acesso
+        df_filtered = filter_and_recalculate_by_secretaria(
+            df_filtered,
+            user_permissions.secretaria_acesso
+        )
 
         logger.info(
             f"Governance filters applied: {len(df)} -> {len(df_filtered)} rows "

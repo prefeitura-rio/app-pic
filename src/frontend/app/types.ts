@@ -145,12 +145,15 @@ export interface SmartFilterOptions {
   cohorts: FilterOptionItem[];
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
-  cres: FilterOptionItem[];
-  aps: FilterOptionItem[];
-  cas_list: FilterOptionItem[];
-  cras: FilterOptionItem[];
-  escolas: FilterOptionItem[];
-  clinicas: FilterOptionItem[];
+
+  // Equipamentos - podem ser null quando não-autorizados
+  cres?: FilterOptionItem[] | null;
+  aps?: FilterOptionItem[] | null;
+  cas_list?: FilterOptionItem[] | null;
+  cras?: FilterOptionItem[] | null;
+  escolas?: FilterOptionItem[] | null;
+  clinicas?: FilterOptionItem[] | null;
+
   protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
   protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 
@@ -446,9 +449,11 @@ export interface UserAccessRecord {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; 
+  id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+
+  secretaria_acesso?: string | null;
 
   active: boolean;
   notes?: string | null;
@@ -473,9 +478,11 @@ export interface CreateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; 
+  id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+
+  secretaria_acesso?: string | null;
 
   notes?: string | null;
   is_update?: boolean; // Indica se é uma atualização intencional (vs criação)

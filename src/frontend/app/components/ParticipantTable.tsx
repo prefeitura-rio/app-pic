@@ -83,6 +83,17 @@ export const ParticipantTable = memo(({
     return null;
   }
 
+  // Filter columns - mostra apenas colunas que existem nos dados E não são null
+  // Backend já dropa colunas de secretarias não-autorizadas
+  const visibleColumns = SORTABLE_COLUMNS.filter((col) => {
+    // Para colunas de protocolos, verificar se existem nos dados e não são null
+    if (col.key.includes("_fracao") && data.length > 0) {
+      const firstRow = data[0] as any;
+      return firstRow[col.key] !== undefined && firstRow[col.key] !== null;
+    }
+    return true; // Mostrar todas as outras colunas
+  });
+
   const handleHeaderClick = (column: string) => {
     if (onSort) {
       onSort(column);
@@ -113,7 +124,7 @@ export const ParticipantTable = memo(({
         <table style={{ minWidth: MIN_TABLE_WIDTH, width: '100%' }} className="text-sm border-collapse">
           <thead className="bg-muted/50">
             <tr className="border-b">
-              {SORTABLE_COLUMNS.map((col) => (
+              {visibleColumns.map((col) => (
                 <th
                   key={col.key}
                   className={`px-3 py-3 text-${col.align} font-medium text-muted-foreground whitespace-nowrap cursor-pointer hover:bg-muted/80 transition-colors select-none`}
@@ -152,18 +163,28 @@ export const ParticipantTable = memo(({
                 <td className="px-3 py-3 text-center capitalize whitespace-nowrap">
                   {participant.status || "-"}
                 </td>
-                <td className={`px-3 py-3 text-center font-mono whitespace-nowrap ${getTotalColor(participant.total_fracao)}`}>
-                  {participant.total_fracao || "-"}
-                </td>
-                <td className="px-3 py-3 text-center font-mono whitespace-nowrap">
-                  {participant.assistencia_fracao || "-"}
-                </td>
-                <td className="px-3 py-3 text-center font-mono whitespace-nowrap">
-                  {participant.educacao_fracao || "-"}
-                </td>
-                <td className="px-3 py-3 text-center font-mono whitespace-nowrap">
-                  {participant.saude_fracao || "-"}
-                </td>
+
+                {/* Renderizar colunas de protocolos dinamicamente baseado em visibleColumns */}
+                {visibleColumns.filter(col => col.key.includes("_fracao")).map((col) => {
+                  const value = (participant as any)[col.key];
+                  // Aplicar cores:
+                  // - Se existe total_fracao: apenas ela tem cores
+                  // - Se NÃO existe total_fracao (usuário de secretaria): a coluna específica tem cores
+                  const hasTotalFracao = visibleColumns.some(c => c.key === "total_fracao");
+                  const shouldApplyColor = hasTotalFracao
+                    ? col.key === "total_fracao"  // Admin: só total tem cor
+                    : true;  // Secretaria específica: qualquer fração tem cor
+                  const colorClass = shouldApplyColor ? getTotalColor(value) : "";
+                  return (
+                    <td
+                      key={col.key}
+                      className={`px-3 py-3 text-center font-mono whitespace-nowrap ${colorClass}`}
+                    >
+                      {value || "-"}
+                    </td>
+                  );
+                })}
+
                 <td className="px-3 py-3 text-center whitespace-nowrap">
                   <Badge variant={getBadgeVariant(participant.situacao)} className="text-xs">
                     {capitalizeSituacao(participant.situacao)}

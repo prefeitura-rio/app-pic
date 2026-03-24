@@ -96,6 +96,8 @@ class UserAccessRecord(BaseModel):
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
 
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
+
     active: bool = True
     notes: Optional[str] = None
     created_by: str
@@ -120,6 +122,8 @@ class UpsertUserRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
 
     notes: Optional[str] = None
     active: bool = True
@@ -833,12 +837,16 @@ async def upsert_user(
             if request.secretaria is not None:
                 update_dict["secretaria"] = request.secretaria
 
+            if request.secretaria_acesso is not None:
+                update_dict["secretaria_acesso"] = request.secretaria_acesso
+
             # Detectar se é full update ou apenas toggle de active
             is_full_update = (
                 request.email is not None
                 or request.nome is not None
                 or request.ocupacao is not None
                 or request.secretaria is not None
+                or request.secretaria_acesso is not None
                 or request.id_cras_list is not None
                 or request.id_escola_list is not None
             )
@@ -971,6 +979,7 @@ async def upsert_user(
             (
                 cpf, email, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
+                secretaria_acesso,
                 created_by, active, notes, created_at
             )
             VALUES (
@@ -982,6 +991,7 @@ async def upsert_user(
                 {_convert_id_list_to_bq_struct(request.id_ap_list)},
                 {_convert_id_list_to_bq_struct(request.id_cas_list)},
                 {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
+                @secretaria_acesso,
                 @created_by, @active, @notes, CURRENT_TIMESTAMP()
             )
             """
@@ -1000,6 +1010,7 @@ async def upsert_user(
                     "is_super_admin", "BOOL", request.is_super_admin
                 ),
                 bigquery.ScalarQueryParameter("permission", "STRING", permission_value),
+                bigquery.ScalarQueryParameter("secretaria_acesso", "STRING", request.secretaria_acesso),
                 bigquery.ScalarQueryParameter("created_by", "STRING", permissions.cpf),
                 bigquery.ScalarQueryParameter("active", "BOOL", request.active),
                 bigquery.ScalarQueryParameter("notes", "STRING", request.notes),
