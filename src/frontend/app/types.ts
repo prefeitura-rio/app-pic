@@ -145,15 +145,12 @@ export interface SmartFilterOptions {
   cohorts: FilterOptionItem[];
   status_list: FilterOptionItem[];
   situacoes: FilterOptionItem[];
-
-  // Equipamentos - podem ser null quando não-autorizados
-  cres?: FilterOptionItem[] | null;
-  aps?: FilterOptionItem[] | null;
-  cas_list?: FilterOptionItem[] | null;
-  cras?: FilterOptionItem[] | null;
-  escolas?: FilterOptionItem[] | null;
-  clinicas?: FilterOptionItem[] | null;
-
+  cres: FilterOptionItem[];
+  aps: FilterOptionItem[];
+  cas_list: FilterOptionItem[];
+  cras: FilterOptionItem[];
+  escolas: FilterOptionItem[];
+  clinicas: FilterOptionItem[];
   protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
   protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 

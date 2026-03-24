@@ -58,17 +58,12 @@ def filter_and_recalculate_by_secretaria(
     # 4. Recalcular situacao (ANTES de dropar colunas total_*)
     df_filtered = _recalculate_situacao(df_filtered)
 
-    # 5. Recalcular contadores por secretaria (renomeia e dropa colunas)
+    # 5. Recalcular contadores por secretaria (NÃO dropa mais, apenas recalcula)
     df_filtered = _recalculate_secretaria_counters(df_filtered, secretaria_acesso)
 
-    # 6. Recalcular frações (apenas para colunas que sobraram)
+    # 6. Recalcular frações
     df_filtered = _recalculate_fractions(df_filtered)
 
-    # 7. Dropar colunas de equipamentos não-autorizados
-    df_filtered = _drop_equipment_columns(df_filtered, secretaria_acesso)
-
-    # LOG: Colunas finais (INFO level para garantir que aparece)
-    logger.info(f"📋 Colunas finais após filtragem SME: {df_filtered.columns}")
     logger.info(f"✅ Filtrado: {len(df_filtered)} participantes com protocolos {secretaria_acesso}")
 
     return df_filtered
@@ -103,143 +98,128 @@ def _recalculate_secretaria_counters(
     secretaria_acesso: str
 ) -> pl.DataFrame:
     """
-    Mantém apenas colunas da secretaria autorizada, dropa o resto.
+    Recalcula contadores por secretaria e seta outras secretarias como null.
 
-    Para usuários com secretaria específica (SME, SMS, SMAS):
-    - SME: mantém apenas educacao_*, dropa saude_*, assistencia_*, total_*
-    - SMS: mantém apenas saude_*, dropa educacao_*, assistencia_*, total_*
-    - SMAS: mantém apenas assistencia_*, dropa educacao_*, saude_*, total_*
-
-    Para admin (TODOS), mantém todas as colunas.
+    PM confirmou que não há problema em usuários verem colunas null de outras secretarias.
     """
     # Se TODOS, não fazer nada - mantém todas as colunas
     if secretaria_acesso == "TODOS":
         return df
 
-    # Definir colunas de cada secretaria
-    educacao_cols = [
-        "educacao_protocolos_total", "educacao_protocolos_irregular",
-        "educacao_protocolos_atencao", "educacao_protocolos_regular",
-        "educacao_fracao"
-    ]
-    saude_cols = [
-        "saude_protocolos_total", "saude_protocolos_irregular",
-        "saude_protocolos_atencao", "saude_protocolos_regular",
-        "saude_fracao"
-    ]
-    assistencia_cols = [
-        "assistencia_protocolos_total", "assistencia_protocolos_irregular",
-        "assistencia_protocolos_atencao", "assistencia_protocolos_regular",
-        "assistencia_fracao"
-    ]
-
-    # Colunas totais que serão dropadas para usuários de secretaria específica
-    total_cols = [
-        "total_protocolos", "total_protocolos_irregular",
-        "total_protocolos_atencao", "total_protocolos_regular",
-        "total_fracao"
-    ]
-
     if secretaria_acesso == "SME":
-        logger.debug(f"📋 Colunas ANTES do processamento SME: {df.columns}")
-
-        # Renomear total_* para educacao_* (os valores já foram filtrados)
+        # Renomear total_* para educacao_* e setar outras secretarias como null
         df = df.with_columns([
             pl.col("total_protocolos").alias("educacao_protocolos_total"),
             pl.col("total_protocolos_irregular").alias("educacao_protocolos_irregular"),
             pl.col("total_protocolos_atencao").alias("educacao_protocolos_atencao"),
             pl.col("total_protocolos_regular").alias("educacao_protocolos_regular"),
+            # Setar outras secretarias como null
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_total"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_regular"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_total"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_regular"),
+            # Setar total como null também
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_regular"),
         ])
 
-        # Selecionar apenas colunas permitidas (exclui saude, assistencia, total)
-        cols_to_exclude = set(saude_cols + assistencia_cols + total_cols)
-        cols_to_keep = [c for c in df.columns if c not in cols_to_exclude]
-        logger.debug(f"📋 Mantendo {len(cols_to_keep)} colunas, excluindo {len(cols_to_exclude)} para SME")
-
-        df = df.select(cols_to_keep)
-        logger.debug(f"📋 Colunas DEPOIS do select SME: {df.columns}")
-
     elif secretaria_acesso == "SMS":
-        logger.debug(f"📋 Colunas ANTES do processamento SMS: {df.columns}")
-
-        # Renomear total_* para saude_*
+        # Renomear total_* para saude_* e setar outras secretarias como null
         df = df.with_columns([
             pl.col("total_protocolos").alias("saude_protocolos_total"),
             pl.col("total_protocolos_irregular").alias("saude_protocolos_irregular"),
             pl.col("total_protocolos_atencao").alias("saude_protocolos_atencao"),
             pl.col("total_protocolos_regular").alias("saude_protocolos_regular"),
+            # Setar outras secretarias como null
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_total"),
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_regular"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_total"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_regular"),
+            # Setar total como null também
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_regular"),
         ])
 
-        # Selecionar apenas colunas permitidas (exclui educacao, assistencia, total)
-        cols_to_exclude = set(educacao_cols + assistencia_cols + total_cols)
-        cols_to_keep = [c for c in df.columns if c not in cols_to_exclude]
-        logger.debug(f"📋 Mantendo {len(cols_to_keep)} colunas, excluindo {len(cols_to_exclude)} para SMS")
-
-        df = df.select(cols_to_keep)
-        logger.debug(f"📋 Colunas DEPOIS do select SMS: {df.columns}")
-
     elif secretaria_acesso == "SMAS":
-        logger.debug(f"📋 Colunas ANTES do processamento SMAS: {df.columns}")
-
-        # Renomear total_* para assistencia_*
+        # Renomear total_* para assistencia_* e setar outras secretarias como null
         df = df.with_columns([
             pl.col("total_protocolos").alias("assistencia_protocolos_total"),
             pl.col("total_protocolos_irregular").alias("assistencia_protocolos_irregular"),
             pl.col("total_protocolos_atencao").alias("assistencia_protocolos_atencao"),
             pl.col("total_protocolos_regular").alias("assistencia_protocolos_regular"),
+            # Setar outras secretarias como null
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_total"),
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_regular"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_total"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_regular"),
+            # Setar total como null também
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_irregular"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_atencao"),
+            pl.lit(None).cast(pl.Int64).alias("total_protocolos_regular"),
         ])
-
-        # Selecionar apenas colunas permitidas (exclui educacao, saude, total)
-        cols_to_exclude = set(educacao_cols + saude_cols + total_cols)
-        cols_to_keep = [c for c in df.columns if c not in cols_to_exclude]
-        logger.debug(f"📋 Mantendo {len(cols_to_keep)} colunas, excluindo {len(cols_to_exclude)} para SMAS")
-
-        df = df.select(cols_to_keep)
-        logger.debug(f"📋 Colunas DEPOIS do select SMAS: {df.columns}")
 
     return df
 
 
 def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Recalcula frações (ex: '2/5') apenas para colunas presentes no DataFrame.
-
-    Para usuários de secretaria específica, apenas a fração da secretaria
-    será calculada (ex: SME vê educacao_fracao, não total_fracao).
-
-    Para admin (TODOS), calcula todas as frações.
+    Recalcula frações (ex: '2/5') para todas as secretarias.
+    Se a coluna for null, a fração também será null.
     """
-    fractions_to_add = []
-
-    # Total - só calcular se a coluna existir (admin TODOS)
-    if "total_protocolos" in df.columns:
-        fractions_to_add.append(
-            (pl.col("total_protocolos_regular").cast(pl.Utf8) + "/" +
-             pl.col("total_protocolos").cast(pl.Utf8)).alias("total_fracao")
+    return df.with_columns([
+        # Total
+        pl.when(pl.col("total_protocolos").is_not_null())
+        .then(
+            pl.col("total_protocolos_regular").cast(pl.Utf8) + "/" +
+            pl.col("total_protocolos").cast(pl.Utf8)
         )
+        .otherwise(pl.lit(None))
+        .alias("total_fracao"),
 
-    # Educação - só calcular se a coluna existir
-    if "educacao_protocolos_total" in df.columns:
-        fractions_to_add.append(
-            (pl.col("educacao_protocolos_regular").cast(pl.Utf8) + "/" +
-             pl.col("educacao_protocolos_total").cast(pl.Utf8)).alias("educacao_fracao")
+        # Educação
+        pl.when(pl.col("educacao_protocolos_total").is_not_null())
+        .then(
+            pl.col("educacao_protocolos_regular").cast(pl.Utf8) + "/" +
+            pl.col("educacao_protocolos_total").cast(pl.Utf8)
         )
+        .otherwise(pl.lit(None))
+        .alias("educacao_fracao"),
 
-    # Saúde - só calcular se a coluna existir
-    if "saude_protocolos_total" in df.columns:
-        fractions_to_add.append(
-            (pl.col("saude_protocolos_regular").cast(pl.Utf8) + "/" +
-             pl.col("saude_protocolos_total").cast(pl.Utf8)).alias("saude_fracao")
+        # Saúde
+        pl.when(pl.col("saude_protocolos_total").is_not_null())
+        .then(
+            pl.col("saude_protocolos_regular").cast(pl.Utf8) + "/" +
+            pl.col("saude_protocolos_total").cast(pl.Utf8)
         )
+        .otherwise(pl.lit(None))
+        .alias("saude_fracao"),
 
-    # Assistência - só calcular se a coluna existir
-    if "assistencia_protocolos_total" in df.columns:
-        fractions_to_add.append(
-            (pl.col("assistencia_protocolos_regular").cast(pl.Utf8) + "/" +
-             pl.col("assistencia_protocolos_total").cast(pl.Utf8)).alias("assistencia_fracao")
+        # Assistência
+        pl.when(pl.col("assistencia_protocolos_total").is_not_null())
+        .then(
+            pl.col("assistencia_protocolos_regular").cast(pl.Utf8) + "/" +
+            pl.col("assistencia_protocolos_total").cast(pl.Utf8)
         )
-
-    return df.with_columns(fractions_to_add)
+        .otherwise(pl.lit(None))
+        .alias("assistencia_fracao"),
+    ])
 
 
 def _recalculate_situacao(df: pl.DataFrame) -> pl.DataFrame:
@@ -256,107 +236,22 @@ def _recalculate_situacao(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
 
-def _drop_equipment_columns(
-    df: pl.DataFrame,
-    secretaria_acesso: str
-) -> pl.DataFrame:
-    """
-    Dropa colunas de equipamentos que não pertencem à secretaria do usuário.
-
-    Para usuários com secretaria específica (SME, SMS, SMAS):
-    - SME: mantém apenas id_cre, nome_cre, id_escola, nome_escola
-    - SMS: mantém apenas id_ap, nome_ap, id_clinica_familia, nome_clinica_familia
-    - SMAS: mantém apenas id_cras, nome_cras, id_cas, nome_cas
-
-    Para admin (TODOS), mantém todas as colunas.
-    """
-    if secretaria_acesso == "TODOS":
-        return df
-
-    logger.debug(f"📋 Colunas ANTES do drop de equipamentos: {df.columns}")
-
-    # Colunas de equipamentos por secretaria
-    educacao_equipment = ["id_cre", "nome_cre", "id_escola", "nome_escola"]
-    saude_equipment = ["id_ap", "nome_ap", "id_clinica_familia", "nome_clinica_familia"]
-    assistencia_equipment = ["id_cras", "nome_cras", "id_cas", "nome_cas"]
-
-    cols_to_drop = []
-
-    if secretaria_acesso == "SME":
-        # Dropar equipamentos de saúde e assistência
-        cols_to_drop = [c for c in saude_equipment + assistencia_equipment if c in df.columns]
-    elif secretaria_acesso == "SMS":
-        # Dropar equipamentos de educação e assistência
-        cols_to_drop = [c for c in educacao_equipment + assistencia_equipment if c in df.columns]
-    elif secretaria_acesso == "SMAS":
-        # Dropar equipamentos de educação e saúde
-        cols_to_drop = [c for c in educacao_equipment + saude_equipment if c in df.columns]
-
-    logger.debug(f"📋 Colunas de equipamentos a excluir para {secretaria_acesso}: {cols_to_drop}")
-
-    if cols_to_drop:
-        # Usar select para garantir que as colunas sejam removidas do schema
-        cols_to_exclude = set(cols_to_drop)
-        cols_to_keep = [c for c in df.columns if c not in cols_to_exclude]
-        df = df.select(cols_to_keep)
-        logger.debug(f"🗑️  Removed {len(cols_to_drop)} equipment columns for {secretaria_acesso} user")
-
-    logger.debug(f"📋 Colunas DEPOIS da remoção de equipamentos: {df.columns}")
-
-    return df
-
-
 def filter_equipment_options_by_secretaria(
     filter_options: Dict[str, List[Any]],
     secretaria_acesso: Optional[str]
 ) -> Dict[str, List[Any]]:
     """
-    Filtra as opções de equipamentos baseado na secretaria_acesso do usuário.
+    NÃO filtra mais equipamentos por secretaria.
 
-    Retorna listas vazias para equipamentos que não pertencem à secretaria:
-    - SME: mantém apenas cres, escolas
-    - SMS: mantém apenas aps, clinicas
-    - SMAS: mantém apenas cras, cas_list
-    - TODOS ou None: mantém todos
+    PM confirmou que usuários podem ver filtros de todas as secretarias.
+    Esta função agora apenas retorna as opções sem modificá-las.
 
     Args:
         filter_options: Dicionário com as opções de filtros
         secretaria_acesso: SME, SMS, SMAS, TODOS, ou None
 
     Returns:
-        Dicionário filtrado com listas vazias para equipamentos não-relacionados
+        Dicionário sem modificações
     """
-    if not secretaria_acesso or secretaria_acesso == "TODOS":
-        # Sem filtragem - retorna tudo
-        return filter_options
-
-    # Mapeamento de secretaria para equipamentos permitidos
-    equipment_mapping = {
-        "SME": {"cres", "escolas"},
-        "SMS": {"aps", "clinicas"},
-        "SMAS": {"cras", "cas_list"},
-    }
-
-    allowed_equipment = equipment_mapping.get(secretaria_acesso, set())
-
-    # Lista de todos os equipamentos possíveis
-    all_equipment = {"cres", "escolas", "aps", "clinicas", "cras", "cas_list"}
-
-    # Equipamentos a serem zerados
-    equipment_to_clear = all_equipment - allowed_equipment
-
-    # Criar cópia do dict original
-    filtered_options = filter_options.copy()
-
-    # Setar para None equipamentos não-relacionados (serão excluídos da API)
-    for equipment in equipment_to_clear:
-        if equipment in filtered_options:
-            filtered_options[equipment] = None
-            logger.debug(f"🚫 Set {equipment} to None (not allowed for {secretaria_acesso})")
-
-    logger.info(
-        f"🔧 Equipment filters adjusted for {secretaria_acesso}: "
-        f"allowed={allowed_equipment}, cleared={equipment_to_clear}"
-    )
-
-    return filtered_options
+    # Retornar sem modificações
+    return filter_options

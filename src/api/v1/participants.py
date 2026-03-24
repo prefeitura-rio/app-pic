@@ -183,8 +183,6 @@ async def get_participants(
 
         # Converter DataFrame para JSON e retornar resposta
         json_start = time.perf_counter()
-        # LOG: Verificar colunas antes da serialização
-        logger.info(f"📋 Colunas do DataFrame antes de serializar para JSON: {df_data.columns}")
         data_json = DataManager.df_to_json(df_data)
         json_time = time.perf_counter() - json_start
 

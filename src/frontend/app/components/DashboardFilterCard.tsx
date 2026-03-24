@@ -268,7 +268,7 @@ const DashboardFilterCardComponent = ({
             />
 
             {/* AP (Saúde) - Multi-select */}
-            {filteredOptions.aps.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.ap)
@@ -286,7 +286,7 @@ const DashboardFilterCardComponent = ({
             )}
 
             {/* CRE (Educação) - Multi-select */}
-            {filteredOptions.cres.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.cre)
@@ -304,7 +304,7 @@ const DashboardFilterCardComponent = ({
             )}
 
             {/* CAS (Assistência Social) - Multi-select */}
-            {filteredOptions.cas_list.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.cas)

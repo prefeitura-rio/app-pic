@@ -117,6 +117,24 @@ async def get_dashboard_metrics(
     logger.info(f"🔑 Permissions: {per_log}")
     logger.info(f"☰ Filters: {filters_dict}")
 
+    # Dashboard só para admin TODOS (dados pré-agregados não podem ser filtrados por secretaria)
+    # Retornar dashboard vazio para secretarias específicas (frontend esconde a aba)
+    if permissions and permissions.secretaria_acesso and permissions.secretaria_acesso != "TODOS":
+        logger.warning(f"⚠️ Dashboard não disponível para secretaria_acesso: {permissions.secretaria_acesso}. Retornando vazio.")
+        empty_dashboard = _create_empty_dashboard()
+        return PaginatedResponse(
+            meta={
+                "total": 0,
+                "page": 1,
+                "page_size": 0,
+                "total_pages": 0,
+                "total_rows": 0,
+                "cache_hit": False,
+            },
+            data=[empty_dashboard],
+            filters={},
+        )
+
     try:
         start_time = time.perf_counter()
 

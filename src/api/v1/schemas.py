@@ -86,8 +86,6 @@ class FilterOptionItem(BaseModel):
 class SmartFilterOptions(BaseModel):
     """Opções de filtros disponíveis baseadas nos dados filtrados"""
 
-    model_config = {"exclude_none": True}  # Excluir campos None da serialização
-
     # Filtros de participantes
     bairros: List[FilterOptionItem] = []
     subprefeituras: List[FilterOptionItem] = []
@@ -96,15 +94,12 @@ class SmartFilterOptions(BaseModel):
     cohorts: List[FilterOptionItem] = []
     status_list: List[FilterOptionItem] = []
     situacoes: List[FilterOptionItem] = []
-
-    # Equipamentos - Optional para permitir None quando não-autorizados
-    cres: Optional[List[FilterOptionItem]] = []
-    aps: Optional[List[FilterOptionItem]] = []
-    cas_list: Optional[List[FilterOptionItem]] = []
-    cras: Optional[List[FilterOptionItem]] = []
-    escolas: Optional[List[FilterOptionItem]] = []
-    clinicas: Optional[List[FilterOptionItem]] = []
-
+    cres: List[FilterOptionItem] = []
+    aps: List[FilterOptionItem] = []
+    cas_list: List[FilterOptionItem] = []
+    cras: List[FilterOptionItem] = []
+    escolas: List[FilterOptionItem] = []
+    clinicas: List[FilterOptionItem] = []
     protocolo_descricoes: List[FilterOptionItem] = []  # Descrições de protocolos
     protocolo_status_list: List[FilterOptionItem] = []  # Status de protocolos
 

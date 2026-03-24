@@ -324,7 +324,7 @@ const FilterCardComponent = ({
 
             {/* ASSISTÊNCIA SOCIAL */}
             {/* CAS - Multi-select */}
-            {filteredOptions.cas_list.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray((filters as any).cas)
@@ -342,7 +342,7 @@ const FilterCardComponent = ({
             )}
 
             {/* CRAS - Multi-select */}
-            {filteredOptions.cras.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray((filters as any).cras)
@@ -361,7 +361,7 @@ const FilterCardComponent = ({
 
             {/* EDUCAÇÃO */}
             {/* CRE (Coordenadoria Regional de Educação) - Multi-select */}
-            {filteredOptions.cres.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray((filters as any).cre)
@@ -379,7 +379,7 @@ const FilterCardComponent = ({
             )}
 
             {/* Escolas - Multi-select */}
-            {filteredOptions.escolas.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray((filters as any).escola)
@@ -398,7 +398,7 @@ const FilterCardComponent = ({
 
             {/* SAÚDE */}
             {/* AP (Área Programática) - Multi-select */}
-            {filteredOptions.aps.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray((filters as any).ap)
@@ -416,7 +416,7 @@ const FilterCardComponent = ({
             )}
 
             {/* Clínicas da Família - Multi-select */}
-            {filteredOptions.clinicas.length > 0 && (
+            { (
               <VirtualizedMultiSelect
                 value={
                   Array.isArray((filters as any).clinica)
