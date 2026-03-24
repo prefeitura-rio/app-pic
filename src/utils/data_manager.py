@@ -7,10 +7,7 @@ from src.utils.bigquery import execute_query
 from src.utils.log import logger
 from src.utils.cache_manager import query_cache
 from src.utils.text_utils import TextNormalizer
-from src.utils.secretaria_access import (
-    filter_and_recalculate_by_secretaria,
-    filter_equipment_options_by_secretaria,
-)
+from src.utils.secretaria_access import filter_and_recalculate_by_secretaria
 from src.utils.data_manager_config import (
     DataManagerConfig as config,
     DataManagerError,
@@ -286,15 +283,10 @@ class DataManager:
 
             if can_use_precomputed:
                 # Converter dict para SmartFilterOptions (instant)
-                # Mas ainda aplicar filtro de equipamentos por secretaria
-                filtered_precomputed = filter_equipment_options_by_secretaria(
-                    precomputed_filter_options,
-                    user_permissions.secretaria_acesso if user_permissions else None
-                )
                 filter_options_dict = SmartFilterOptions(
                     **{
                         k: [FilterOptionItem(**opt) for opt in v]
-                        for k, v in filtered_precomputed.items()
+                        for k, v in precomputed_filter_options.items()
                     }
                 )
                 logger.info("⚡ Using precomputed filter options (instant, with equipment filtering)")
@@ -309,17 +301,6 @@ class DataManager:
                     filter_columns_config=filter_columns_config,
                     active_filters=filters_dict,  # Filtros atualmente ativos
                 )
-
-            # Aplicar filtro de equipamentos por secretaria_acesso
-            # Zera listas de equipamentos que não pertencem à secretaria do usuário
-            if filter_options_dict and user_permissions:
-                # Converter SmartFilterOptions para dict, filtrar, e converter de volta
-                filter_opts_dict = filter_options_dict.model_dump()
-                filter_opts_dict = filter_equipment_options_by_secretaria(
-                    filter_opts_dict,
-                    user_permissions.secretaria_acesso
-                )
-                filter_options_dict = SmartFilterOptions(**filter_opts_dict)
 
             filter_opts_time = time.perf_counter() - filter_opts_start
             profiling.filter_options_s = round(

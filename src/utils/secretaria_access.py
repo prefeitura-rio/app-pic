@@ -3,8 +3,57 @@ Módulo para filtragem e recálculo de protocolos baseado em secretaria_acesso.
 Centraliza toda a lógica de governança por secretaria em um único local.
 """
 import polars as pl
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 from src.utils.log import logger
+from src.utils.constants import (
+    SECRETARIA_TODOS,
+    SECRETARIA_NULL,
+    SECRETARIA_SME,
+    SECRETARIA_SMS,
+    SECRETARIA_SMAS,
+    SECRETARIA_COLUMN_PREFIX,
+)
+
+# ============================================================================
+# CONSTANTES LOCAIS
+# ============================================================================
+
+# Tipos de contadores (NOTA: coluna total é "total_protocolos", sem sufixo _total)
+COUNTER_SUFFIXES = ["", "_irregular", "_atencao", "_regular"]
+
+# ============================================================================
+# FUNÇÕES PÚBLICAS
+# ============================================================================
+
+
+def get_allowed_secretaria_options(
+    user_is_super_admin: bool,
+    user_secretaria_acesso: Optional[str]
+) -> List[str]:
+    """
+    Retorna lista de valores de secretaria_acesso que o usuário pode atribuir.
+
+    Args:
+        user_is_super_admin: Se o usuário é super admin
+        user_secretaria_acesso: Valor de secretaria_acesso do usuário
+
+    Returns:
+        Lista de valores permitidos (NULL, TODOS, SME, SMS, SMAS)
+    """
+    # Super admin pode atribuir tudo
+    if user_is_super_admin:
+        return [SECRETARIA_NULL, SECRETARIA_TODOS, SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
+
+    # Admin com TODOS pode atribuir tudo
+    if user_secretaria_acesso == SECRETARIA_TODOS:
+        return [SECRETARIA_NULL, SECRETARIA_TODOS, SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
+
+    # Admin com secretaria específica pode atribuir NULL ou sua secretaria
+    if user_secretaria_acesso in SECRETARIA_COLUMN_PREFIX:
+        return [SECRETARIA_NULL, user_secretaria_acesso]
+
+    # Admin sem secretaria_acesso pode atribuir apenas NULL
+    return [SECRETARIA_NULL]
 
 
 def filter_and_recalculate_by_secretaria(
@@ -22,7 +71,7 @@ def filter_and_recalculate_by_secretaria(
         DataFrame filtrado com contadores recalculados
     """
     # TODOS = vê tudo (sem filtragem)
-    if secretaria_acesso == "TODOS":
+    if secretaria_acesso == SECRETARIA_TODOS:
         return df
 
     # IMPORTANTE: Só aplicar se o DataFrame tiver protocolo_listagem (tabela dashboard não tem)
@@ -31,7 +80,7 @@ def filter_and_recalculate_by_secretaria(
         return df
 
     # NULL ou vazio = sem acesso a protocolos (remover TODOS)
-    if not secretaria_acesso or secretaria_acesso == "NULL":
+    if not secretaria_acesso or secretaria_acesso == SECRETARIA_NULL:
         logger.info(f"🚫 Usuário sem acesso a protocolos - removendo todos os protocolos")
         # Esvaziar lista de protocolos mantendo o schema (filtrar com condição impossível)
         df_filtered = df.with_columns([
@@ -129,39 +178,29 @@ def _recalculate_secretaria_counters(
 
     PM confirmou que não há problema em usuários verem colunas null de outras secretarias.
     """
-    # Mapeamento de secretaria_acesso para prefixo de coluna
-    SECRETARIA_MAP = {
-        "SME": "educacao",
-        "SMS": "saude",
-        "SMAS": "assistencia",
-    }
-
-    # Tipos de contadores (NOTA: coluna total é "total_protocolos", sem sufixo _total)
-    COUNTER_SUFFIXES = ["", "_irregular", "_atencao", "_regular"]
-
     # Se TODOS, não fazer nada - mantém todas as colunas
-    if secretaria_acesso == "TODOS":
+    if secretaria_acesso == SECRETARIA_TODOS:
         return df
 
     # Construir lista de colunas dinamicamente
     columns = []
 
     # Se NULL (sem acesso), setar TODAS as colunas como null
-    if not secretaria_acesso or secretaria_acesso == "NULL":
+    if not secretaria_acesso or secretaria_acesso == SECRETARIA_NULL:
         # Setar contadores totais como null
         for suffix in COUNTER_SUFFIXES:
             columns.append(pl.lit(None).cast(pl.Int64).alias(f"total_protocolos{suffix}"))
 
         # Setar todas as secretarias como null
-        for prefix in SECRETARIA_MAP.values():
+        for prefix in SECRETARIA_COLUMN_PREFIX.values():
             for suffix in COUNTER_SUFFIXES:
                 # Para secretarias, o primeiro é sempre _total
                 sec_suffix = "_total" if suffix == "" else suffix
                 columns.append(pl.lit(None).cast(pl.Int64).alias(f"{prefix}_protocolos{sec_suffix}"))
 
     # Secretaria específica (SME, SMS, SMAS)
-    elif secretaria_acesso in SECRETARIA_MAP:
-        active_prefix = SECRETARIA_MAP[secretaria_acesso]
+    elif secretaria_acesso in SECRETARIA_COLUMN_PREFIX:
+        active_prefix = SECRETARIA_COLUMN_PREFIX[secretaria_acesso]
 
         # Renomear total_protocolos* para a secretaria ativa
         for suffix in COUNTER_SUFFIXES:
@@ -170,7 +209,7 @@ def _recalculate_secretaria_counters(
             columns.append(pl.col(f"total_protocolos{suffix}").alias(f"{active_prefix}_protocolos{sec_suffix}"))
 
         # Setar outras secretarias como null
-        for sec_code, prefix in SECRETARIA_MAP.items():
+        for sec_code, prefix in SECRETARIA_COLUMN_PREFIX.items():
             if sec_code != secretaria_acesso:  # Pular a secretaria ativa
                 for suffix in COUNTER_SUFFIXES:
                     sec_suffix = "_total" if suffix == "" else suffix
@@ -188,43 +227,33 @@ def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
     Recalcula frações (ex: '2/5') para todas as secretarias.
     Se a coluna for null, a fração também será null.
     """
-    return df.with_columns([
-        # Total
+    # Construir colunas de fração dinamicamente para evitar repetição
+    fraction_columns = []
+
+    # Total
+    fraction_columns.append(
         pl.when(pl.col("total_protocolos").is_not_null())
         .then(
             pl.col("total_protocolos_regular").cast(pl.Utf8) + "/" +
             pl.col("total_protocolos").cast(pl.Utf8)
         )
         .otherwise(pl.lit(None).cast(pl.Utf8))
-        .alias("total_fracao"),
+        .alias("total_fracao")
+    )
 
-        # Educação
-        pl.when(pl.col("educacao_protocolos_total").is_not_null())
-        .then(
-            pl.col("educacao_protocolos_regular").cast(pl.Utf8) + "/" +
-            pl.col("educacao_protocolos_total").cast(pl.Utf8)
+    # Frações por secretaria (usando loop para evitar repetição)
+    for prefix in SECRETARIA_COLUMN_PREFIX.values():
+        fraction_columns.append(
+            pl.when(pl.col(f"{prefix}_protocolos_total").is_not_null())
+            .then(
+                pl.col(f"{prefix}_protocolos_regular").cast(pl.Utf8) + "/" +
+                pl.col(f"{prefix}_protocolos_total").cast(pl.Utf8)
+            )
+            .otherwise(pl.lit(None).cast(pl.Utf8))
+            .alias(f"{prefix}_fracao")
         )
-        .otherwise(pl.lit(None).cast(pl.Utf8))
-        .alias("educacao_fracao"),
 
-        # Saúde
-        pl.when(pl.col("saude_protocolos_total").is_not_null())
-        .then(
-            pl.col("saude_protocolos_regular").cast(pl.Utf8) + "/" +
-            pl.col("saude_protocolos_total").cast(pl.Utf8)
-        )
-        .otherwise(pl.lit(None).cast(pl.Utf8))
-        .alias("saude_fracao"),
-
-        # Assistência
-        pl.when(pl.col("assistencia_protocolos_total").is_not_null())
-        .then(
-            pl.col("assistencia_protocolos_regular").cast(pl.Utf8) + "/" +
-            pl.col("assistencia_protocolos_total").cast(pl.Utf8)
-        )
-        .otherwise(pl.lit(None).cast(pl.Utf8))
-        .alias("assistencia_fracao"),
-    ])
+    return df.with_columns(fraction_columns)
 
 
 def _recalculate_situacao(df: pl.DataFrame) -> pl.DataFrame:
@@ -239,24 +268,3 @@ def _recalculate_situacao(df: pl.DataFrame) -> pl.DataFrame:
         .otherwise(pl.lit("Atenção"))
         .alias("situacao")
     ])
-
-
-def filter_equipment_options_by_secretaria(
-    filter_options: Dict[str, List[Any]],
-    secretaria_acesso: Optional[str]
-) -> Dict[str, List[Any]]:
-    """
-    NÃO filtra mais equipamentos por secretaria.
-
-    PM confirmou que usuários podem ver filtros de todas as secretarias.
-    Esta função agora apenas retorna as opções sem modificá-las.
-
-    Args:
-        filter_options: Dicionário com as opções de filtros
-        secretaria_acesso: SME, SMS, SMAS, TODOS, ou None
-
-    Returns:
-        Dicionário sem modificações
-    """
-    # Retornar sem modificações
-    return filter_options

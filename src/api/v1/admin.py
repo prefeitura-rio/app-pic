@@ -297,22 +297,22 @@ def validate_equipment_secretaria_consistency(
     - secretaria_acesso = "TODOS" → Pode ter qualquer equipamento
     - secretaria_acesso = "NULL" ou None → Pode ter qualquer equipamento (sem acesso a protocolos)
     """
+    from src.utils.constants import (
+        SECRETARIA_NULL,
+        SECRETARIA_TODOS,
+        SECRETARIA_EQUIPMENT,
+        SECRETARIA_EQUIPMENT_LABELS,
+    )
+
     # Se não tem secretaria_acesso definido, permitir qualquer equipamento
-    if not target_secretaria_acesso or target_secretaria_acesso == "NULL" or target_secretaria_acesso == "TODOS":
+    if not target_secretaria_acesso or target_secretaria_acesso == SECRETARIA_NULL or target_secretaria_acesso == SECRETARIA_TODOS:
         return
 
     logger.info(f"🔍 Validando consistência equipamentos <-> secretaria_acesso")
     logger.info(f"   secretaria_acesso: {target_secretaria_acesso}")
 
-    # Mapear quais equipamentos cada secretaria pode ter
-    allowed_equipment = {
-        "SME": ["id_cre_list", "id_escola_list"],
-        "SMS": ["id_ap_list", "id_clinica_familia_list"],
-        "SMAS": ["id_cas_list", "id_cras_list"],
-    }
-
     # Equipamentos permitidos para essa secretaria
-    allowed = allowed_equipment.get(target_secretaria_acesso, [])
+    allowed = SECRETARIA_EQUIPMENT.get(target_secretaria_acesso, [])
 
     # Verificar se algum equipamento não permitido foi atribuído
     for id_type, id_list in target_ids.items():
@@ -320,37 +320,24 @@ def validate_equipment_secretaria_consistency(
             if id_type not in allowed:
                 # Mapear nome amigável do equipamento
                 equipment_names = {
-                    "id_cre_list": "CRE (Educação)",
-                    "id_escola_list": "Escolas (Educação)",
-                    "id_ap_list": "AP (Saúde)",
-                    "id_clinica_familia_list": "Clínicas (Saúde)",
-                    "id_cas_list": "CAS (Assistência Social)",
-                    "id_cras_list": "CRAS (Assistência Social)",
-                }
-
-                secretaria_names = {
-                    "SME": "Educação",
-                    "SMS": "Saúde",
-                    "SMAS": "Assistência Social",
-                }
-
-                allowed_equipment_names = {
-                    "SME": "CRE e Escolas",
-                    "SMS": "AP e Clínicas",
-                    "SMAS": "CAS e CRAS",
+                    "id_cre_list": "CRE",
+                    "id_escola_list": "Escolas",
+                    "id_ap_list": "AP",
+                    "id_clinica_familia_list": "Clínicas",
+                    "id_cas_list": "CAS",
+                    "id_cras_list": "CRAS",
                 }
 
                 equipment_name = equipment_names.get(id_type, id_type)
-                secretaria_name = secretaria_names.get(target_secretaria_acesso, target_secretaria_acesso)
-                allowed_names = allowed_equipment_names.get(target_secretaria_acesso, "nenhum equipamento")
+                allowed_names = SECRETARIA_EQUIPMENT_LABELS.get(target_secretaria_acesso, "nenhum equipamento")
 
                 logger.warning(
                     f"   ❌ BLOQUEADO: Tentando atribuir {equipment_name} "
-                    f"para usuário com acesso a protocolos de {secretaria_name}"
+                    f"para usuário com acesso {target_secretaria_acesso}"
                 )
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Inconsistência: Não é permitido atribuir {equipment_name} para usuário com acesso a protocolos de {secretaria_name}. "
+                    detail=f"Inconsistência: Não é permitido atribuir {equipment_name} para usuário com acesso {target_secretaria_acesso}. "
                     f"Usuários com acesso {target_secretaria_acesso} só podem ter: {allowed_names}. "
                     f"Remova os equipamentos incompatíveis ou altere o acesso a protocolos.",
                 )
@@ -829,26 +816,19 @@ async def list_users(
 
         # Filtrar opções de secretaria_acesso baseado nas permissões do usuário
         if filter_options and hasattr(filter_options, 'secretaria_acesso_list'):
-            user_secretaria = permissions.secretaria_acesso
+            from src.utils.secretaria_access import get_allowed_secretaria_options
 
-            # Super admin vê todas as opções
-            if permissions.is_super_admin:
-                pass  # Mantém todas as opções
-            # Admin com TODOS vê todas as opções
-            elif user_secretaria == "TODOS":
-                pass  # Mantém todas as opções
-            # Admin com secretaria específica vê apenas NULL e sua secretaria
-            elif user_secretaria in ["SME", "SMS", "SMAS"]:
-                filter_options.secretaria_acesso_list = [
-                    opt for opt in filter_options.secretaria_acesso_list
-                    if opt.id == "NULL" or opt.id == user_secretaria
-                ]
-            # Admin sem secretaria_acesso vê apenas NULL
-            else:
-                filter_options.secretaria_acesso_list = [
-                    opt for opt in filter_options.secretaria_acesso_list
-                    if opt.id == "NULL"
-                ]
+            # Obter valores permitidos para esse admin
+            allowed_values = get_allowed_secretaria_options(
+                permissions.is_super_admin,
+                permissions.secretaria_acesso
+            )
+
+            # Filtrar opções disponíveis
+            filter_options.secretaria_acesso_list = [
+                opt for opt in filter_options.secretaria_acesso_list
+                if opt.id in allowed_values
+            ]
 
         return PaginatedResponse(
             data=users,
