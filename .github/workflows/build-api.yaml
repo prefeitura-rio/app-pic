@@ -45,7 +45,17 @@ jobs:
           echo "TAG1=$TAG1" >> $GITHUB_ENV
           echo "TAG2=$TAG2" >> $GITHUB_ENV
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Docker Image for Staging
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag $IMAGE_NAME:$TAG1 \
+            --tag $IMAGE_NAME:$TAG2 \
+            --push .
+
+      - name: Build and Push Docker Image for Production
+        if: github.ref == 'refs/heads/main'
         run: |
           docker buildx build \
             --platform linux/amd64 \

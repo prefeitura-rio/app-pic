@@ -500,9 +500,11 @@ export interface UpdateUserRequest {
   id_cras_list?: IdWithName[] | null;
   id_escola_list?: IdWithName[] | null;
   id_cre_list?: IdWithName[] | null;
-  id_ap_list?: IdWithName[] | null; 
+  id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+
+  secretaria_acesso?: string | null;
 
   notes?: string | null;
   active?: boolean | null;
