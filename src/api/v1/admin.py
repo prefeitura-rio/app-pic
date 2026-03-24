@@ -283,6 +283,81 @@ def _filter_manageable_users(
     return df_filtered
 
 
+def validate_equipment_secretaria_consistency(
+    target_ids: Dict[str, List[IdWithName]],
+    target_secretaria_acesso: Optional[str]
+):
+    """
+    Valida consistência entre equipamentos atribuídos e secretaria_acesso.
+
+    REGRAS:
+    - secretaria_acesso = "SME" → Só pode ter CRE e Escolas
+    - secretaria_acesso = "SMS" → Só pode ter AP e Clínicas
+    - secretaria_acesso = "SMAS" → Só pode ter CAS e CRAS
+    - secretaria_acesso = "TODOS" → Pode ter qualquer equipamento
+    - secretaria_acesso = "NULL" ou None → Pode ter qualquer equipamento (sem acesso a protocolos)
+    """
+    # Se não tem secretaria_acesso definido, permitir qualquer equipamento
+    if not target_secretaria_acesso or target_secretaria_acesso == "NULL" or target_secretaria_acesso == "TODOS":
+        return
+
+    logger.info(f"🔍 Validando consistência equipamentos <-> secretaria_acesso")
+    logger.info(f"   secretaria_acesso: {target_secretaria_acesso}")
+
+    # Mapear quais equipamentos cada secretaria pode ter
+    allowed_equipment = {
+        "SME": ["id_cre_list", "id_escola_list"],
+        "SMS": ["id_ap_list", "id_clinica_familia_list"],
+        "SMAS": ["id_cas_list", "id_cras_list"],
+    }
+
+    # Equipamentos permitidos para essa secretaria
+    allowed = allowed_equipment.get(target_secretaria_acesso, [])
+
+    # Verificar se algum equipamento não permitido foi atribuído
+    for id_type, id_list in target_ids.items():
+        if id_list and len(id_list) > 0:  # Se tem equipamentos atribuídos
+            if id_type not in allowed:
+                # Mapear nome amigável do equipamento
+                equipment_names = {
+                    "id_cre_list": "CRE (Educação)",
+                    "id_escola_list": "Escolas (Educação)",
+                    "id_ap_list": "AP (Saúde)",
+                    "id_clinica_familia_list": "Clínicas (Saúde)",
+                    "id_cas_list": "CAS (Assistência Social)",
+                    "id_cras_list": "CRAS (Assistência Social)",
+                }
+
+                secretaria_names = {
+                    "SME": "Educação",
+                    "SMS": "Saúde",
+                    "SMAS": "Assistência Social",
+                }
+
+                allowed_equipment_names = {
+                    "SME": "CRE e Escolas",
+                    "SMS": "AP e Clínicas",
+                    "SMAS": "CAS e CRAS",
+                }
+
+                equipment_name = equipment_names.get(id_type, id_type)
+                secretaria_name = secretaria_names.get(target_secretaria_acesso, target_secretaria_acesso)
+                allowed_names = allowed_equipment_names.get(target_secretaria_acesso, "nenhum equipamento")
+
+                logger.warning(
+                    f"   ❌ BLOQUEADO: Tentando atribuir {equipment_name} "
+                    f"para usuário com acesso a protocolos de {secretaria_name}"
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Inconsistência: Não é permitido atribuir {equipment_name} para usuário com acesso a protocolos de {secretaria_name}. "
+                    f"Usuários com acesso {target_secretaria_acesso} só podem ter: {allowed_names}. "
+                    f"Remova os equipamentos incompatíveis ou altere o acesso a protocolos.",
+                )
+
+    logger.info(f"   ✅ Consistência OK")
+
+
 def validate_secretaria_acesso_permission(
     admin_permissions: UserPermissions, target_secretaria_acesso: Optional[str]
 ):
@@ -878,6 +953,11 @@ async def upsert_user(
     if request.secretaria_acesso is not None:
         validate_secretaria_acesso_permission(permissions, request.secretaria_acesso)
 
+    # Validar consistência entre equipamentos e secretaria_acesso
+    # Importante: validar TODOS os equipamentos (mesmo que seja None), porque
+    # estamos verificando se há inconsistência entre o que foi atribuído
+    validate_equipment_secretaria_consistency(target_ids_dict, request.secretaria_acesso)
+
     try:
         if user_exists:
             # UPDATE - Dinâmico (só atualiza campos não nulos)
@@ -901,7 +981,8 @@ async def upsert_user(
                 update_dict["secretaria"] = request.secretaria
 
             if request.secretaria_acesso is not None:
-                update_dict["secretaria_acesso"] = request.secretaria_acesso
+                # Converter "NULL" (string) para None (SQL NULL)
+                update_dict["secretaria_acesso"] = None if request.secretaria_acesso == "NULL" else request.secretaria_acesso
 
             # Detectar se é full update ou apenas toggle de active
             is_full_update = (
@@ -1060,6 +1141,9 @@ async def upsert_user(
             """
 
             # Build parameters list
+            # Converter "NULL" (string) para None (SQL NULL) para secretaria_acesso
+            secretaria_acesso_value = None if request.secretaria_acesso == "NULL" else request.secretaria_acesso
+
             parameters = [
                 bigquery.ScalarQueryParameter("cpf", "STRING", cpf),
                 bigquery.ScalarQueryParameter("email", "STRING", request.email),
@@ -1073,7 +1157,7 @@ async def upsert_user(
                     "is_super_admin", "BOOL", request.is_super_admin
                 ),
                 bigquery.ScalarQueryParameter("permission", "STRING", permission_value),
-                bigquery.ScalarQueryParameter("secretaria_acesso", "STRING", request.secretaria_acesso),
+                bigquery.ScalarQueryParameter("secretaria_acesso", "STRING", secretaria_acesso_value),
                 bigquery.ScalarQueryParameter("created_by", "STRING", permissions.cpf),
                 bigquery.ScalarQueryParameter("active", "BOOL", request.active),
                 bigquery.ScalarQueryParameter("notes", "STRING", request.notes),
@@ -1301,6 +1385,7 @@ class BatchPermissionsRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    secretaria_acesso: Optional[str] = None
 
 
 class BatchPermissionsError(BaseModel):
@@ -1557,6 +1642,13 @@ async def batch_update_permissions(
     if target_ids_to_validate:
         validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
 
+    # Validar secretaria_acesso (se foi enviado)
+    if request.secretaria_acesso is not None:
+        validate_secretaria_acesso_permission(permissions, request.secretaria_acesso)
+
+    # Validar consistência entre equipamentos e secretaria_acesso
+    validate_equipment_secretaria_consistency(target_ids_dict, request.secretaria_acesso)
+
     # Calcular permission string
     permission_value = calculate_permission(request.is_admin, False)
 
@@ -1567,6 +1659,12 @@ async def batch_update_permissions(
     id_ap_sql = _convert_id_list_to_bq_struct(request.id_ap_list)
     id_cas_sql = _convert_id_list_to_bq_struct(request.id_cas_list)
     id_clinica_sql = _convert_id_list_to_bq_struct(request.id_clinica_familia_list)
+
+    # Preparar secretaria_acesso para SQL (converter "NULL" string para SQL NULL)
+    if not request.secretaria_acesso or request.secretaria_acesso == "NULL":
+        secretaria_acesso_sql = "NULL"
+    else:
+        secretaria_acesso_sql = f"'{request.secretaria_acesso}'"
 
     # Fase 1: Validar CPFs e coletar dados
     errors: List[BatchPermissionsError] = []
@@ -1690,6 +1788,7 @@ async def batch_update_permissions(
             id_ap_list = {id_ap_sql},
             id_cas_list = {id_cas_sql},
             id_clinica_familia_list = {id_clinica_sql},
+            secretaria_acesso = {secretaria_acesso_sql},
             nome = COALESCE(S.nome, T.nome),
             email = COALESCE(S.email, T.email),
             ocupacao = COALESCE(S.ocupacao, T.ocupacao),
@@ -1700,7 +1799,7 @@ async def batch_update_permissions(
     WHEN NOT MATCHED THEN
         INSERT (cpf, nome, email, ocupacao, secretaria, is_admin, is_super_admin, permission,
                 id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
-                notes, active, created_at, updated_at, created_by, updated_by)
+                secretaria_acesso, notes, active, created_at, updated_at, created_by, updated_by)
         VALUES (
             S.cpf,
             S.nome,
@@ -1716,6 +1815,7 @@ async def batch_update_permissions(
             {id_ap_sql},
             {id_cas_sql},
             {id_clinica_sql},
+            {secretaria_acesso_sql},
             NULL,
             TRUE,
             CURRENT_TIMESTAMP(),

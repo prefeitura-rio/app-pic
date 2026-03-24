@@ -178,7 +178,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
-        secretaria_acesso: secretariaAcesso === "NULL" ? null : secretariaAcesso,
+        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
         notes: notes || null,
       };
       onSubmit(updateData);
@@ -198,7 +198,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
-        secretaria_acesso: secretariaAcesso === "NULL" ? null : secretariaAcesso,
+        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
         notes: notes || null,
       };
       onSubmit(createData);

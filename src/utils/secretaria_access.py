@@ -16,20 +16,47 @@ def filter_and_recalculate_by_secretaria(
 
     Args:
         df: DataFrame com coluna protocolo_listagem
-        secretaria_acesso: SME, SMS, SMAS, ou TODOS
+        secretaria_acesso: SME, SMS, SMAS, TODOS, ou NULL
 
     Returns:
         DataFrame filtrado com contadores recalculados
     """
-    if not secretaria_acesso or secretaria_acesso == "TODOS":
-        # Sem filtragem - retorna DataFrame original
+    # TODOS = vê tudo (sem filtragem)
+    if secretaria_acesso == "TODOS":
         return df
 
     # IMPORTANTE: Só aplicar se o DataFrame tiver protocolo_listagem (tabela dashboard não tem)
     if "protocolo_listagem" not in df.columns:
-        logger.warning(f"⚠️ DataFrame não tem coluna protocolo_listagem - aplicando apenas filtro de equipamentos")
-        # Aplicar apenas filtro de equipamentos
-        return _drop_equipment_columns(df, secretaria_acesso)
+        logger.warning(f"⚠️ DataFrame não tem coluna protocolo_listagem - skip filtro de protocolos")
+        return df
+
+    # NULL ou vazio = sem acesso a protocolos (remover TODOS)
+    if not secretaria_acesso or secretaria_acesso == "NULL":
+        logger.info(f"🚫 Usuário sem acesso a protocolos - removendo todos os protocolos")
+        # Esvaziar lista de protocolos mantendo o schema (filtrar com condição impossível)
+        df_filtered = df.with_columns([
+            pl.when(pl.col("protocolo_listagem").is_not_null())
+            .then(
+                pl.col("protocolo_listagem").list.eval(
+                    pl.element().filter(
+                        pl.element().struct.field("id") == "__IMPOSSIVEL__"  # Condição impossível = lista vazia
+                    )
+                )
+            )
+            .otherwise(pl.lit([]))
+            .alias("protocolo_listagem")
+        ])
+        # Não remover participantes (diferente de secretaria específica)
+        # Apenas recalcular contadores (todos vão para null)
+        df_filtered = _recalculate_secretaria_counters(df_filtered, secretaria_acesso)
+        # Recalcular frações (todas null)
+        df_filtered = _recalculate_fractions(df_filtered)
+        # Recalcular situacao (null)
+        df_filtered = df_filtered.with_columns([
+            pl.lit(None).alias("situacao")
+        ])
+        logger.info(f"✅ Removidos todos os protocolos: {len(df_filtered)} participantes")
+        return df_filtered
 
     logger.info(f"🔒 Filtrando protocolos por secretaria: {secretaria_acesso}")
 
@@ -102,80 +129,58 @@ def _recalculate_secretaria_counters(
 
     PM confirmou que não há problema em usuários verem colunas null de outras secretarias.
     """
+    # Mapeamento de secretaria_acesso para prefixo de coluna
+    SECRETARIA_MAP = {
+        "SME": "educacao",
+        "SMS": "saude",
+        "SMAS": "assistencia",
+    }
+
+    # Tipos de contadores (NOTA: coluna total é "total_protocolos", sem sufixo _total)
+    COUNTER_SUFFIXES = ["", "_irregular", "_atencao", "_regular"]
+
     # Se TODOS, não fazer nada - mantém todas as colunas
     if secretaria_acesso == "TODOS":
         return df
 
-    if secretaria_acesso == "SME":
-        # Renomear total_* para educacao_* e setar outras secretarias como null
-        df = df.with_columns([
-            pl.col("total_protocolos").alias("educacao_protocolos_total"),
-            pl.col("total_protocolos_irregular").alias("educacao_protocolos_irregular"),
-            pl.col("total_protocolos_atencao").alias("educacao_protocolos_atencao"),
-            pl.col("total_protocolos_regular").alias("educacao_protocolos_regular"),
-            # Setar outras secretarias como null
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_total"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_regular"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_total"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_regular"),
-            # Setar total como null também
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_regular"),
-        ])
+    # Construir lista de colunas dinamicamente
+    columns = []
 
-    elif secretaria_acesso == "SMS":
-        # Renomear total_* para saude_* e setar outras secretarias como null
-        df = df.with_columns([
-            pl.col("total_protocolos").alias("saude_protocolos_total"),
-            pl.col("total_protocolos_irregular").alias("saude_protocolos_irregular"),
-            pl.col("total_protocolos_atencao").alias("saude_protocolos_atencao"),
-            pl.col("total_protocolos_regular").alias("saude_protocolos_regular"),
-            # Setar outras secretarias como null
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_total"),
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_regular"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_total"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("assistencia_protocolos_regular"),
-            # Setar total como null também
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_regular"),
-        ])
+    # Se NULL (sem acesso), setar TODAS as colunas como null
+    if not secretaria_acesso or secretaria_acesso == "NULL":
+        # Setar contadores totais como null
+        for suffix in COUNTER_SUFFIXES:
+            columns.append(pl.lit(None).cast(pl.Int64).alias(f"total_protocolos{suffix}"))
 
-    elif secretaria_acesso == "SMAS":
-        # Renomear total_* para assistencia_* e setar outras secretarias como null
-        df = df.with_columns([
-            pl.col("total_protocolos").alias("assistencia_protocolos_total"),
-            pl.col("total_protocolos_irregular").alias("assistencia_protocolos_irregular"),
-            pl.col("total_protocolos_atencao").alias("assistencia_protocolos_atencao"),
-            pl.col("total_protocolos_regular").alias("assistencia_protocolos_regular"),
-            # Setar outras secretarias como null
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_total"),
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("educacao_protocolos_regular"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_total"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("saude_protocolos_regular"),
-            # Setar total como null também
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_irregular"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_atencao"),
-            pl.lit(None).cast(pl.Int64).alias("total_protocolos_regular"),
-        ])
+        # Setar todas as secretarias como null
+        for prefix in SECRETARIA_MAP.values():
+            for suffix in COUNTER_SUFFIXES:
+                # Para secretarias, o primeiro é sempre _total
+                sec_suffix = "_total" if suffix == "" else suffix
+                columns.append(pl.lit(None).cast(pl.Int64).alias(f"{prefix}_protocolos{sec_suffix}"))
 
-    return df
+    # Secretaria específica (SME, SMS, SMAS)
+    elif secretaria_acesso in SECRETARIA_MAP:
+        active_prefix = SECRETARIA_MAP[secretaria_acesso]
+
+        # Renomear total_protocolos* para a secretaria ativa
+        for suffix in COUNTER_SUFFIXES:
+            # Para secretarias, o primeiro é sempre _total (não vazio)
+            sec_suffix = "_total" if suffix == "" else suffix
+            columns.append(pl.col(f"total_protocolos{suffix}").alias(f"{active_prefix}_protocolos{sec_suffix}"))
+
+        # Setar outras secretarias como null
+        for sec_code, prefix in SECRETARIA_MAP.items():
+            if sec_code != secretaria_acesso:  # Pular a secretaria ativa
+                for suffix in COUNTER_SUFFIXES:
+                    sec_suffix = "_total" if suffix == "" else suffix
+                    columns.append(pl.lit(None).cast(pl.Int64).alias(f"{prefix}_protocolos{sec_suffix}"))
+
+        # Setar total como null
+        for suffix in COUNTER_SUFFIXES:
+            columns.append(pl.lit(None).cast(pl.Int64).alias(f"total_protocolos{suffix}"))
+
+    return df.with_columns(columns)
 
 
 def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
@@ -190,7 +195,7 @@ def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("total_protocolos_regular").cast(pl.Utf8) + "/" +
             pl.col("total_protocolos").cast(pl.Utf8)
         )
-        .otherwise(pl.lit(None))
+        .otherwise(pl.lit(None).cast(pl.Utf8))
         .alias("total_fracao"),
 
         # Educação
@@ -199,7 +204,7 @@ def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("educacao_protocolos_regular").cast(pl.Utf8) + "/" +
             pl.col("educacao_protocolos_total").cast(pl.Utf8)
         )
-        .otherwise(pl.lit(None))
+        .otherwise(pl.lit(None).cast(pl.Utf8))
         .alias("educacao_fracao"),
 
         # Saúde
@@ -208,7 +213,7 @@ def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("saude_protocolos_regular").cast(pl.Utf8) + "/" +
             pl.col("saude_protocolos_total").cast(pl.Utf8)
         )
-        .otherwise(pl.lit(None))
+        .otherwise(pl.lit(None).cast(pl.Utf8))
         .alias("saude_fracao"),
 
         # Assistência
@@ -217,7 +222,7 @@ def _recalculate_fractions(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("assistencia_protocolos_regular").cast(pl.Utf8) + "/" +
             pl.col("assistencia_protocolos_total").cast(pl.Utf8)
         )
-        .otherwise(pl.lit(None))
+        .otherwise(pl.lit(None).cast(pl.Utf8))
         .alias("assistencia_fracao"),
     ])
 
