@@ -283,6 +283,64 @@ def _filter_manageable_users(
     return df_filtered
 
 
+def validate_secretaria_acesso_permission(
+    admin_permissions: UserPermissions, target_secretaria_acesso: Optional[str]
+):
+    """
+    Valida que admin segmentado só pode atribuir secretaria_acesso que ele possui.
+
+    REGRAS:
+    - Super admin: Pode atribuir qualquer valor (NULL, TODOS, SME, SMS, SMAS)
+    - Admin com secretaria_acesso = "TODOS": Pode atribuir qualquer valor
+    - Admin segmentado: Pode atribuir NULL ou sua própria secretaria_acesso
+    - Admin sem secretaria_acesso: Pode atribuir apenas NULL
+    """
+    if admin_permissions.is_super_admin:
+        return  # Super admin pode tudo
+
+    # Admin com acesso TODOS também pode atribuir qualquer valor
+    if admin_permissions.secretaria_acesso == "TODOS":
+        logger.info(f"✅ Admin com acesso TODOS pode atribuir qualquer valor")
+        return
+
+    # Se target é None ou NULL, permitir (remover acesso é sempre permitido)
+    if not target_secretaria_acesso or target_secretaria_acesso == "NULL":
+        return
+
+    logger.info(f"🔍 Validando atribuição de secretaria_acesso")
+    logger.info(f"   Admin tem: {admin_permissions.secretaria_acesso}")
+    logger.info(f"   Tentando atribuir: {target_secretaria_acesso}")
+
+    # Admin tentando atribuir TODOS (exclusivo de super admin e admin TODOS)
+    if target_secretaria_acesso == "TODOS":
+        logger.warning(f"   ❌ BLOQUEADO: Admin segmentado não pode atribuir TODOS")
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas super admins ou admins com acesso TODOS podem atribuir acesso TODOS aos protocolos",
+        )
+
+    # Admin sem secretaria_acesso não pode atribuir nada além de NULL
+    if not admin_permissions.secretaria_acesso or admin_permissions.secretaria_acesso == "NULL":
+        logger.warning(f"   ❌ BLOQUEADO: Admin sem secretaria_acesso tentando atribuir {target_secretaria_acesso}")
+        raise HTTPException(
+            status_code=403,
+            detail="Você não possui acesso a protocolos e não pode atribuir acesso a outros usuários",
+        )
+
+    # Admin só pode atribuir sua própria secretaria
+    if target_secretaria_acesso != admin_permissions.secretaria_acesso:
+        logger.warning(
+            f"   ❌ BLOQUEADO: Admin {admin_permissions.secretaria_acesso} "
+            f"tentando atribuir {target_secretaria_acesso}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Você só pode atribuir acesso {admin_permissions.secretaria_acesso} (sua própria secretaria)",
+        )
+
+    logger.info(f"   ✅ Validação OK: {target_secretaria_acesso}")
+
+
 def validate_segmented_admin_can_manage(
     admin_permissions: UserPermissions, target_ids: Dict[str, List[IdWithName]]
 ):
@@ -815,6 +873,10 @@ async def upsert_user(
 
     if target_ids_to_validate:
         validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
+
+    # Validar secretaria_acesso (se foi enviado)
+    if request.secretaria_acesso is not None:
+        validate_secretaria_acesso_permission(permissions, request.secretaria_acesso)
 
     try:
         if user_exists:

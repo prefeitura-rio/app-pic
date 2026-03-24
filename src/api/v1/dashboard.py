@@ -122,16 +122,16 @@ async def get_dashboard_metrics(
     if permissions and permissions.secretaria_acesso and permissions.secretaria_acesso != "TODOS":
         logger.warning(f"⚠️ Dashboard não disponível para secretaria_acesso: {permissions.secretaria_acesso}. Retornando vazio.")
         empty_dashboard = _create_empty_dashboard()
+        from src.api.v1.schemas import PaginationMeta
         return PaginatedResponse(
-            meta={
-                "total": 0,
-                "page": 1,
-                "page_size": 0,
-                "total_pages": 0,
-                "total_rows": 0,
-                "cache_hit": False,
-                "can_view_dashboard": False,  # Backend indica que usuário não pode ver dashboard
-            },
+            meta=PaginationMeta(
+                page=1,
+                page_size=0,
+                total_rows=0,
+                total_pages=0,
+                cache_hit=False,
+                can_view_dashboard=False,  # Backend indica que usuário não pode ver dashboard
+            ),
             data=[empty_dashboard],
             filters={},
         )
@@ -157,9 +157,9 @@ async def get_dashboard_metrics(
         if df_filtered.is_empty():
             empty_dashboard = _create_empty_dashboard()
             # Adicionar flag indicando que usuário pode ver dashboard
-            meta["can_view_dashboard"] = True
+            meta_with_flag = meta.model_copy(update={"can_view_dashboard": True})
             return PaginatedResponse(
-                meta=meta,
+                meta=meta_with_flag,
                 data=[empty_dashboard],
                 filters=filter_options,
             )
@@ -175,9 +175,9 @@ async def get_dashboard_metrics(
         logger.info(f"⏱️ [TIMING] Total dashboard request: {total_time:.3f}s")
 
         # Adicionar flag indicando que usuário pode ver dashboard
-        meta["can_view_dashboard"] = True
+        meta_with_flag = meta.model_copy(update={"can_view_dashboard": True})
         return PaginatedResponse(
-            meta=meta,
+            meta=meta_with_flag,
             data=[dashboard_metrics],
             filters=filter_options,
         )

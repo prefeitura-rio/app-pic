@@ -67,10 +67,22 @@ export function UserForm({
       return allOptions;
     }
 
-    // Segmented admin can assign NULL + any secretariat (but not TODOS)
-    // They can create users for any secretariat within their equipment scope
+    // Segmented admin can assign NULL or their own secretaria_acesso
     if (currentUser?.is_admin) {
-      return allOptions.filter(opt => opt.id !== "TODOS");
+      const userSecretaria = currentUser?.secretaria_acesso;
+
+      // Admin with TODOS can see all options (same as super admin for this field)
+      if (userSecretaria === "TODOS") {
+        return allOptions;
+      }
+
+      // If admin has no secretaria_acesso set, they can only assign NULL
+      if (!userSecretaria || userSecretaria === "NULL") {
+        return allOptions.filter(opt => opt.id === "NULL");
+      }
+
+      // Admin can assign NULL or their own secretariat (not TODOS, not other secretariats)
+      return allOptions.filter(opt => opt.id === "NULL" || opt.id === userSecretaria);
     }
 
     // Non-admin users can't change this field
