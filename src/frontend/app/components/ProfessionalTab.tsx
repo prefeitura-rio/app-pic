@@ -48,6 +48,47 @@ const renderGrupoCompleto = (grupo?: string) => {
   return grupoBase;
 };
 
+// Função para calcular idade detalhada (anos, meses, dias)
+const calcularIdadeDetalhada = (dataNascimento: string, dataReferencia: Date) => {
+  const nascimento = new Date(dataNascimento);
+
+  let anos = dataReferencia.getFullYear() - nascimento.getFullYear();
+  let meses = dataReferencia.getMonth() - nascimento.getMonth();
+  let dias = dataReferencia.getDate() - nascimento.getDate();
+
+  // Ajustar se os dias forem negativos
+  if (dias < 0) {
+    meses--;
+    const mesAnterior = new Date(dataReferencia.getFullYear(), dataReferencia.getMonth(), 0);
+    dias += mesAnterior.getDate();
+  }
+
+  // Ajustar se os meses forem negativos
+  if (meses < 0) {
+    anos--;
+    meses += 12;
+  }
+
+  return { anos, meses, dias };
+};
+
+// Função para formatar idade detalhada
+const formatarIdadeDetalhada = (anos: number, meses: number, dias: number) => {
+  const partes: string[] = [];
+
+  if (anos > 0) {
+    partes.push(`${anos} ${anos === 1 ? 'ano' : 'anos'}`);
+  }
+  if (meses > 0) {
+    partes.push(`${meses} ${meses === 1 ? 'mês' : 'meses'}`);
+  }
+  if (dias > 0) {
+    partes.push(`${dias} ${dias === 1 ? 'dia' : 'dias'}`);
+  }
+
+  return partes.length > 0 ? partes.join(', ') : '0 dias';
+};
+
 
 // Função para calcular completude total
 // Usa a primeira coluna não-null disponível (total, educacao, saude, ou assistencia)
@@ -340,7 +381,23 @@ const ProfessionalTabComponent = ({
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Idade</p>
-                        <p className="font-medium">{selectedParticipant.idade != null ? `${selectedParticipant.idade} anos` : "-"}</p>
+                        <p className="font-medium">
+                          {selectedParticipant.idade != null && selectedParticipant.nascimento_data
+                            ? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString('pt-BR')})`
+                            : selectedParticipant.idade != null
+                            ? `${selectedParticipant.idade} anos`
+                            : "-"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Idade em 31/03/{new Date().getFullYear()}</p>
+                        <p className="font-medium">
+                          {selectedParticipant.nascimento_data ? (() => {
+                            const dataReferencia = new Date(new Date().getFullYear(), 2, 31); // Março = 2 (0-indexed)
+                            const { anos, meses, dias } = calcularIdadeDetalhada(selectedParticipant.nascimento_data, dataReferencia);
+                            return formatarIdadeDetalhada(anos, meses, dias);
+                          })() : "-"}
+                        </p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Bairro</p>
