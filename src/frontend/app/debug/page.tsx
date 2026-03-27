@@ -27,7 +27,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-// Reutilizando funções de badge do ProfessionalTab
+// Reutilizando funções de badge do ProfessionalTab.
 const getProtocolBadgeVariant = (status?: string): "default" | "secondary" | "destructive" | "warning" => {
   if (!status) return "secondary";
   const lower = status.toLowerCase();
