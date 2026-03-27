@@ -413,4 +413,31 @@ export const apiService = {
     return handleResponse<BatchPermissionsResult>(res, fetchFn);
   },
 
+  // ========================================================================
+  // DEBUG ENDPOINTS (Super Admin Only)
+  // ========================================================================
+
+  /**
+   * Get debug data for participants
+   * Requires super admin permission
+   *
+   * @param search - Search by CPF, name or ID membro família
+   * @param bypassCache - If true, forces fresh data from BigQuery
+   * @returns Debug participant data with protocol metadata
+   */
+  async getDebugParticipants(search: string, bypassCache: boolean = false): Promise<{ total_found: number; total_returned: number; data: any[] }> {
+    const params = new URLSearchParams();
+    params.append("search", search);
+    if (bypassCache) {
+      params.append("bypass_cache", "true");
+    }
+
+    const url = `${BASE_URL}/api/v1/debug/participants?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<{ total_found: number; total_returned: number; data: any[] }>(res, fetchFn);
+  },
+
 };

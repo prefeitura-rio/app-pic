@@ -25,6 +25,14 @@ BQ_TABLE_ID_PARTICIPANTS_LISTAGEM = getenv_or_action(
     env_name="BQ_TABLE_ID_PARTICIPANTS_LISTAGEM",
     action="raise",
 )
+BQ_TABLE_ID_PARTICIPANTS_DEBUG = getenv_or_action(
+    env_name="BQ_TABLE_ID_PARTICIPANTS_DEBUG",
+    action="raise",
+)
+BQ_TABLE_ID_PARTICIPANTS_DEBUG_ORIGINS = getenv_or_action(
+    env_name="BQ_TABLE_ID_PARTICIPANTS_DEBUG_ORIGINS",
+    action="raise",
+)
 BQ_TABLE_ID_DASHBOARD = getenv_or_action(
     env_name="BQ_TABLE_ID_DASHBOARD",
     action="raise",
