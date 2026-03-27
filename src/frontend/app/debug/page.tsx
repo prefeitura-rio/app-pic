@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiService } from "@/app/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -50,14 +50,39 @@ const formatProtocolStatus = (status?: string, protocolo_status_label?: string) 
   if (lower === "regular") return "✓ Regular";
   if (lower === "atencao" || lower === "atenção") return "⚠ Atenção";
   if (lower === "irregular") return "✗ Irregular";
-  if (lower === "nao_aplica" || lower === "n/a") return "N/A";
-  return status || "N/A";
+  if (lower === "nao_aplica" || lower === "n/a") return "Não Aplica";
+  return status || "Null";
 };
 
 const formatValue = (value: any): string => {
   if (value === null || value === undefined) return "null";
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+};
+
+const renderValue = (value: any) => {
+  // null/undefined → texto azul
+  if (value === null || value === undefined) {
+    return <span className="font-medium text-blue-600">null</span>;
+  }
+
+  // true → texto verde
+  if (value === true) {
+    return <span className="font-medium text-green-600">true</span>;
+  }
+
+  // false → texto vermelho
+  if (value === false) {
+    return <span className="font-medium text-red-600">false</span>;
+  }
+
+  // object → JSON string
+  if (typeof value === 'object') {
+    return <span className="font-medium break-all">{JSON.stringify(value)}</span>;
+  }
+
+  // outros valores → normal
+  return <span className="font-medium break-all">{String(value)}</span>;
 };
 
 export default function DebugPage() {
@@ -94,11 +119,20 @@ export default function DebugPage() {
     retry: false,
   });
 
-  // Redirect if not super admin
-  if (!isLoadingUser && (!currentUser || !currentUser.is_super_admin)) {
-    router.push("/");
-    return null;
-  }
+  // Show toast and redirect if not super admin
+  useEffect(() => {
+    if (!isLoadingUser && currentUser && !currentUser.is_super_admin) {
+      toast.error('Acesso Negado', {
+        description: 'Você não possui permissões de super administrador. Apenas super admins podem acessar dados de debug.',
+        duration: 6000,
+      });
+
+      const timer = setTimeout(() => {
+        router.push("/");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingUser, currentUser, router]);
 
   const handleSearch = () => {
     const term = searchInput.trim();
@@ -124,19 +158,19 @@ export default function DebugPage() {
     setIsRefreshing(true);
 
     try {
-      if (searchTerm) {
-        // Atualizar cache no backend
-        toast.info("Atualizando cache do BigQuery...");
-        await apiService.getDebugParticipants(searchTerm, true);
-        toast.success("Cache atualizado! Realize uma nova busca.");
-      }
+      // Atualizar cache no backend (força refresh de ambas tabelas)
+      const term = searchTerm || "bypass_cache_refresh";
+      toast.info("Atualizando cache do BigQuery...");
+      await apiService.getDebugParticipants(term, true);
 
-      // Invalidate all debug queries
-      queryClient.invalidateQueries({ queryKey: ["debug"] });
-      // Clear current results
-      setSearchTerm(null);
-      // Clear filters
-      handleClearFilters();
+      if (searchTerm) {
+        // Com busca ativa: invalidar query força refetch automático com dados frescos
+        queryClient.invalidateQueries({ queryKey: ["debug", searchTerm] });
+        toast.success("Cache atualizado!");
+      } else {
+        // Sem busca: apenas atualiza cache
+        toast.success("Cache atualizado! Faça uma busca para ver dados frescos.");
+      }
     } catch (error) {
       toast.error("Erro ao atualizar cache");
     } finally {
@@ -181,16 +215,13 @@ export default function DebugPage() {
     };
   }, [debugData]);
 
-  if (isLoadingUser) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+  // Show loading or nothing while checking/redirecting
+  if (isLoadingUser || !currentUser?.is_super_admin) {
+    return null;
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="container mx-auto p-6 max-w-6xl" suppressHydrationWarning>
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
@@ -208,67 +239,52 @@ export default function DebugPage() {
       </div>
 
       {/* Search and Filters */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          {/* Header with buttons - always visible */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              <h2 className="text-lg font-semibold">Filtros e Busca</h2>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearFilters}
-                className="h-8 text-xs"
-                disabled={isRefreshing}
-              >
-                <X className="h-3 w-3 mr-1" />
-                Limpar Filtros
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                className="h-8 text-xs"
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
-            </div>
-          </div>
-
-          {/* Search Input */}
+      <Card className="mb-6 border-2">
+        <CardHeader className="pb-4 flex flex-row items-center justify-between">
+          <CardTitle className="text-2xl font-bold flex items-center gap-2">
+            <Filter className="h-6 w-6" />
+            Filtros e Busca
+          </CardTitle>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearFilters}
+              className="h-8 text-xs"
+              disabled={isLoadingDebug || isRefreshing}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Limpar Filtros
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="h-8 text-xs"
+              disabled={isLoadingDebug || isRefreshing}
+            >
+              <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          {/* Search Input - com ícone interno */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por CPF, Nome, ID Membro Família ou ID Família (CadÚnico)..."
+              type="text"
+              placeholder="Buscar por CPF, Nome, ID Membro Família (CadÚnico)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              className="flex-1"
-              disabled={isRefreshing}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="pl-10 h-11"
+              disabled={isLoadingDebug || isRefreshing}
             />
-            <Button onClick={handleSearch} disabled={isLoadingDebug || isRefreshing}>
-              {isLoadingDebug ? (
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-              ) : (
-                <>
-                  <Search className="h-4 w-4 mr-2" />
-                  Buscar
-                </>
-              )}
-            </Button>
-            {searchTerm && (
-              <Button variant="outline" onClick={handleClear} disabled={isRefreshing}>
-                Limpar
-              </Button>
-            )}
           </div>
 
           {/* Filters - always visible, populated after search */}
-          <div className="mt-4">
+          <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Filtros de Protocolos
             </h3>
@@ -278,7 +294,7 @@ export default function DebugPage() {
                   value={protocoloFilter}
                   onChange={(e) => setProtocoloFilter(e.target.value)}
                   className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  disabled={!debugData || debugData.data.length === 0 || isRefreshing}
+                  disabled={!debugData || debugData.data.length === 0 || isLoadingDebug || isRefreshing}
                 >
                   <option value="">Todos os Protocolos</option>
                   {uniqueProtocolos.map(({ id, descricao }) => (
@@ -293,7 +309,7 @@ export default function DebugPage() {
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  disabled={!debugData || debugData.data.length === 0 || isRefreshing}
+                  disabled={!debugData || debugData.data.length === 0 || isLoadingDebug || isRefreshing}
                 >
                   <option value="">Todos os Status</option>
                   {uniqueStatus.map((status) => (
@@ -308,7 +324,7 @@ export default function DebugPage() {
                   value={secretariaFilter}
                   onChange={(e) => setSecretariaFilter(e.target.value)}
                   className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  disabled={!debugData || debugData.data.length === 0 || isRefreshing}
+                  disabled={!debugData || debugData.data.length === 0 || isLoadingDebug || isRefreshing}
                 >
                   <option value="">Todos os Protocolos por Secretaria</option>
                   {uniqueSecretarias.map((secretaria) => (
@@ -320,6 +336,18 @@ export default function DebugPage() {
               </div>
             </div>
           </div>
+
+          {/* Result Count - discreto, igual FilterCard */}
+          {debugData && debugData.data.length > 0 && (
+            <div className="pt-4 border-t flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium">{debugData.total_found}</span> pessoa(s) encontrada(s)
+              <span>|</span>
+              <span>Retornado {debugData.total_returned}</span>
+              {debugData.total_found > 1 && (
+                <span className="text-xs ml-2">(Use CPF ou nome completo para resultado específico)</span>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -356,36 +384,36 @@ export default function DebugPage() {
                       <h2 className="text-2xl font-bold mb-4">{participant.nome ?? "null"}</h2>
 
                       <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">CPF:</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">cpf:</span>
                           <span className="font-mono font-medium">{participant.cpf ?? "null"}</span>
                         </div>
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">ID Membro Família:</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">id_membro_familia:</span>
                           <span className="font-mono font-medium">{participant.id_membro_familia ?? "null"}</span>
                         </div>
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">Nascimento:</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">nascimento_data:</span>
                           <span className="font-medium">
                             {participant.nascimento_data ? new Date(participant.nascimento_data).toLocaleDateString('pt-BR') : "null"}
                           </span>
                         </div>
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">Grupo:</span>
-                          <span className="font-medium">{participant.pic_grupo?.replace(/_/g, " ") ?? "null"}</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">pic_grupo:</span>
+                          <span className="font-medium">{participant.pic_grupo ?? "null"}</span>
                         </div>
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">Cohort:</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">pic_cohort:</span>
                           <span className="font-medium">{participant.pic_cohort ?? "null"}</span>
                         </div>
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">Status:</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">pic_status:</span>
                           <Badge variant={participant.pic_status === "ativo" ? "default" : "secondary"}>
                             {participant.pic_status ?? "null"}
                           </Badge>
                         </div>
-                        <div className="flex">
-                          <span className="text-muted-foreground min-w-[140px]">Fase Atual:</span>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">pic_fase_atual:</span>
                           <span className="font-medium">{participant.pic_fase_atual ?? "null"}</span>
                         </div>
                       </div>
@@ -514,9 +542,9 @@ export default function DebugPage() {
                                       {Object.keys(item.data).length > 0 ? (
                                         <div className="space-y-1">
                                           {Object.entries(item.data).map(([key, value]) => (
-                                            <div key={key} className="text-sm">
+                                            <div key={key} className="text-sm flex items-center gap-2">
                                               <span className="text-muted-foreground font-mono text-xs">{key}: </span>
-                                              <span className="font-medium break-all">{formatValue(value)}</span>
+                                              {renderValue(value)}
                                             </div>
                                           ))}
                                         </div>

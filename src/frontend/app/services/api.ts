@@ -425,7 +425,7 @@ export const apiService = {
    * @param bypassCache - If true, forces fresh data from BigQuery
    * @returns Debug participant data with protocol metadata
    */
-  async getDebugParticipants(search: string, bypassCache: boolean = false): Promise<{ data: any[] }> {
+  async getDebugParticipants(search: string, bypassCache: boolean = false): Promise<{ total_found: number; total_returned: number; data: any[] }> {
     const params = new URLSearchParams();
     params.append("search", search);
     if (bypassCache) {
@@ -437,7 +437,7 @@ export const apiService = {
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<{ data: any[] }>(res, fetchFn);
+    return handleResponse<{ total_found: number; total_returned: number; data: any[] }>(res, fetchFn);
   },
 
 };

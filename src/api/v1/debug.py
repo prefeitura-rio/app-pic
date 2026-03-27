@@ -16,7 +16,7 @@ import polars as pl
 from src.core.security.jwt import CurrentUserPermissions
 from src.utils.log import logger
 from src.utils.data_manager import DataManager
-from src.api.v1.queries import DEBUG_PARTICIPANTS_QUERY
+from src.api.v1.queries import DEBUG_PARTICIPANTS_QUERY, DEBUG_ORIGINS_QUERY
 from src.api.v1.schemas import PaginatedResponse, PaginationParams
 from pydantic import BaseModel
 
@@ -32,6 +32,8 @@ router = APIRouter(
 
 class DebugParticipantResponse(BaseModel):
     """Response para dados de debug de um participante"""
+    total_found: int  # Total de participantes encontrados na busca
+    total_returned: int  # Total retornado (sempre 1 ou 0)
     data: List[Dict[str, Any]]  # Raw JSON data from BigQuery
 
 
@@ -61,46 +63,134 @@ async def get_debug_participants(
     """
     Busca dados de debug de participantes (SUPER ADMIN ONLY).
 
-    Retorna dados brutos da tabela de debug incluindo:
+    Arquitetura Split-Table:
+    1. Carrega ambas tabelas (participants + origins) do cache
+    2. Filtra participants por search term
+    3. Extrai unique id_origem dos participants filtrados
+    4. Filtra origins pelos id_origem necessários
+    5. Join participants + origins (enriquece metadata)
+    6. Retorna resultado completo (apenas 1 participante)
+
+    Retorna dados brutos incluindo:
     - Informações básicas do participante
-    - Protocolos detalhados com metadata
-    - Rastreamento de tabelas do BigQuery
+    - Protocolos detalhados com metadata completa
+    - Rastreamento de tabelas do BigQuery (tabela_bq, dbt_model_path, etc)
     - Dados intermediários de cada protocolo
 
-    IMPORTANTE: Apenas super admins podem acessar este endpoint.
+    IMPORTANTE: bypass_cache=true força refresh de AMBAS tabelas.
     """
     require_super_admin(permissions)
 
-    logger.info(f"Super admin buscando dados de debug - search: {search}")
-
+    # Validação: search não pode ser vazio
     if not search or len(search.strip()) == 0:
-        # Sem busca, retornar vazio (endpoint reativo)
-        return DebugParticipantResponse(data=[])
+        return DebugParticipantResponse(total_found=0, total_returned=0, data=[])
 
     search_term = search.strip()
+    logger.info(f"🔍 Debug search: '{search_term}' (bypass_cache={bypass_cache})")
 
     try:
-        # Buscar usando DataManager (com cache e polars)
-        # Buscar em CPF, nome, id_membro_familia
-        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
-            query=DEBUG_PARTICIPANTS_QUERY,
-            filters_dict={},
-            page=1,
-            page_size=100,  # Limite de 100 resultados
-            search_term=search_term,
-            search_columns=["cpf", "nome", "id_membro_familia"],
-            filter_columns_config={},  # Sem filtros em cascata
-            user_permissions=None,  # Sem governança (super admin vê tudo)
+        # PASSO 1 & 2: Carregar AMBAS tabelas do cache (ou BigQuery se bypass_cache=True)
+        df_participants, _, _ = DataManager.get_dataset(
+            DEBUG_PARTICIPANTS_QUERY,
             bypass_cache=bypass_cache,
         )
 
-        # Converter para dicts (mantém estrutura JSON do BQ)
-        results = df_data.to_dicts() if not df_data.is_empty() else []
+        df_origins, _, _ = DataManager.get_dataset(
+            DEBUG_ORIGINS_QUERY,
+            bypass_cache=bypass_cache,
+        )
 
-        logger.info(f"Debug search retornou {len(results)} resultados")
+        logger.info(f"📊 Loaded {len(df_participants)} participants, {len(df_origins)} origins")
 
-        return DebugParticipantResponse(data=results)
+        # PASSO 3: Filtrar participants por search term (case-insensitive)
+        search_lower = search_term.lower()
+        df_filtered = df_participants.filter(
+            pl.col("cpf").str.to_lowercase().str.contains(search_lower) |
+            pl.col("nome").str.to_lowercase().str.contains(search_lower) |
+            pl.col("id_membro_familia").str.to_lowercase().str.contains(search_lower)
+        )
+
+        # Salvar total encontrado ANTES de limitar a 1
+        total_found = len(df_filtered)
+        logger.info(f"🔎 Found {total_found} participants matching '{search_term}'")
+
+        # Se não achou nada, retorna vazio
+        if total_found == 0:
+            return DebugParticipantResponse(total_found=0, total_returned=0, data=[])
+
+        # LIMITAÇÃO: Retornar apenas o primeiro resultado (segurança)
+        df_filtered = df_filtered.head(1)
+
+        # PASSO 4: Extrair unique id_origem dos protocolos filtrados
+        # Estrutura: df_filtered tem coluna "protocolos" que é array de structs
+        # Cada protocolo tem "metadata" que é array de structs com "id_origem"
+
+        # Flatten: participante -> protocolos -> metadata -> id_origem
+        try:
+            unique_id_origens = (
+                df_filtered
+                .select("protocolos")
+                .explode("protocolos")  # Um row por protocolo
+                .select(pl.col("protocolos").struct.field("metadata"))
+                .explode("metadata")  # Um row por metadata
+                .select(pl.col("metadata").struct.field("id_origem"))
+                .unique()
+                .to_series()
+                .to_list()
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao extrair id_origem (estrutura vazia?): {e}")
+            unique_id_origens = []
+
+        logger.info(f"🔑 Extracted {len(unique_id_origens)} unique id_origem values")
+
+        # PASSO 5: Filtrar origins apenas pelos id_origem necessários
+        if len(unique_id_origens) > 0:
+            df_origins_filtered = df_origins.filter(
+                pl.col("id_origem").is_in(unique_id_origens)
+            )
+        else:
+            df_origins_filtered = pl.DataFrame()
+
+        logger.info(f"🗂️ Filtered to {len(df_origins_filtered)} origins")
+
+        # PASSO 6: Join participants + origins
+        # Estratégia: Enriquecer o array de metadata dentro de cada protocolo
+        # com os dados de origins
+
+        # Converter origins para dict para lookup rápido
+        origins_dict = {}
+        if len(df_origins_filtered) > 0:
+            origins_dict = {
+                row["id_origem"]: {
+                    "tabela_bq": row["tabela_bq"],
+                    "dbt_model_path": row["dbt_model_path"],
+                    "dbt_model_type": row["dbt_model_type"],
+                    "updated_at": row["updated_at"],
+                    "dados_schema": row["dados_schema"],
+                }
+                for row in df_origins_filtered.to_dicts()
+            }
+
+        # Converter resultado para dict e enriquecer
+        result = df_filtered.to_dicts()[0]  # Pega o único participante
+
+        # Enriquecer cada protocolo com metadados completos
+        for protocolo in result.get("protocolos", []):
+            for metadata_item in protocolo.get("metadata", []):
+                id_origem = metadata_item.get("id_origem")
+                if id_origem and id_origem in origins_dict:
+                    # Adiciona campos de origins ao metadata
+                    metadata_item.update(origins_dict[id_origem])
+
+        # PASSO 7: Retornar resultado
+        logger.info(f"✅ Returning enriched participant data ({total_found} found, returning 1)")
+        return DebugParticipantResponse(
+            total_found=total_found,
+            total_returned=1,
+            data=[result]
+        )
 
     except Exception as e:
-        logger.error(f"Erro ao buscar dados de debug: {e}")
+        logger.error(f"❌ Erro ao buscar dados de debug: {e}")
         raise HTTPException(status_code=500, detail=str(e))
