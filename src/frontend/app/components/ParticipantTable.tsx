@@ -141,7 +141,7 @@ export const ParticipantTable = memo(({
           <tbody>
             {data.map((participant, index) => (
               <tr
-                key={participant.cpf || index}
+                key={`${participant.cpf}-${index}`}
                 className="border-b last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
                 onClick={() => onRowClick(participant)}
               >

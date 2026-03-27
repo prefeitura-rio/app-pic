@@ -121,62 +121,86 @@ async def get_debug_participants(
         # LIMITAÇÃO: Retornar apenas o primeiro resultado (segurança)
         df_filtered = df_filtered.head(1)
 
-        # PASSO 4: Extrair unique id_origem dos protocolos filtrados
+        # PASSO 4: Extrair unique protocolo_id dos protocolos filtrados
         # Estrutura: df_filtered tem coluna "protocolos" que é array de structs
-        # Cada protocolo tem "metadata" que é array de structs com "id_origem"
+        # Cada protocolo tem "protocolo_id"
 
-        # Flatten: participante -> protocolos -> metadata -> id_origem
+        # Flatten: participante -> protocolos -> protocolo_id
         try:
-            unique_id_origens = (
+            unique_protocolo_ids = (
                 df_filtered
                 .select("protocolos")
                 .explode("protocolos")  # Um row por protocolo
-                .select(pl.col("protocolos").struct.field("metadata"))
-                .explode("metadata")  # Um row por metadata
-                .select(pl.col("metadata").struct.field("id_origem"))
+                .select(pl.col("protocolos").struct.field("protocolo_id"))
                 .unique()
                 .to_series()
                 .to_list()
             )
         except Exception as e:
-            logger.warning(f"⚠️ Erro ao extrair id_origem (estrutura vazia?): {e}")
-            unique_id_origens = []
+            logger.warning(f"⚠️ Erro ao extrair protocolo_id (estrutura vazia?): {e}")
+            unique_protocolo_ids = []
 
-        logger.info(f"🔑 Extracted {len(unique_id_origens)} unique id_origem values")
+        logger.info(f"🔑 Extracted {len(unique_protocolo_ids)} unique protocolo_id values")
 
-        # PASSO 5: Filtrar origins apenas pelos id_origem necessários
-        if len(unique_id_origens) > 0:
+        # PASSO 5: Filtrar origins apenas pelos protocolo_id necessários
+        # Nova estrutura: origins tem 1 linha por protocolo_id com array tabelas_fonte[]
+        if len(unique_protocolo_ids) > 0:
             df_origins_filtered = df_origins.filter(
-                pl.col("id_origem").is_in(unique_id_origens)
+                pl.col("protocolo_id").is_in(unique_protocolo_ids)
             )
         else:
             df_origins_filtered = pl.DataFrame()
 
-        logger.info(f"🗂️ Filtered to {len(df_origins_filtered)} origins")
+        logger.info(f"🗂️ Filtered to {len(df_origins_filtered)} origin protocols")
 
         # PASSO 6: Join participants + origins
-        # Estratégia: Enriquecer o array de metadata dentro de cada protocolo
-        # com os dados de origins
+        # Nova estrutura: origins tem 1 linha por protocolo_id com array tabelas_fonte[]
+        # Precisamos explodir tabelas_fonte[] para criar lookup por id_origem
 
-        # Converter origins para dict para lookup rápido
-        origins_dict = {}
+        # Construir lookup dicts
+        origins_dict = {}  # id_origem -> origin metadata
+        regras_negocio_dict = {}  # protocolo_id -> regras_negocio
+
         if len(df_origins_filtered) > 0:
-            origins_dict = {
-                row["id_origem"]: {
-                    "tabela_bq": row["tabela_bq"],
-                    "dbt_model_path": row["dbt_model_path"],
-                    "dbt_model_type": row["dbt_model_type"],
-                    "updated_at": row["updated_at"],
-                    "dados_schema": row["dados_schema"],
-                }
-                for row in df_origins_filtered.to_dicts()
-            }
+            # Explodir tabelas_fonte[] para ter 1 linha por origem
+            df_origins_exploded = df_origins_filtered.select([
+                "protocolo_id",
+                "tabelas_fonte",
+                "regras_negocio"
+            ]).explode("tabelas_fonte")
+
+            # Construir origins_dict: id_origem -> metadata
+            for row in df_origins_exploded.to_dicts():
+                tabela_fonte = row.get("tabelas_fonte")
+                if tabela_fonte:
+                    id_origem = tabela_fonte.get("id_origem")
+                    if id_origem:
+                        origins_dict[id_origem] = {
+                            "tabela_bq": tabela_fonte.get("tabela_bq"),
+                            "dbt_model_path": tabela_fonte.get("dbt_model_path"),
+                            "dbt_model_type": tabela_fonte.get("dbt_model_type"),
+                            "updated_at": tabela_fonte.get("updated_at"),
+                            "dados_schema": tabela_fonte.get("dados_schema"),
+                        }
+
+            # Construir regras_negocio_dict: protocolo_id -> regras_negocio
+            for row in df_origins_filtered.to_dicts():
+                protocolo_id = row.get("protocolo_id")
+                regras_negocio = row.get("regras_negocio")
+                if protocolo_id and regras_negocio:
+                    regras_negocio_dict[protocolo_id] = regras_negocio
 
         # Converter resultado para dict e enriquecer
         result = df_filtered.to_dicts()[0]  # Pega o único participante
 
-        # Enriquecer cada protocolo com metadados completos
+        # Enriquecer cada protocolo com metadados completos e regras de negócio
         for protocolo in result.get("protocolos", []):
+            # Adicionar regras_negocio ao protocolo
+            protocolo_id = protocolo.get("protocolo_id")
+            if protocolo_id and protocolo_id in regras_negocio_dict:
+                protocolo["regras_negocio"] = regras_negocio_dict[protocolo_id]
+
+            # Enriquecer metadata com dados de origem
             for metadata_item in protocolo.get("metadata", []):
                 id_origem = metadata_item.get("id_origem")
                 if id_origem and id_origem in origins_dict:
