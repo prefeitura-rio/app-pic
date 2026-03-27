@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, User, Shield, Home } from "lucide-react";
+import { Heart, User, Shield, Home, Bug } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { UserAreaDialog } from "@/app/components/UserAreaDialog";
 import { SessionMonitor } from "@/app/components/SessionMonitor";
@@ -49,6 +49,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
   const router = useRouter();
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
+  const isDebugPage = pathname?.startsWith("/debug");
   const [userAreaOpen, setUserAreaOpen] = useState(false);
 
   // Fetch complete user info (including permissions) from backend
@@ -76,6 +77,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
   } : null;
 
   const isAdmin = currentUserAccess?.is_admin || false;
+  const isSuperAdmin = currentUserAccess?.is_super_admin || false;
 
   // Callback para SessionMonitor abrir a área do usuário
   const handleOpenUserArea = () => {
@@ -106,9 +108,22 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
             <div className="flex items-center gap-2">
               {showUserControls && (
                 <>
+                  {/* Debug icon for super admin (always visible except on debug page) */}
+                  {!isDebugPage && isSuperAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => router.push("/debug")}
+                      className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                      title="Debug"
+                    >
+                      <Bug className="h-5 w-5" />
+                    </Button>
+                  )}
+
                   {/* Conditional navigation button based on current page */}
-                  {isAdminPage ? (
-                    // Show Home icon when in admin page
+                  {isAdminPage || isDebugPage ? (
+                    // Show Home icon when in admin or debug page
                     <Button
                       variant="ghost"
                       size="icon"
