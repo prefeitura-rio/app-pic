@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { apiService } from "@/app/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -522,12 +524,127 @@ export default function DebugPage() {
 
                               <Separator className="my-4" />
 
+                              {/* Regras de Negócio */}
+                              {protocolo.regras_negocio && (
+                                <>
+                                  <div className="mb-6 -mx-6 px-6 py-4 bg-muted/30 rounded-lg">
+                                    <h5 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+                                      Regras de Negócio
+                                    </h5>
+                                    <div className="grid grid-cols-2 gap-6">
+                                      {protocolo.regras_negocio.publico_alvo && (
+                                        <div>
+                                          <h6 className="text-xs font-semibold text-foreground uppercase mb-2">Público Alvo</h6>
+                                          <div className="text-sm space-y-2">
+                                            <ReactMarkdown
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                ul: ({children}) => <ul className="list-disc ml-4 space-y-1">{children}</ul>,
+                                                ol: ({children}) => <ol className="list-decimal ml-4 space-y-1">{children}</ol>,
+                                                li: ({children}) => <li className="text-sm">{children}</li>,
+                                                p: ({children}) => <p className="mb-2">{children}</p>,
+                                                strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                                                code: ({children}) => <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                              }}
+                                            >
+                                              {protocolo.regras_negocio.publico_alvo.replace(/\\n/g, '\n')}
+                                            </ReactMarkdown>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {protocolo.regras_negocio.regular && (
+                                        <div>
+                                          <h6 className="text-xs font-semibold uppercase mb-2" style={{ color: '#16a34a' }}>Regular</h6>
+                                          <div className="text-sm space-y-2">
+                                            <ReactMarkdown
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                ul: ({children}) => <ul className="list-disc ml-4 space-y-1">{children}</ul>,
+                                                ol: ({children}) => <ol className="list-decimal ml-4 space-y-1">{children}</ol>,
+                                                li: ({children}) => <li className="text-sm">{children}</li>,
+                                                p: ({children}) => <p className="mb-2">{children}</p>,
+                                                strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                                                code: ({children}) => <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                              }}
+                                            >
+                                              {protocolo.regras_negocio.regular.replace(/\\n/g, '\n')}
+                                            </ReactMarkdown>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {protocolo.regras_negocio.irregular && (
+                                        <div>
+                                          <h6 className="text-xs font-semibold uppercase mb-2" style={{ color: '#dc2626' }}>Irregular</h6>
+                                          <div className="text-sm space-y-2">
+                                            <ReactMarkdown
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                ul: ({children}) => <ul className="list-disc ml-4 space-y-1">{children}</ul>,
+                                                ol: ({children}) => <ol className="list-decimal ml-4 space-y-1">{children}</ol>,
+                                                li: ({children}) => <li className="text-sm">{children}</li>,
+                                                p: ({children}) => <p className="mb-2">{children}</p>,
+                                                strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                                                code: ({children}) => <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                              }}
+                                            >
+                                              {protocolo.regras_negocio.irregular.replace(/\\n/g, '\n')}
+                                            </ReactMarkdown>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {protocolo.regras_negocio.atencao && (
+                                        <div>
+                                          <h6 className="text-xs font-semibold uppercase mb-2" style={{ color: '#ea580c' }}>Atenção</h6>
+                                          <div className="text-sm space-y-2">
+                                            <ReactMarkdown
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                ul: ({children}) => <ul className="list-disc ml-4 space-y-1">{children}</ul>,
+                                                ol: ({children}) => <ol className="list-decimal ml-4 space-y-1">{children}</ol>,
+                                                li: ({children}) => <li className="text-sm">{children}</li>,
+                                                p: ({children}) => <p className="mb-2">{children}</p>,
+                                                strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                                                code: ({children}) => <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                              }}
+                                            >
+                                              {protocolo.regras_negocio.atencao.replace(/\\n/g, '\n')}
+                                            </ReactMarkdown>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {protocolo.regras_negocio.nao_aplica && (
+                                        <div>
+                                          <h6 className="text-xs font-semibold uppercase mb-2" style={{ color: '#71717a' }}>Não Aplica</h6>
+                                          <div className="text-sm space-y-2">
+                                            <ReactMarkdown
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                ul: ({children}) => <ul className="list-disc ml-4 space-y-1">{children}</ul>,
+                                                ol: ({children}) => <ol className="list-decimal ml-4 space-y-1">{children}</ol>,
+                                                li: ({children}) => <li className="text-sm">{children}</li>,
+                                                p: ({children}) => <p className="mb-2">{children}</p>,
+                                                strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                                                code: ({children}) => <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                              }}
+                                            >
+                                              {protocolo.regras_negocio.nao_aplica.replace(/\\n/g, '\n')}
+                                            </ReactMarkdown>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <Separator className="my-4" />
+                                </>
+                              )}
+
                               {/* Headers */}
                               <div className="grid grid-cols-2 gap-6 mb-4">
-                                <h5 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                                <h5 className="text-sm font-semibold text-foreground uppercase tracking-wide">
                                   Dados Extraídos
                                 </h5>
-                                <h5 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                                <h5 className="text-sm font-semibold text-foreground uppercase tracking-wide">
                                   Origem dos Dados ({dataBySource.length} {dataBySource.length === 1 ? 'tabela' : 'tabelas'})
                                 </h5>
                               </div>
