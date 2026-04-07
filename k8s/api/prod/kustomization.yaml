@@ -1,5 +1,90 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - resources.yaml
+namespace: app-pic
+
+helmCharts:
+  - name: base-chart
+    repo: https://prefeitura-rio.github.io/charts
+    version: 2.3.0
+    releaseName: api
+    valuesInline:
+      replicaCount: 1
+
+      image:
+        repository: ghcr.io/prefeitura-rio/app-pic-api
+        pullPolicy: IfNotPresent
+        tag: "stable"
+
+      imagePullSecrets:
+        - name: ghcr-credentials
+
+      service:
+        type: ClusterIP
+        port: 80
+        containerPort: 8089
+
+      istio:
+        enabled: true
+
+      resources:
+        requests:
+          cpu: 250m
+          memory: 4Gi
+        limits:
+          cpu: 1000m
+          memory: 4Gi
+
+      healthCheck:
+        path: /health
+
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8089
+        initialDelaySeconds: 10
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 6
+
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8089
+        initialDelaySeconds: 5
+        periodSeconds: 10
+        timeoutSeconds: 5
+        successThreshold: 1
+        failureThreshold: 3
+
+      infisicalSecret:
+        enabled: true
+        secretName: "api-secrets"
+        projectSlug: "app-pic-api-bw-do"
+        envSlug: "prod"
+
+      envFrom:
+        - secretRef:
+            name: api-secrets
+
+      podAnnotations:
+        secrets.infisical.com/auto-reload: "true"
+
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: false
+
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+      autoscaling:
+        enabled: false
