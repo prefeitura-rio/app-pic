@@ -405,13 +405,19 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
 
     const headers = [...participantFields, ...protocolFields];
 
+    // Usar ponto-e-vírgula (;) como delimitador - mais comum no Brasil e evita problemas com vírgulas no texto
+    const DELIMITER = ';';
+
     const escapeCSV = (value: any): string => {
-      if (value === null || value === undefined) return '';
+      if (value === null || value === undefined) return '""';
+
       const str = String(value);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
+
+      // SEMPRE usar aspas duplas para garantir compatibilidade com quebras de linha
+      // Escapar aspas duplas internas duplicando elas (padrão CSV)
+      // Substituir quebras de linha por espaço para evitar problemas
+      const cleaned = str.replace(/\n/g, ' ').replace(/\r/g, '').replace(/"/g, '""');
+      return `"${cleaned}"`;
     };
 
     // Array de chunks de string (cada chunk ~1000 linhas)
@@ -419,7 +425,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     const CHUNK_SIZE = 1000; // linhas por chunk
 
     // Header
-    chunks.push(headers.join(',') + '\n');
+    chunks.push(headers.join(DELIMITER) + '\n');
 
     let buffer: string[] = [];
     let linesInBuffer = 0;
@@ -440,7 +446,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
             return escapeCSV(participant[header]);
           });
 
-          buffer.push(row.join(','));
+          buffer.push(row.join(DELIMITER));
           linesInBuffer++;
 
           // Flush buffer quando atingir chunk size
@@ -456,7 +462,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           return escapeCSV(participant[header]);
         });
 
-        buffer.push(row.join(','));
+        buffer.push(row.join(DELIMITER));
         linesInBuffer++;
 
         if (linesInBuffer >= CHUNK_SIZE) {
