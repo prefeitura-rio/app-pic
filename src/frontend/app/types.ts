@@ -102,10 +102,13 @@ export interface Participante {
   nome_cre?: string;
 
   // Equipamentos - SMS
-  id_ap?: string; 
-  nome_ap?: string; 
+  id_ap?: string;
+  nome_ap?: string;
   id_clinica_familia?: string;
   nome_clinica_familia?: string;
+  id_equipe_familia?: string;
+  nome_equipe_familia?: string;
+  equipe_medicos?: string;
 
   // Infraestrutura
   cpf_particao?: number;
@@ -152,6 +155,9 @@ export interface SmartFilterOptions {
   cras: FilterOptionItem[];
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
+  equipes_familia: FilterOptionItem[];
+  unidades_saude: FilterOptionItem[];
+  equipes_saude: FilterOptionItem[];
   protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
   protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 
@@ -334,6 +340,9 @@ export interface DashboardFilters {
   cras?: string | string[]; // Multi-select
   escola?: string | string[]; // Multi-select
   clinica?: string | string[]; // Multi-select
+  equipe_familia?: string | string[]; // Multi-select
+  unidade_saude?: string | string[]; // Multi-select
+  equipe_saude?: string | string[]; // Multi-select
   safra?: string | string[]; // Multi-select
   grupo?: string | string[]; // Multi-select
   status?: string | string[]; // Multi-select
@@ -357,6 +366,7 @@ export interface ParticipantFilters {
   cras?: string | string[]; // Multi-select
   escola?: string | string[]; // Multi-select
   clinica?: string | string[]; // Multi-select
+  equipe_familia?: string | string[]; // Multi-select
   safra?: string | string[]; // Multi-select
   grupo?: string | string[]; // Multi-select
   status?: string | string[]; // Multi-select
@@ -426,9 +436,10 @@ export interface AvailableIds {
   cras: IdWithName[];
   escolas: IdWithName[];
   cres: IdWithName[];
-  aps: IdWithName[]; 
+  aps: IdWithName[];
   cas: IdWithName[];
   clinicas: IdWithName[];
+  equipes_familia: IdWithName[];
 }
 
 /**
@@ -450,6 +461,7 @@ export interface UserAccessRecord {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  id_equipe_familia_list?: IdWithName[] | null;
 
   secretaria_acesso?: string | null;
 
@@ -479,6 +491,7 @@ export interface CreateUserRequest {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  id_equipe_familia_list?: IdWithName[] | null;
 
   secretaria_acesso?: string | null;
 
@@ -503,6 +516,7 @@ export interface UpdateUserRequest {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  id_equipe_familia_list?: IdWithName[] | null;
 
   secretaria_acesso?: string | null;
 

@@ -390,6 +390,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       'nome_ap',
       'id_clinica_familia',
       'nome_clinica_familia',
+      'id_equipe_familia',
+      'nome_equipe_familia',
+      'equipe_medicos',
     ];
 
     const protocolFields = [
@@ -539,6 +542,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     cras: [],
     escolas: [],
     clinicas: [],
+    equipes_familia: [],
+    unidades_saude: [],
+    equipes_saude: [],
     protocolo_descricoes: [],
     protocolo_status_list: [],
     // Filtros de usuários (admin)

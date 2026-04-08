@@ -28,6 +28,7 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     "cras": "id_cras",
     "escola": "id_escola",
     "clinica": "id_clinica_familia",
+    "equipe_familia": "id_equipe_familia",
     "safra": "cohort",
     "grupo": "grupo",
     "status": "status",
@@ -57,6 +58,10 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "clinicas": {
         "column": "id_clinica_familia",
         "label_column": "nome_clinica_familia",
+    },
+    "equipes_familia": {
+        "column": "id_equipe_familia",
+        "label_column": "nome_equipe_familia",
     },
     # Filtros de array (protocolo_listagem) - extrai valores únicos do array
     "protocolo_descricoes": {

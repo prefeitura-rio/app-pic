@@ -49,6 +49,7 @@ export function UserForm({
       aps: currentUser.id_ap_list || [],
       cas: currentUser.id_cas_list || [],
       clinicas: currentUser.id_clinica_familia_list || [],
+      equipes_familia: currentUser.id_equipe_familia_list || [],
     };
   }, [availableIds, currentUser]);
 
@@ -105,6 +106,7 @@ export function UserForm({
   const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
+  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
   const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
 
   // Initialize form with user data if editing
@@ -125,6 +127,7 @@ export function UserForm({
       setSelectedAps(user.id_ap_list || []);
       setSelectedCas(user.id_cas_list || []);
       setSelectedClinicas(user.id_clinica_familia_list || []);
+      setSelectedEquipesFamilia(user.id_equipe_familia_list || []);
       setSecretariaAcesso(user.secretaria_acesso || "NULL");
     } else {
       // Reset form
@@ -142,6 +145,7 @@ export function UserForm({
       setSelectedAps([]);
       setSelectedCas([]);
       setSelectedClinicas([]);
+      setSelectedEquipesFamilia([]);
       setSecretariaAcesso("NULL");
     }
   }, [user]);
@@ -178,6 +182,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+        id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
         secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
         notes: notes || null,
       };
@@ -198,6 +203,7 @@ export function UserForm({
         id_ap_list: selectedAps.length > 0 ? selectedAps : null,
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+        id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
         secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
         notes: notes || null,
       };
@@ -431,6 +437,16 @@ export function UserForm({
               onChange={setSelectedClinicas}
               disabled={isLoading}
               tooltip="Clínicas da Família e unidades de saúde que o usuário poderá acessar"
+            />
+
+            {/* Equipes de Saúde da Família */}
+            <VirtualizedIdMultiSelect
+              label="Equipes de Saúde da Família"
+              options={filteredAvailableIds.equipes_familia}
+              selected={selectedEquipesFamilia}
+              onChange={setSelectedEquipesFamilia}
+              disabled={isLoading}
+              tooltip="Equipes de Saúde da Família (ESF) que o usuário poderá acessar"
             />
           </div>
         </div>

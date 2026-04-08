@@ -75,6 +75,9 @@ const UserTableComponent = ({
     if (user.id_clinica_familia_list?.length) {
       counts.push(`${user.id_clinica_familia_list.length} Clínicas`);
     }
+    if (user.id_equipe_familia_list?.length) {
+      counts.push(`${user.id_equipe_familia_list.length} Equipes`);
+    }
 
     return counts.length > 0 ? counts.join(", ") : "Sem permissões específicas";
   };

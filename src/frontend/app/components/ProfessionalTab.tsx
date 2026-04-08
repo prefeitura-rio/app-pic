@@ -408,13 +408,84 @@ const ProfessionalTabComponent = ({
                         <p className="font-medium">{selectedParticipant.nome_escola || "-"}</p>
                       </div>
                       <div>
+                        <p className="text-sm text-muted-foreground">CRAS</p>
+                        <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
+                      </div>
+                      <div>
                         <p className="text-sm text-muted-foreground">Clínica da Família</p>
                         <p className="font-medium">{selectedParticipant.nome_clinica_familia || "-"}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">CRAS</p>
-                        <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
+                        <p className="text-sm text-muted-foreground">Equipe da Família</p>
+                        <p className="font-medium">
+                          {selectedParticipant.nome_equipe_familia &&
+                           selectedParticipant.nome_equipe_familia !== "SEM VÍNCULO" &&
+                           selectedParticipant.nome_equipe_familia !== "0"
+                            ? selectedParticipant.nome_equipe_familia
+                            : "-"}
+                        </p>
                       </div>
+                      {(() => {
+                        const equipeMedicos = selectedParticipant.equipe_medicos;
+                        if (!equipeMedicos || equipeMedicos === "SEM VÍNCULO" || equipeMedicos === "0") {
+                          return (
+                            <div className="col-span-2">
+                              <p className="text-sm text-muted-foreground">Profissionais da Equipe</p>
+                              <p className="font-medium">-</p>
+                            </div>
+                          );
+                        }
+
+                        // Parse da string: "MEDICOS:\nNome1\nNome2\n\nENFERMEIROS:\nNome3\nNome4"
+                        const lines = equipeMedicos.split('\n').map(l => l.trim()).filter(l => l);
+                        const medicos: string[] = [];
+                        const enfermeiros: string[] = [];
+                        let currentSection = '';
+
+                        for (const line of lines) {
+                          if (line.startsWith('MEDICOS:') || line === 'MEDICOS') {
+                            currentSection = 'medicos';
+                          } else if (line.startsWith('ENFERMEIROS:') || line === 'ENFERMEIROS') {
+                            currentSection = 'enfermeiros';
+                          } else if (line !== 'SEM MÉDICOS' && line !== 'SEM ENFERMEIROS') {
+                            if (currentSection === 'medicos') {
+                              medicos.push(line);
+                            } else if (currentSection === 'enfermeiros') {
+                              enfermeiros.push(line);
+                            }
+                          }
+                        }
+
+                        return (
+                          <div className="col-span-2">
+                            <div className="grid grid-cols-2 gap-4">
+                              {medicos.length > 0 && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground mb-1">Médicos</p>
+                                  <ul className="list-disc list-inside space-y-0.5">
+                                    {medicos.map((medico, idx) => (
+                                      <li key={idx} className="text-sm">{medico}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {enfermeiros.length > 0 && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground mb-1">Enfermeiros</p>
+                                  <ul className="list-disc list-inside space-y-0.5">
+                                    {enfermeiros.map((enfermeiro, idx) => (
+                                      <li key={idx} className="text-sm">{enfermeiro}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {medicos.length === 0 && enfermeiros.length === 0 && (
+                                <p className="text-sm text-muted-foreground col-span-2">Sem informações de profissionais</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <div>
                         <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
                         <p className="font-medium">{selectedParticipant.cohort || "-"}</p>

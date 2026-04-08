@@ -1405,6 +1405,7 @@ class DataManager:
             "id_ap",
             "id_cas",
             "id_clinica_familia",
+            "id_equipe_familia",
         ]:
             ids = user_permissions.get_filter_ids(id_type)
             if ids:

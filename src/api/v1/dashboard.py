@@ -40,6 +40,10 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
     "aps": {"column": "id_ap", "label_column": "nome_ap"},
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
+    "cras": {"column": "id_cras", "label_column": "nome_cras"},
+    "escolas": {"column": "id_escola", "label_column": "nome_escola"},
+    "unidades_saude": {"column": "id_unidade_saude", "label_column": "nome_unidade_saude"},
+    "equipes_saude": {"column": "id_equipe_saude", "label_column": "nome_equipe_saude"},
 }
 
 # Mapeamento de mês numérico para label
@@ -68,6 +72,10 @@ async def get_dashboard_metrics(
     cre: Optional[str] = Query(None, description="Filtrar por CRE"),
     ap: Optional[str] = Query(None, description="Filtrar por AP"),
     cas: Optional[str] = Query(None, description="Filtrar por CAS"),
+    cras: Optional[str] = Query(None, description="Filtrar por CRAS"),
+    escola: Optional[str] = Query(None, description="Filtrar por escola"),
+    unidade_saude: Optional[str] = Query(None, description="Filtrar por unidade de saúde"),
+    equipe_saude: Optional[str] = Query(None, description="Filtrar por equipe de saúde"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ) -> Any:
     """
@@ -112,6 +120,14 @@ async def get_dashboard_metrics(
         filters_dict["id_ap"] = parse_multi_select(ap)
     if cas:
         filters_dict["id_cas"] = parse_multi_select(cas)
+    if cras:
+        filters_dict["id_cras"] = parse_multi_select(cras)
+    if escola:
+        filters_dict["id_escola"] = parse_multi_select(escola)
+    if unidade_saude:
+        filters_dict["id_unidade_saude"] = parse_multi_select(unidade_saude)
+    if equipe_saude:
+        filters_dict["id_equipe_saude"] = parse_multi_select(equipe_saude)
 
     logger.info("Fetching dashboard metrics from pre-aggregated table")
     logger.info(f"🔑 Permissions: {per_log}")
