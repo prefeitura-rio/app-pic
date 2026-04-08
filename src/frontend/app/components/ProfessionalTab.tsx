@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/app/components/ui/dialog";
 import { Separator } from "@/app/components/ui/separator";
 import {
@@ -352,6 +353,9 @@ const ProfessionalTabComponent = ({
                   <Eye className="h-6 w-6 text-primary" />
                   Detalhamento Individual
                 </DialogTitle>
+                <DialogDescription>
+                  Visualize informações completas, protocolos e histórico do participante
+                </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-6 mt-4">

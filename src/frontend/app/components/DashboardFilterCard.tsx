@@ -24,6 +24,10 @@ export interface DashboardFilterValues {
   cre?: string | string[];                 // id_cre (multi-select)
   ap?: string | string[];                  // id_ap (multi-select)
   cas?: string | string[];                 // id_cas (multi-select)
+  cras?: string | string[];                // id_cras (multi-select)
+  escola?: string | string[];              // id_escola (multi-select)
+  unidade_saude?: string | string[];       // id_unidade_saude (multi-select)
+  equipe_saude?: string | string[];        // id_equipe_saude (multi-select)
 }
 
 interface DashboardFilterCardProps {

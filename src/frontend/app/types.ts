@@ -595,6 +595,7 @@ export interface BatchPermissionsRequest {
   id_ap_list?: IdWithName[] | null;
   id_cas_list?: IdWithName[] | null;
   id_clinica_familia_list?: IdWithName[] | null;
+  id_equipe_familia_list?: IdWithName[] | null;
   secretaria_acesso?: string | null;
 }
 
