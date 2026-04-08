@@ -433,10 +433,16 @@ const ProfessionalTabComponent = ({
                         const equipeMedicos = selectedParticipant.equipe_medicos;
                         if (!equipeMedicos || equipeMedicos === "SEM VÍNCULO" || equipeMedicos === "0") {
                           return (
-                            <div className="col-span-2">
-                              <p className="text-sm text-muted-foreground">Profissionais da Equipe</p>
-                              <p className="font-medium">-</p>
-                            </div>
+                            <>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Médicos</p>
+                                <p className="font-medium">-</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Enfermeiros</p>
+                                <p className="font-medium">-</p>
+                              </div>
+                            </>
                           );
                         }
 
@@ -461,33 +467,32 @@ const ProfessionalTabComponent = ({
                         }
 
                         return (
-                          <div className="col-span-2">
-                            <div className="grid grid-cols-2 gap-4">
-                              {medicos.length > 0 && (
-                                <div>
-                                  <p className="text-sm text-muted-foreground mb-1">Médicos</p>
-                                  <ul className="list-disc list-inside space-y-0.5">
-                                    {medicos.map((medico, idx) => (
-                                      <li key={idx} className="text-sm">{medico}</li>
-                                    ))}
-                                  </ul>
+                          <>
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-1">Médicos</p>
+                              {medicos.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {medicos.map((medico, idx) => (
+                                    <p key={idx} className="font-medium">{medico}</p>
+                                  ))}
                                 </div>
-                              )}
-                              {enfermeiros.length > 0 && (
-                                <div>
-                                  <p className="text-sm text-muted-foreground mb-1">Enfermeiros</p>
-                                  <ul className="list-disc list-inside space-y-0.5">
-                                    {enfermeiros.map((enfermeiro, idx) => (
-                                      <li key={idx} className="text-sm">{enfermeiro}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {medicos.length === 0 && enfermeiros.length === 0 && (
-                                <p className="text-sm text-muted-foreground col-span-2">Sem informações de profissionais</p>
+                              ) : (
+                                <p className="font-medium">-</p>
                               )}
                             </div>
-                          </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-1">Enfermeiros</p>
+                              {enfermeiros.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {enfermeiros.map((enfermeiro, idx) => (
+                                    <p key={idx} className="font-medium">{enfermeiro}</p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="font-medium">-</p>
+                              )}
+                            </div>
+                          </>
                         );
                       })()}
                       <div>
