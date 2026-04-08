@@ -43,6 +43,7 @@ class CommonFilters(BaseModel):
     cras: Optional[str] = None  # Multi-select
     escola: Optional[str] = None  # Multi-select
     clinica: Optional[str] = None  # Multi-select
+    equipe_familia: Optional[str] = None  # Multi-select
     safra: Optional[str] = None  # Multi-select
     grupo: Optional[str] = None  # Multi-select
     status: Optional[str] = None  # Multi-select
