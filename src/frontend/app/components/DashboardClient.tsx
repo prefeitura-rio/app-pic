@@ -337,11 +337,13 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    * Each participant with N protocols becomes N rows
    * Optimized for protocol-level analysis in Excel
    */
-  const jsonToCSV = useCallback((data: any[]): string => {
-    if (data.length === 0) return '';
+  const jsonToCSVBlob = useCallback((data: any[]): Blob => {
+    // Gera CSV em chunks para evitar "Invalid string length" com datasets grandes
+    // Retorna Blob diretamente ao invés de string gigante
+
+    if (data.length === 0) return new Blob([''], { type: 'text/csv;charset=utf-8;' });
 
     // Define headers for expanded format
-    // Participant fields + Protocol fields
     const participantFields = [
       'cpf',
       'id_membro_familia',
@@ -358,13 +360,11 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       'status',
       'status_inativo_motivo',
       'situacao',
-      // Totalizadores gerais
       'total_protocolos',
       'total_protocolos_regular',
       'total_protocolos_irregular',
       'total_protocolos_atencao',
       'total_fracao',
-      // Totalizadores por secretaria
       'assistencia_protocolos_total',
       'assistencia_protocolos_regular',
       'assistencia_protocolos_irregular',
@@ -377,7 +377,6 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       'saude_protocolos_regular',
       'saude_protocolos_irregular',
       'saude_fracao',
-      // Equipamentos
       'id_cras',
       'nome_cras',
       'id_cas',
@@ -390,6 +389,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       'nome_ap',
       'id_clinica_familia',
       'nome_clinica_familia',
+      'id_equipe_familia',
+      'nome_equipe_familia',
+      'equipe_medicos',
     ];
 
     const protocolFields = [
@@ -403,60 +405,82 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
 
     const headers = [...participantFields, ...protocolFields];
 
-    // Helper to escape CSV values
+    // Usar ponto-e-vírgula (;) como delimitador - mais comum no Brasil e evita problemas com vírgulas no texto
+    const DELIMITER = ';';
+
     const escapeCSV = (value: any): string => {
-      if (value === null || value === undefined) return '';
+      if (value === null || value === undefined) return '""';
 
       const str = String(value);
 
-      // Wrap in quotes if contains comma, quote, or newline
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-
-      return str;
+      // SEMPRE usar aspas duplas para garantir compatibilidade com quebras de linha
+      // Escapar aspas duplas internas duplicando elas (padrão CSV)
+      // Substituir quebras de linha por espaço para evitar problemas
+      const cleaned = str.replace(/\n/g, ' ').replace(/\r/g, '').replace(/"/g, '""');
+      return `"${cleaned}"`;
     };
 
-    // Create CSV header row
-    const csvRows = [headers.join(',')];
+    // Array de chunks de string (cada chunk ~1000 linhas)
+    const chunks: string[] = [];
+    const CHUNK_SIZE = 1000; // linhas por chunk
 
-    // Expand each participant into multiple rows (one per protocol)
+    // Header
+    chunks.push(headers.join(DELIMITER) + '\n');
+
+    let buffer: string[] = [];
+    let linesInBuffer = 0;
+
+    // Processar participantes
     data.forEach(participant => {
       const protocolos = participant.protocolo_listagem || [];
 
-      // If participant has protocols, create one row per protocol
       if (protocolos.length > 0) {
         protocolos.forEach((protocolo: any) => {
           const row = headers.map(header => {
-            // Protocol fields
             if (header === 'protocolo_id') return escapeCSV(protocolo.id);
             if (header === 'protocolo_secretaria') return escapeCSV(protocolo.secretaria);
             if (header === 'protocolo_descricao') return escapeCSV(protocolo.descricao);
             if (header === 'protocolo_status') return escapeCSV(protocolo.status);
             if (header === 'protocolo_irregular_indicador') return escapeCSV(protocolo.irregular_indicador);
             if (header === 'protocolo_status_label') return escapeCSV(protocolo.protocolo_status_label);
-
-            // Participant fields
             return escapeCSV(participant[header]);
           });
 
-          csvRows.push(row.join(','));
+          buffer.push(row.join(DELIMITER));
+          linesInBuffer++;
+
+          // Flush buffer quando atingir chunk size
+          if (linesInBuffer >= CHUNK_SIZE) {
+            chunks.push(buffer.join('\n') + '\n');
+            buffer = [];
+            linesInBuffer = 0;
+          }
         });
       } else {
-        // If no protocols, create single row with participant data
         const row = headers.map(header => {
-          // Protocol fields will be empty
           if (header.startsWith('protocolo_')) return '';
-
-          // Participant fields
           return escapeCSV(participant[header]);
         });
 
-        csvRows.push(row.join(','));
+        buffer.push(row.join(DELIMITER));
+        linesInBuffer++;
+
+        if (linesInBuffer >= CHUNK_SIZE) {
+          chunks.push(buffer.join('\n') + '\n');
+          buffer = [];
+          linesInBuffer = 0;
+        }
       }
     });
 
-    return csvRows.join('\n');
+    // Flush remaining buffer
+    if (buffer.length > 0) {
+      chunks.push(buffer.join('\n'));
+    }
+
+    // Criar Blob a partir dos chunks (evita string gigante)
+    const BOM = '\uFEFF';
+    return new Blob([BOM, ...chunks], { type: 'text/csv;charset=utf-8;' });
   }, []);
 
   /**
@@ -484,15 +508,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       const fetchTime = ((performance.now() - startTime) / 1000).toFixed(1);
       toast.info(`⚙️ Processando ${result.meta.total_rows.toLocaleString('pt-BR')} participantes...`);
 
-      // Convert to CSV (expanded format: 1 row per protocol)
-      const csvData = jsonToCSV(result.data);
+      // Convert to CSV Blob (com BOM, em chunks para evitar limite de string)
+      const blob = jsonToCSVBlob(result.data);
 
-      // Count total lines (including header)
-      const totalLines = csvData.split('\n').length - 1; // -1 for header
-
-      // Add BOM for Excel UTF-8 compatibility
-      const BOM = '\uFEFF';
-      const blob = new Blob([BOM + csvData], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -512,14 +530,14 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       const fileSize = (blob.size / 1024 / 1024).toFixed(1); // MB
 
       toast.success(
-        `✅ ${result.meta.total_rows.toLocaleString('pt-BR')} participantes expandidos em ${totalLines.toLocaleString('pt-BR')} linhas (${fileSize} MB em ${totalTime}s)`,
+        `✅ ${result.meta.total_rows.toLocaleString('pt-BR')} participantes baixados (${fileSize} MB em ${totalTime}s)`,
         { duration: 5000 }
       );
     } catch (error) {
       console.error("Download error:", error);
       toast.error("❌ Erro ao baixar dados. Tente novamente.");
     }
-  }, [professionalFilters, sortBy, sortOrder, jsonToCSV]);
+  }, [professionalFilters, sortBy, sortOrder, jsonToCSVBlob]);
 
   /**
    * Memoizar filter options vazias para evitar re-criação
@@ -539,6 +557,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     cras: [],
     escolas: [],
     clinicas: [],
+    equipes_familia: [],
+    unidades_saude: [],
+    equipes_saude: [],
     protocolo_descricoes: [],
     protocolo_status_list: [],
     // Filtros de usuários (admin)

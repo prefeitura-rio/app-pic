@@ -33,13 +33,13 @@ SECRETARIA_COLUMN_PREFIX = {
 # Equipamentos permitidos por secretaria
 SECRETARIA_EQUIPMENT = {
     SECRETARIA_SME: ["id_cre_list", "id_escola_list"],
-    SECRETARIA_SMS: ["id_ap_list", "id_clinica_familia_list"],
+    SECRETARIA_SMS: ["id_ap_list", "id_clinica_familia_list", "id_equipe_familia_list"],
     SECRETARIA_SMAS: ["id_cas_list", "id_cras_list"],
 }
 
 # Equipamentos legíveis por secretaria (para mensagens de erro)
 SECRETARIA_EQUIPMENT_LABELS = {
     SECRETARIA_SME: "CREs e Escolas",
-    SECRETARIA_SMS: "APs e Clínicas",
+    SECRETARIA_SMS: "APs, Clínicas e Equipes de Saúde",
     SECRETARIA_SMAS: "CAS e CRAS",
 }

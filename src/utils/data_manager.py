@@ -24,6 +24,30 @@ from src.api.v1.schemas import (
 
 
 # =============================================================================
+# HELPER: Natural Sort (para ordenar opções de filtro com números)
+# =============================================================================
+def natural_sort_key(text: str) -> tuple:
+    """
+    Ordena naturalmente considerando números no início da string.
+    Ex: "3ª Rio" < "10ª Centro" (ao invés de ordem alfabética onde "10" < "3")
+
+    Args:
+        text: String para extrair chave de ordenação
+
+    Returns:
+        Tupla (número ou infinito, texto completo) para ordenação
+    """
+    import re
+    match = re.match(r'^(\d+)', text)
+    if match:
+        # Se começa com número, ordenar por (número, resto da string)
+        return (int(match.group(1)), text)
+    else:
+        # Se não começa com número, ordenar alfabeticamente (com prioridade baixa)
+        return (float('inf'), text)
+
+
+# =============================================================================
 # CACHE OTIMIZADO: Estrutura para dados pré-computados (POLARS)
 # =============================================================================
 class CachedDataset:
@@ -507,7 +531,7 @@ class DataManager:
                 )
                 options = [
                     {"id": str(v), "label": str(v)}
-                    for v in sorted(unique_values)
+                    for v in sorted(unique_values, key=natural_sort_key)
                     if v and str(v).strip()
                 ]
                 result[result_key] = options
@@ -536,7 +560,7 @@ class DataManager:
                         {"id": value_str, "label": str(label_map.get(value, value))}
                     )
 
-            options.sort(key=lambda x: x["label"])
+            options.sort(key=lambda x: natural_sort_key(x["label"]))
             result[result_key] = options
 
         return result
@@ -1222,7 +1246,7 @@ class DataManager:
                     )
                 options = [
                     FilterOptionItem(id=str(v), label=str(v))
-                    for v in sorted(unique_values)
+                    for v in sorted(unique_values, key=natural_sort_key)
                     if v and str(v).strip()
                 ]
                 filter_options_dict[result_key] = options
@@ -1263,7 +1287,9 @@ class DataManager:
                         )
                     )
 
-            options.sort(key=lambda x: x.label)
+            # Ordenação natural: considera números no início da string
+            # Ex: "3ª Rio" vem antes de "10ª Centro" (ao invés de ordem alfabética)
+            options.sort(key=lambda opt: natural_sort_key(opt.label))
             filter_options_dict[result_key] = options
 
         total_time = time.perf_counter() - start_time
@@ -1405,6 +1431,7 @@ class DataManager:
             "id_ap",
             "id_cas",
             "id_clinica_familia",
+            "id_equipe_familia",
         ]:
             ids = user_permissions.get_filter_ids(id_type)
             if ids:

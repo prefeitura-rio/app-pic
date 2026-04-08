@@ -84,6 +84,7 @@ const FilterCardComponent = ({
     bairros: (filterOptions.bairros || []).filter((item) => item.id && item.id.trim() !== ""),
     escolas: (filterOptions.escolas || []).filter((item) => item.id && item.id.trim() !== ""),
     clinicas: (filterOptions.clinicas || []).filter((item) => item.id && item.id.trim() !== ""),
+    equipes_familia: (filterOptions.equipes_familia || []).filter((item) => item.id && item.id.trim() !== ""),
     cras: (filterOptions.cras || []).filter((item) => item.id && item.id.trim() !== ""),
     protocolo_descricoes: (filterOptions.protocolo_descricoes || []).filter((item) => item.id && item.id.trim() !== ""),
     protocolo_status_list: (filterOptions.protocolo_status_list || []).filter((item) => item.id && item.id.trim() !== ""),
@@ -430,6 +431,24 @@ const FilterCardComponent = ({
               placeholder="Clínicas da Família"
               defaultLabel="Todas as Clínicas"
               options={filteredOptions.clinicas}
+            />
+            )}
+
+            {/* Equipes da Família - Multi-select */}
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray((filters as any).equipe_familia)
+                    ? (filters as any).equipe_familia
+                    : (filters as any).equipe_familia
+                      ? [(filters as any).equipe_familia]
+                    : []
+              }
+              onSelect={(values) => handleMultiFilterUpdate("equipe_familia", values)}
+              disabled={loading}
+              placeholder="Equipes da Família"
+              defaultLabel="Todas as Equipes"
+              options={filteredOptions.equipes_familia}
             />
             )}
           </div>

@@ -24,6 +24,10 @@ export interface DashboardFilterValues {
   cre?: string | string[];                 // id_cre (multi-select)
   ap?: string | string[];                  // id_ap (multi-select)
   cas?: string | string[];                 // id_cas (multi-select)
+  cras?: string | string[];                // id_cras (multi-select)
+  escola?: string | string[];              // id_escola (multi-select)
+  unidade_saude?: string | string[];       // id_unidade_saude (multi-select)
+  equipe_saude?: string | string[];        // id_equipe_saude (multi-select)
 }
 
 interface DashboardFilterCardProps {
@@ -100,6 +104,10 @@ const DashboardFilterCardComponent = ({
     cres: (filterOptions.cres || []).filter((item) => item.id && item.id.trim() !== ""),
     aps: (filterOptions.aps || []).filter((item) => item.id && item.id.trim() !== ""),
     cas_list: (filterOptions.cas_list || []).filter((item) => item.id && item.id.trim() !== ""),
+    cras: (filterOptions.cras || []).filter((item) => item.id && item.id.trim() !== ""),
+    escolas: (filterOptions.escolas || []).filter((item) => item.id && item.id.trim() !== ""),
+    unidades_saude: (filterOptions.unidades_saude || []).filter((item) => item.id && item.id.trim() !== ""),
+    equipes_saude: (filterOptions.equipes_saude || []).filter((item) => item.id && item.id.trim() !== ""),
   }), [filterOptions]);
 
   return (
@@ -318,6 +326,78 @@ const DashboardFilterCardComponent = ({
                 placeholder="CAS"
                 defaultLabel="Todas as CAS"
                 options={filteredOptions.cas_list}
+              />
+            )}
+
+            {/* CRAS (Assistência Social) - Multi-select */}
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.cras)
+                    ? filters.cras
+                    : filters.cras
+                      ? [filters.cras]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("cras", values)}
+                disabled={loading}
+                placeholder="CRAS"
+                defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
+              />
+            )}
+
+            {/* Escolas (Educação) - Multi-select */}
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.escola)
+                    ? filters.escola
+                    : filters.escola
+                      ? [filters.escola]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("escola", values)}
+                disabled={loading}
+                placeholder="Escolas"
+                defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
+              />
+            )}
+
+            {/* Unidades de Saúde - Multi-select */}
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.unidade_saude)
+                    ? filters.unidade_saude
+                    : filters.unidade_saude
+                      ? [filters.unidade_saude]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("unidade_saude", values)}
+                disabled={loading}
+                placeholder="Unidades de Saúde"
+                defaultLabel="Todas as Unidades"
+                options={filteredOptions.unidades_saude}
+              />
+            )}
+
+            {/* Equipes de Saúde - Multi-select */}
+            { (
+              <VirtualizedMultiSelect
+                value={
+                  Array.isArray(filters.equipe_saude)
+                    ? filters.equipe_saude
+                    : filters.equipe_saude
+                      ? [filters.equipe_saude]
+                      : []
+                }
+                onSelect={(values) => handleMultiFilterUpdate("equipe_saude", values)}
+                disabled={loading}
+                placeholder="Equipes de Saúde"
+                defaultLabel="Todas as Equipes"
+                options={filteredOptions.equipes_saude}
               />
             )}
           </div>

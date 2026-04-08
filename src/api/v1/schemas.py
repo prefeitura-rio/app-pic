@@ -43,6 +43,7 @@ class CommonFilters(BaseModel):
     cras: Optional[str] = None  # Multi-select
     escola: Optional[str] = None  # Multi-select
     clinica: Optional[str] = None  # Multi-select
+    equipe_familia: Optional[str] = None  # Multi-select
     safra: Optional[str] = None  # Multi-select
     grupo: Optional[str] = None  # Multi-select
     status: Optional[str] = None  # Multi-select
@@ -101,6 +102,9 @@ class SmartFilterOptions(BaseModel):
     cras: List[FilterOptionItem] = []
     escolas: List[FilterOptionItem] = []
     clinicas: List[FilterOptionItem] = []
+    equipes_familia: List[FilterOptionItem] = []
+    unidades_saude: List[FilterOptionItem] = []
+    equipes_saude: List[FilterOptionItem] = []
     protocolo_descricoes: List[FilterOptionItem] = []  # Descrições de protocolos
     protocolo_status_list: List[FilterOptionItem] = []  # Status de protocolos
 
@@ -381,6 +385,9 @@ class Participante(BaseModel):
     nome_ap: Optional[str] = None
     id_clinica_familia: Optional[str] = None
     nome_clinica_familia: Optional[str] = None
+    id_equipe_familia: Optional[str] = None
+    nome_equipe_familia: Optional[str] = None
+    equipe_medicos: Optional[str] = None
 
     # Infraestrutura
     cpf_particao: Optional[int] = None

@@ -79,6 +79,7 @@ class AvailableIds(BaseModel):
     aps: List[IdWithName] = Field(default_factory=list)
     cas: List[IdWithName] = Field(default_factory=list)
     clinicas: List[IdWithName] = Field(default_factory=list)
+    equipes_familia: List[IdWithName] = Field(default_factory=list)
 
 
 class UserAccessRecord(BaseModel):
@@ -99,6 +100,7 @@ class UserAccessRecord(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    id_equipe_familia_list: Optional[List[IdWithName]] = None
 
     secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
 
@@ -126,6 +128,7 @@ class UpsertUserRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    id_equipe_familia_list: Optional[List[IdWithName]] = None
 
     secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
 
@@ -196,6 +199,7 @@ def _filter_manageable_users(
     logger.info(f"  - AP: {len(admin_permissions.id_ap_list or [])}")
     logger.info(f"  - CAS: {len(admin_permissions.id_cas_list or [])}")
     logger.info(f"  - Clínicas: {len(admin_permissions.id_clinica_familia_list or [])}")
+    logger.info(f"  - Equipes: {len(admin_permissions.id_equipe_familia_list or [])}")
 
     # REGRA: Admin sem nenhum ID não pode gerenciar usuários
     # (apenas super admin pode gerenciar sem restrição)
@@ -207,6 +211,7 @@ def _filter_manageable_users(
             admin_permissions.id_ap_list,
             admin_permissions.id_cas_list,
             admin_permissions.id_clinica_familia_list,
+            admin_permissions.id_equipe_familia_list,
         ]
     )
 
@@ -257,6 +262,9 @@ def _filter_manageable_users(
         "id_clinica_familia": set(
             admin_permissions.get_filter_ids("id_clinica_familia")
         ),
+        "id_equipe_familia": set(
+            admin_permissions.get_filter_ids("id_equipe_familia")
+        ),
     }
 
     # OTIMIZAÇÃO POLARS: Usar to_dicts() para iterar (governance table é pequena ~100 rows max)
@@ -273,6 +281,7 @@ def _filter_manageable_users(
             "id_ap",
             "id_cas",
             "id_clinica_familia",
+            "id_equipe_familia",
         ]:
             list_key = f"{id_type}_list"
             user_id_list = row.get(list_key)
@@ -467,6 +476,7 @@ def validate_segmented_admin_can_manage(
             admin_permissions.id_ap_list,
             admin_permissions.id_cas_list,
             admin_permissions.id_clinica_familia_list,
+            admin_permissions.id_equipe_familia_list,
         ]
     )
 
@@ -485,6 +495,7 @@ def validate_segmented_admin_can_manage(
         "id_ap",
         "id_cas",
         "id_clinica_familia",
+        "id_equipe_familia",
     ]:
         list_key = f"{id_type}_list"
         target_list = target_ids.get(list_key)
@@ -630,6 +641,9 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 clinicas=_extract_unique_ids(
                     df, "id_clinica_familia", "nome_clinica_familia"
                 ),
+                equipes_familia=_extract_unique_ids(
+                    df, "id_equipe_familia", "nome_equipe_familia"
+                ),
             )
 
             logger.info(
@@ -638,7 +652,8 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 f"{len(available_ids.cres)} CREs, "
                 f"{len(available_ids.aps)} APs, "
                 f"{len(available_ids.cas)} CAS, "
-                f"{len(available_ids.clinicas)} clínicas"
+                f"{len(available_ids.clinicas)} clínicas, "
+                f"{len(available_ids.equipes_familia)} equipes"
             )
 
             return available_ids
@@ -652,6 +667,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 aps=permissions.id_ap_list or [],
                 cas=permissions.id_cas_list or [],
                 clinicas=permissions.id_clinica_familia_list or [],
+                equipes_familia=permissions.id_equipe_familia_list or [],
             )
 
             logger.info(
@@ -661,7 +677,8 @@ async def get_available_ids(permissions: CurrentUserPermissions):
                 f"{len(available_ids.cres)} CREs, "
                 f"{len(available_ids.aps)} APs, "
                 f"{len(available_ids.cas)} CAS, "
-                f"{len(available_ids.clinicas)} clínicas"
+                f"{len(available_ids.clinicas)} clínicas, "
+                f"{len(available_ids.equipes_familia)} equipes"
             )
 
             return available_ids
@@ -836,6 +853,7 @@ async def list_users(
                     "id_ap",
                     "id_cas",
                     "id_clinica_familia",
+                    "id_equipe_familia",
                 ]:
                     list_key = f"{id_type}_list"
                     if list_key in user_dict and user_dict[list_key]:
@@ -1021,6 +1039,7 @@ async def upsert_user(
             "id_ap_list",
             "id_cas_list",
             "id_clinica_familia_list",
+            "id_equipe_familia_list",
         },
         exclude_unset=True,  # Importante: só valida o que foi enviado
     )
@@ -1117,6 +1136,9 @@ async def upsert_user(
                 logger.info(
                     f"    Clínicas: {len(request.id_clinica_familia_list) if request.id_clinica_familia_list else 0} IDs"
                 )
+                logger.info(
+                    f"    Equipes: {len(request.id_equipe_familia_list) if request.id_equipe_familia_list else 0} IDs"
+                )
 
                 # ARRAY<STRUCT> não pode ser parametrizado facilmente no BigQuery
                 struct_updates.append(
@@ -1136,6 +1158,9 @@ async def upsert_user(
                 )
                 struct_updates.append(
                     f"id_clinica_familia_list = {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)}"
+                )
+                struct_updates.append(
+                    f"id_equipe_familia_list = {_convert_id_list_to_bq_struct(request.id_equipe_familia_list)}"
                 )
 
             if request.notes is not None:
@@ -1210,7 +1235,7 @@ async def upsert_user(
             INSERT INTO `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_DATA_ACCESS}`
             (
                 cpf, email, nome, ocupacao, secretaria, is_admin, is_super_admin, permission,
-                id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
+                id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list, id_equipe_familia_list,
                 secretaria_acesso,
                 created_by, active, notes, created_at
             )
@@ -1223,6 +1248,7 @@ async def upsert_user(
                 {_convert_id_list_to_bq_struct(request.id_ap_list)},
                 {_convert_id_list_to_bq_struct(request.id_cas_list)},
                 {_convert_id_list_to_bq_struct(request.id_clinica_familia_list)},
+                {_convert_id_list_to_bq_struct(request.id_equipe_familia_list)},
                 @secretaria_acesso,
                 @created_by, @active, @notes, CURRENT_TIMESTAMP()
             )
@@ -1321,6 +1347,7 @@ async def upsert_user(
             "id_ap",
             "id_cas",
             "id_clinica_familia",
+            "id_equipe_familia",
         ]:
             list_key = f"{id_type}_list"
             if row_dict.get(list_key) is not None and isinstance(
@@ -1476,6 +1503,7 @@ class ImportedUser(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    id_equipe_familia_list: Optional[List[IdWithName]] = None
     secretaria_acesso: Optional[str] = None
 
 
@@ -1510,6 +1538,7 @@ class BatchPermissionsRequest(BaseModel):
     id_ap_list: Optional[List[IdWithName]] = None
     id_cas_list: Optional[List[IdWithName]] = None
     id_clinica_familia_list: Optional[List[IdWithName]] = None
+    id_equipe_familia_list: Optional[List[IdWithName]] = None
     secretaria_acesso: Optional[str] = None
 
 
@@ -1762,6 +1791,7 @@ async def batch_update_permissions(
         "id_ap_list": request.id_ap_list,
         "id_cas_list": request.id_cas_list,
         "id_clinica_familia_list": request.id_clinica_familia_list,
+        "id_equipe_familia_list": request.id_equipe_familia_list,
     }
     target_ids_to_validate = {k: v for k, v in target_ids_dict.items() if v is not None}
 
@@ -1787,6 +1817,7 @@ async def batch_update_permissions(
     id_ap_sql = _convert_id_list_to_bq_struct(request.id_ap_list)
     id_cas_sql = _convert_id_list_to_bq_struct(request.id_cas_list)
     id_clinica_sql = _convert_id_list_to_bq_struct(request.id_clinica_familia_list)
+    id_equipe_familia_sql = _convert_id_list_to_bq_struct(request.id_equipe_familia_list)
 
     # Preparar secretaria_acesso para SQL (converter "NULL" string para SQL NULL)
     if not request.secretaria_acesso or request.secretaria_acesso == "NULL":
@@ -1916,6 +1947,7 @@ async def batch_update_permissions(
             id_ap_list = {id_ap_sql},
             id_cas_list = {id_cas_sql},
             id_clinica_familia_list = {id_clinica_sql},
+            id_equipe_familia_list = {id_equipe_familia_sql},
             secretaria_acesso = {secretaria_acesso_sql},
             nome = COALESCE(S.nome, T.nome),
             email = COALESCE(S.email, T.email),
@@ -1926,7 +1958,7 @@ async def batch_update_permissions(
 
     WHEN NOT MATCHED THEN
         INSERT (cpf, nome, email, ocupacao, secretaria, is_admin, is_super_admin, permission,
-                id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list,
+                id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list, id_clinica_familia_list, id_equipe_familia_list,
                 secretaria_acesso, notes, active, created_at, updated_at, created_by, updated_by)
         VALUES (
             S.cpf,
@@ -1943,6 +1975,7 @@ async def batch_update_permissions(
             {id_ap_sql},
             {id_cas_sql},
             {id_clinica_sql},
+            {id_equipe_familia_sql},
             {secretaria_acesso_sql},
             NULL,
             TRUE,

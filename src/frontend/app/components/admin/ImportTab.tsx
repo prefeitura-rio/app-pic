@@ -114,6 +114,7 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
   const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
+  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
   const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
 
 
@@ -165,6 +166,7 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
       aps: currentUser.id_ap_list || [],
       cas: currentUser.id_cas_list || [],
       clinicas: currentUser.id_clinica_familia_list || [],
+      equipes_familia: currentUser.id_equipe_familia_list || [],
     };
   }, [availableIds, currentUser]);
 
@@ -440,6 +442,7 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
       id_ap_list: selectedAps.length > 0 ? selectedAps : null,
       id_cas_list: selectedCas.length > 0 ? selectedCas : null,
       id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
+      id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
       secretaria_acesso: secretariaAcesso,
     });
   };
@@ -1093,6 +1096,14 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
                 selected={selectedClinicas}
                 onChange={setSelectedClinicas}
                 placeholder="Selecionar Clinicas..."
+              />
+
+              <VirtualizedIdMultiSelect
+                label="Equipes de Saúde da Família"
+                options={filteredAvailableIds.equipes_familia}
+                selected={selectedEquipesFamilia}
+                onChange={setSelectedEquipesFamilia}
+                placeholder="Selecionar Equipes..."
               />
 
               {/* Preview */}

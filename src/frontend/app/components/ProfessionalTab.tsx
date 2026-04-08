@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/app/components/ui/dialog";
 import { Separator } from "@/app/components/ui/separator";
 import {
@@ -352,6 +353,9 @@ const ProfessionalTabComponent = ({
                   <Eye className="h-6 w-6 text-primary" />
                   Detalhamento Individual
                 </DialogTitle>
+                <DialogDescription>
+                  Visualize informações completas, protocolos e histórico do participante
+                </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-6 mt-4">
@@ -408,13 +412,89 @@ const ProfessionalTabComponent = ({
                         <p className="font-medium">{selectedParticipant.nome_escola || "-"}</p>
                       </div>
                       <div>
+                        <p className="text-sm text-muted-foreground">CRAS</p>
+                        <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
+                      </div>
+                      <div>
                         <p className="text-sm text-muted-foreground">Clínica da Família</p>
                         <p className="font-medium">{selectedParticipant.nome_clinica_familia || "-"}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">CRAS</p>
-                        <p className="font-medium">{selectedParticipant.nome_cras || "-"}</p>
+                        <p className="text-sm text-muted-foreground">Equipe da Família</p>
+                        <p className="font-medium">
+                          {selectedParticipant.nome_equipe_familia &&
+                           selectedParticipant.nome_equipe_familia !== "SEM VÍNCULO" &&
+                           selectedParticipant.nome_equipe_familia !== "0"
+                            ? selectedParticipant.nome_equipe_familia
+                            : "-"}
+                        </p>
                       </div>
+                      {(() => {
+                        const equipeMedicos = selectedParticipant.equipe_medicos;
+                        if (!equipeMedicos || equipeMedicos === "SEM VÍNCULO" || equipeMedicos === "0") {
+                          return (
+                            <>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Médicos</p>
+                                <p className="font-medium">-</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground">Enfermeiros</p>
+                                <p className="font-medium">-</p>
+                              </div>
+                            </>
+                          );
+                        }
+
+                        // Parse da string: "MEDICOS:\nNome1\nNome2\n\nENFERMEIROS:\nNome3\nNome4"
+                        const lines = equipeMedicos.split('\n').map(l => l.trim()).filter(l => l);
+                        const medicos: string[] = [];
+                        const enfermeiros: string[] = [];
+                        let currentSection = '';
+
+                        for (const line of lines) {
+                          if (line.startsWith('MEDICOS:') || line === 'MEDICOS') {
+                            currentSection = 'medicos';
+                          } else if (line.startsWith('ENFERMEIROS:') || line === 'ENFERMEIROS') {
+                            currentSection = 'enfermeiros';
+                          } else if (line !== 'SEM MÉDICOS' && line !== 'SEM ENFERMEIROS') {
+                            if (currentSection === 'medicos') {
+                              medicos.push(line);
+                            } else if (currentSection === 'enfermeiros') {
+                              enfermeiros.push(line);
+                            }
+                          }
+                        }
+
+                        return (
+                          <>
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-1">Médicos</p>
+                              {medicos.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {medicos.map((medico, idx) => (
+                                    <p key={idx} className="font-medium">{medico}</p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="font-medium">-</p>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-1">Enfermeiros</p>
+                              {enfermeiros.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {enfermeiros.map((enfermeiro, idx) => (
+                                    <p key={idx} className="font-medium">{enfermeiro}</p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="font-medium">-</p>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                       <div>
                         <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
                         <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
