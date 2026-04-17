@@ -167,6 +167,12 @@ export interface SmartFilterOptions {
   protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
   protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 
+  // Filtros geoespaciais
+  tipos_camada: FilterOptionItem[];
+  categorias: FilterOptionItem[];
+  regionais: FilterOptionItem[];
+  nomes: FilterOptionItem[];
+
   // Filtros de usuários (admin)
   ocupacoes: FilterOptionItem[];
   secretarias: FilterOptionItem[];
@@ -603,6 +609,29 @@ export interface BatchPermissionsRequest {
   id_clinica_familia_list?: IdWithName[] | null;
   id_equipe_familia_list?: IdWithName[] | null;
   secretaria_acesso?: string | null;
+}
+
+// ============================================================================
+// GEOSPATIAL TYPES
+// ============================================================================
+
+/**
+ * Camada geoespacial para visualização em mapas
+ * Representa equipamentos públicos ou divisões administrativas com geometrias
+ */
+export interface GeospatialLayer {
+  tipo_camada?: string | null; // "equipamento", "divisao_administrativa", etc
+  tipo_geometria?: string | null; // "POINT", "POLYGON", "MULTIPOLYGON", etc
+  categoria?: string | null; // "escola", "cras", "clinica", "ap", "cre", "bairro", etc
+  id?: string | null; // Identificador único do item
+  id_unico?: string | null; // Identificador único alternativo
+  nome?: string | null; // Nome do equipamento/área
+  geometry_geojson?: string | null; // GeoJSON da geometria (convertido de GEOGRAPHY)
+  regional?: string | null; // Regional (CRE, AP, CAS)
+  bairro?: string | null;
+  regiao_administrativa?: string | null;
+  subprefeitura?: string | null;
+  metadata?: string | null; // JSON string com metadados adicionais
 }
 
 /**

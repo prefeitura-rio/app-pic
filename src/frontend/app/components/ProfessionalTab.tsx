@@ -5,6 +5,7 @@ import {
   ParticipantFilters,
   PaginationMeta,
   SortOrder,
+  GeospatialLayer,
 } from "../types";
 import {
   Card,
@@ -32,6 +33,11 @@ import {
   TooltipTrigger,
 } from "@/app/components/ui/tooltip";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/app/components/ui/collapsible";
+import {
   Users,
   Search,
   ChevronLeft,
@@ -40,7 +46,11 @@ import {
   MapPin,
   CheckCircle2,
   AlertCircle,
+  Table,
+  Map,
+  ChevronDown,
 } from "lucide-react";
+import { GeospatialMapView } from "./GeospatialMapView";
 
 // Função para renderizar o grupo com emoji (consistente com VirtualizedParticipantTable)
 const renderGrupo = (grupo?: string) => {
@@ -295,6 +305,12 @@ interface ProfessionalTabProps {
   sortBy?: string | null;
   sortOrder?: SortOrder;
   onSortChange?: (sortBy: string, sortOrder: SortOrder) => void;
+  isSuperAdmin?: boolean; // Para mostrar mapa e colunas lat/long
+  geospatialLayers?: GeospatialLayer[]; // Camadas geoespaciais para o mapa
+  geospatialLoading?: boolean; // Loading state das camadas
+  geospatialFilters?: ParticipantFilters; // Filtros do mapa geoespacial
+  geospatialAvailableFilters?: SmartFilterOptions; // Opções de filtros disponíveis do backend
+  onGeospatialFilterChange?: (filters: ParticipantFilters) => void; // Callback para atualizar filtros
 }
 
 // Removido MemoizedSelect - agora usando VirtualizedSelect
@@ -313,6 +329,12 @@ const ProfessionalTabComponent = ({
   sortBy,
   sortOrder = "asc",
   onSortChange,
+  isSuperAdmin = false,
+  geospatialLayers = [],
+  geospatialLoading = false,
+  geospatialFilters = {},
+  geospatialAvailableFilters,
+  onGeospatialFilterChange,
 }: ProfessionalTabProps) => {
   const [selectedParticipant, setSelectedParticipant] =
     useState<Participante | null>(null);
@@ -371,7 +393,7 @@ const ProfessionalTabComponent = ({
         totalResults={meta?.total_rows}
       />
 
-      {/* Results Table */}
+      {/* Results - Table */}
       {loading && !data.length ? (
         <Card className="border-2">
           <CardHeader className="pb-4">
@@ -501,7 +523,7 @@ const ProfessionalTabComponent = ({
         open={!!selectedParticipant}
         onOpenChange={() => setSelectedParticipant(null)}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           {selectedParticipant && (
             <>
               <DialogHeader>
@@ -862,6 +884,55 @@ const ProfessionalTabComponent = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Visualização Geoespacial - Apenas Super Admin */}
+                {isSuperAdmin && selectedParticipant.latitude && selectedParticipant.longitude && (
+                  <>
+                    <Separator />
+                    <Collapsible defaultOpen={false} className="w-full">
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start p-0 hover:bg-transparent"
+                        >
+                          <div className="flex items-center gap-2 py-2">
+                            <h3 className="text-lg font-semibold text-foreground">
+                              Visualização Geoespacial
+                            </h3>
+                            <ChevronDown className="h-4 w-4 text-muted-foreground ml-auto transition-transform duration-200 ui-expanded:rotate-180" />
+                          </div>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="pt-4">
+                          <GeospatialMapView
+                            loading={geospatialLoading}
+                            layers={geospatialLayers}
+                            filters={geospatialFilters}
+                            availableFilters={geospatialAvailableFilters}
+                            onFilterChange={onGeospatialFilterChange}
+                            hideHeader={true}
+                            participantLocation={{
+                              latitude: selectedParticipant.latitude,
+                              longitude: selectedParticipant.longitude,
+                              nome: selectedParticipant.nome || "Participante",
+                              idade: selectedParticipant.idade,
+                              grupo: selectedParticipant.grupo,
+                              bairro: selectedParticipant.bairro,
+                              situacao: selectedParticipant.situacao,
+                              status: selectedParticipant.status,
+                              nome_escola: selectedParticipant.nome_escola,
+                              nome_cras: selectedParticipant.nome_cras,
+                              nome_clinica_familia: selectedParticipant.nome_clinica_familia,
+                              nome_equipe_familia: selectedParticipant.nome_equipe_familia,
+                              equipe_familia: selectedParticipant.equipe_familia,
+                            }}
+                          />
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </>
+                )}
 
                 <Separator />
 

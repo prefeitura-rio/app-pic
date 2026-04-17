@@ -100,6 +100,21 @@ export function DashboardClient({
       return {};
     });
 
+  const [geospatialFilters, setGeospatialFilters] =
+    useState<ParticipantFilters>(() => {
+      if (typeof window === "undefined") return {};
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return parsed.geospatialFilters || {};
+        }
+      } catch (e) {
+        console.error("Error restoring geospatial filters:", e);
+      }
+      return {};
+    });
+
   const [professionalPage, setProfessionalPage] = useState(() => {
     if (typeof window === "undefined") return 1;
     try {
@@ -136,6 +151,10 @@ export function DashboardClient({
   const [
     bypassCacheParticipantsTimestamp,
     setBypassCacheParticipantsTimestamp,
+  ] = useState<number | null>(null);
+  const [
+    bypassCacheGeospatialTimestamp,
+    setBypassCacheGeospatialTimestamp,
   ] = useState<number | null>(null);
 
   // State para ordenação (com restauração do sessionStorage)
@@ -175,6 +194,7 @@ export function DashboardClient({
       const state = {
         overviewFilters,
         professionalFilters,
+        geospatialFilters,
         professionalPage,
         activeTab,
         sortBy,
@@ -187,6 +207,7 @@ export function DashboardClient({
   }, [
     overviewFilters,
     professionalFilters,
+    geospatialFilters,
     professionalPage,
     activeTab,
     sortBy,
@@ -289,6 +310,38 @@ export function DashboardClient({
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
 
+  // TanStack Query para Geospatial Layers (Mapa)
+  // Carrega em paralelo quando a página carrega
+  // Filtros incluídos no queryKey para refetch automático
+  const {
+    data: geospatialLayersResponse,
+    isLoading: geospatialLoading,
+    isFetching: geospatialFetching,
+    error: geospatialError,
+    refetch: refetchGeospatial,
+  } = useQuery({
+    queryKey: ["geospatialLayers", geospatialFilters, bypassCacheGeospatialTimestamp],
+    queryFn: async ({ queryKey }) => {
+      const filters = queryKey[1] as ParticipantFilters;
+      const timestamp = queryKey[2] as number | null;
+      const shouldBypassCache = timestamp !== null;
+
+      const result = await apiService.getGeospatialLayers(filters, shouldBypassCache);
+
+      if (shouldBypassCache) {
+        setBypassCacheGeospatialTimestamp(null);
+      }
+
+      return result;
+    },
+    staleTime: 30 * 60 * 1000, // 30 minutos (dados geográficos mudam raramente)
+    placeholderData: (prev) => prev,
+  });
+
+  // Extrair dados e filtros disponíveis da resposta
+  const geospatialLayers = geospatialLayersResponse?.data || [];
+  const geospatialAvailableFilters = geospatialLayersResponse?.filters;
+
   // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
   // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
   const canViewDashboard =
@@ -381,7 +434,9 @@ export function DashboardClient({
   const handleProfessionalRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
     queryClient.invalidateQueries({ queryKey: ["participants"] });
+    queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
     setBypassCacheParticipantsTimestamp(Date.now());
+    setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
 
   /**
@@ -631,6 +686,11 @@ export function DashboardClient({
       equipes_saude: [],
       protocolo_descricoes: [],
       protocolo_status_list: [],
+      // Filtros geoespaciais
+      tipos_camada: [],
+      categorias: [],
+      regionais: [],
+      nomes: [],
       // Filtros de usuários (admin)
       ocupacoes: [],
       secretarias: [],
@@ -727,6 +787,12 @@ export function DashboardClient({
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSortChange={handleSortChange}
+                isSuperAdmin={currentUser?.is_super_admin || false}
+                geospatialLayers={geospatialLayers}
+                geospatialLoading={geospatialFetching}
+                geospatialFilters={geospatialFilters}
+                geospatialAvailableFilters={geospatialAvailableFilters}
+                onGeospatialFilterChange={setGeospatialFilters}
               />
             </TabsContent>
           )}

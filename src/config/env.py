@@ -41,7 +41,10 @@ BQ_TABLE_ID_DATA_ACCESS = getenv_or_action(
     env_name="BQ_TABLE_ID_DATA_ACCESS",
     action="raise",
 )
-
+BQ_TABLE_ID_GEOSPATIAL_LAYERS = getenv_or_action(
+    env_name="BQ_TABLE_ID_GEOSPATIAL_LAYERS",
+    action="raise",
+)
 
 USE_LOCAL_API = (
     getenv_or_action(env_name="USE_LOCAL_API", default="false", action="ignore")

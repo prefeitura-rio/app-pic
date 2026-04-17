@@ -78,15 +78,6 @@ export default function AdminPage() {
       params.append("page", currentPage.toString());
       params.append("page_size", pageSize.toString());
 
-      // Filtro de status ativo/inativo
-      if (filterStatus && filterStatus !== "todos") {
-        const activeValue = filterStatus === "active" ? "true" : "false";
-        console.log(`[AdminPage] Applying active filter: filterStatus="${filterStatus}" -> active="${activeValue}"`);
-        params.append("active", activeValue);
-      } else {
-        console.log(`[AdminPage] No active filter: filterStatus="${filterStatus}"`);
-      }
-
       // Filtro de ocupação (valor direto do backend)
       if (filterOcupacao && filterOcupacao !== "todas") {
         params.append("ocupacao", filterOcupacao);

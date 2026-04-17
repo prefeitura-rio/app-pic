@@ -56,6 +56,17 @@ class CommonFilters(BaseModel):
     )
 
 
+class GeospatialFilters(BaseModel):
+    """Filtros para camadas geoespaciais"""
+    tipo_camada: Optional[str] = None  # Multi-select
+    categoria: Optional[str] = None  # Multi-select
+    regional: Optional[str] = None  # Multi-select
+    bairro: Optional[str] = None  # Multi-select
+    regiao_administrativa: Optional[str] = None  # Multi-select
+    subprefeitura: Optional[str] = None  # Multi-select
+    nome: Optional[str] = None  # Multi-select
+
+
 # --- Response Models ---
 
 
@@ -92,6 +103,12 @@ class FilterOptionItem(BaseModel):
 class SmartFilterOptions(BaseModel):
     """Opções de filtros disponíveis baseadas nos dados filtrados"""
 
+    # Filtros geoespaciais (geospatial endpoint)
+    tipos_camada: List[FilterOptionItem] = []
+    categorias: List[FilterOptionItem] = []
+    regionais: List[FilterOptionItem] = []
+    nomes: List[FilterOptionItem] = []
+
     # Filtros de participantes
     bairros: List[FilterOptionItem] = []
     subprefeituras: List[FilterOptionItem] = []
@@ -118,6 +135,25 @@ class SmartFilterOptions(BaseModel):
     status_ativo: List[FilterOptionItem] = []
     permissions: List[FilterOptionItem] = []
     secretaria_acesso_list: List[FilterOptionItem] = []
+
+
+class GeospatialFilterOptions(BaseModel):
+    """Opções de filtros disponíveis para camadas geoespaciais"""
+
+    tipos_camada: List[FilterOptionItem] = []
+    categorias: List[FilterOptionItem] = []
+    regionais: List[FilterOptionItem] = []
+    bairros: List[FilterOptionItem] = []
+    regioes_administrativas: List[FilterOptionItem] = []
+    subprefeituras: List[FilterOptionItem] = []
+    nomes: List[FilterOptionItem] = []
+
+
+class GeospatialPaginatedResponse(BaseModel, Generic[T]):
+    """Resposta paginada específica para geospatial com seus próprios filtros"""
+    meta: PaginationMeta
+    data: List[T]
+    filters: Optional[GeospatialFilterOptions] = None
 
 
 # Shared / Nested Models
@@ -449,3 +485,28 @@ class EvolucaoSafra(BaseModel):
     total_inativos: Optional[int] = None
     distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
     data_atualizacao: Optional[datetime] = None
+
+
+# ========================================================================
+# GEOSPATIAL MODELS
+# ========================================================================
+
+
+class GeospatialLayer(BaseModel):
+    """
+    Camada geoespacial para visualização em mapas.
+    Representa equipamentos públicos ou divisões administrativas com geometrias.
+    """
+
+    tipo_camada: Optional[str] = None  # "equipamento", "divisao_administrativa", etc
+    tipo_geometria: Optional[str] = None  # "POINT", "POLYGON", "MULTIPOLYGON", etc
+    categoria: Optional[str] = None  # "escola", "cras", "clinica", "ap", "cre", "bairro", etc
+    id: Optional[str] = None  # Identificador único do item
+    id_unico: Optional[str] = None  # Identificador único alternativo
+    nome: Optional[str] = None  # Nome do equipamento/área
+    geometry_geojson: Optional[str] = None  # GeoJSON da geometria (convertido de GEOGRAPHY)
+    regional: Optional[str] = None  # Regional (CRE, AP, CAS)
+    bairro: Optional[str] = None
+    regiao_administrativa: Optional[str] = None
+    subprefeitura: Optional[str] = None
+    metadata: Optional[str] = None  # JSON string com metadados adicionais
