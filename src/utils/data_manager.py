@@ -552,13 +552,22 @@ class DataManager:
                 for row in pairs.to_dicts():
                     label_map[row[column]] = row[label_column]
 
-            options = []
+            # Agrupar IDs por label (resolver duplicação de nomes)
+            label_to_ids = {}
             for value in unique_values:
                 value_str = str(value).strip()
                 if value_str:
-                    options.append(
-                        {"id": value_str, "label": str(label_map.get(value, value))}
-                    )
+                    label = str(label_map.get(value, value))
+                    if label not in label_to_ids:
+                        label_to_ids[label] = []
+                    label_to_ids[label].append(value_str)
+
+            # Criar opções consolidadas (um nome pode representar múltiplos IDs)
+            options = []
+            for label, ids in label_to_ids.items():
+                options.append(
+                    {"id": ",".join(ids), "label": label}
+                )
 
             options.sort(key=lambda x: natural_sort_key(x["label"]))
             result[result_key] = options
@@ -1271,8 +1280,8 @@ class DataManager:
                 for row in pairs.to_dicts():
                     label_map[row[column]] = row[label_column]
 
-            # Criar opções
-            options = []
+            # Agrupar IDs por label (resolver duplicação de nomes)
+            label_to_ids = {}
             for value in unique_values:
                 # Converter None para "NULL" string para secretaria_acesso
                 if value is None and column == "secretaria_acesso":
@@ -1281,11 +1290,19 @@ class DataManager:
                     value_str = str(value).strip() if value is not None else ""
 
                 if value_str:
-                    options.append(
-                        FilterOptionItem(
-                            id=value_str, label=str(label_map.get(value, value_str))
-                        )
+                    label = str(label_map.get(value, value_str))
+                    if label not in label_to_ids:
+                        label_to_ids[label] = []
+                    label_to_ids[label].append(value_str)
+
+            # Criar opções consolidadas (um nome pode representar múltiplos IDs)
+            options = []
+            for label, ids in label_to_ids.items():
+                options.append(
+                    FilterOptionItem(
+                        id=",".join(ids), label=label
                     )
+                )
 
             # Ordenação natural: considera números no início da string
             # Ex: "3ª Rio" vem antes de "10ª Centro" (ao invés de ordem alfabética)

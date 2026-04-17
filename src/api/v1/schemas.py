@@ -51,7 +51,9 @@ class CommonFilters(BaseModel):
     search: Optional[str] = None  # CPF or name search (NOT multi-select)
     protocolo_descricao: Optional[str] = None  # Multi-select
     protocolo_status: Optional[str] = None  # Multi-select
-    protocolo_secretaria: Optional[str] = None  # Filtro por secretaria do protocolo (SME, SMAS, SMS)
+    protocolo_secretaria: Optional[str] = (
+        None  # Filtro por secretaria do protocolo (SME, SMAS, SMS)
+    )
 
 
 # --- Response Models ---
@@ -64,7 +66,9 @@ class PaginationMeta(BaseModel):
     total_pages: int
     cache_hit: bool
     profiling: Optional[Any] = None
-    can_view_dashboard: Optional[bool] = None  # Indica se o usuário pode visualizar a aba Dashboard
+    can_view_dashboard: Optional[bool] = (
+        None  # Indica se o usuário pode visualizar a aba Dashboard
+    )
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
@@ -373,21 +377,33 @@ class Participante(BaseModel):
     nome_cras: Optional[str] = None
     id_cas: Optional[str] = None
     nome_cas: Optional[str] = None
+    source_cras: Optional[str] = (
+        None  # "rmi" (fonte original) | "geo" (fallback geolocalização) | null
+    )
 
     # Equipamentos - SME
     id_escola: Optional[str] = None
     nome_escola: Optional[str] = None
     id_cre: Optional[str] = None
     nome_cre: Optional[str] = None
+    source_escola: Optional[str] = (
+        None  # "rmi" (fonte original) | "geo" (fallback geolocalização) | null
+    )
 
     # Equipamentos - SMS
     id_ap: Optional[str] = None
     nome_ap: Optional[str] = None
     id_clinica_familia: Optional[str] = None
     nome_clinica_familia: Optional[str] = None
+    source_clinica_familia: Optional[str] = (
+        None  # "rmi" (fonte original) | "geo" (fallback geolocalização) | null
+    )
     id_equipe_familia: Optional[str] = None
     nome_equipe_familia: Optional[str] = None
-    equipe_medicos: Optional[str] = None
+    source_equipe_familia: Optional[str] = (
+        None  # "rmi" (fonte original) | "geo" (fallback geolocalização) | null
+    )
+    equipe_familia: Optional[str] = None
 
     # Infraestrutura
     cpf_particao: Optional[int] = None

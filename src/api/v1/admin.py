@@ -518,15 +518,25 @@ def validate_segmented_admin_can_manage(
             )
 
         # IDs que estão sendo atribuídos (pode vir como dict ou IdWithName)
+        # IMPORTANTE: IDs podem estar concatenados com vírgula (ex: "id1,id2")
+        # quando múltiplos IDs têm o mesmo nome
         target_ids_set = set()
         for item in target_list:
+            id_value = None
             if isinstance(item, dict):
-                target_ids_set.add(item.get("id"))
+                id_value = item.get("id")
             elif hasattr(item, "id"):
-                target_ids_set.add(item.id)
+                id_value = item.id
             else:
                 # Fallback: tentar converter string diretamente
-                target_ids_set.add(str(item))
+                id_value = str(item)
+
+            # Expandir IDs concatenados (separados por vírgula)
+            if id_value:
+                for single_id in str(id_value).split(","):
+                    single_id = single_id.strip()
+                    if single_id:
+                        target_ids_set.add(single_id)
 
         # Verificar se todos os IDs alvo estão no subset do admin
         unauthorized_ids = target_ids_set - admin_ids
@@ -546,7 +556,12 @@ def validate_segmented_admin_can_manage(
 def _extract_unique_ids(
     df: pl.DataFrame, id_col: str, nome_col: str
 ) -> List[IdWithName]:
-    """Helper para extrair IDs únicos com nomes de um DataFrame"""
+    """
+    Helper para extrair IDs únicos com nomes de um DataFrame.
+
+    IMPORTANTE: Agrupa múltiplos IDs com o mesmo nome em uma única entrada.
+    Resolve o problema de duplicação quando IDs diferentes têm o mesmo nome.
+    """
     if df.is_empty() or id_col not in df.columns:
         return []
 
@@ -559,17 +574,31 @@ def _extract_unique_ids(
         ]
 
     # Caso normal: colunas diferentes
+    # Agrupar IDs por nome (resolver duplicação)
     unique_df = (
         df.select([id_col, nome_col])
         .drop_nulls()
-        .unique(subset=[id_col])
-        .sort(nome_col)
+        .unique()  # Remove duplicatas exatas (id + nome)
     )
 
-    return [
-        IdWithName(id=str(row[id_col]), nome=str(row[nome_col]))
-        for row in unique_df.to_dicts()
-    ]
+    # Agrupar por nome e consolidar IDs
+    nome_to_ids = {}
+    for row in unique_df.to_dicts():
+        nome = str(row[nome_col])
+        id_val = str(row[id_col])
+        if nome not in nome_to_ids:
+            nome_to_ids[nome] = []
+        nome_to_ids[nome].append(id_val)
+
+    # Criar lista consolidada (um nome pode ter múltiplos IDs)
+    result = []
+    for nome in sorted(nome_to_ids.keys()):
+        ids = nome_to_ids[nome]
+        result.append(
+            IdWithName(id=",".join(ids), nome=nome)
+        )
+
+    return result
 
 
 def _convert_id_list_to_bq_struct(id_list: Optional[List[IdWithName]]) -> str:
