@@ -80,14 +80,23 @@ const EquipamentoField = ({
   value,
   source,
   isEquipeSaude = false,
+  secretaria, // "SMS" (VitaCare) | "SME" (SGRC) | "SMAS"
 }: {
   label: string;
   value?: string | null;
   source?: string | null;
   isEquipeSaude?: boolean; // true para Equipe, Médicos, Enfermeiros
+  secretaria?: "SMS" | "SME" | "SMAS";
 }) => {
   // Verificar se o valor é válido (não vazio e diferente de "SEM VÍNCULO" ou "0")
   const hasValidValue = value && value !== "SEM VÍNCULO" && value !== "0";
+
+  // Determinar nome do sistema baseado na secretaria
+  const getNomeSistema = () => {
+    if (secretaria === "SMS") return "VitaCare";
+    if (secretaria === "SME") return "SGRC";
+    return "RMI";
+  };
 
   return (
     <div>
@@ -103,7 +112,7 @@ const EquipamentoField = ({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs font-medium">
-                  Vínculo oficial confirmado (fonte RMI)
+                  Vínculo oficial confirmado (fonte {getNomeSistema()})
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -624,16 +633,33 @@ const ProfessionalTabComponent = ({
 
                     {/* Equipamentos Públicos - Educação (SME) */}
                     <EquipamentoField
-                      label="Escola"
-                      value={selectedParticipant.nome_escola}
+                      label="CRE"
+                      value={selectedParticipant.nome_cre}
                       source={selectedParticipant.source_escola}
+                      secretaria="SME"
+                    />
+
+                    {/* Escola mostra "-" se for inferida (source == "geo") */}
+                    <EquipamentoField
+                      label="Escola"
+                      value={selectedParticipant.source_escola === "geo" ? null : selectedParticipant.nome_escola}
+                      source={selectedParticipant.source_escola === "geo" ? undefined : selectedParticipant.source_escola}
+                      secretaria="SME"
                     />
 
                     {/* Equipamentos Públicos - Assistência Social (SMAS) */}
                     <EquipamentoField
+                      label="CAS"
+                      value={selectedParticipant.nome_cas}
+                      source={selectedParticipant.source_cras}
+                      secretaria="SMAS"
+                    />
+
+                    <EquipamentoField
                       label="CRAS"
                       value={selectedParticipant.nome_cras}
                       source={selectedParticipant.source_cras}
+                      secretaria="SMAS"
                     />
 
                     {/* Equipamentos Públicos - Saúde (SMS) */}
@@ -641,6 +667,7 @@ const ProfessionalTabComponent = ({
                       label="Clínica da Família"
                       value={selectedParticipant.nome_clinica_familia}
                       source={selectedParticipant.source_clinica_familia}
+                      secretaria="SMS"
                     />
 
                     <EquipamentoField
@@ -648,6 +675,7 @@ const ProfessionalTabComponent = ({
                       value={selectedParticipant.nome_equipe_familia}
                       source={selectedParticipant.source_equipe_familia}
                       isEquipeSaude={true}
+                      secretaria="SMS"
                     />
                     {(() => {
                       const equipeMedicos =
@@ -770,7 +798,7 @@ const ProfessionalTabComponent = ({
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <p className="text-xs font-medium">
-                                    Vínculo oficial confirmado (fonte RMI)
+                                    Vínculo oficial confirmado (fonte VitaCare)
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
