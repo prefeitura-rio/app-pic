@@ -54,6 +54,9 @@ class UserPermissions(BaseModel):
         """
         Get list of IDs for a specific type (e.g., 'id_cras').
 
+        IMPORTANTE: Expande IDs concatenados (quando múltiplos IDs têm o mesmo nome).
+        Ex: IdWithName(id="id1,id2", nome="Escola A") → ["id1", "id2"]
+
         Args:
             id_type: Type of ID ('id_cras', 'id_escola', etc)
 
@@ -66,4 +69,12 @@ class UserPermissions(BaseModel):
         if id_list is None:
             return []
 
-        return [item.id for item in id_list]
+        # Expandir IDs concatenados (separados por vírgula)
+        result = []
+        for item in id_list:
+            for single_id in item.id.split(","):
+                single_id = single_id.strip()
+                if single_id:
+                    result.append(single_id)
+
+        return result

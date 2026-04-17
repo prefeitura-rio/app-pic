@@ -1,12 +1,12 @@
 "use client";
 
-import { memo, useMemo, useCallback, useState } from "react";
+import { memo, useMemo, useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { Filter, X, RefreshCw, Search, Download } from "lucide-react";
+import { Filter, X, RefreshCw, Search, Download, Map, Table } from "lucide-react";
 import { SmartFilterOptions, DashboardFilters, ParticipantFilters } from "@/app/types";
 
 type FilterType = DashboardFilters | ParticipantFilters;
@@ -20,6 +20,8 @@ interface FilterCardProps {
   loading?: boolean;
   showSearch?: boolean;
   totalResults?: number;
+  onToggleMap?: () => void; // Callback para alternar visualização de mapa
+  viewMode?: "table" | "map"; // Modo de visualização atual
 }
 
 const FilterCardComponent = ({
@@ -31,8 +33,18 @@ const FilterCardComponent = ({
   loading = false,
   showSearch = false,
   totalResults,
+  onToggleMap,
+  viewMode = "table",
 }: FilterCardProps) => {
   const [searchInput, setSearchInput] = useState("");
+
+  // Sincronizar searchInput com filters.search quando mudar (ex: após refresh)
+  useEffect(() => {
+    const searchValue = "search" in filters ? filters.search : undefined;
+    if (searchValue && searchValue !== searchInput) {
+      setSearchInput(searchValue);
+    }
+  }, [filters]);
 
   // Memoizar callbacks para evitar re-criação
   const handleFilterUpdate = useCallback((key: string, value: string) => {
@@ -98,6 +110,27 @@ const FilterCardComponent = ({
           {showSearch ? "Filtros e Busca" : "Filtros"}
         </CardTitle>
         <div className="flex gap-2">
+          {onToggleMap && (
+            <Button
+              variant={viewMode === "map" ? "default" : "outline"}
+              size="sm"
+              onClick={onToggleMap}
+              className="h-8 text-xs"
+              disabled={loading}
+            >
+              {viewMode === "map" ? (
+                <>
+                  <Table className="h-3 w-3 mr-1" />
+                  Ver Tabela
+                </>
+              ) : (
+                <>
+                  <Map className="h-3 w-3 mr-1" />
+                  Ver Mapa
+                </>
+              )}
+            </Button>
+          )}
           {onDownload && (
             <Button
               variant="outline"

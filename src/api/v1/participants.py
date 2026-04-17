@@ -92,6 +92,8 @@ PARTICIPANT_SORTABLE_COLUMNS = {
     "situacao": "situacao",
 }
 
+SENSITIVE_COLUMNS = ["latitude", "longitude"]  # Colunas a ocultar para não-super-admins
+
 
 @router.get(
     "/participants",
@@ -179,12 +181,27 @@ async def get_participants(
             page_size=pagination.page_size,
             filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
             search_term=search_term,
-            search_columns=["nome", "cpf", "id_membro_familia", "id_familia"] if search_term else None,
+            search_columns=(
+                ["nome", "cpf", "id_membro_familia", "id_familia"]
+                if search_term
+                else None
+            ),
             user_permissions=permissions,  # NOVO: Pass user permissions
             bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
             sort_by=sort_column,  # NOVO: Coluna para ordenação
             sort_descending=sort_descending,  # NOVO: Direção da ordenação
         )
+
+        # Dropar colunas sensíveis (latitude/longitude) se não for super admin
+        if not permissions.is_super_admin:
+            columns_to_drop = [
+                col for col in SENSITIVE_COLUMNS if col in df_data.columns
+            ]
+            if columns_to_drop:
+                df_data = df_data.drop(columns_to_drop)
+                logger.info(
+                    f"🔒 Dropped sensitive columns for non-super-admin: {columns_to_drop}"
+                )
 
         # Converter DataFrame para JSON e retornar resposta
         json_start = time.perf_counter()
@@ -211,6 +228,7 @@ async def get_participants(
 
     except Exception as e:
         import traceback
+
         logger.error(f"❌ Error fetching participants: {e}")
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error("[OAuth Callback] Token exchange failed:", error);
       if (!process.env.NEXTAUTH_URL) {
         throw new Error("NEXTAUTH_URL environment variable is required");
       }
@@ -47,16 +46,6 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
-
-    console.log("[OAuth Callback] Token exchange successful");
-    console.log("[OAuth Callback] Tokens received:", {
-      has_access_token: !!data.access_token,
-      has_refresh_token: !!data.refresh_token,
-      has_id_token: !!data.id_token,
-      expires_in: data.expires_in,
-      refresh_expires_in: data.refresh_expires_in,
-    });
-
     // Determine redirect destination
     let finalRedirectUrl = "/";
     if (state) {

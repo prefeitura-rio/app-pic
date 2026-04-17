@@ -48,6 +48,8 @@ export interface Participante {
   subprefeitura?: string;
   regiao_administrativa?: string;
   bairro?: string;
+  latitude?: number;
+  longitude?: number;
 
   // Programa
   grupo?: string;
@@ -94,21 +96,25 @@ export interface Participante {
   nome_cras?: string;
   id_cas?: string;
   nome_cas?: string;
+  source_cras?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
 
   // Equipamentos - SME
   id_escola?: string;
   nome_escola?: string;
   id_cre?: string;
   nome_cre?: string;
+  source_escola?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
 
   // Equipamentos - SMS
   id_ap?: string;
   nome_ap?: string;
   id_clinica_familia?: string;
   nome_clinica_familia?: string;
+  source_clinica_familia?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
   id_equipe_familia?: string;
   nome_equipe_familia?: string;
-  equipe_medicos?: string;
+  source_equipe_familia?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
+  equipe_familia?: string;
 
   // Infraestrutura
   cpf_particao?: number;
@@ -161,6 +167,12 @@ export interface SmartFilterOptions {
   protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
   protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 
+  // Filtros geoespaciais
+  tipos_camada: FilterOptionItem[];
+  categorias: FilterOptionItem[];
+  regionais: FilterOptionItem[];
+  nomes: FilterOptionItem[];
+
   // Filtros de usuários (admin)
   ocupacoes: FilterOptionItem[];
   secretarias: FilterOptionItem[];
@@ -176,12 +188,12 @@ export interface SmartFilterOptions {
  * Indicador individual de um protocolo (card)
  */
 export interface ProtocoloIndicador {
-  protocolo_id: string;         // "sms_vacinacao_pentavalente"
-  protocolo_descricao: string;  // "Vacinação Pentavalente"
+  protocolo_id: string; // "sms_vacinacao_pentavalente"
+  protocolo_descricao: string; // "Vacinação Pentavalente"
   protocolo_secretaria: string; // "SMS", "SME", "SMAS"
-  numerador: number;            // Quantos estão regulares
-  denominador: number;          // Total aplicável
-  percentual_regular: number;   // (numerador/denominador) * 100
+  numerador: number; // Quantos estão regulares
+  denominador: number; // Total aplicável
+  percentual_regular: number; // (numerador/denominador) * 100
   percentual_irregular: number; // 100 - percentual_regular
 }
 
@@ -189,12 +201,12 @@ export interface ProtocoloIndicador {
  * Ponto de evolução temporal do programa (gráfico de linha)
  */
 export interface ResultadoProgramaPoint {
-  mes: string;           // "2025-12"
-  mes_label: string;     // "Dez/25"
-  todos: number;         // % completude geral
-  saude: number;         // % completude SMS
-  educacao: number;      // % completude SME
-  assistencia: number;   // % completude SMAS
+  mes: string; // "2025-12"
+  mes_label: string; // "Dez/25"
+  todos: number; // % completude geral
+  saude: number; // % completude SMS
+  educacao: number; // % completude SME
+  assistencia: number; // % completude SMAS
 }
 
 /**
@@ -219,32 +231,32 @@ export interface DistribuicaoMotivoSaida {
  * Distribuição por tempo de irregularidade (histograma)
  */
 export interface DistribuicaoTempoIrregularidade {
-  faixa: string;           // "0-30", "31-60", "61-90", "90+"
-  faixa_label: string;     // "0-30 dias", "31-60 dias", etc.
-  count: number;           // Quantidade de participantes na faixa
-  percentual: number;      // Percentual do total
+  faixa: string; // "0-30", "31-60", "61-90", "90+"
+  faixa_label: string; // "0-30 dias", "31-60 dias", etc.
+  count: number; // Quantidade de participantes na faixa
+  percentual: number; // Percentual do total
 }
 
 /**
  * Tempo médio de irregularidade por secretaria (cards)
  */
 export interface TempoMedioIrregularidade {
-  secretaria: string;           // "geral", "smas", "sme", "sms"
-  secretaria_label: string;     // "Geral", "Assistência Social", "Educação", "Saúde"
-  tempo_medio_dias: number;     // Tempo médio em dias
-  total_irregulares: number;    // Quantidade de participantes irregulares
+  secretaria: string; // "geral", "smas", "sme", "sms"
+  secretaria_label: string; // "Geral", "Assistência Social", "Educação", "Saúde"
+  tempo_medio_dias: number; // Tempo médio em dias
+  total_irregulares: number; // Quantidade de participantes irregulares
 }
 
 /**
  * Ponto de taxa de resolução mensal (gráfico de linha)
  */
 export interface TaxaResolucaoMensalPoint {
-  mes: string;           // "2025-12"
-  mes_label: string;     // "Dez/25"
-  todos: number;         // % resolução geral
-  saude: number;         // % resolução SMS
-  educacao: number;      // % resolução SME
-  assistencia: number;   // % resolução SMAS
+  mes: string; // "2025-12"
+  mes_label: string; // "Dez/25"
+  todos: number; // % resolução geral
+  saude: number; // % resolução SMS
+  educacao: number; // % resolução SME
+  assistencia: number; // % resolução SMAS
 }
 
 /**
@@ -255,11 +267,11 @@ export interface Dashboard {
   // =========================================================================
   // SEÇÃO 1: INDICADORES PRINCIPAIS (3 cards)
   // =========================================================================
-  total_participantes: number;     // Total de participantes (denominador)
-  total_regulares: number;         // Participantes com TODOS protocolos regulares
-  total_irregulares: number;       // Participantes com ALGUM protocolo irregular
-  percentual_regular: number;      // (total_regulares / total_participantes) * 100
-  percentual_irregular: number;    // (total_irregulares / total_participantes) * 100
+  total_participantes: number; // Total de participantes (denominador)
+  total_regulares: number; // Participantes com TODOS protocolos regulares
+  total_irregulares: number; // Participantes com ALGUM protocolo irregular
+  percentual_regular: number; // (total_regulares / total_participantes) * 100
+  percentual_irregular: number; // (total_irregulares / total_participantes) * 100
 
   // =========================================================================
   // SEÇÃO 2: INDICADORES POR PROTOCOLO (cards individuais)
@@ -547,7 +559,7 @@ export interface ImportedUser {
   email?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
-  status: 'new' | 'exists' | 'error';
+  status: "new" | "exists" | "error";
   error_message?: string | null;
 
   // Permissões existentes (preenchido apenas para status="exists")
@@ -599,6 +611,29 @@ export interface BatchPermissionsRequest {
   secretaria_acesso?: string | null;
 }
 
+// ============================================================================
+// GEOSPATIAL TYPES
+// ============================================================================
+
+/**
+ * Camada geoespacial para visualização em mapas
+ * Representa equipamentos públicos ou divisões administrativas com geometrias
+ */
+export interface GeospatialLayer {
+  tipo_camada?: string | null; // "equipamento", "divisao_administrativa", etc
+  tipo_geometria?: string | null; // "POINT", "POLYGON", "MULTIPOLYGON", etc
+  categoria?: string | null; // "escola", "cras", "clinica", "ap", "cre", "bairro", etc
+  id?: string | null; // Identificador único do item
+  id_unico?: string | null; // Identificador único alternativo
+  nome?: string | null; // Nome do equipamento/área
+  geometry_geojson?: string | null; // GeoJSON da geometria (convertido de GEOGRAPHY)
+  regional?: string | null; // Regional (CRE, AP, CAS)
+  bairro?: string | null;
+  regiao_administrativa?: string | null;
+  subprefeitura?: string | null;
+  metadata?: string | null; // JSON string com metadados adicionais
+}
+
 /**
  * Error for a specific CPF during batch permissions update
  */
@@ -626,7 +661,7 @@ export interface ImportedUserWithEdits {
   email?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
-  status: 'new' | 'exists' | 'error' | 'done';
+  status: "new" | "exists" | "error" | "done";
   error_message?: string | null;
   edited?: {
     nome?: string;

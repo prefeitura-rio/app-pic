@@ -17,7 +17,7 @@ interface ParticipantTableProps {
   onSort?: (column: string) => void;
 }
 
-// Configuração das colunas (key corresponde ao sort_by do backend)
+// Configuração base das colunas (key corresponde ao sort_by do backend)
 const SORTABLE_COLUMNS = [
   { key: "nome", label: "Nome", align: "left" as const },
   { key: "cpf", label: "CPF", align: "left" as const },
@@ -83,15 +83,13 @@ export const ParticipantTable = memo(({
     return null;
   }
 
-  // Filter columns - mostra apenas colunas que existem nos dados E não são null
-  // Backend já dropa colunas de secretarias não-autorizadas
+  // Filter columns - mostra apenas colunas que existem nos dados retornados do backend
+  // Backend já dropa colunas sensíveis (lat/long) para não-super-admins
   const visibleColumns = SORTABLE_COLUMNS.filter((col) => {
-    // Para colunas de protocolos, verificar se existem nos dados e não são null
-    if (col.key.includes("_fracao") && data.length > 0) {
-      const firstRow = data[0] as any;
-      return firstRow[col.key] !== undefined && firstRow[col.key] !== null;
-    }
-    return true; // Mostrar todas as outras colunas
+    if (data.length === 0) return true;
+    const firstRow = data[0] as any;
+    // Mostrar coluna apenas se existir nos dados E não for null/undefined
+    return firstRow[col.key] !== undefined && firstRow[col.key] !== null;
   });
 
   const handleHeaderClick = (column: string) => {
