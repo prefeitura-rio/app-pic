@@ -48,6 +48,8 @@ export interface Participante {
   subprefeitura?: string;
   regiao_administrativa?: string;
   bairro?: string;
+  latitude?: number;
+  longitude?: number;
 
   // Programa
   grupo?: string;

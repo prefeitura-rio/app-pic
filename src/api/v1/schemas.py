@@ -323,6 +323,8 @@ class Participante(BaseModel):
     subprefeitura: Optional[str] = None
     regiao_administrativa: Optional[str] = None
     bairro: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     # Programa
     grupo: Optional[str] = None
