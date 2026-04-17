@@ -585,7 +585,7 @@ export const GeospatialMapView = ({
                   <SelectTrigger className="text-sm h-9">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={5}>
                     {filterOptions.tipoCamada.map((option) => (
                       <SelectItem key={option.id} value={option.id}>
                         {option.label}
