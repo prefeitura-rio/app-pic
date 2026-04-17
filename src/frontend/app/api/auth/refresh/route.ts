@@ -46,16 +46,6 @@ export async function POST() {
     }
 
     const data = await response.json();
-
-    console.log("[Token Refresh] Token refresh successful");
-    console.log("[Token Refresh] New tokens:", {
-      has_access_token: !!data.access_token,
-      has_refresh_token: !!data.refresh_token,
-      has_id_token: !!data.id_token,
-      expires_in: data.expires_in,
-      refresh_expires_in: data.refresh_expires_in,
-    });
-
     // Create response
     const res = NextResponse.json({ success: true }, { status: 200 });
 

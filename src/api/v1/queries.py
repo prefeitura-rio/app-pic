@@ -14,6 +14,7 @@ TABLE_ID_PARTICIPANTS = env.BQ_TABLE_ID_PARTICIPANTS_LISTAGEM
 TABLE_ID_DASHBOARD = env.BQ_TABLE_ID_DASHBOARD
 TABLE_ID_PARTICIPANTS_DEBUG = env.BQ_TABLE_ID_PARTICIPANTS_DEBUG
 TABLE_ID_PARTICIPANTS_DEBUG_ORIGINS = env.BQ_TABLE_ID_PARTICIPANTS_DEBUG_ORIGINS
+TABLE_ID_GEOSPATIAL_LAYERS = env.BQ_TABLE_ID_GEOSPATIAL_LAYERS
 
 # ========================================================================
 # GOVERNANCE QUERIES
@@ -59,4 +60,17 @@ ORDER BY nome ASC
 DEBUG_ORIGINS_QUERY = f"""
 SELECT *
 FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_PARTICIPANTS_DEBUG_ORIGINS}`
+"""
+
+
+# ========================================================================
+# GEOSPATIAL QUERIES
+# ========================================================================
+
+GEOSPATIAL_LAYERS_QUERY = f"""
+SELECT
+    * EXCEPT(geometry),
+    ST_AsGeoJSON(geometry) as geometry_geojson
+FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_GEOSPATIAL_LAYERS}`
+ORDER BY tipo_camada, categoria, nome
 """

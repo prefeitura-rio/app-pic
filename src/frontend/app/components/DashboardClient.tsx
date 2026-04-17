@@ -1,10 +1,22 @@
 "use client";
 
-import { useState, useCallback, useMemo, useTransition, startTransition, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useTransition,
+  startTransition,
+  useEffect,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { Footer } from "@/app/components/Footer";
 import { OverviewTab } from "@/app/components/OverviewTab";
@@ -46,7 +58,11 @@ const PAGE_SIZE = 50;
  * 5. Filtros: Recarrega apenas o endpoint necessário
  * 6. Errors: Backend retorna 401/403, frontend redireciona para /login
  */
-export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
+export function DashboardClient({
+  userInfo,
+}: {
+  userInfo?: UserInfo | null;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -54,33 +70,50 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   const STORAGE_KEY = "dashboard-state";
 
   // State para filtros e paginação (com restauração do sessionStorage)
-  const [overviewFilters, setOverviewFilters] = useState<DashboardFilterValues>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.overviewFilters || {};
+  const [overviewFilters, setOverviewFilters] =
+    useState<DashboardFilterValues>(() => {
+      if (typeof window === "undefined") return {};
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return parsed.overviewFilters || {};
+        }
+      } catch (e) {
+        console.error("Error restoring overview filters:", e);
       }
-    } catch (e) {
-      console.error("Error restoring overview filters:", e);
-    }
-    return {};
-  });
+      return {};
+    });
 
-  const [professionalFilters, setProfessionalFilters] = useState<ParticipantFilters>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.professionalFilters || {};
+  const [professionalFilters, setProfessionalFilters] =
+    useState<ParticipantFilters>(() => {
+      if (typeof window === "undefined") return {};
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return parsed.professionalFilters || {};
+        }
+      } catch (e) {
+        console.error("Error restoring professional filters:", e);
       }
-    } catch (e) {
-      console.error("Error restoring professional filters:", e);
-    }
-    return {};
-  });
+      return {};
+    });
+
+  const [geospatialFilters, setGeospatialFilters] =
+    useState<ParticipantFilters>(() => {
+      if (typeof window === "undefined") return {};
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return parsed.geospatialFilters || {};
+        }
+      } catch (e) {
+        console.error("Error restoring geospatial filters:", e);
+      }
+      return {};
+    });
 
   const [professionalPage, setProfessionalPage] = useState(() => {
     if (typeof window === "undefined") return 1;
@@ -96,24 +129,33 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     return 1;
   });
 
-  const [activeTab, setActiveTab] = useState<"overview" | "professional">(() => {
-    if (typeof window === "undefined") return "professional";
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.activeTab || "professional";
+  const [activeTab, setActiveTab] = useState<"overview" | "professional">(
+    () => {
+      if (typeof window === "undefined") return "professional";
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return parsed.activeTab || "professional";
+        }
+      } catch (e) {
+        console.error("Error restoring active tab:", e);
       }
-    } catch (e) {
-      console.error("Error restoring active tab:", e);
-    }
-    return "professional";
-  });
-
+      return "professional";
+    },
+  );
 
   const [isPending, startTransition] = useTransition();
-  const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] = useState<number | null>(null);
-  const [bypassCacheParticipantsTimestamp, setBypassCacheParticipantsTimestamp] = useState<number | null>(null);
+  const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] =
+    useState<number | null>(null);
+  const [
+    bypassCacheParticipantsTimestamp,
+    setBypassCacheParticipantsTimestamp,
+  ] = useState<number | null>(null);
+  const [
+    bypassCacheGeospatialTimestamp,
+    setBypassCacheGeospatialTimestamp,
+  ] = useState<number | null>(null);
 
   // State para ordenação (com restauração do sessionStorage)
   const [sortBy, setSortBy] = useState<string | null>(() => {
@@ -152,6 +194,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       const state = {
         overviewFilters,
         professionalFilters,
+        geospatialFilters,
         professionalPage,
         activeTab,
         sortBy,
@@ -161,8 +204,15 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     } catch (e) {
       console.error("Error saving state to sessionStorage:", e);
     }
-  }, [overviewFilters, professionalFilters, professionalPage, activeTab, sortBy, sortOrder]);
-
+  }, [
+    overviewFilters,
+    professionalFilters,
+    geospatialFilters,
+    professionalPage,
+    activeTab,
+    sortBy,
+    sortOrder,
+  ]);
 
   // Verificação prévia de permissões (evita chamadas desnecessárias)
   const {
@@ -170,7 +220,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     isLoading: currentUserLoading,
     error: currentUserError,
   } = useQuery({
-    queryKey: ['currentUser'],
+    queryKey: ["currentUser"],
     queryFn: () => apiService.getCurrentUser(),
     staleTime: 10 * 60 * 1000, // 10 minutos
     retry: false, // Não retry em caso de 403/401
@@ -199,7 +249,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
-    queryKey: ['dashboard', overviewFilters, bypassCacheDashboardTimestamp],
+    queryKey: ["dashboard", overviewFilters, bypassCacheDashboardTimestamp],
     queryFn: async ({ queryKey }) => {
       const timestamp = queryKey[queryKey.length - 1] as number | null;
       const shouldBypassCache = timestamp !== null;
@@ -228,7 +278,14 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     isFetching: participantsFetching,
     error: participantsError,
   } = useQuery({
-    queryKey: ['participants', professionalFilters, professionalPage, sortBy, sortOrder, bypassCacheParticipantsTimestamp],
+    queryKey: [
+      "participants",
+      professionalFilters,
+      professionalPage,
+      sortBy,
+      sortOrder,
+      bypassCacheParticipantsTimestamp,
+    ],
     queryFn: async ({ queryKey }) => {
       const timestamp = queryKey[queryKey.length - 1] as number | null;
       const shouldBypassCache = timestamp !== null;
@@ -240,7 +297,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           ...(shouldBypassCache && { bypass_cache: true }),
         },
         professionalPage,
-        PAGE_SIZE
+        PAGE_SIZE,
       );
 
       if (shouldBypassCache) {
@@ -253,9 +310,42 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
 
+  // TanStack Query para Geospatial Layers (Mapa)
+  // Carrega em paralelo quando a página carrega
+  // Filtros incluídos no queryKey para refetch automático
+  const {
+    data: geospatialLayersResponse,
+    isLoading: geospatialLoading,
+    isFetching: geospatialFetching,
+    error: geospatialError,
+    refetch: refetchGeospatial,
+  } = useQuery({
+    queryKey: ["geospatialLayers", geospatialFilters, bypassCacheGeospatialTimestamp],
+    queryFn: async ({ queryKey }) => {
+      const filters = queryKey[1] as ParticipantFilters;
+      const timestamp = queryKey[2] as number | null;
+      const shouldBypassCache = timestamp !== null;
+
+      const result = await apiService.getGeospatialLayers(filters, shouldBypassCache);
+
+      if (shouldBypassCache) {
+        setBypassCacheGeospatialTimestamp(null);
+      }
+
+      return result;
+    },
+    staleTime: 30 * 60 * 1000, // 30 minutos (dados geográficos mudam raramente)
+    placeholderData: (prev) => prev,
+  });
+
+  // Extrair dados e filtros disponíveis da resposta
+  const geospatialLayers = geospatialLayersResponse?.data || [];
+  const geospatialAvailableFilters = geospatialLayersResponse?.filters;
+
   // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
   // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
-  const canViewDashboard = dashboardResponse?.meta?.can_view_dashboard !== false;
+  const canViewDashboard =
+    dashboardResponse?.meta?.can_view_dashboard !== false;
 
   // Force professional tab if user cannot view dashboard
   useEffect(() => {
@@ -269,11 +359,17 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    */
   useEffect(() => {
     // Handle errors from queries
-    if (dashboardError && (dashboardError as any).message === "Unauthorized") {
+    if (
+      dashboardError &&
+      (dashboardError as any).message === "Unauthorized"
+    ) {
       router.push("/login");
       return;
     }
-    if (participantsError && (participantsError as any).message === "Unauthorized") {
+    if (
+      participantsError &&
+      (participantsError as any).message === "Unauthorized"
+    ) {
       router.push("/login");
       return;
     }
@@ -283,18 +379,24 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    * Handle overview filter changes
    * TanStack Query refetch automaticamente quando overviewFilters muda
    */
-  const handleOverviewFilterChange = useCallback((newFilters: DashboardFilterValues) => {
-    setOverviewFilters(newFilters);
-  }, []);
+  const handleOverviewFilterChange = useCallback(
+    (newFilters: DashboardFilterValues) => {
+      setOverviewFilters(newFilters);
+    },
+    [],
+  );
 
   /**
    * Handle professional filter changes
    * TanStack Query refetch automaticamente quando professionalFilters muda
    */
-  const handleProfessionalFilterChange = useCallback((newFilters: ParticipantFilters) => {
-    setProfessionalFilters(newFilters);
-    setProfessionalPage(1); // Reset to page 1
-  }, []);
+  const handleProfessionalFilterChange = useCallback(
+    (newFilters: ParticipantFilters) => {
+      setProfessionalFilters(newFilters);
+      setProfessionalPage(1); // Reset to page 1
+    },
+    [],
+  );
 
   /**
    * Handle professional page change
@@ -308,18 +410,21 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    * Handle sort change
    * Atualiza sortBy e sortOrder, reseta para página 1
    */
-  const handleSortChange = useCallback((newSortBy: string, newSortOrder: SortOrder) => {
-    setSortBy(newSortBy);
-    setSortOrder(newSortOrder);
-    setProfessionalPage(1); // Reset to page 1 when sorting changes
-  }, []);
+  const handleSortChange = useCallback(
+    (newSortBy: string, newSortOrder: SortOrder) => {
+      setSortBy(newSortBy);
+      setSortOrder(newSortOrder);
+      setProfessionalPage(1); // Reset to page 1 when sorting changes
+    },
+    [],
+  );
 
   /**
    * Handle refresh with cache bypass (for Overview tab)
    */
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -328,8 +433,10 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
    */
   const handleProfessionalRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
-    queryClient.invalidateQueries({ queryKey: ['participants'] });
+    queryClient.invalidateQueries({ queryKey: ["participants"] });
+    queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
     setBypassCacheParticipantsTimestamp(Date.now());
+    setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
 
   /**
@@ -341,72 +448,73 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     // Gera CSV em chunks para evitar "Invalid string length" com datasets grandes
     // Retorna Blob diretamente ao invés de string gigante
 
-    if (data.length === 0) return new Blob([''], { type: 'text/csv;charset=utf-8;' });
+    if (data.length === 0)
+      return new Blob([""], { type: "text/csv;charset=utf-8;" });
 
     // Define headers for expanded format
     const participantFields = [
-      'cpf',
-      'id_membro_familia',
-      'id_familia',
-      'nome',
-      'sexo',
-      'nascimento_data',
-      'idade',
-      'subprefeitura',
-      'regiao_administrativa',
-      'bairro',
-      'grupo',
-      'cohort',
-      'status',
-      'status_inativo_motivo',
-      'situacao',
-      'total_protocolos',
-      'total_protocolos_regular',
-      'total_protocolos_irregular',
-      'total_protocolos_atencao',
-      'total_fracao',
-      'assistencia_protocolos_total',
-      'assistencia_protocolos_regular',
-      'assistencia_protocolos_irregular',
-      'assistencia_fracao',
-      'educacao_protocolos_total',
-      'educacao_protocolos_regular',
-      'educacao_protocolos_irregular',
-      'educacao_fracao',
-      'saude_protocolos_total',
-      'saude_protocolos_regular',
-      'saude_protocolos_irregular',
-      'saude_fracao',
-      'id_cras',
-      'nome_cras',
-      'id_cas',
-      'nome_cas',
-      'id_escola',
-      'nome_escola',
-      'id_cre',
-      'nome_cre',
-      'id_ap',
-      'nome_ap',
-      'id_clinica_familia',
-      'nome_clinica_familia',
-      'id_equipe_familia',
-      'nome_equipe_familia',
-      'equipe_medicos',
+      "cpf",
+      "id_membro_familia",
+      "id_familia",
+      "nome",
+      "sexo",
+      "nascimento_data",
+      "idade",
+      "subprefeitura",
+      "regiao_administrativa",
+      "bairro",
+      "grupo",
+      "cohort",
+      "status",
+      "status_inativo_motivo",
+      "situacao",
+      "total_protocolos",
+      "total_protocolos_regular",
+      "total_protocolos_irregular",
+      "total_protocolos_atencao",
+      "total_fracao",
+      "assistencia_protocolos_total",
+      "assistencia_protocolos_regular",
+      "assistencia_protocolos_irregular",
+      "assistencia_fracao",
+      "educacao_protocolos_total",
+      "educacao_protocolos_regular",
+      "educacao_protocolos_irregular",
+      "educacao_fracao",
+      "saude_protocolos_total",
+      "saude_protocolos_regular",
+      "saude_protocolos_irregular",
+      "saude_fracao",
+      "id_cras",
+      "nome_cras",
+      "id_cas",
+      "nome_cas",
+      "id_escola",
+      "nome_escola",
+      "id_cre",
+      "nome_cre",
+      "id_ap",
+      "nome_ap",
+      "id_clinica_familia",
+      "nome_clinica_familia",
+      "id_equipe_familia",
+      "nome_equipe_familia",
+      "equipe_familia",
     ];
 
     const protocolFields = [
-      'protocolo_id',
-      'protocolo_secretaria',
-      'protocolo_descricao',
-      'protocolo_status',
-      'protocolo_irregular_indicador',
-      'protocolo_status_label',
+      "protocolo_id",
+      "protocolo_secretaria",
+      "protocolo_descricao",
+      "protocolo_status",
+      "protocolo_irregular_indicador",
+      "protocolo_status_label",
     ];
 
     const headers = [...participantFields, ...protocolFields];
 
     // Usar ponto-e-vírgula (;) como delimitador - mais comum no Brasil e evita problemas com vírgulas no texto
-    const DELIMITER = ';';
+    const DELIMITER = ";";
 
     const escapeCSV = (value: any): string => {
       if (value === null || value === undefined) return '""';
@@ -416,7 +524,10 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       // SEMPRE usar aspas duplas para garantir compatibilidade com quebras de linha
       // Escapar aspas duplas internas duplicando elas (padrão CSV)
       // Substituir quebras de linha por espaço para evitar problemas
-      const cleaned = str.replace(/\n/g, ' ').replace(/\r/g, '').replace(/"/g, '""');
+      const cleaned = str
+        .replace(/\n/g, " ")
+        .replace(/\r/g, "")
+        .replace(/"/g, '""');
       return `"${cleaned}"`;
     };
 
@@ -425,24 +536,29 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
     const CHUNK_SIZE = 1000; // linhas por chunk
 
     // Header
-    chunks.push(headers.join(DELIMITER) + '\n');
+    chunks.push(headers.join(DELIMITER) + "\n");
 
     let buffer: string[] = [];
     let linesInBuffer = 0;
 
     // Processar participantes
-    data.forEach(participant => {
+    data.forEach((participant) => {
       const protocolos = participant.protocolo_listagem || [];
 
       if (protocolos.length > 0) {
         protocolos.forEach((protocolo: any) => {
-          const row = headers.map(header => {
-            if (header === 'protocolo_id') return escapeCSV(protocolo.id);
-            if (header === 'protocolo_secretaria') return escapeCSV(protocolo.secretaria);
-            if (header === 'protocolo_descricao') return escapeCSV(protocolo.descricao);
-            if (header === 'protocolo_status') return escapeCSV(protocolo.status);
-            if (header === 'protocolo_irregular_indicador') return escapeCSV(protocolo.irregular_indicador);
-            if (header === 'protocolo_status_label') return escapeCSV(protocolo.protocolo_status_label);
+          const row = headers.map((header) => {
+            if (header === "protocolo_id") return escapeCSV(protocolo.id);
+            if (header === "protocolo_secretaria")
+              return escapeCSV(protocolo.secretaria);
+            if (header === "protocolo_descricao")
+              return escapeCSV(protocolo.descricao);
+            if (header === "protocolo_status")
+              return escapeCSV(protocolo.status);
+            if (header === "protocolo_irregular_indicador")
+              return escapeCSV(protocolo.irregular_indicador);
+            if (header === "protocolo_status_label")
+              return escapeCSV(protocolo.protocolo_status_label);
             return escapeCSV(participant[header]);
           });
 
@@ -451,14 +567,14 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
 
           // Flush buffer quando atingir chunk size
           if (linesInBuffer >= CHUNK_SIZE) {
-            chunks.push(buffer.join('\n') + '\n');
+            chunks.push(buffer.join("\n") + "\n");
             buffer = [];
             linesInBuffer = 0;
           }
         });
       } else {
-        const row = headers.map(header => {
-          if (header.startsWith('protocolo_')) return '';
+        const row = headers.map((header) => {
+          if (header.startsWith("protocolo_")) return "";
           return escapeCSV(participant[header]);
         });
 
@@ -466,7 +582,7 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
         linesInBuffer++;
 
         if (linesInBuffer >= CHUNK_SIZE) {
-          chunks.push(buffer.join('\n') + '\n');
+          chunks.push(buffer.join("\n") + "\n");
           buffer = [];
           linesInBuffer = 0;
         }
@@ -475,12 +591,12 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
 
     // Flush remaining buffer
     if (buffer.length > 0) {
-      chunks.push(buffer.join('\n'));
+      chunks.push(buffer.join("\n"));
     }
 
     // Criar Blob a partir dos chunks (evita string gigante)
-    const BOM = '\uFEFF';
-    return new Blob([BOM, ...chunks], { type: 'text/csv;charset=utf-8;' });
+    const BOM = "\uFEFF";
+    return new Blob([BOM, ...chunks], { type: "text/csv;charset=utf-8;" });
   }, []);
 
   /**
@@ -502,23 +618,30 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
         },
         1,
-        -1 // Special value: -1 = return all data (bypass pagination)
+        -1, // Special value: -1 = return all data (bypass pagination)
       );
 
       const fetchTime = ((performance.now() - startTime) / 1000).toFixed(1);
-      toast.info(`⚙️ Processando ${result.meta.total_rows.toLocaleString('pt-BR')} participantes...`);
+      toast.info(
+        `⚙️ Processando ${result.meta.total_rows.toLocaleString("pt-BR")} participantes...`,
+      );
 
       // Convert to CSV Blob (com BOM, em chunks para evitar limite de string)
       const blob = jsonToCSVBlob(result.data);
 
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
 
       // Generate filename with timestamp and filter count
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-      const filterCount = Object.keys(professionalFilters).filter(k => k !== 'bypass_cache').length;
-      const filename = `participantes_${timestamp}_${result.meta.total_rows}rows${filterCount > 0 ? `_${filterCount}filters` : ''}.csv`;
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .split("T")[0];
+      const filterCount = Object.keys(professionalFilters).filter(
+        (k) => k !== "bypass_cache",
+      ).length;
+      const filename = `participantes_${timestamp}_${result.meta.total_rows}rows${filterCount > 0 ? `_${filterCount}filters` : ""}.csv`;
       link.download = filename;
 
       document.body.appendChild(link);
@@ -530,8 +653,8 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
       const fileSize = (blob.size / 1024 / 1024).toFixed(1); // MB
 
       toast.success(
-        `✅ ${result.meta.total_rows.toLocaleString('pt-BR')} participantes baixados (${fileSize} MB em ${totalTime}s)`,
-        { duration: 5000 }
+        `✅ ${result.meta.total_rows.toLocaleString("pt-BR")} participantes baixados (${fileSize} MB em ${totalTime}s)`,
+        { duration: 5000 },
       );
     } catch (error) {
       console.error("Download error:", error);
@@ -542,47 +665,54 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
   /**
    * Memoizar filter options vazias para evitar re-criação
    */
-  const emptyFilterOptions = useMemo<SmartFilterOptions>(() => ({
-    // Filtros de participantes
-    bairros: [],
-    grupos: [],
-    cohorts: [],
-    status_list: [],
-    situacoes: [],
-    subprefeituras: [],
-    regioes_administrativas: [],
-    cres: [],
-    aps: [],
-    cas_list: [],
-    cras: [],
-    escolas: [],
-    clinicas: [],
-    equipes_familia: [],
-    unidades_saude: [],
-    equipes_saude: [],
-    protocolo_descricoes: [],
-    protocolo_status_list: [],
-    // Filtros de usuários (admin)
-    ocupacoes: [],
-    secretarias: [],
-    status_ativo: [],
-    permissions: []
-  }), []);
+  const emptyFilterOptions = useMemo<SmartFilterOptions>(
+    () => ({
+      // Filtros de participantes
+      bairros: [],
+      grupos: [],
+      cohorts: [],
+      status_list: [],
+      situacoes: [],
+      subprefeituras: [],
+      regioes_administrativas: [],
+      cres: [],
+      aps: [],
+      cas_list: [],
+      cras: [],
+      escolas: [],
+      clinicas: [],
+      equipes_familia: [],
+      unidades_saude: [],
+      equipes_saude: [],
+      protocolo_descricoes: [],
+      protocolo_status_list: [],
+      // Filtros geoespaciais
+      tipos_camada: [],
+      categorias: [],
+      regionais: [],
+      nomes: [],
+      // Filtros de usuários (admin)
+      ocupacoes: [],
+      secretarias: [],
+      status_ativo: [],
+      permissions: [],
+    }),
+    [],
+  );
 
   /**
    * Show loading screen while all data is loading
    * OTIMIZAÇÃO: Todas as queries rodam em paralelo, mostra loading até a primeira completar
    */
-  const isInitialLoading = currentUserLoading && dashboardLoading && participantsLoading;
+  const isInitialLoading =
+    currentUserLoading && dashboardLoading && participantsLoading;
 
   if (isInitialLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-lg text-muted-foreground">
-            Carregando dados...
-          </p>
+          <p className="text-lg text-muted-foreground">Carregando dados...</p>
         </div>
       </div>
     );
@@ -603,7 +733,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
           }}
           className="w-full"
         >
-          <TabsList className={`grid w-full ${canViewDashboard ? "grid-cols-2" : "grid-cols-1"} mb-8 h-auto p-1 bg-muted rounded-md`}>
+          <TabsList
+            className={`grid w-full ${canViewDashboard ? "grid-cols-2" : "grid-cols-1"} mb-8 h-auto p-1 bg-muted rounded-md`}
+          >
             {canViewDashboard && (
               <TabsTrigger
                 value="overview"
@@ -626,7 +758,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
             <TabsContent value="overview" className="mt-6">
               <OverviewTab
                 data={dashboardResponse?.data?.[0] || null}
-                filterOptions={dashboardResponse?.filters || emptyFilterOptions}
+                filterOptions={
+                  dashboardResponse?.filters || emptyFilterOptions
+                }
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
                 onRefresh={handleOverviewRefresh}
@@ -640,7 +774,9 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
               <ProfessionalTab
                 data={participantsResponse?.data || []}
                 meta={participantsResponse?.meta || null}
-                filterOptions={participantsResponse?.filters || emptyFilterOptions}
+                filterOptions={
+                  participantsResponse?.filters || emptyFilterOptions
+                }
                 filters={professionalFilters}
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
@@ -651,6 +787,12 @@ export function DashboardClient({ userInfo }: { userInfo?: UserInfo | null }) {
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSortChange={handleSortChange}
+                isSuperAdmin={currentUser?.is_super_admin || false}
+                geospatialLayers={geospatialLayers}
+                geospatialLoading={geospatialFetching}
+                geospatialFilters={geospatialFilters}
+                geospatialAvailableFilters={geospatialAvailableFilters}
+                onGeospatialFilterChange={setGeospatialFilters}
               />
             </TabsContent>
           )}

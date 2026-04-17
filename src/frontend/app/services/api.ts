@@ -10,6 +10,7 @@ import {
   BatchImportResult,
   BatchPermissionsRequest,
   BatchPermissionsResult,
+  GeospatialLayer,
 } from "../types";
 import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
@@ -438,6 +439,34 @@ export const apiService = {
     const res = await fetchFn();
 
     return handleResponse<{ total_found: number; total_returned: number; data: any[] }>(res, fetchFn);
+  },
+
+  // ========================================================================
+  // GEOSPATIAL ENDPOINTS
+  // ========================================================================
+
+  /**
+   * Get all geospatial layers for map visualization
+   * Returns equipment (schools, CRAS, clinics) and administrative divisions with GeoJSON geometries
+   *
+   * @param filters - Filter criteria (tipo_camada, categoria, regional, bairro, regiao_administrativa, subprefeitura)
+   * @param bypassCache - If true, forces fresh data from BigQuery
+   */
+  async getGeospatialLayers(
+    filters: Partial<ParticipantFilters> = {},
+    bypassCache: boolean = false
+  ): Promise<PaginatedResponse<GeospatialLayer>> {
+    const params = buildFilterParams(filters);
+    if (bypassCache) {
+      params.append("bypass_cache", "true");
+    }
+
+    const url = `${BASE_URL}/api/v1/geospatial/layers?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<PaginatedResponse<GeospatialLayer>>(res, fetchFn);
   },
 
 };

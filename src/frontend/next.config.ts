@@ -28,12 +28,13 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Next.js requires unsafe-eval and unsafe-inline
               "style-src 'self' 'unsafe-inline'", // Tailwind requires unsafe-inline
-              "img-src 'self' data: blob: https:",
+              "img-src 'self' data: blob: https: https://*.cartocdn.com https://*.basemaps.cartocdn.com", // Map tiles
               "font-src 'self' data:",
-              "connect-src 'self' https://auth-idriohom.apps.rio.gov.br", // Keycloak
+              "connect-src 'self' https://auth-idriohom.apps.rio.gov.br https://*.cartocdn.com https://*.basemaps.cartocdn.com", // Keycloak + Map styles/tiles
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
+              "worker-src 'self' blob:", // MapLibre workers
             ].join("; "),
           },
           {
