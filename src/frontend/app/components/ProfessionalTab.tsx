@@ -919,6 +919,24 @@ const ProfessionalTabComponent = ({
                       </Badge>
                     </div>
                     <div>
+                      <p className="text-sm text-muted-foreground">Cartão PIC</p>
+                      <Badge
+                        variant={
+                          selectedParticipant.has_cartao_pic === true
+                            ? "success"
+                            : selectedParticipant.has_cartao_pic === false
+                              ? "secondary"
+                              : "outline"
+                        }
+                      >
+                        {selectedParticipant.has_cartao_pic === true
+                          ? "Possui cartão"
+                          : selectedParticipant.has_cartao_pic === false
+                            ? "Sem cartão"
+                            : "-"}
+                      </Badge>
+                    </div>
+                    <div>
                       <p className="text-sm text-muted-foreground">
                         Mês de Ingresso no Programa
                       </p>

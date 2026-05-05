@@ -57,6 +57,7 @@ export interface Participante {
   grupo?: string;
   cohort?: string; // ISO date string
   has_bolsa_familia?: boolean;
+  has_cartao_pic?: boolean;
   status?: string;
   status_inativo_motivo?: string;
 

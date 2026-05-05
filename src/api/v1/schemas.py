@@ -369,6 +369,7 @@ class Participante(BaseModel):
     grupo: Optional[str] = None
     cohort: Optional[date] = None
     has_bolsa_familia: Optional[bool] = None
+    has_cartao_pic: Optional[bool] = None
     status: Optional[str] = None
     status_inativo_motivo: Optional[str] = None
 
