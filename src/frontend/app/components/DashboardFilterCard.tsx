@@ -28,6 +28,7 @@ export interface DashboardFilterValues {
   escola?: string | string[];              // id_escola (multi-select)
   unidade_saude?: string | string[];       // id_unidade_saude (multi-select)
   equipe_saude?: string | string[];        // id_equipe_saude (multi-select)
+  has_bolsa_familia?: boolean;             // filtro booleano
 }
 
 interface DashboardFilterCardProps {
@@ -71,7 +72,7 @@ const DashboardFilterCardComponent = ({
     if (value === "todos" || value === "todas" || value === "") {
       delete newFilters[key];
     } else {
-      newFilters[key] = value;
+      (newFilters as Record<string, unknown>)[key] = value;
     }
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
@@ -83,6 +84,17 @@ const DashboardFilterCardComponent = ({
       newFilters[key] = values as any;
     } else {
       delete newFilters[key];
+    }
+    onFilterChange(newFilters);
+  }, [filters, onFilterChange]);
+
+  // Callback para filtros booleanos (converte string "true"/"false" para boolean)
+  const handleBooleanFilterUpdate = useCallback((key: keyof DashboardFilterValues, value: string) => {
+    const newFilters = { ...filters };
+    if (value === "todos" || value === "todas" || value === "") {
+      delete newFilters[key];
+    } else {
+      (newFilters as Record<string, unknown>)[key] = value === "true";
     }
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
@@ -217,6 +229,23 @@ const DashboardFilterCardComponent = ({
               placeholder="Secretaria"
               defaultLabel="Todas as Secretarias"
               options={SECRETARIA_OPTIONS}
+            />
+
+            {/* Bolsa Família */}
+            <VirtualizedSelect
+              value={
+                filters.has_bolsa_familia !== undefined
+                  ? String(filters.has_bolsa_familia)
+                  : "todas"
+              }
+              onSelect={(v) => handleBooleanFilterUpdate("has_bolsa_familia", v)}
+              disabled={loading}
+              placeholder="Todos Bolsa Família"
+              defaultLabel="Todos Bolsa Família"
+              options={[
+                { id: "true", label: "Com Bolsa Família" },
+                { id: "false", label: "Sem Bolsa Família" },
+              ]}
             />
           </div>
         </div>

@@ -62,6 +62,17 @@ const FilterCardComponent = ({
     });
   }, [filters, onFilterChange]);
 
+  // Callback para filtros booleanos (converte string "true"/"false" para boolean)
+  const handleBooleanFilterUpdate = useCallback((key: string, value: string) => {
+    if (value === "todos" || value === "todas" || value === "") {
+      const updated = { ...filters } as Record<string, unknown>;
+      delete updated[key];
+      onFilterChange(updated as FilterType);
+    } else {
+      onFilterChange({ ...filters, [key]: value === "true" });
+    }
+  }, [filters, onFilterChange]);
+
   const clearFilters = useCallback(() => {
     setSearchInput("");
     onFilterChange({});
@@ -252,6 +263,23 @@ const FilterCardComponent = ({
               placeholder="Meses de Ingresso"
               defaultLabel="Todos os Meses de Ingresso"
               options={filteredOptions.cohorts}
+            />
+
+            {/* Bolsa Família */}
+            <VirtualizedSelect
+              value={
+                (filters as any).has_bolsa_familia !== undefined
+                  ? String((filters as any).has_bolsa_familia)
+                  : "todas"
+              }
+              onSelect={(v) => handleBooleanFilterUpdate("has_bolsa_familia", v)}
+              disabled={loading}
+              placeholder="Todos Bolsa Família"
+              defaultLabel="Todos Bolsa Família"
+              options={[
+                { id: "true", label: "Com Bolsa Família" },
+                { id: "false", label: "Sem Bolsa Família" },
+              ]}
             />
 
             {/* Secretaria de Protocolo */}

@@ -624,11 +624,22 @@ const ProfessionalTabComponent = ({
                           : "-"}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bairro</p>
-                      <p className="font-medium">
-                        {selectedParticipant.bairro || "-"}
-                      </p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Endereço</p>
+                      <div>
+                        <span className="text-xs text-muted-foreground">Logradouro: </span>
+                        <span className="font-medium">{selectedParticipant.endereco || "-"}</span>
+                      </div>
+                      {selectedParticipant.complemento && (
+                        <div>
+                          <span className="text-xs text-muted-foreground">Complemento: </span>
+                          <span className="font-medium">{selectedParticipant.complemento}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-xs text-muted-foreground">Bairro: </span>
+                        <span className="font-medium uppercase">{selectedParticipant.bairro || "-"}</span>
+                      </div>
                     </div>
 
                     {/* Equipamentos Públicos - Educação (SME) */}
@@ -889,6 +900,24 @@ const ProfessionalTabComponent = ({
                         </>
                       );
                     })()}
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bolsa Família</p>
+                      <Badge
+                        variant={
+                          selectedParticipant.has_bolsa_familia === true
+                            ? "success"
+                            : selectedParticipant.has_bolsa_familia === false
+                              ? "secondary"
+                              : "outline"
+                        }
+                      >
+                        {selectedParticipant.has_bolsa_familia === true
+                          ? "Beneficiário"
+                          : selectedParticipant.has_bolsa_familia === false
+                            ? "Não beneficiário"
+                            : "-"}
+                      </Badge>
+                    </div>
                     <div>
                       <p className="text-sm text-muted-foreground">
                         Mês de Ingresso no Programa

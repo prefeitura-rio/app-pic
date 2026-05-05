@@ -76,6 +76,7 @@ async def get_dashboard_metrics(
     escola: Optional[str] = Query(None, description="Filtrar por escola"),
     unidade_saude: Optional[str] = Query(None, description="Filtrar por unidade de saúde"),
     equipe_saude: Optional[str] = Query(None, description="Filtrar por equipe de saúde"),
+    has_bolsa_familia: Optional[bool] = Query(None, description="Filtrar por beneficiários do Bolsa Família"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ) -> Any:
     """
@@ -128,6 +129,8 @@ async def get_dashboard_metrics(
         filters_dict["id_unidade_saude"] = parse_multi_select(unidade_saude)
     if equipe_saude:
         filters_dict["id_equipe_saude"] = parse_multi_select(equipe_saude)
+    if has_bolsa_familia is not None:
+        filters_dict["has_bolsa_familia"] = has_bolsa_familia
 
     logger.info("Fetching dashboard metrics from pre-aggregated table")
     logger.info(f"🔑 Permissions: {per_log}")

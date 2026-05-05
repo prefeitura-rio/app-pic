@@ -33,6 +33,7 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     "grupo": "grupo",
     "status": "status",
     "situacao": "situacao",
+    "has_bolsa_familia": "has_bolsa_familia",
     # Filtros de array (protocolo_listagem) - usa dot notation para indicar campo do array
     "protocolo_descricao": "protocolo_listagem.descricao",
     "protocolo_status": "protocolo_listagem.protocolo_status_label",

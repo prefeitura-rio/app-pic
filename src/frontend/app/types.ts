@@ -45,6 +45,8 @@ export interface Participante {
   // Dados demográficos
   nascimento_data?: string; // ISO date string
   idade?: number;
+  endereco?: string;
+  complemento?: string;
   subprefeitura?: string;
   regiao_administrativa?: string;
   bairro?: string;
@@ -54,6 +56,7 @@ export interface Participante {
   // Programa
   grupo?: string;
   cohort?: string; // ISO date string
+  has_bolsa_familia?: boolean;
   status?: string;
   status_inativo_motivo?: string;
 
@@ -111,10 +114,12 @@ export interface Participante {
   id_clinica_familia?: string;
   nome_clinica_familia?: string;
   source_clinica_familia?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
+  has_cobertura_clinica_familia?: boolean;
   id_equipe_familia?: string;
   nome_equipe_familia?: string;
   source_equipe_familia?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
   equipe_familia?: string;
+  has_cobertura_equipe_familia?: boolean;
 
   // Infraestrutura
   cpf_particao?: number;
@@ -359,6 +364,7 @@ export interface DashboardFilters {
   grupo?: string | string[]; // Multi-select
   status?: string | string[]; // Multi-select
   situacao?: string | string[]; // Multi-select
+  has_bolsa_familia?: boolean; // Filtro booleano
   bypass_cache?: boolean;
   protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
   protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
@@ -383,6 +389,7 @@ export interface ParticipantFilters {
   grupo?: string | string[]; // Multi-select
   status?: string | string[]; // Multi-select
   situacao?: string | string[]; // Multi-select
+  has_bolsa_familia?: boolean; // Filtro booleano
   search?: string; // CPF or name search
   bypass_cache?: boolean;
   protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
