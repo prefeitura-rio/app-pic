@@ -26,7 +26,6 @@ from google.cloud import bigquery
 from src.api.v1.queries import (
     GOVERNANCE_TABLE_QUERY,
     PARTICIPANTS_TABLE_QUERY,
-    DEBUG_PARTICIPANTS_QUERY,
 )
 from src.api.v1.schemas import PaginatedResponse, PaginationParams
 from pydantic import BaseModel, Field

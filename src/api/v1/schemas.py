@@ -48,6 +48,7 @@ class CommonFilters(BaseModel):
     grupo: Optional[str] = None  # Multi-select
     status: Optional[str] = None  # Multi-select
     situacao: Optional[str] = None  # Multi-select
+    has_bolsa_familia: Optional[bool] = None  # Filtro booleano
     search: Optional[str] = None  # CPF or name search (NOT multi-select)
     protocolo_descricao: Optional[str] = None  # Multi-select
     protocolo_status: Optional[str] = None  # Multi-select
@@ -356,6 +357,8 @@ class Participante(BaseModel):
     # Dados demográficos
     nascimento_data: Optional[date] = None
     idade: Optional[int] = None
+    endereco: Optional[str] = None
+    complemento: Optional[str] = None
     subprefeitura: Optional[str] = None
     regiao_administrativa: Optional[str] = None
     bairro: Optional[str] = None
@@ -365,6 +368,8 @@ class Participante(BaseModel):
     # Programa
     grupo: Optional[str] = None
     cohort: Optional[date] = None
+    has_bolsa_familia: Optional[bool] = None
+    has_cartao_pic: Optional[bool] = None
     status: Optional[str] = None
     status_inativo_motivo: Optional[str] = None
 
@@ -436,12 +441,14 @@ class Participante(BaseModel):
     source_clinica_familia: Optional[str] = (
         None  # "rmi" (fonte original) | "geo" (fallback geolocalização) | null
     )
+    has_cobertura_clinica_familia: Optional[bool] = None
     id_equipe_familia: Optional[str] = None
     nome_equipe_familia: Optional[str] = None
     source_equipe_familia: Optional[str] = (
         None  # "rmi" (fonte original) | "geo" (fallback geolocalização) | null
     )
     equipe_familia: Optional[str] = None
+    has_cobertura_equipe_familia: Optional[bool] = None
 
     # Infraestrutura
     cpf_particao: Optional[int] = None
