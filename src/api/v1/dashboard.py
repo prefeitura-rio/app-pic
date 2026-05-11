@@ -42,8 +42,8 @@ DASHBOARD_FILTER_OPTIONS_CONFIG = {
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},
-    "unidades_saude": {"column": "id_unidade_saude", "label_column": "nome_unidade_saude"},
-    "equipes_saude": {"column": "id_equipe_saude", "label_column": "nome_equipe_saude"},
+    "clinicas": {"column": "id_clinica_familia", "label_column": "nome_clinica_familia"},
+    "equipes_familia": {"column": "id_equipe_familia", "label_column": "nome_equipe_familia"},
 }
 
 # Mapeamento de mês numérico para label
@@ -126,9 +126,9 @@ async def get_dashboard_metrics(
     if escola:
         filters_dict["id_escola"] = parse_multi_select(escola)
     if unidade_saude:
-        filters_dict["id_unidade_saude"] = parse_multi_select(unidade_saude)
+        filters_dict["id_clinica_familia"] = parse_multi_select(unidade_saude)
     if equipe_saude:
-        filters_dict["id_equipe_saude"] = parse_multi_select(equipe_saude)
+        filters_dict["id_equipe_familia"] = parse_multi_select(equipe_saude)
     if has_bolsa_familia is not None:
         filters_dict["has_bolsa_familia"] = has_bolsa_familia
 

@@ -682,8 +682,6 @@ export function DashboardClient({
       escolas: [],
       clinicas: [],
       equipes_familia: [],
-      unidades_saude: [],
-      equipes_saude: [],
       protocolo_descricoes: [],
       protocolo_status_list: [],
       // Filtros geoespaciais

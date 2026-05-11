@@ -125,8 +125,6 @@ class SmartFilterOptions(BaseModel):
     escolas: List[FilterOptionItem] = []
     clinicas: List[FilterOptionItem] = []
     equipes_familia: List[FilterOptionItem] = []
-    unidades_saude: List[FilterOptionItem] = []
-    equipes_saude: List[FilterOptionItem] = []
     protocolo_descricoes: List[FilterOptionItem] = []  # Descrições de protocolos
     protocolo_status_list: List[FilterOptionItem] = []  # Status de protocolos
 
