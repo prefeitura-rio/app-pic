@@ -168,8 +168,6 @@ export interface SmartFilterOptions {
   escolas: FilterOptionItem[];
   clinicas: FilterOptionItem[];
   equipes_familia: FilterOptionItem[];
-  unidades_saude: FilterOptionItem[];
-  equipes_saude: FilterOptionItem[];
   protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
   protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 

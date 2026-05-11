@@ -26,8 +26,8 @@ export interface DashboardFilterValues {
   cas?: string | string[];                 // id_cas (multi-select)
   cras?: string | string[];                // id_cras (multi-select)
   escola?: string | string[];              // id_escola (multi-select)
-  unidade_saude?: string | string[];       // id_unidade_saude (multi-select)
-  equipe_saude?: string | string[];        // id_equipe_saude (multi-select)
+  unidade_saude?: string | string[];       // id_clinica_familia (multi-select)
+  equipe_saude?: string | string[];        // id_equipe_familia (multi-select)
   has_bolsa_familia?: boolean;             // filtro booleano
 }
 
@@ -118,8 +118,8 @@ const DashboardFilterCardComponent = ({
     cas_list: (filterOptions.cas_list || []).filter((item) => item.id && item.id.trim() !== ""),
     cras: (filterOptions.cras || []).filter((item) => item.id && item.id.trim() !== ""),
     escolas: (filterOptions.escolas || []).filter((item) => item.id && item.id.trim() !== ""),
-    unidades_saude: (filterOptions.unidades_saude || []).filter((item) => item.id && item.id.trim() !== ""),
-    equipes_saude: (filterOptions.equipes_saude || []).filter((item) => item.id && item.id.trim() !== ""),
+    clinicas: (filterOptions.clinicas || []).filter((item) => item.id && item.id.trim() !== ""),
+    equipes_familia: (filterOptions.equipes_familia || []).filter((item) => item.id && item.id.trim() !== ""),
   }), [filterOptions]);
 
   return (
@@ -408,7 +408,7 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="Unidades de Saúde"
                 defaultLabel="Todas as Unidades"
-                options={filteredOptions.unidades_saude}
+                options={filteredOptions.clinicas}
               />
             )}
 
@@ -426,7 +426,7 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="Equipes de Saúde"
                 defaultLabel="Todas as Equipes"
-                options={filteredOptions.equipes_saude}
+                options={filteredOptions.equipes_familia}
               />
             )}
           </div>
