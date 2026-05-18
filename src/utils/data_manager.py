@@ -526,14 +526,26 @@ class DataManager:
 
             # Array extraction (protocolo_listagem)
             if config_type == "array_extract" and array_field:
-                unique_values = DataManager._extract_unique_from_array_polars(
-                    df, column, array_field
-                )
-                options = [
-                    {"id": str(v), "label": str(v)}
-                    for v in sorted(unique_values, key=natural_sort_key)
-                    if v and str(v).strip()
-                ]
+                label_field = cfg.get("label_field")
+                if label_field:
+                    # Extract id+label pairs (análogo a label_column nos escalares)
+                    pairs = DataManager._extract_id_label_pairs_from_array_polars(
+                        df, column, array_field, label_field
+                    )
+                    options = [
+                        {"id": id_val, "label": label_val}
+                        for id_val, label_val in sorted(pairs, key=lambda x: natural_sort_key(x[1]))
+                        if id_val and id_val.strip()
+                    ]
+                else:
+                    unique_values = DataManager._extract_unique_from_array_polars(
+                        df, column, array_field
+                    )
+                    options = [
+                        {"id": str(v), "label": str(v)}
+                        for v in sorted(unique_values, key=natural_sort_key)
+                        if v and str(v).strip()
+                    ]
                 result[result_key] = options
                 continue
 
@@ -1025,6 +1037,34 @@ class DataManager:
         return result
 
     @staticmethod
+    def _extract_id_label_pairs_from_array_polars(
+        df: pl.DataFrame, array_col: str, id_field: str, label_field: str
+    ) -> list[tuple[str, str]]:
+        """
+        Extrai pares únicos (id, label) de dois campos dentro de uma coluna de arrays.
+        Análogo a label_column nos filtros escalares.
+        """
+        if df.is_empty() or array_col not in df.columns:
+            return []
+
+        df_exploded = df.select(array_col).drop_nulls().explode(array_col)
+
+        if df_exploded.is_empty():
+            return []
+
+        pairs = (
+            df_exploded.select([
+                pl.col(array_col).struct.field(id_field).cast(pl.Utf8).alias("id"),
+                pl.col(array_col).struct.field(label_field).cast(pl.Utf8).alias("label"),
+            ])
+            .drop_nulls()
+            .unique(subset=["id"])
+            .to_dicts()
+        )
+
+        return [(r["id"].strip(), r["label"].strip()) for r in pairs if r["id"] and r["id"].strip()]
+
+    @staticmethod
     def _extract_unique_from_array_with_filter_polars(
         df: pl.DataFrame,
         array_col: str,
@@ -1234,9 +1274,20 @@ class DataManager:
 
             # Tratar extração de array
             if config_type == "array_extract" and array_field:
+                label_field = cfg.get("label_field")
                 # Verificar se há filtros de array ativos para este array
                 array_col_name = column  # ex: "protocolo_listagem"
-                if array_col_name in active_array_filters:
+                if label_field:
+                    # id_field + label_field: extrair pares (análogo a label_column nos escalares)
+                    pairs = DataManager._extract_id_label_pairs_from_array_polars(
+                        df_filtered, array_col_name, array_field, label_field
+                    )
+                    options = [
+                        FilterOptionItem(id=id_val, label=label_val)
+                        for id_val, label_val in sorted(pairs, key=lambda x: natural_sort_key(x[1]))
+                        if id_val and id_val.strip()
+                    ]
+                elif array_col_name in active_array_filters:
                     # Usar função que aplica filtros nos itens do array (cascata)
                     # Exclui o próprio campo para manter suas opções
                     unique_values = (
@@ -1248,16 +1299,21 @@ class DataManager:
                             exclude_field=array_field,  # Excluir próprio campo
                         )
                     )
+                    options = [
+                        FilterOptionItem(id=str(v), label=str(v))
+                        for v in sorted(unique_values, key=natural_sort_key)
+                        if v and str(v).strip()
+                    ]
                 else:
                     # Sem filtros de array ativos - extrair normalmente
                     unique_values = DataManager._extract_unique_from_array_polars(
                         df_filtered, column, array_field
                     )
-                options = [
-                    FilterOptionItem(id=str(v), label=str(v))
-                    for v in sorted(unique_values, key=natural_sort_key)
-                    if v and str(v).strip()
-                ]
+                    options = [
+                        FilterOptionItem(id=str(v), label=str(v))
+                        for v in sorted(unique_values, key=natural_sort_key)
+                        if v and str(v).strip()
+                    ]
                 filter_options_dict[result_key] = options
                 continue
 

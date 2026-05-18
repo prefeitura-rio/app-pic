@@ -92,15 +92,16 @@ async def get_dashboard_metrics(
     }
 
     # Construir dict de filtros (mapeando para colunas da tabela)
-    # Todos os filtros suportam multi-select (comma-separated)
+    # Todos os filtros suportam multi-select (pipe-separated)
+    # NOTE: pipe é usado ao invés de vírgula porque alguns valores (ex: protocolo_descricao) contêm vírgulas
     filters_dict = {}
 
     # Helper para parse de multi-select
     def parse_multi_select(value: Optional[str]) -> Optional[str | list[str]]:
         if not value:
             return None
-        if "," in value:
-            return [v.strip() for v in value.split(",") if v.strip()]
+        if "|" in value:
+            return [v.strip() for v in value.split("|") if v.strip()]
         return value
 
     if grupo:
