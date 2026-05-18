@@ -138,7 +138,7 @@ async def get_current_user_permissions(
         )
 
     try:
-        permissions = DataManager.get_user_permissions(cpf)
+        permissions = await DataManager.get_user_permissions(cpf)
         perm_time = time.perf_counter() - perm_start
         logger.info(
             f"⏱️ [TIMING] get_user_permissions took {perm_time:.3f}s - "

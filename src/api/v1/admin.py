@@ -655,7 +655,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
         # Super admin: buscar todos os IDs disponíveis no sistema
         if permissions.is_super_admin:
             # Buscar dados de participantes (usa cache compartilhado)
-            df, _, _ = DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY)
+            df, _, _ = await DataManager.get_dataset(PARTICIPANTS_TABLE_QUERY)
 
             # Extrair IDs únicos com nomes
             available_ids = AvailableIds(
@@ -833,7 +833,7 @@ async def list_users(
         # Pipeline completo: fetch → filter → search → filter_options → paginate
         # IMPORTANTE: Para admins segmentados, aplicar governança APÓS buscar dados
         # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
-        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = await DataManager.fetch_filter_paginate(
             query=GOVERNANCE_TABLE_QUERY,
             filters_dict=filters_dict,
             page=pagination.page,
@@ -979,7 +979,7 @@ async def upsert_user(
     logger.info(f"    - is_update: {request.is_update}")
 
     # Verificar se CPF já existe (usa cache da tabela de governança)
-    governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+    governance_df, _, _ = await DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
     existing_user = governance_df.filter(pl.col("cpf") == cpf)
     user_exists = not existing_user.is_empty()
 
@@ -1327,7 +1327,7 @@ async def upsert_user(
         time.sleep(0.1)
 
         # Buscar usuário para retornar (força bypass_cache para garantir dados frescos)
-        governance_df, _, _ = DataManager.get_dataset(
+        governance_df, _, _ = await DataManager.get_dataset(
             GOVERNANCE_TABLE_QUERY, bypass_cache=True
         )
         user_row = governance_df.filter(pl.col("cpf") == cpf)
@@ -1409,7 +1409,7 @@ async def delete_user(
     logger.info(f"Admin deletando usuário")
 
     # Verificar que usuário existe e obter suas permissões
-    governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+    governance_df, _, _ = await DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
     existing_user = governance_df.filter(pl.col("cpf") == cpf)
 
     if existing_user.is_empty():
@@ -1682,7 +1682,7 @@ async def batch_import_users(
             )
 
         # Buscar CPFs existentes
-        governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+        governance_df, _, _ = await DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
         existing_cpfs = set(governance_df["cpf"].to_list())
 
         # Processar cada linha

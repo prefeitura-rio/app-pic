@@ -97,7 +97,7 @@ async def get_geospatial_layers(
         # Fetch data from BigQuery with filters (sempre retorna tudo, sem paginação)
         # NOTA: Não passamos user_permissions aqui porque dados geoespaciais são públicos
         # e não têm as colunas necessárias para filtros de governança (id_cras, id_escola, etc.)
-        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = await DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
             page=1,

@@ -98,7 +98,7 @@ async def get_debug_participants(
 
     try:
         # PASSO 1: Buscar na tabela de listagem individual
-        df_listagem, _, _ = DataManager.get_dataset(
+        df_listagem, _, _ = await DataManager.get_dataset(
             PARTICIPANTS_TABLE_QUERY,
             bypass_cache=bypass_cache,
         )
@@ -182,7 +182,7 @@ async def get_debug_participants(
         )
 
         # PASSO 6: Buscar origins (cacheable)
-        df_origins, _, _ = DataManager.get_dataset(
+        df_origins, _, _ = await DataManager.get_dataset(
             DEBUG_ORIGINS_QUERY,
             bypass_cache=bypass_cache,
         )

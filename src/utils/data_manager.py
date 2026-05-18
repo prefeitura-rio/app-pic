@@ -1,3 +1,4 @@
+import asyncio
 import polars as pl
 from typing import Dict, Any, Optional, Tuple
 from math import ceil
@@ -130,7 +131,7 @@ class DataManager:
         return json.dumps(df.to_dicts())
 
     @staticmethod
-    def fetch_filter_paginate(
+    async def fetch_filter_paginate(
         query: str,
         filters_dict: Dict[str, Any],
         page: int,
@@ -228,7 +229,7 @@ class DataManager:
 
         # 1. GET DATASET (cache + DataFrame conversion + precomputed filter options)
         get_start = time.perf_counter()
-        df, cache_hit, precomputed_filter_options = DataManager.get_dataset(
+        df, cache_hit, precomputed_filter_options = await DataManager.get_dataset(
             query,
             bypass_cache=bypass_cache,
             filter_columns_config=filter_columns_config,  # Pass config for precomputation
@@ -397,7 +398,7 @@ class DataManager:
         )
 
     @staticmethod
-    def get_dataset(
+    async def get_dataset(
         query: str,
         bypass_cache: bool = False,
         filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
@@ -456,47 +457,46 @@ class DataManager:
                 df = pl.DataFrame(raw_data)
                 return df, True, None
         else:
-            # 2. Cache MISS - fetch from BigQuery (retorna Polars via Arrow)
-            logger.info("❌ Cache MISS - Fetching from BigQuery")
-            bq_start = time.perf_counter()
-            df = execute_query(query, return_polars=True)  # Polars via Arrow!
-            bq_time = time.perf_counter() - bq_start
-            logger.info(f"BigQuery fetch time: {bq_time:.3f}s")
+            # 2. Cache MISS — move BQ fetch + precompute + cache write para thread pool
+            # Libera o event loop enquanto o BigQuery responde (3–10s)
+            logger.info("❌ Cache MISS - Fetching from BigQuery (thread pool)")
 
-            if df.is_empty():
-                return pl.DataFrame(), False, None
+            def _fetch_and_cache() -> Tuple[pl.DataFrame, bool, Optional[Dict[str, list]]]:
+                bq_start = time.perf_counter()
+                df = execute_query(query, return_polars=True)  # Polars via Arrow!
+                bq_time = time.perf_counter() - bq_start
+                logger.info(f"BigQuery fetch time: {bq_time:.3f}s")
 
-            # NOTA: Polars não precisa de otimização category como Pandas
-            # Polars já usa representação eficiente internamente
+                if df.is_empty():
+                    return pl.DataFrame(), False, None
 
-            # 4. PRÉ-COMPUTAR FILTER OPTIONS (durante cache write)
-            filter_options_cache = {}
-            if filter_columns_config:
-                precompute_start = time.perf_counter()
-                filter_options_cache = DataManager._precompute_filter_options(
-                    df, filter_columns_config
+                # PRÉ-COMPUTAR FILTER OPTIONS (durante cache write)
+                filter_options_cache: Dict[str, list] = {}
+                if filter_columns_config:
+                    precompute_start = time.perf_counter()
+                    filter_options_cache = DataManager._precompute_filter_options(
+                        df, filter_columns_config
+                    )
+                    precompute_time = time.perf_counter() - precompute_start
+                    logger.info(f"📊 Precomputed filter options: {precompute_time:.3f}s")
+
+                # Criar e salvar CachedDataset
+                cached_dataset = CachedDataset(
+                    df=df,
+                    filter_options_cache=filter_options_cache,
                 )
-                precompute_time = time.perf_counter() - precompute_start
-                logger.info(f"📊 Precomputed filter options: {precompute_time:.3f}s")
+                cache_write_start = time.perf_counter()
+                query_cache.set(query, cached_dataset)
+                cache_write_time = time.perf_counter() - cache_write_start
+                logger.info(f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s")
 
-            # 5. Criar CachedDataset otimizado
-            cached_dataset = CachedDataset(
-                df=df,
-                filter_options_cache=filter_options_cache,
-            )
+                total_time = time.perf_counter() - start_time
+                logger.info(
+                    f"get_dataset completed (CACHE MISS) - total: {total_time:.3f}s, rows: {len(df)}"
+                )
+                return df, False, filter_options_cache
 
-            # 6. Salvar no cache
-            cache_write_start = time.perf_counter()
-            query_cache.set(query, cached_dataset)
-            cache_write_time = time.perf_counter() - cache_write_start
-            logger.info(f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s")
-
-            total_time = time.perf_counter() - start_time
-            logger.info(
-                f"get_dataset completed (CACHE MISS) - total: {total_time:.3f}s, rows: {len(df)}"
-            )
-
-            return df, False, filter_options_cache
+            return await asyncio.to_thread(_fetch_and_cache)
 
     @staticmethod
     def _precompute_filter_options(
@@ -526,14 +526,26 @@ class DataManager:
 
             # Array extraction (protocolo_listagem)
             if config_type == "array_extract" and array_field:
-                unique_values = DataManager._extract_unique_from_array_polars(
-                    df, column, array_field
-                )
-                options = [
-                    {"id": str(v), "label": str(v)}
-                    for v in sorted(unique_values, key=natural_sort_key)
-                    if v and str(v).strip()
-                ]
+                label_field = cfg.get("label_field")
+                if label_field:
+                    # Extract id+label pairs (análogo a label_column nos escalares)
+                    pairs = DataManager._extract_id_label_pairs_from_array_polars(
+                        df, column, array_field, label_field
+                    )
+                    options = [
+                        {"id": id_val, "label": label_val}
+                        for id_val, label_val in sorted(pairs, key=lambda x: natural_sort_key(x[1]))
+                        if id_val and id_val.strip()
+                    ]
+                else:
+                    unique_values = DataManager._extract_unique_from_array_polars(
+                        df, column, array_field
+                    )
+                    options = [
+                        {"id": str(v), "label": str(v)}
+                        for v in sorted(unique_values, key=natural_sort_key)
+                        if v and str(v).strip()
+                    ]
                 result[result_key] = options
                 continue
 
@@ -1025,6 +1037,34 @@ class DataManager:
         return result
 
     @staticmethod
+    def _extract_id_label_pairs_from_array_polars(
+        df: pl.DataFrame, array_col: str, id_field: str, label_field: str
+    ) -> list[tuple[str, str]]:
+        """
+        Extrai pares únicos (id, label) de dois campos dentro de uma coluna de arrays.
+        Análogo a label_column nos filtros escalares.
+        """
+        if df.is_empty() or array_col not in df.columns:
+            return []
+
+        df_exploded = df.select(array_col).drop_nulls().explode(array_col)
+
+        if df_exploded.is_empty():
+            return []
+
+        pairs = (
+            df_exploded.select([
+                pl.col(array_col).struct.field(id_field).cast(pl.Utf8).alias("id"),
+                pl.col(array_col).struct.field(label_field).cast(pl.Utf8).alias("label"),
+            ])
+            .drop_nulls()
+            .unique(subset=["id"])
+            .to_dicts()
+        )
+
+        return [(r["id"].strip(), r["label"].strip()) for r in pairs if r["id"] and r["id"].strip()]
+
+    @staticmethod
     def _extract_unique_from_array_with_filter_polars(
         df: pl.DataFrame,
         array_col: str,
@@ -1234,9 +1274,20 @@ class DataManager:
 
             # Tratar extração de array
             if config_type == "array_extract" and array_field:
+                label_field = cfg.get("label_field")
                 # Verificar se há filtros de array ativos para este array
                 array_col_name = column  # ex: "protocolo_listagem"
-                if array_col_name in active_array_filters:
+                if label_field:
+                    # id_field + label_field: extrair pares (análogo a label_column nos escalares)
+                    pairs = DataManager._extract_id_label_pairs_from_array_polars(
+                        df_filtered, array_col_name, array_field, label_field
+                    )
+                    options = [
+                        FilterOptionItem(id=id_val, label=label_val)
+                        for id_val, label_val in sorted(pairs, key=lambda x: natural_sort_key(x[1]))
+                        if id_val and id_val.strip()
+                    ]
+                elif array_col_name in active_array_filters:
                     # Usar função que aplica filtros nos itens do array (cascata)
                     # Exclui o próprio campo para manter suas opções
                     unique_values = (
@@ -1248,16 +1299,21 @@ class DataManager:
                             exclude_field=array_field,  # Excluir próprio campo
                         )
                     )
+                    options = [
+                        FilterOptionItem(id=str(v), label=str(v))
+                        for v in sorted(unique_values, key=natural_sort_key)
+                        if v and str(v).strip()
+                    ]
                 else:
                     # Sem filtros de array ativos - extrair normalmente
                     unique_values = DataManager._extract_unique_from_array_polars(
                         df_filtered, column, array_field
                     )
-                options = [
-                    FilterOptionItem(id=str(v), label=str(v))
-                    for v in sorted(unique_values, key=natural_sort_key)
-                    if v and str(v).strip()
-                ]
+                    options = [
+                        FilterOptionItem(id=str(v), label=str(v))
+                        for v in sorted(unique_values, key=natural_sort_key)
+                        if v and str(v).strip()
+                    ]
                 filter_options_dict[result_key] = options
                 continue
 
@@ -1321,7 +1377,7 @@ class DataManager:
     # ========================================================================
 
     @staticmethod
-    def get_user_permissions(cpf: str):
+    async def get_user_permissions(cpf: str):
         """
         Fetch permissions for a specific CPF from cached governance table (POLARS).
 
@@ -1343,7 +1399,7 @@ class DataManager:
         )
 
         # Buscar tabela completa (do cache) - agora retorna Polars
-        governance_df, _, _ = DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
+        governance_df, _, _ = await DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
 
         # DEBUG LOGGING START
         logger.info(f"Auth Check for CPF: '{cpf}'")

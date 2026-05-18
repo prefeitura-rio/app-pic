@@ -34,6 +34,16 @@ export interface ProtocoloListagemItem {
   protocolo_status_label?: string;
 }
 
+export interface EnderecoSMS {
+  endereco?: string;
+  complemento?: string;
+  bairro?: string;
+  regiao_administrativa?: string;
+  subprefeitura?: string;
+  longitude?: number | null;
+  latitude?: number | null;
+}
+
 export interface Participante {
   // Identificação
   cpf?: string;
@@ -47,6 +57,11 @@ export interface Participante {
   idade?: number;
   endereco?: string;
   complemento?: string;
+  endereco_sms?: EnderecoSMS;
+  telefone_1_ddd?: string;
+  telefone_1_numero?: string;
+  telefone_2_ddd?: string;
+  telefone_2_numero?: string;
   subprefeitura?: string;
   regiao_administrativa?: string;
   bairro?: string;

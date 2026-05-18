@@ -92,15 +92,16 @@ async def get_dashboard_metrics(
     }
 
     # Construir dict de filtros (mapeando para colunas da tabela)
-    # Todos os filtros suportam multi-select (comma-separated)
+    # Todos os filtros suportam multi-select (pipe-separated)
+    # NOTE: pipe é usado ao invés de vírgula porque alguns valores (ex: protocolo_descricao) contêm vírgulas
     filters_dict = {}
 
     # Helper para parse de multi-select
     def parse_multi_select(value: Optional[str]) -> Optional[str | list[str]]:
         if not value:
             return None
-        if "," in value:
-            return [v.strip() for v in value.split(",") if v.strip()]
+        if "|" in value:
+            return [v.strip() for v in value.split("|") if v.strip()]
         return value
 
     if grupo:
@@ -159,7 +160,7 @@ async def get_dashboard_metrics(
         start_time = time.perf_counter()
 
         # Usar fetch_filter_paginate para buscar dados com filtros e permissões aplicados
-        df_filtered, meta, filter_options = DataManager.fetch_filter_paginate(
+        df_filtered, meta, filter_options = await DataManager.fetch_filter_paginate(
             query=DASHBOARD_TABLE_QUERY,
             filters_dict=filters_dict,
             page=1,

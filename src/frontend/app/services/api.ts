@@ -125,8 +125,9 @@ function buildFilterParams(
       if (value.length === 0) {
         return;
       }
-      // Send as comma-separated string for the backend
-      params.append(key, value.join(","));
+      // Send as pipe-separated string for the backend
+      // NOTE: comma cannot be used as delimiter because some values (e.g. protocolo_descricao) contain commas
+      params.append(key, value.join("|"));
       return;
     }
 
