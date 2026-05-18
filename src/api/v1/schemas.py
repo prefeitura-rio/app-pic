@@ -1,5 +1,6 @@
+import json
 from typing import List, Optional, TypeVar, Generic, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import date, datetime
 from src.utils.data_manager_config import DataManagerConfig as config
 
@@ -333,6 +334,17 @@ class FiltroEquipamento(BaseModel):
     data_atualizacao: Optional[datetime] = None
 
 
+class EnderecoSMS(BaseModel):
+    """Endereço estruturado vindo da tabela SMS (campo JSON serializado)"""
+    endereco: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    regiao_administrativa: Optional[str] = None
+    subprefeitura: Optional[str] = None
+    longitude: Optional[float] = None
+    latitude: Optional[float] = None
+
+
 class ProtocoloListagemItem(BaseModel):
     """Item individual da lista de protocolos do participante"""
 
@@ -345,6 +357,16 @@ class ProtocoloListagemItem(BaseModel):
 
 
 class Participante(BaseModel):
+    @field_validator("endereco_sms", mode="before")
+    @classmethod
+    def parse_endereco_sms(cls, v: object) -> object:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return None
+        return v
+
     # Identificação
     cpf: Optional[str] = None
     id_membro_familia: Optional[str] = None
@@ -357,6 +379,11 @@ class Participante(BaseModel):
     idade: Optional[int] = None
     endereco: Optional[str] = None
     complemento: Optional[str] = None
+    endereco_sms: Optional[EnderecoSMS] = None
+    telefone_1_ddd: Optional[str] = None
+    telefone_1_numero: Optional[str] = None
+    telefone_2_ddd: Optional[str] = None
+    telefone_2_numero: Optional[str] = None
     subprefeitura: Optional[str] = None
     regiao_administrativa: Optional[str] = None
     bairro: Optional[str] = None

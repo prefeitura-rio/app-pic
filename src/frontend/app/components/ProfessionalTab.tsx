@@ -552,95 +552,123 @@ const ProfessionalTabComponent = ({
                   <h3 className="text-lg font-semibold mb-3 text-foreground">
                     Informações Básicas
                   </h3>
-                  <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Nome</p>
-                      <p className="font-medium">
-                        {selectedParticipant.nome || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">CPF</p>
-                      <p className="font-mono font-medium">
-                        {selectedParticipant.cpf || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        ID Família (CadÚnico)
-                      </p>
-                      <p className="font-mono font-medium">
-                        {selectedParticipant.id_familia || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        ID Membro Família (CadÚnico)
-                      </p>
-                      <p className="font-mono font-medium">
-                        {selectedParticipant.id_membro_familia || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Grupo</p>
-                      <p className="font-medium">
-                        {renderGrupoCompleto(selectedParticipant.grupo)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Idade</p>
-                      <p className="font-medium">
-                        {selectedParticipant.idade != null &&
-                        selectedParticipant.nascimento_data
-                          ? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
-                          : selectedParticipant.idade != null
-                            ? `${selectedParticipant.idade} anos`
-                            : "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Idade em 31/03/{new Date().getFullYear()}
-                      </p>
-                      <p className="font-medium">
-                        {selectedParticipant.nascimento_data
-                          ? (() => {
-                              const dataReferencia = new Date(
-                                new Date().getFullYear(),
-                                2,
-                                31,
-                              ); // Março = 2 (0-indexed)
-                              const { anos, meses, dias } =
-                                calcularIdadeDetalhada(
+                  <div className="space-y-4">
+
+                    {/* ── Seção 1: Identificação ── */}
+                    <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Nome</p>
+                        <p className="font-medium">{selectedParticipant.nome || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">CPF</p>
+                        <p className="font-mono font-medium">{selectedParticipant.cpf || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">ID Família (CadÚnico)</p>
+                        <p className="font-mono font-medium">{selectedParticipant.id_familia || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">ID Membro Família (CadÚnico)</p>
+                        <p className="font-mono font-medium">{selectedParticipant.id_membro_familia || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Grupo</p>
+                        <p className="font-medium">{renderGrupoCompleto(selectedParticipant.grupo)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Idade</p>
+                        <p className="font-medium">
+                          {selectedParticipant.idade != null && selectedParticipant.nascimento_data
+                            ? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
+                            : selectedParticipant.idade != null
+                              ? `${selectedParticipant.idade} anos`
+                              : "-"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Idade em 31/03/{new Date().getFullYear()}
+                        </p>
+                        <p className="font-medium">
+                          {selectedParticipant.nascimento_data
+                            ? (() => {
+                                const dataReferencia = new Date(new Date().getFullYear(), 2, 31);
+                                const { anos, meses, dias } = calcularIdadeDetalhada(
                                   selectedParticipant.nascimento_data,
                                   dataReferencia,
                                 );
-                              return formatarIdadeDetalhada(
-                                anos,
-                                meses,
-                                dias,
-                              );
-                            })()
-                          : "-"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Endereço</p>
-                      <div>
-                        <span className="text-xs text-muted-foreground">Logradouro: </span>
-                        <span className="font-medium">{selectedParticipant.endereco || "-"}</span>
+                                return formatarIdadeDetalhada(anos, meses, dias);
+                              })()
+                            : "-"}
+                        </p>
                       </div>
-                      {selectedParticipant.complemento && (
+                    </div>
+
+                    {/* ── Seção 2: Localização & Contato ── */}
+                    <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+                      {/* Endereço SMAS */}
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Endereço SMAS</p>
                         <div>
-                          <span className="text-xs text-muted-foreground">Complemento: </span>
-                          <span className="font-medium">{selectedParticipant.complemento}</span>
+                          <span className="text-xs text-muted-foreground">Endereço: </span>
+                          <span className="font-medium">
+                            {[selectedParticipant.endereco, selectedParticipant.complemento].filter(Boolean).join(", ") || "-"}
+                          </span>
                         </div>
-                      )}
-                      <div>
-                        <span className="text-xs text-muted-foreground">Bairro: </span>
-                        <span className="font-medium uppercase">{selectedParticipant.bairro || "-"}</span>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Bairro: </span>
+                          <span className="font-medium uppercase">{selectedParticipant.bairro || "-"}</span>
+                        </div>
+                      </div>
+
+                      {/* Endereço SMS */}
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Endereço SMS</p>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Endereço: </span>
+                          <span className="font-medium">
+                            {[selectedParticipant.endereco_sms?.endereco, selectedParticipant.endereco_sms?.complemento].filter(Boolean).join(", ") || "-"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">Bairro: </span>
+                          <span className="font-medium uppercase">{selectedParticipant.endereco_sms?.bairro || "-"}</span>
+                        </div>
+                      </div>
+
+                      {/* Contato */}
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Contato</p>
+                        {selectedParticipant.telefone_1_ddd && selectedParticipant.telefone_1_numero ? (
+                          <div>
+                            <span className="text-xs text-muted-foreground">Principal: </span>
+                            <span className="font-medium">
+                              ({selectedParticipant.telefone_1_ddd}){" "}
+                              {selectedParticipant.telefone_1_numero.replace(/\D/g, "").length === 9
+                                ? selectedParticipant.telefone_1_numero.replace(/\D/g, "").replace(/(\d{5})(\d{4})/, "$1-$2")
+                                : selectedParticipant.telefone_1_numero.replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2")}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="font-medium">-</p>
+                        )}
+                        {selectedParticipant.telefone_2_ddd && selectedParticipant.telefone_2_numero && (
+                          <div>
+                            <span className="text-xs text-muted-foreground">Alternativo: </span>
+                            <span className="font-medium">
+                              ({selectedParticipant.telefone_2_ddd}){" "}
+                              {selectedParticipant.telefone_2_numero.replace(/\D/g, "").length === 9
+                                ? selectedParticipant.telefone_2_numero.replace(/\D/g, "").replace(/(\d{5})(\d{4})/, "$1-$2")
+                                : selectedParticipant.telefone_2_numero.replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2")}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
+
+                    {/* ── Seção 3: Equipamentos ── */}
+                    <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
 
                     {/* Equipamentos Públicos - Educação (SME) */}
                     <EquipamentoField
@@ -898,66 +926,67 @@ const ProfessionalTabComponent = ({
                             )}
                           </div>
                         </>
-                      );
+                        );
                     })()}
-                    <div>
-                      <p className="text-sm text-muted-foreground">Bolsa Família</p>
-                      <Badge
-                        variant={
-                          selectedParticipant.has_bolsa_familia === true
-                            ? "success"
+                    </div>{/* fim Seção 3 */}
+
+                    {/* ── Seção 4: Programa ── */}
+                    <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bolsa Família</p>
+                        <Badge
+                          variant={
+                            selectedParticipant.has_bolsa_familia === true
+                              ? "success"
+                              : selectedParticipant.has_bolsa_familia === false
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {selectedParticipant.has_bolsa_familia === true
+                            ? "Beneficiário"
                             : selectedParticipant.has_bolsa_familia === false
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {selectedParticipant.has_bolsa_familia === true
-                          ? "Beneficiário"
-                          : selectedParticipant.has_bolsa_familia === false
-                            ? "Não beneficiário"
-                            : "-"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Cartão PIC</p>
-                      <Badge
-                        variant={
-                          selectedParticipant.has_cartao_pic === true
-                            ? "success"
+                              ? "Não beneficiário"
+                              : "-"}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Cartão PIC</p>
+                        <Badge
+                          variant={
+                            selectedParticipant.has_cartao_pic === true
+                              ? "success"
+                              : selectedParticipant.has_cartao_pic === false
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {selectedParticipant.has_cartao_pic === true
+                            ? "Possui cartão"
                             : selectedParticipant.has_cartao_pic === false
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {selectedParticipant.has_cartao_pic === true
-                          ? "Possui cartão"
-                          : selectedParticipant.has_cartao_pic === false
-                            ? "Sem cartão"
-                            : "-"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Mês de Ingresso no Programa
-                      </p>
-                      <p className="font-medium">
-                        {selectedParticipant.cohort || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <Badge
-                        variant={
-                          selectedParticipant.status?.toLowerCase() ===
-                          "ativo"
-                            ? "success"
-                            : "destructive"
-                        }
-                      >
-                        {selectedParticipant.status || "-"}
-                      </Badge>
-                    </div>
-                  </div>
+                              ? "Sem cartão"
+                              : "-"}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Mês de Ingresso no Programa</p>
+                        <p className="font-medium">{selectedParticipant.cohort || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <Badge
+                          variant={
+                            selectedParticipant.status?.toLowerCase() === "ativo"
+                              ? "success"
+                              : "destructive"
+                          }
+                        >
+                          {selectedParticipant.status || "-"}
+                        </Badge>
+                      </div>
+                    </div>{/* fim Seção 4 */}
+
+                  </div>{/* fim space-y-4 */}
                 </div>
 
                 {/* Visualização Geoespacial - Apenas Super Admin */}
