@@ -453,6 +453,7 @@ export function DashboardClient({
 
     // Define headers for expanded format
     const participantFields = [
+      // Identificação
       "cpf",
       "id_membro_familia",
       "id_familia",
@@ -460,47 +461,94 @@ export function DashboardClient({
       "sexo",
       "nascimento_data",
       "idade",
+      // Endereço SMAS
+      "endereco_smas_endereco",
+      "endereco_smas_complemento",
+      "endereco_smas_bairro",
+      // Endereço SMS
+      "endereco_sms_endereco",
+      "endereco_sms_complemento",
+      "endereco_sms_bairro",
+      // Contato
+      "telefone_1_ddd",
+      "telefone_1_numero",
+      "telefone_2_ddd",
+      "telefone_2_numero",
+      // Localização
       "subprefeitura",
       "regiao_administrativa",
-      "bairro",
+      // Programa
       "grupo",
       "cohort",
+      "has_bolsa_familia",
+      "has_cartao_pic",
       "status",
       "status_inativo_motivo",
       "situacao",
+      // Protocolos - Totais
       "total_protocolos",
       "total_protocolos_regular",
       "total_protocolos_irregular",
       "total_protocolos_atencao",
       "total_fracao",
+      // Protocolos - Assistência Social
       "assistencia_protocolos_total",
       "assistencia_protocolos_regular",
       "assistencia_protocolos_irregular",
+      "assistencia_protocolos_atencao",
       "assistencia_fracao",
+      // Protocolos - Educação
       "educacao_protocolos_total",
       "educacao_protocolos_regular",
       "educacao_protocolos_irregular",
+      "educacao_protocolos_atencao",
       "educacao_fracao",
+      // Protocolos - Saúde
       "saude_protocolos_total",
       "saude_protocolos_regular",
       "saude_protocolos_irregular",
+      "saude_protocolos_atencao",
       "saude_fracao",
+      // Equipamentos - SMAS
       "id_cras",
       "nome_cras",
+      "source_cras",
       "id_cas",
       "nome_cas",
+      // Equipamentos - SME
       "id_escola",
       "nome_escola",
+      "source_escola",
       "id_cre",
       "nome_cre",
+      // Equipamentos - SMS
       "id_ap",
       "nome_ap",
       "id_clinica_familia",
       "nome_clinica_familia",
+      "source_clinica_familia",
+      "has_cobertura_clinica_familia",
       "id_equipe_familia",
       "nome_equipe_familia",
+      "source_equipe_familia",
+      "has_cobertura_equipe_familia",
       "equipe_familia",
     ];
+
+    // Campos derivados/aninhados — mapeiam header CSV → valor do participante
+    const fieldResolvers: Record<string, (p: Participante) => unknown> = {
+      "endereco_smas_endereco":   (p) => p.endereco,
+      "endereco_smas_complemento":(p) => p.complemento,
+      "endereco_smas_bairro":     (p) => p.bairro,
+      "endereco_sms_endereco":    (p) => p.endereco_sms?.endereco,
+      "endereco_sms_complemento": (p) => p.endereco_sms?.complemento,
+      "endereco_sms_bairro":      (p) => p.endereco_sms?.bairro,
+    };
+
+    const resolveField = (header: string, participant: Participante): unknown =>
+      header in fieldResolvers
+        ? fieldResolvers[header](participant)
+        : (participant as Record<string, unknown>)[header];
 
     const protocolFields = [
       "protocolo_id",
@@ -516,7 +564,7 @@ export function DashboardClient({
     // Usar ponto-e-vírgula (;) como delimitador - mais comum no Brasil e evita problemas com vírgulas no texto
     const DELIMITER = ";";
 
-    const escapeCSV = (value: any): string => {
+    const escapeCSV = (value: unknown): string => {
       if (value === null || value === undefined) return '""';
 
       const str = String(value);
@@ -559,7 +607,7 @@ export function DashboardClient({
               return escapeCSV(protocolo.irregular_indicador);
             if (header === "protocolo_status_label")
               return escapeCSV(protocolo.protocolo_status_label);
-            return escapeCSV(participant[header]);
+            return escapeCSV(resolveField(header, participant));
           });
 
           buffer.push(row.join(DELIMITER));
@@ -575,7 +623,7 @@ export function DashboardClient({
       } else {
         const row = headers.map((header) => {
           if (header.startsWith("protocolo_")) return "";
-          return escapeCSV(participant[header]);
+          return escapeCSV(resolveField(header, participant));
         });
 
         buffer.push(row.join(DELIMITER));
