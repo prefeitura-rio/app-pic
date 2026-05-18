@@ -175,7 +175,7 @@ async def get_participants(
 
         # Pipeline completo: fetch -> governance -> filter -> search -> sort -> filter_options -> paginate
         # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
-        df_data, meta, filter_options = DataManager.fetch_filter_paginate(
+        df_data, meta, filter_options = await DataManager.fetch_filter_paginate(
             query=query,
             filters_dict=column_filters,
             page=pagination.page,

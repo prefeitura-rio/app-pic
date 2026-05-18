@@ -159,7 +159,7 @@ async def get_dashboard_metrics(
         start_time = time.perf_counter()
 
         # Usar fetch_filter_paginate para buscar dados com filtros e permissões aplicados
-        df_filtered, meta, filter_options = DataManager.fetch_filter_paginate(
+        df_filtered, meta, filter_options = await DataManager.fetch_filter_paginate(
             query=DASHBOARD_TABLE_QUERY,
             filters_dict=filters_dict,
             page=1,
