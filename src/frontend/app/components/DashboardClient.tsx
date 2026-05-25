@@ -19,6 +19,7 @@ import {
 } from "@/app/components/ui/tabs";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { Footer } from "@/app/components/Footer";
+import { TermsDialog } from "@/app/components/TermsDialog";
 import { OverviewTab } from "@/app/components/OverviewTab";
 import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { apiService } from "@/app/services/api";
@@ -65,6 +66,25 @@ export function DashboardClient({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  // Termo de responsabilidade
+  // Novo login → callback seta cookie fresh_login=1 → sessionStorage vai pra "0"
+  // Aceite → sessionStorage vai pra "1" e fica assim até novo login
+  const TERMS_KEY = "terms-accepted";
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const isFreshLogin = document.cookie.split(";").some((c) => c.trim() === "fresh_login=1");
+    if (isFreshLogin) {
+      document.cookie = "fresh_login=; path=/; max-age=0";
+      sessionStorage.setItem(TERMS_KEY, "0");
+    }
+    return sessionStorage.getItem(TERMS_KEY) === "1";
+  });
+
+  const handleTermsAccept = () => {
+    sessionStorage.setItem(TERMS_KEY, "1");
+    setTermsAccepted(true);
+  };
 
   // Chave para sessionStorage
   const STORAGE_KEY = "dashboard-state";
@@ -766,6 +786,7 @@ export function DashboardClient({
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {!termsAccepted && <TermsDialog onAccept={handleTermsAccept} />}
       <DashboardHeader userInfo={userInfo} />
 
       <main className="container mx-auto px-6 py-8 flex-1">

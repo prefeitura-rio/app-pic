@@ -6,7 +6,8 @@ import { Button } from "@/app/components/ui/button";
 import { UserAreaDialog } from "@/app/components/UserAreaDialog";
 import { SessionMonitor } from "@/app/components/SessionMonitor";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "../services/api";
 import { IdWithName } from "@/app/types";
@@ -46,7 +47,6 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ userInfo, showUserControls = true }: DashboardHeaderProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
   const isDebugPage = pathname?.startsWith("/debug");
@@ -90,8 +90,8 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
         <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             {/* Logo - clicável para voltar à página principal */}
-            <button
-              onClick={() => router.push("/")}
+            <Link
+              href="/"
               className="flex items-center gap-4 hover:opacity-80 transition-opacity"
             >
               <div className="bg-primary-foreground/10 p-3 rounded-lg">
@@ -103,7 +103,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
                   Primeira Infância Integrada • Prefeitura do Rio de Janeiro
                 </p>
               </div>
-            </button>
+            </Link>
 
             <div className="flex items-center gap-2">
               {showUserControls && (
@@ -113,11 +113,13 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => router.push("/debug")}
+                      asChild
                       className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                       title="Debug"
                     >
-                      <Bug className="h-5 w-5" />
+                      <Link href="/debug">
+                        <Bug className="h-5 w-5" />
+                      </Link>
                     </Button>
                   )}
 
@@ -127,10 +129,10 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => router.push("/")}
+                      asChild
                       className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                     >
-                      <Home className="h-5 w-5" />
+                      <Link href="/"><Home className="h-5 w-5" /></Link>
                     </Button>
                   ) : (
                     // Show Admin icon when in main page (only if user is admin)
@@ -138,10 +140,10 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => router.push("/admin")}
+                        asChild
                         className="rounded-full text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
                       >
-                        <Shield className="h-5 w-5" />
+                        <Link href="/admin"><Shield className="h-5 w-5" /></Link>
                       </Button>
                     )
                   )}

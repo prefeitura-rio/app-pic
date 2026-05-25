@@ -39,12 +39,15 @@ const FilterCardComponent = ({
   const [searchInput, setSearchInput] = useState("");
 
   // Sincronizar searchInput com filters.search quando mudar (ex: após refresh)
+  // IMPORTANTE: depender só do valor de search, não do objeto filters inteiro —
+  // se depender de [filters], qualquer mudança de filtro (protocolo, bairro, etc.)
+  // dispara o effect e sobrescreve um searchInput que o usuário acabou de apagar.
+  const externalSearch = "search" in filters ? (filters as { search?: string }).search : undefined;
   useEffect(() => {
-    const searchValue = "search" in filters ? filters.search : undefined;
-    if (searchValue && searchValue !== searchInput) {
-      setSearchInput(searchValue);
+    if (externalSearch && externalSearch !== searchInput) {
+      setSearchInput(externalSearch);
     }
-  }, [filters]);
+  }, [externalSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Memoizar callbacks para evitar re-criação
   const handleFilterUpdate = useCallback((key: string, value: string) => {

@@ -957,15 +957,15 @@ const ProfessionalTabComponent = ({
                             selectedParticipant.has_cartao_pic === true
                               ? "success"
                               : selectedParticipant.has_cartao_pic === false
-                                ? "secondary"
-                                : "outline"
+                                ? "warning"
+                                : "secondary"
                           }
                         >
                           {selectedParticipant.has_cartao_pic === true
                             ? "Possui cartão"
                             : selectedParticipant.has_cartao_pic === false
-                              ? "Sem cartão"
-                              : "-"}
+                              ? "Tem direito, mas não retirou"
+                              : "Não tem direito"}
                         </Badge>
                       </div>
                       <div>
