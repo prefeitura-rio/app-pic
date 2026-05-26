@@ -58,7 +58,6 @@ export function UserAreaDialog({ children, userInfo, open, onOpenChange }: UserA
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleLogout = () => {
-    // Just redirect to logout endpoint - it will handle Keycloak logout and redirect back to /login
     window.location.href = "/api/auth/logout";
   };
 

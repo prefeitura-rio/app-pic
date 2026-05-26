@@ -69,6 +69,15 @@ export async function GET(req: NextRequest) {
     const fullRedirectUrl = new URL(finalRedirectUrl, process.env.NEXTAUTH_URL).toString();
     const res = NextResponse.redirect(fullRedirectUrl);
 
+    // Sinaliza login recém-concluído para exibir o termo de responsabilidade.
+    res.cookies.set("fresh_login", "1", {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60, // só precisa durar até o DashboardClient montar e ler
+    });
+
     // Store tokens in httpOnly cookies for security
     res.cookies.set("access_token", data.access_token, {
       httpOnly: true,
