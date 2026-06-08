@@ -58,9 +58,17 @@ RMI_AUDIENCE = getenv_or_action(env_name="RMI_AUDIENCE", action="raise")
 RMI_JWKS_URL = getenv_or_action(
     env_name="RMI_JWKS_URL",
     default=f"{RMI_ISSUER}/protocol/openid-connect/certs",
-    action="ignore",
+    action="raise",
 )
 
 
 REDIS_URL = getenv_or_action(env_name="REDIS_URL", action="raise")
-CACHE_TTL_SECONDS = int(getenv_or_action(env_name="CACHE_TTL_SECONDS", default="300"))
+CACHE_TTL_SECONDS = int(
+    getenv_or_action(env_name="CACHE_TTL_SECONDS", default="300", action="raise")
+)
+
+# Frontend URL for CORS — list comma-separated URLs if needed (e.g. staging + prod)
+FRONTEND_URL = getenv_or_action(
+    env_name="FRONTEND_URL",
+    action="raise",
+)
