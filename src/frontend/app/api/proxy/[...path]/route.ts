@@ -64,9 +64,11 @@ export async function GET(
     });
   } catch (error) {
     console.error(`[Proxy GET] Error:`, error);
+    const isConnectionError =
+      error instanceof TypeError && error.message === "fetch failed";
     return NextResponse.json(
-      { error: "Failed to fetch from backend API" },
-      { status: 500 }
+      { error: isConnectionError ? "Backend API unavailable" : "Failed to fetch from backend API" },
+      { status: isConnectionError ? 503 : 500 }
     );
   }
 }
@@ -134,9 +136,11 @@ export async function POST(
     });
   } catch (error) {
     console.error(`[Proxy POST] Error:`, error);
+    const isConnectionError =
+      error instanceof TypeError && error.message === "fetch failed";
     return NextResponse.json(
-      { error: "Failed to fetch from backend API" },
-      { status: 500 }
+      { error: isConnectionError ? "Backend API unavailable" : "Failed to fetch from backend API" },
+      { status: isConnectionError ? 503 : 500 }
     );
   }
 }
@@ -182,9 +186,11 @@ export async function PUT(
     });
   } catch (error) {
     console.error(`[Proxy PUT] Error:`, error);
+    const isConnectionError =
+      error instanceof TypeError && error.message === "fetch failed";
     return NextResponse.json(
-      { error: "Failed to fetch from backend API" },
-      { status: 500 }
+      { error: isConnectionError ? "Backend API unavailable" : "Failed to fetch from backend API" },
+      { status: isConnectionError ? 503 : 500 }
     );
   }
 }
@@ -235,9 +241,11 @@ export async function DELETE(
     });
   } catch (error) {
     console.error(`[Proxy DELETE] Error:`, error);
+    const isConnectionError =
+      error instanceof TypeError && error.message === "fetch failed";
     return NextResponse.json(
-      { error: "Failed to fetch from backend API" },
-      { status: 500 }
+      { error: isConnectionError ? "Backend API unavailable" : "Failed to fetch from backend API" },
+      { status: isConnectionError ? 503 : 500 }
     );
   }
 }

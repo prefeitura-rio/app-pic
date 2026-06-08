@@ -4,6 +4,12 @@ from typing import Dict, Any, Optional, Tuple
 from math import ceil
 import time
 
+# Limit concurrent BQ fetches to 1 to prevent OOM on cold start / pod restart.
+# When multiple endpoints hit BQ simultaneously (cache miss), they serialise here.
+# Double-checked locking ensures the second waiter re-uses the cache populated by
+# the first waiter instead of launching a redundant fetch.
+_bq_semaphore: Optional[asyncio.Semaphore] = None
+
 from src.utils.bigquery import execute_query
 from src.utils.log import logger
 from src.utils.cache_manager import query_cache
@@ -457,46 +463,65 @@ class DataManager:
                 df = pl.DataFrame(raw_data)
                 return df, True, None
         else:
-            # 2. Cache MISS — move BQ fetch + precompute + cache write para thread pool
-            # Libera o event loop enquanto o BigQuery responde (3–10s)
-            logger.info("❌ Cache MISS - Fetching from BigQuery (thread pool)")
+            # 2. Cache MISS — serialise BQ fetches via semaphore to avoid concurrent
+            # Arrow→Polars allocations that can spike memory and cause OOMKill.
+            global _bq_semaphore
+            if _bq_semaphore is None:
+                _bq_semaphore = asyncio.Semaphore(1)
 
-            def _fetch_and_cache() -> Tuple[pl.DataFrame, bool, Optional[Dict[str, list]]]:
-                bq_start = time.perf_counter()
-                df = execute_query(query, return_polars=True)  # Polars via Arrow!
-                bq_time = time.perf_counter() - bq_start
-                logger.info(f"BigQuery fetch time: {bq_time:.3f}s")
+            logger.info("❌ Cache MISS - Waiting for BQ semaphore...")
+            async with _bq_semaphore:
+                # Double-check: another coroutine may have populated the cache
+                # while we were waiting for the semaphore.
+                if not bypass_cache:
+                    raw_data = query_cache.get(query)
+                    if raw_data is not None:
+                        if isinstance(raw_data, CachedDataset):
+                            logger.info("✅ Cache HIT (populated while waiting for semaphore)")
+                            return raw_data.df, True, raw_data.filter_options_cache
+                        elif isinstance(raw_data, pl.DataFrame):
+                            return raw_data, True, None
+                        else:
+                            return pl.DataFrame(raw_data), True, None
 
-                if df.is_empty():
-                    return pl.DataFrame(), False, None
+                logger.info("❌ Cache MISS confirmed - Fetching from BigQuery (thread pool)")
 
-                # PRÉ-COMPUTAR FILTER OPTIONS (durante cache write)
-                filter_options_cache: Dict[str, list] = {}
-                if filter_columns_config:
-                    precompute_start = time.perf_counter()
-                    filter_options_cache = DataManager._precompute_filter_options(
-                        df, filter_columns_config
+                def _fetch_and_cache() -> Tuple[pl.DataFrame, bool, Optional[Dict[str, list]]]:
+                    bq_start = time.perf_counter()
+                    df = execute_query(query, return_polars=True)  # Polars via Arrow!
+                    bq_time = time.perf_counter() - bq_start
+                    logger.info(f"BigQuery fetch time: {bq_time:.3f}s")
+
+                    if df.is_empty():
+                        return pl.DataFrame(), False, None
+
+                    # PRÉ-COMPUTAR FILTER OPTIONS (durante cache write)
+                    filter_options_cache: Dict[str, list] = {}
+                    if filter_columns_config:
+                        precompute_start = time.perf_counter()
+                        filter_options_cache = DataManager._precompute_filter_options(
+                            df, filter_columns_config
+                        )
+                        precompute_time = time.perf_counter() - precompute_start
+                        logger.info(f"📊 Precomputed filter options: {precompute_time:.3f}s")
+
+                    # Criar e salvar CachedDataset
+                    cached_dataset = CachedDataset(
+                        df=df,
+                        filter_options_cache=filter_options_cache,
                     )
-                    precompute_time = time.perf_counter() - precompute_start
-                    logger.info(f"📊 Precomputed filter options: {precompute_time:.3f}s")
+                    cache_write_start = time.perf_counter()
+                    query_cache.set(query, cached_dataset)
+                    cache_write_time = time.perf_counter() - cache_write_start
+                    logger.info(f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s")
 
-                # Criar e salvar CachedDataset
-                cached_dataset = CachedDataset(
-                    df=df,
-                    filter_options_cache=filter_options_cache,
-                )
-                cache_write_start = time.perf_counter()
-                query_cache.set(query, cached_dataset)
-                cache_write_time = time.perf_counter() - cache_write_start
-                logger.info(f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s")
+                    total_time = time.perf_counter() - start_time
+                    logger.info(
+                        f"get_dataset completed (CACHE MISS) - total: {total_time:.3f}s, rows: {len(df)}"
+                    )
+                    return df, False, filter_options_cache
 
-                total_time = time.perf_counter() - start_time
-                logger.info(
-                    f"get_dataset completed (CACHE MISS) - total: {total_time:.3f}s, rows: {len(df)}"
-                )
-                return df, False, filter_options_cache
-
-            return await asyncio.to_thread(_fetch_and_cache)
+                return await asyncio.to_thread(_fetch_and_cache)
 
     @staticmethod
     def _precompute_filter_options(
