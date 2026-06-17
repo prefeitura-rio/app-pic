@@ -211,13 +211,161 @@ Etapa 7 — Desliga Python
 
 ---
 
+## Evolução de schema
+
+O dbt adiciona colunas no BQ com frequência. Sem uma estratégia, cada mudança pode quebrar o sync e exigir migration + deploy coordenados.
+
+### Problema
+
+```
+dbt adiciona coluna nova no BQ
+        ↓
+sync tenta copiar → coluna não existe no PG → quebra
+        ↓
+alguém precisa rodar migration manualmente + fazer deploy da API
+```
+
+### Solução: coluna `extra` JSONB como buffer
+
+Cada tabela sincronizada tem uma coluna `extra Json?` que absorve campos desconhecidos automaticamente. O sync nunca quebra por campo novo — ele vai para `extra` até o time decidir promover para coluna própria.
+
+```prisma
+model Participant {
+  // campos conhecidos, indexados, usados em queries
+  id_membro_familia String  @id
+  nome              String
+  id_cras           String?
+  status            String?
+  // ...
+
+  // buffer para campos novos do BQ ainda não promovidos
+  extra Json?
+
+  @@map("participants")
+}
+```
+
+### Sync tolerante a schema
+
+O script de sync não pode ter colunas hardcoded. Ele separa campos conhecidos de desconhecidos em tempo de execução:
+
+```typescript
+const KNOWN_COLUMNS = new Set([
+  'id_membro_familia', 'cpf', 'nome', 'status', 'id_cras',
+  // ... todos os campos do schema Prisma atual
+])
+
+function splitRow(bqRow: Record<string, unknown>) {
+  const known: Record<string, unknown> = {}
+  const extra: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(bqRow)) {
+    if (KNOWN_COLUMNS.has(key)) known[key] = value
+    else extra[key] = value
+  }
+
+  return { known, extra }
+}
+
+// no upsert
+const { known, extra } = splitRow(bqRow)
+await db.participant.upsert({
+  where: { id_membro_familia: known.id_membro_familia as string },
+  create: { ...known, extra: Object.keys(extra).length ? extra : undefined },
+  update: { ...known, extra: Object.keys(extra).length ? extra : undefined },
+})
+```
+
+### Fluxo com esse sistema
+
+```
+dbt adiciona coluna nova no BQ
+        ↓
+sync roda normalmente — campo vai pra extra, não quebra
+        ↓
+CI detecta drift e avisa o time (ver abaixo)
+        ↓
+time decide:
+  ├── campo precisa de índice ou filtro? → migration + promove para coluna
+  └── campo é só exibição? → fica em extra, API lê de lá
+```
+
+A API acessa campos em `extra` enquanto a migration não acontece:
+
+```typescript
+// antes da migration — lê de extra
+const valor = participant.extra?.novo_campo
+
+// depois da migration — campo promovido para coluna própria
+const valor = participant.novo_campo
+```
+
+### Detecção de drift no CI
+
+Job no pipeline que compara o schema BQ com o Prisma e abre alerta quando há campos novos. Não bloqueia o deploy — só avisa:
+
+```bash
+# .github/workflows/schema-drift.yml (ou equivalente)
+bq show --schema rj-crm-registry:projeto_pequenos_cariocas.participantes \
+  | jq '[.[].name]' > /tmp/bq_columns.json
+
+# extrai colunas do Prisma (exceto 'extra' e campos app-owned)
+node scripts/list-prisma-columns.ts > /tmp/prisma_columns.json
+
+# diff — campos no BQ que não estão no Prisma vão pra extra
+diff /tmp/bq_columns.json /tmp/prisma_columns.json \
+  && echo "Schema em sincronia" \
+  || echo "DRIFT: campos novos no BQ detectados — avaliar promoção para coluna"
+```
+
+### Dois tipos de coluna — separar responsabilidades
+
+| Tipo | Exemplos | Quem controla | Como muda |
+|---|---|---|---|
+| **Sync** | `id_cras`, `nome_escola`, `status` | dbt | Vai pra `extra` primeiro, promove se necessário |
+| **App-owned** | `created_at`, campos de `users` | Este repo | Sempre via Prisma migration explícita |
+
+Nunca misturar: campos app-owned nunca entram no sync, campos sync nunca são escritos pela API diretamente.
+
+---
+
+## Alternativas de banco consideradas e descartadas
+
+### ClickHouse
+
+Considerado por ter perfil analítico (aggregations, scans) similar ao BigQuery.
+
+Descartado porque:
+- O sync é diário com UPSERT (sobrescreve dados) — ClickHouse é append-only, updates são "mutations" lentas e assíncronas
+- Governança requer Row-Level Security nativo — ClickHouse não tem, o filtro voltaria para a aplicação (mesmo problema atual)
+- Prisma não tem suporte a ClickHouse — perderia o ORM da nova stack
+- Self-hosted no K8s: mais um sistema para operar vs. Cloud SQL gerenciado
+- Os 168k participantes e 2.36M protocolos são triviais para PostgreSQL com índices — ClickHouse faria sentido para bilhões de eventos
+
+O app tem padrões analíticos leves (COUNT, GROUP BY em 168k rows), não OLAP puro. PostgreSQL resolve com índices.
+
+### MongoDB
+
+Descartado porque o modelo de dados é profundamente relacional:
+- `participant (1) → (N) participant_protocols`
+- `participant (1) → (N) monthly_results`
+- `user (1) → (N) user_equipment_access`
+
+Embutir protocolos no documento participante voltaria ao problema de filtrar arrays em memória. Usar referências equivale a emular SQL sem JOIN nativo.
+
+### CockroachDB
+
+Descartado — projetado para geo-distribuição em múltiplas regiões. Overkill para um app em `us-central1` servindo Rio de Janeiro. Cloud SQL PostgreSQL faz o mesmo trabalho com menos custo e zero overhead operacional.
+
+---
+
 ## Riscos
 
 **Governança (alto)** — A lógica de quem vê quais participantes é o núcleo de segurança. A tradução de Polars filters para SQL WHERE precisa de testes explícitos cobrindo todos os tipos de acesso (secretaria_acesso = TODOS, SMAS, SME, SMS + listas de equipamentos específicos).
 
 **Sync script (médio)** — Precisa tratar:
 - Deleções (participantes que saem do programa)
-- Evolução de schema (quando dbt adicionar colunas)
+- Evolução de schema (campo novo no BQ → vai pra `extra`, não quebra)
 - Falhas parciais (transação ou idempotência)
 
 **Histórico (baixo)** — `monthly_results` cresce ~70k rows/mês. Em 2 anos: ~2M rows adicionais. Sem impacto de performance com o índice em `mes`.
