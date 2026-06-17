@@ -329,36 +329,6 @@ Nunca misturar: campos app-owned nunca entram no sync, campos sync nunca são es
 
 ---
 
-## Alternativas de banco consideradas e descartadas
-
-### ClickHouse
-
-Considerado por ter perfil analítico (aggregations, scans) similar ao BigQuery.
-
-Descartado porque:
-- O sync é diário com UPSERT (sobrescreve dados) — ClickHouse é append-only, updates são "mutations" lentas e assíncronas
-- Governança requer Row-Level Security nativo — ClickHouse não tem, o filtro voltaria para a aplicação (mesmo problema atual)
-- Prisma não tem suporte a ClickHouse — perderia o ORM da nova stack
-- Self-hosted no K8s: mais um sistema para operar vs. Cloud SQL gerenciado
-- Os 168k participantes e 2.36M protocolos são triviais para PostgreSQL com índices — ClickHouse faria sentido para bilhões de eventos
-
-O app tem padrões analíticos leves (COUNT, GROUP BY em 168k rows), não OLAP puro. PostgreSQL resolve com índices.
-
-### MongoDB
-
-Descartado porque o modelo de dados é profundamente relacional:
-- `participant (1) → (N) participant_protocols`
-- `participant (1) → (N) monthly_results`
-- `user (1) → (N) user_equipment_access`
-
-Embutir protocolos no documento participante voltaria ao problema de filtrar arrays em memória. Usar referências equivale a emular SQL sem JOIN nativo.
-
-### CockroachDB
-
-Descartado — projetado para geo-distribuição em múltiplas regiões. Overkill para um app em `us-central1` servindo Rio de Janeiro. Cloud SQL PostgreSQL faz o mesmo trabalho com menos custo e zero overhead operacional.
-
----
-
 ## Riscos
 
 **Governança (alto)** — A lógica de quem vê quais participantes é o núcleo de segurança. A tradução de Polars filters para SQL WHERE precisa de testes explícitos cobrindo todos os tipos de acesso (secretaria_acesso = TODOS, SMAS, SME, SMS + listas de equipamentos específicos).
