@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   PaginatedResponse,
   Participante,
@@ -32,7 +33,7 @@ async function tryRefreshToken(): Promise<boolean> {
     }
 
     return false;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -234,6 +235,37 @@ export const apiService = {
     );
 
     return response.data || [];
+  },
+
+  /**
+   * Export filtered participants as CSV (direct download from backend).
+   * Avoids JSON.stringify limits on the frontend for large datasets.
+   *
+   * @param filters - Filter criteria
+   * @param sortBy - Sort column
+   * @param sortOrder - Sort direction
+   * @returns Blob with CSV data
+   */
+  async exportParticipantsCsv(
+    filters: ParticipantFilters = {},
+    sortBy?: string | null,
+    sortOrder?: string | null,
+  ): Promise<Blob> {
+    const params = buildFilterParams(filters);
+    if (sortBy) {
+      params.append("sort_by", sortBy);
+      params.append("sort_order", sortOrder || "asc");
+    }
+
+    const url = `${BASE_URL}/api/v1/participants/export?${params.toString()}`;
+    const res = await fetch(url, { cache: "no-store" });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Export CSV Error ${res.status}: ${errorText}`);
+    }
+
+    return res.blob();
   },
 
   // ========================================================================
