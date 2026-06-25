@@ -33,7 +33,6 @@ build-backend = "uv_build"
 
 [tool.uv-build]
 module-name = "src"
-source-dir = "."
 
 [tool.ruff]
 line-length = 88
