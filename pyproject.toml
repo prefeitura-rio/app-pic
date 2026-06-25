@@ -31,8 +31,9 @@ dev = ["ruff>=0.8.4"]
 requires = ["uv_build>=0.7,<0.12"]
 build-backend = "uv_build"
 
-[tool.uv-build]
+[tool.uv.build-backend]
 module-name = "src"
+module-root = ""
 
 [tool.ruff]
 line-length = 88
