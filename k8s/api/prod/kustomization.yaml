@@ -93,11 +93,3 @@ helmCharts:
           existingSecret: api-secrets
           existingSecretPasswordKey: REDIS_PASSWORD
 
-      argoImageUpdater:
-        enabled: true
-        namespace: argocd
-        registrySecret: ghcr-credentials
-        updateStrategy: digest
-        applicationRef:
-          namePattern: app-pic-api-prod
-          namespace: argocd
