@@ -7,7 +7,7 @@
 
   languages.python = {
     enable = true;
-    version = "3.13";
+    package = pkgs.python313;
     uv = {
       enable = true;
       sync.enable = true;
