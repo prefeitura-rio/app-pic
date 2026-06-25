@@ -1,8 +1,9 @@
+import asyncio
 import io
 import traceback
 import time
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Union
+from typing import AsyncIterator, Dict, Any, List, Optional, Union
 
 import polars as pl
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -289,33 +290,40 @@ async def export_participants_csv(
         filename = f'participantes_{timestamp}_{total_rows}rows.csv'
 
         CHUNK_ROWS = 50000
+        import zlib
 
-        def _iter_csv_chunks():
-            bom = '\uFEFF'.encode('utf-8')
-            yield bom
+        async def _iter_csv_gz() -> AsyncIterator[bytes]:
+            compressor = zlib.compressobj(level=6, wbits=zlib.MAX_WBITS + 16)
+            yield compressor.compress('\uFEFF'.encode('utf-8'))
+            loop = asyncio.get_event_loop()
             for i in range(0, len(flattened), CHUNK_ROWS):
                 chunk = flattened.slice(i, CHUNK_ROWS)
                 buf = io.BytesIO()
-                chunk.write_csv(
-                    buf,
-                    separator=';',
-                    include_header=(i == 0),
-                    include_bom=False,
-                    quote_style='always',
+                await loop.run_in_executor(
+                    None,
+                    lambda b=buf, c=chunk, h=(i == 0): c.write_csv(
+                        b,
+                        separator=';',
+                        include_header=h,
+                        include_bom=False,
+                        quote_style='always',
+                    ),
                 )
-                yield buf.getvalue()
+                yield compressor.compress(buf.getvalue())
+            yield compressor.flush()
 
         elapsed = time.perf_counter() - start
         logger.info(
             f"✅ Export CSV started — {total_rows} participants, "
-            f"{flattened.height} rows (chunked streaming)"
+            f"{flattened.height} rows (chunked gzip)"
         )
 
         return StreamingResponse(
-            _iter_csv_chunks(),
+            _iter_csv_gz(),
             media_type='text/csv; charset=utf-8',
             headers={
                 'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Encoding': 'gzip',
             },
         )
 
