@@ -69,11 +69,3 @@ helmCharts:
         enabled: true
         maxUnavailable: 1
 
-      argoImageUpdater:
-        enabled: true
-        namespace: argocd
-        registrySecret: ghcr-credentials
-        updateStrategy: digest
-        applicationRef:
-          namePattern: app-pic-frontend-staging
-          namespace: argocd
