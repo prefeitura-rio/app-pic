@@ -28,8 +28,12 @@ dependencies = [
 dev = ["ruff>=0.8.4"]
 
 [build-system]
-requires = ["uv_build"]
+requires = ["uv_build>=0.7,<0.12"]
 build-backend = "uv_build"
+
+[tool.uv-build]
+module-name = "src"
+source-dir = "."
 
 [tool.ruff]
 line-length = 88
