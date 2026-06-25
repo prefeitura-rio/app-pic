@@ -15,16 +15,19 @@ O PIC (Pequenos Cariocas) e uma aplicacao fullstack que permite:
 ## Funcionalidades do Dashboard
 
 ### Indicadores Principais
+
 - Total de participantes ativos no programa
 - Percentual de participantes regulares vs irregulares
 - Breakdown por secretaria (SMS, SME, SMAS)
 
 ### Analise de Protocolos
+
 - Regularidade por protocolo individual (CadUnico, Creche, Vacinacao, etc.)
 - Filtros multi-selecao com logica AND (ex: ver quem tem CadUnico E Creche irregulares)
 - Cascata inteligente de filtros
 
 ### Visualizacoes
+
 - Evolucao temporal do resultado do programa
 - Distribuicao por safra de ingresso (cohort)
 - Motivos de saida do programa
@@ -199,11 +202,11 @@ O sistema suporta filtros avancados com:
 
 O sistema possui 3 niveis de acesso:
 
-| Nivel | Descricao |
-|-------|-----------|
-| **user** | Ve apenas dados das unidades atribuidas (CRAS, Escolas, Clinicas, AP, CRE, CAS) |
-| **admin** | Pode gerenciar usuarios com subset de seus IDs |
-| **super_admin** | Acesso total, pode gerenciar qualquer usuario |
+| Nivel           | Descricao                                                                       |
+| --------------- | ------------------------------------------------------------------------------- |
+| **user**        | Ve apenas dados das unidades atribuidas (CRAS, Escolas, Clinicas, AP, CRE, CAS) |
+| **admin**       | Pode gerenciar usuarios com subset de seus IDs                                  |
+| **super_admin** | Acesso total, pode gerenciar qualquer usuario                                   |
 
 Filtros de governanca sao aplicados em memoria apos buscar do cache, garantindo que cada usuario veja apenas seus dados autorizados sem afetar o cache compartilhado.
 
@@ -215,30 +218,30 @@ Todos os endpoints requerem header `Authorization: Bearer <token>`.
 
 ### Principais Endpoints
 
-| Metodo | Endpoint | Descricao |
-|--------|----------|-----------|
-| GET | `/health` | Health check |
-| GET | `/api/v1/dashboard` | Metricas agregadas do dashboard |
-| GET | `/api/v1/participants` | Lista participantes com filtros e paginacao |
-| GET | `/api/v1/admin/me` | Informacoes do usuario atual |
-| GET | `/api/v1/admin/users` | Lista usuarios (apenas admin) |
-| PUT | `/api/v1/admin/users/{cpf}` | Cria/atualiza usuario (UPSERT) |
-| DELETE | `/api/v1/admin/users/{cpf}` | Soft-delete de usuario |
-| GET | `/api/v1/admin/available-ids` | IDs disponiveis para atribuicao |
+| Metodo | Endpoint                      | Descricao                                   |
+| ------ | ----------------------------- | ------------------------------------------- |
+| GET    | `/health`                     | Health check                                |
+| GET    | `/api/v1/dashboard`           | Metricas agregadas do dashboard             |
+| GET    | `/api/v1/participants`        | Lista participantes com filtros e paginacao |
+| GET    | `/api/v1/admin/me`            | Informacoes do usuario atual                |
+| GET    | `/api/v1/admin/users`         | Lista usuarios (apenas admin)               |
+| PUT    | `/api/v1/admin/users/{cpf}`   | Cria/atualiza usuario (UPSERT)              |
+| DELETE | `/api/v1/admin/users/{cpf}`   | Soft-delete de usuario                      |
+| GET    | `/api/v1/admin/available-ids` | IDs disponiveis para atribuicao             |
 
 ### Parametros de Query Comuns
 
-| Parametro | Tipo | Descricao |
-|-----------|------|-----------|
-| `page` | int | Pagina atual (1-indexed) |
-| `page_size` | int | Itens por pagina (1-10000) |
-| `search` | string | Busca por nome ou CPF |
-| `bypass_cache` | bool | Forca refresh do cache |
-| `sort_by` | string | Coluna para ordenacao |
-| `sort_order` | asc/desc | Direcao da ordenacao |
-| `grupo`, `status`, `bairro`, etc. | string | Filtros simples |
-| `protocolo_descricao` | string | Filtro de protocolo (multi-selecao com virgula) |
-| `protocolo_status` | string | Filtro de status do protocolo |
+| Parametro                         | Tipo     | Descricao                                       |
+| --------------------------------- | -------- | ----------------------------------------------- |
+| `page`                            | int      | Pagina atual (1-indexed)                        |
+| `page_size`                       | int      | Itens por pagina (1-10000)                      |
+| `search`                          | string   | Busca por nome ou CPF                           |
+| `bypass_cache`                    | bool     | Forca refresh do cache                          |
+| `sort_by`                         | string   | Coluna para ordenacao                           |
+| `sort_order`                      | asc/desc | Direcao da ordenacao                            |
+| `grupo`, `status`, `bairro`, etc. | string   | Filtros simples                                 |
+| `protocolo_descricao`             | string   | Filtro de protocolo (multi-selecao com virgula) |
+| `protocolo_status`                | string   | Filtro de status do protocolo                   |
 
 ## Configuracao
 
@@ -380,12 +383,12 @@ Em producao, configure as variaveis via secrets do Kubernetes ou sistema de CI/C
 
 ### Metricas Tipicas
 
-| Operacao | Cache Hit | Cache Miss |
-|----------|-----------|------------|
-| /dashboard | ~0.1s | ~5s |
-| /participants (paginado) | ~0.3s | ~5s |
-| Filtro cascata | ~0.05s | N/A |
-| Multi-select com AND | ~0.1s | N/A |
+| Operacao                 | Cache Hit | Cache Miss |
+| ------------------------ | --------- | ---------- |
+| /dashboard               | ~0.1s     | ~5s        |
+| /participants (paginado) | ~0.3s     | ~5s        |
+| Filtro cascata           | ~0.05s    | N/A        |
+| Multi-select com AND     | ~0.1s     | N/A        |
 
 ## Troubleshooting
 

@@ -1,5 +1,79 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - resources.yaml
+namespace: app-pic
+
+helmCharts:
+  - name: base-chart
+    repo: oci://ghcr.io/prefeitura-rio/charts
+    version: 2.4.2
+    releaseName: app-pic-frontend-prod
+    valuesInline:
+      fullnameOverride: app-pic-frontend-prod
+
+      image:
+        repository: ghcr.io/prefeitura-rio/app-pic-frontend
+        tag: stable
+        pullPolicy: Always
+
+      service:
+        port: 80
+        containerPort: 3000
+
+      livenessProbe:
+        tcpSocket:
+          port: http
+        initialDelaySeconds: 0
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 6
+
+      readinessProbe:
+        tcpSocket:
+          port: http
+        initialDelaySeconds: 0
+        periodSeconds: 10
+        timeoutSeconds: 5
+        successThreshold: 1
+        failureThreshold: 3
+
+      startupProbe:
+        tcpSocket:
+          port: http
+        initialDelaySeconds: 0
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 20
+
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+
+      envFrom:
+        - secretRef:
+            name: frontend-secrets
+
+      autoscaling:
+        enabled: false
+
+      replicaCount: 1
+
+      istio:
+        enabled: false
+
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+
+      argoImageUpdater:
+        enabled: true
+        namespace: argocd
+        registrySecret: ghcr-credentials
+        updateStrategy: digest
+        applicationRef:
+          namePattern: app-pic-frontend-prod
+          namespace: argocd
