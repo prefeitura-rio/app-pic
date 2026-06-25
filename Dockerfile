@@ -19,7 +19,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies
-RUN uv sync --frozen --no-cache
+RUN uv sync --frozen --no-cache --no-install-project
 
 # Copy application code
 COPY src/ ./src/
