@@ -39,10 +39,10 @@
     echo "  📦 Install dependencies: uv sync"
     echo "  🚀 Start dev server: uv run uvicorn src.main:app --reload"
     echo ""
-    echo "⚛️  Frontend (Next.js):"
-    echo "  📦 Install dependencies: cd src/frontend && npm install"
-    echo "  🚀 Start dev server: cd src/frontend && npm run dev"
-    echo "  🏗️  Build: cd src/frontend && npm run build"
+    echo "⚛️Frontend (Next.js):"
+    echo "📦  Install dependencies: cd src/frontend && npm install"
+    echo "🚀  Start dev server: cd src/frontend && npm run dev"
+    echo "🏗️ Build: cd src/frontend && npm run build"
     echo ""
   '';
 }
