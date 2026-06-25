@@ -16,7 +16,7 @@ WORKDIR /app
 RUN groupadd -r appuser && useradd -r -u 1000 -g appuser appuser
 
 # Copy dependency files
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies
 RUN uv sync --frozen --no-cache --no-install-project
