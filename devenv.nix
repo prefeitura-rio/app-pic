@@ -3,6 +3,8 @@
 {
   env.UV_PYTHON = config.languages.python.package.outPath;
 
+  dotenv.enable = true;
+
   languages.python = {
     enable = true;
     version = "3.13";
