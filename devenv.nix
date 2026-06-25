@@ -1,6 +1,8 @@
-{ pkgs, ... }:
+{ pkgs, config, ... }:
 
 {
+  env.UV_PYTHON = config.languages.python.package.outPath;
+
   languages.python = {
     enable = true;
     version = "3.13";
