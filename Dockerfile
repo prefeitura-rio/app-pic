@@ -13,7 +13,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 # Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -u 1000 -g appuser appuser
 
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
@@ -30,7 +30,7 @@ RUN mkdir -p logs && \
     chown -R appuser:appuser /app /home/appuser
 
 # Switch to non-root user
-USER appuser
+USER 1000
 
 # Expose port
 EXPOSE 8089
