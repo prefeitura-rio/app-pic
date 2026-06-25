@@ -49,6 +49,7 @@ export async function GET(
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
+        "Accept-Encoding": "identity",
       },
       cache: "no-store",
     });
