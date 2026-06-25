@@ -69,3 +69,15 @@ helmCharts:
         enabled: true
         maxUnavailable: 1
 
+      infisicalSecret:
+        enabled: true
+        secretName: frontend-secrets
+        projectSlug: app-pic-frontend-b-qpn
+        envSlug: staging
+        kubernetesAuth:
+          enabled: true
+          identityId: ae19371c-5d95-47e2-a00b-b92a394becb8
+          serviceAccountRef:
+            name: infisical-auth
+            namespace: default
+

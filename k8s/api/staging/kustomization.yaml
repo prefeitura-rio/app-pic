@@ -93,3 +93,15 @@ helmCharts:
           existingSecret: api-secrets
           existingSecretPasswordKey: REDIS_PASSWORD
 
+      infisicalSecret:
+        enabled: true
+        secretName: api-secrets
+        projectSlug: app-pic-api-bw-do
+        envSlug: staging
+        kubernetesAuth:
+          enabled: true
+          identityId: ae19371c-5d95-47e2-a00b-b92a394becb8
+          serviceAccountRef:
+            name: infisical-auth
+            namespace: default
+
