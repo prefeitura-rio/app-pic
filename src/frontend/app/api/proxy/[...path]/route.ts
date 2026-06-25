@@ -49,24 +49,9 @@ export async function GET(
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Accept-Encoding": "identity",
       },
       cache: "no-store",
     });
-
-    const contentType = response.headers.get("content-type") || "";
-
-    // Pass through non-JSON responses (e.g. CSV export) as raw response
-    if (!contentType.includes("json")) {
-      return new NextResponse(response.body, {
-        status: response.status,
-        headers: {
-          "Content-Type": contentType,
-          "Content-Disposition": response.headers.get("content-disposition") || "",
-          "Cache-Control": "no-store",
-        },
-      });
-    }
 
     const data = await response.json();
 
