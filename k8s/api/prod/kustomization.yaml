@@ -85,6 +85,16 @@ helmCharts:
         enabled: true
         architecture: standalone
         replicaCount: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        configuration: |
+          maxmemory 192mb
+          maxmemory-policy allkeys-lru
         persistence:
           enabled: true
           size: 1Gi
