@@ -26,6 +26,7 @@ import { apiService } from "@/app/services/api";
 import {
   SmartFilterOptions,
   Dashboard,
+  Participante,
   ParticipantFilters,
   PaginationMeta,
   SortOrder,
@@ -459,20 +460,200 @@ export function DashboardClient({
   }, [queryClient]);
 
   /**
-   * Handle download all filtered participants as CSV (direct from backend).
-   * Avoids JSON.parse/stringify limits on the frontend for large datasets.
+   * Convert a page of participants to a CSV Blob chunk.
+   * If `isFirst`, prepends BOM + header row.
+   */
+  const jsonToCSVChunk = useCallback(
+    (data: Participante[], isFirst: boolean): Blob => {
+      if (data.length === 0) return new Blob([]);
+
+      const participantFields = [
+        "nome",
+        "cpf",
+        "nis",
+        "data_nascimento",
+        "idade",
+        "endereco_smas_endereco",
+        "endereco_smas_complemento",
+        "endereco_smas_bairro",
+        "endereco_sms_endereco",
+        "endereco_sms_complemento",
+        "endereco_sms_bairro",
+        "telefone_1_ddd",
+        "telefone_1_numero",
+        "telefone_2_ddd",
+        "telefone_2_numero",
+        "subprefeitura",
+        "regiao_administrativa",
+        "grupo",
+        "cohort",
+        "has_bolsa_familia",
+        "has_cartao_pic",
+        "status",
+        "status_inativo_motivo",
+        "situacao",
+        "total_protocolos",
+        "total_protocolos_regular",
+        "total_protocolos_irregular",
+        "total_protocolos_atencao",
+        "total_fracao",
+        "assistencia_protocolos_total",
+        "assistencia_protocolos_regular",
+        "assistencia_protocolos_irregular",
+        "assistencia_protocolos_atencao",
+        "assistencia_fracao",
+        "educacao_protocolos_total",
+        "educacao_protocolos_regular",
+        "educacao_protocolos_irregular",
+        "educacao_protocolos_atencao",
+        "educacao_fracao",
+        "saude_protocolos_total",
+        "saude_protocolos_regular",
+        "saude_protocolos_irregular",
+        "saude_protocolos_atencao",
+        "saude_fracao",
+        "id_cras",
+        "nome_cras",
+        "source_cras",
+        "id_cas",
+        "nome_cas",
+        "id_escola",
+        "nome_escola",
+        "source_escola",
+        "id_cre",
+        "nome_cre",
+        "id_ap",
+        "nome_ap",
+        "id_clinica_familia",
+        "nome_clinica_familia",
+        "source_clinica_familia",
+        "has_cobertura_clinica_familia",
+        "id_equipe_familia",
+        "nome_equipe_familia",
+        "source_equipe_familia",
+        "has_cobertura_equipe_familia",
+        "equipe_familia",
+      ];
+
+      const fieldResolvers: Record<
+        string,
+        (p: Participante) => unknown
+      > = {
+        endereco_smas_endereco: (p) => p.endereco,
+        endereco_smas_complemento: (p) => p.complemento,
+        endereco_smas_bairro: (p) => p.bairro,
+        endereco_sms_endereco: (p) => p.endereco_sms?.endereco,
+        endereco_sms_complemento: (p) => p.endereco_sms?.complemento,
+        endereco_sms_bairro: (p) => p.endereco_sms?.bairro,
+      };
+
+      const protocolFields = [
+        "protocolo_id",
+        "protocolo_secretaria",
+        "protocolo_descricao",
+        "protocolo_status",
+        "protocolo_irregular_indicador",
+        "protocolo_status_label",
+      ];
+
+      const headers = [...participantFields, ...protocolFields];
+      const DELIMITER = ";";
+
+      const escapeCSV = (value: unknown): string => {
+        if (value === null || value === undefined) return '""';
+        const str = String(value);
+        const cleaned = str
+          .replace(/\n/g, " ")
+          .replace(/\r/g, "")
+          .replace(/"/g, '""');
+        return `"${cleaned}"`;
+      };
+
+      const resolveField = (
+        header: string,
+        participant: Participante,
+      ): unknown =>
+        header in fieldResolvers
+          ? fieldResolvers[header](participant)
+          : (participant as Record<string, unknown>)[header];
+
+      const rows: string[] = [];
+
+      for (const participant of data) {
+        const protocolos = participant.protocolo_listagem || [];
+
+        if (protocolos.length > 0) {
+          for (const protocolo of protocolos) {
+            const row = headers.map((header) => {
+              if (header === "protocolo_id")
+                return escapeCSV(protocolo.id);
+              if (header === "protocolo_secretaria")
+                return escapeCSV(protocolo.secretaria);
+              if (header === "protocolo_descricao")
+                return escapeCSV(protocolo.descricao);
+              if (header === "protocolo_status")
+                return escapeCSV(protocolo.status);
+              if (header === "protocolo_irregular_indicador")
+                return escapeCSV(protocolo.irregular_indicador);
+              if (header === "protocolo_status_label")
+                return escapeCSV(protocolo.protocolo_status_label);
+              return escapeCSV(resolveField(header, participant));
+            });
+            rows.push(row.join(DELIMITER));
+          }
+        } else {
+          const row = headers.map((header) => {
+            if (header.startsWith("protocolo_")) return escapeCSV(null);
+            return escapeCSV(resolveField(header, participant));
+          });
+          rows.push(row.join(DELIMITER));
+        }
+      }
+
+      const content = isFirst
+        ? "\uFEFF" + headers.join(DELIMITER) + "\n" + rows.join("\n")
+        : rows.join("\n");
+
+      return new Blob([content], { type: "text/csv;charset=utf-8;" });
+    },
+    [],
+  );
+
+  /**
+   * Handle download all filtered participants as CSV (paginated).
+   * Fetches pages sequentially and accumulates CSV parts.
    */
   const handleDownloadParticipants = useCallback(async () => {
     const startTime = performance.now();
+    const PAGE_SIZE = 10000;
 
     try {
-      toast.info("📥 Buscando dados...", { duration: 30000 });
+      toast.info("📥 Baixando dados...", { duration: 60000 });
 
-      const blob = await apiService.exportParticipantsCsv(
-        professionalFilters,
-        sortBy,
-        sortOrder,
-      );
+      const parts: Blob[] = [];
+      let page = 1;
+      let totalPages = Infinity;
+
+      while (page <= totalPages) {
+        const result = await apiService.getParticipants(
+          {
+            ...professionalFilters,
+            ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
+          },
+          page,
+          PAGE_SIZE,
+        );
+
+        if (result.data.length === 0) break;
+
+        const chunk = jsonToCSVChunk(result.data, page === 1);
+        if (chunk.size > 0) parts.push(chunk);
+
+        totalPages = result.meta.total_pages;
+        page++;
+      }
+
+      const blob = new Blob(parts, { type: "text/csv;charset=utf-8;" });
 
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -504,7 +685,7 @@ export function DashboardClient({
       console.error("Download error:", error);
       toast.error("❌ Erro ao baixar dados. Tente novamente.");
     }
-  }, [professionalFilters, sortBy, sortOrder]);
+  }, [professionalFilters, sortBy, sortOrder, jsonToCSVChunk]);
 
   /**
    * Memoizar filter options vazias para evitar re-criação
