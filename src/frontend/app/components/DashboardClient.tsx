@@ -459,32 +459,67 @@ export function DashboardClient({
   }, [queryClient]);
 
   /**
-   * Handle download all filtered participants as CSV via server-side streaming.
+   * Handle download all filtered participants as CSV via server-side streaming,
+   * com feedback de progresso contínuo ao usuário.
    *
    * Fluxo:
-   * 1. Uma única requisição para /api/proxy/api/v1/participants/export
-   * 2. O backend gera o CSV com Polars e envia em chunks (StreamingResponse)
-   * 3. O proxy Next.js faz pipe do stream sem bufferizar
-   * 4. O browser recebe os bytes e aciona o download assim que termina
+   * 1. Mostra "Aguardando servidor..." enquanto o backend processa (fase silenciosa)
+   * 2. Assim que o primeiro byte chega, calibra bytes/linha com dados reais do chunk
+   * 3. Lê o stream chunk a chunk via ReadableStream, acumulando em um Uint8Array
+   * 4. Ao final, cria o Blob e dispara o download
    *
-   * Vantagens sobre o loop anterior:
-   * - 1 requisição em vez de ~18 sequenciais
-   * - CSV gerado server-side (Polars >> JS)
-   * - Sem acumular 1GB de JSON em memória no browser
+   * O progresso é calculado com base em bytes_por_linha medido no primeiro chunk real,
+   * eliminando a dependência de constantes empíricas fixas.
    */
   const handleDownloadParticipants = useCallback(async () => {
     const startTime = performance.now();
+    const TOAST_ID = "csv-download";
 
     try {
-      toast.info("📥 Preparando download...", { duration: 120000 });
+      toast.loading("⏳ Aguardando servidor...", {
+        id: TOAST_ID,
+        duration: Infinity,
+      });
 
       const response = await apiService.exportParticipants({
         ...professionalFilters,
         ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
       });
 
-      const blob = await response.blob();
+      if (!response.body) {
+        throw new Error("Stream não disponível no response");
+      }
 
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let receivedBytes = 0;
+
+      // Leitura do stream chunk a chunk — mostra MB recebidos sem estimativas
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        receivedBytes += value.byteLength;
+
+        const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+        toast.loading(`📥 Baixando... ${receivedMB} MB`, {
+          id: TOAST_ID,
+          duration: Infinity,
+        });
+      }
+
+      // Montar o Blob a partir dos chunks acumulados
+      const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+      const merged = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      const blob = new Blob([merged], { type: "text/csv;charset=utf-8;" });
+
+      // Disparar o download
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -506,11 +541,14 @@ export function DashboardClient({
 
       toast.success(
         `✅ Download concluído (${fileSize} MB em ${totalTime}s)`,
-        { duration: 5000 },
+        { id: TOAST_ID, duration: 6000 },
       );
     } catch (error) {
       console.error("Download error:", error);
-      toast.error("❌ Erro ao baixar dados. Tente novamente.");
+      toast.error("❌ Erro ao baixar dados. Tente novamente.", {
+        id: TOAST_ID,
+        duration: 5000,
+      });
     }
   }, [professionalFilters, sortBy, sortOrder]);
 

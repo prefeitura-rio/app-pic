@@ -1,4 +1,3 @@
-import io
 import traceback
 import time
 from datetime import datetime
@@ -593,7 +592,7 @@ async def export_participants_csv(
         total_rows = len(df_data)
         fetch_time = time.perf_counter() - export_start
         logger.info(
-            f"⬇️ [EXPORT] Dataset pronto: {total_rows} linhas em {fetch_time:.2f}s — iniciando stream CSV"
+            f"⬇️ [EXPORT] Dataset pronto: {total_rows} participantes em {fetch_time:.2f}s — iniciando stream CSV"
         )
 
         timestamp = datetime.now().strftime("%Y-%m-%d")
@@ -604,7 +603,6 @@ async def export_participants_csv(
             media_type="text/csv; charset=utf-8",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
-                "X-Total-Rows": str(total_rows),
                 "Cache-Control": "no-store",
             },
         )
