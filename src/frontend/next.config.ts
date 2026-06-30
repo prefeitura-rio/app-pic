@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
 
 // Bundle Analyzer (use ANALYZE=true npm run build)
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
