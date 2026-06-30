@@ -238,6 +238,46 @@ export const apiService = {
   },
 
 
+  /**
+   * Export all filtered participants as a streaming CSV download.
+   *
+   * Returns a Response with a ReadableStream body — the caller should
+   * consume it via response.blob() or pipe it to the File System API.
+   * No JSON parsing involved; the proxy pipes the CSV bytes directly.
+   *
+   * @param filters - Filter criteria (same as getParticipants)
+   * @returns Raw fetch Response (streaming)
+   */
+  async exportParticipants(
+    filters: ParticipantFilters = {}
+  ): Promise<Response> {
+    const params = buildFilterParams(filters);
+    const url = `${BASE_URL}/api/v1/participants/export?${params.toString()}`;
+
+    const response = await fetch(url, { cache: "no-store" });
+
+    if (response.status === 401) {
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        const retry = await fetch(url, { cache: "no-store" });
+        if (!retry.ok) {
+          window.location.href = "/login";
+          throw new Error("Unauthorized");
+        }
+        return retry;
+      }
+      window.location.href = "/login";
+      throw new Error("Unauthorized");
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Export Error ${response.status}: ${errorText}`);
+    }
+
+    return response;
+  },
+
   // ========================================================================
   // ADMIN ENDPOINTS
   // ========================================================================
