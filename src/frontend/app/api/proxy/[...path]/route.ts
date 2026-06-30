@@ -20,6 +20,16 @@ import { cookies } from "next/headers";
 
 const API_URL = process.env.API_URL;
 
+/**
+ * Paths que retornam streams binários (CSV, etc.) e NÃO devem ser bufferizados.
+ * O proxy faz pipe direto do response.body sem chamar response.json().
+ */
+const STREAM_PATHS = ["api/v1/participants/export"];
+
+function isStreamPath(path: string): boolean {
+  return STREAM_PATHS.some((p) => path === p || path.startsWith(p + "?"));
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
@@ -43,7 +53,55 @@ export async function GET(
   const searchParams = request.nextUrl.searchParams.toString();
   const targetUrl = `${API_URL}/${path}${searchParams ? `?${searchParams}` : ""}`;
 
+  // --- Streaming path: pipe do body sem bufferizar ---
+  if (isStreamPath(path)) {
+    try {
+      const response = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+        // @ts-expect-error — Node 18+ fetch suporta duplex mas os tipos não declaram
+        duplex: "half",
+      });
 
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: `Backend returned ${response.status}` },
+          { status: response.status }
+        );
+      }
+
+      // Repassar cabeçalhos relevantes do backend
+      const headers = new Headers();
+      const contentType = response.headers.get("content-type");
+      const contentDisposition = response.headers.get("content-disposition");
+      const xTotalRows = response.headers.get("x-total-rows");
+
+      if (contentType) headers.set("content-type", contentType);
+      if (contentDisposition) headers.set("content-disposition", contentDisposition);
+      if (xTotalRows) headers.set("x-total-rows", xTotalRows);
+      headers.set("cache-control", "no-store");
+      headers.set("x-content-type-options", "nosniff");
+
+      // Pipe do ReadableStream — o browser começa a receber bytes imediatamente
+      return new Response(response.body, {
+        status: response.status,
+        headers,
+      });
+    } catch (error) {
+      console.error(`[Proxy GET Stream] Error:`, error);
+      const isConnectionError =
+        error instanceof TypeError && error.message === "fetch failed";
+      return NextResponse.json(
+        { error: isConnectionError ? "Backend API unavailable" : "Failed to stream from backend API" },
+        { status: isConnectionError ? 503 : 500 }
+      );
+    }
+  }
+
+  // --- Caminho padrão: JSON bufferizado ---
   try {
     const response = await fetch(targetUrl, {
       method: "GET",
