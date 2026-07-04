@@ -1,5 +1,116 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - resources.yaml
+namespace: app-pic
+
+helmCharts:
+  - name: base-chart
+    repo: oci://ghcr.io/prefeitura-rio/charts
+    version: 2.4.2
+    releaseName: app-pic-api-prod
+    valuesInline:
+      fullnameOverride: app-pic-api-prod
+
+      image:
+        repository: ghcr.io/prefeitura-rio/app-pic-api
+        tag: stable
+        pullPolicy: Always
+
+      service:
+        port: 80
+        containerPort: 8089
+
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: http
+        initialDelaySeconds: 10
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 6
+
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: http
+        initialDelaySeconds: 5
+        periodSeconds: 10
+        timeoutSeconds: 5
+        successThreshold: 1
+        failureThreshold: 3
+
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        initialDelaySeconds: 0
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 20
+
+      resources:
+        requests:
+          cpu: 250m
+          memory: 4Gi
+        limits:
+          cpu: 1000m
+          memory: 6Gi
+
+      envFrom:
+        - secretRef:
+            name: api-secrets
+
+      env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: REDIS_PASSWORD
+        - name: REDIS_URL
+          value: "redis://default:$(REDIS_PASSWORD)@app-pic-api-prod-valkey:6379/0"
+
+      autoscaling:
+        enabled: false
+
+      replicaCount: 1
+
+      istio:
+        enabled: false
+
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+
+      valkey:
+        enabled: true
+        architecture: standalone
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        configuration: |
+          maxmemory 384mb
+          maxmemory-policy allkeys-lru
+        persistence:
+          enabled: true
+          size: 1Gi
+        auth:
+          enabled: true
+          existingSecret: api-secrets
+          existingSecretPasswordKey: REDIS_PASSWORD
+
+      infisicalSecret:
+        enabled: true
+        secretName: api-secrets
+        projectSlug: app-pic-api-bw-do
+        envSlug: prod
+        kubernetesAuth:
+          enabled: true
+          identityId: ae19371c-5d95-47e2-a00b-b92a394becb8
+          serviceAccountRef:
+            name: infisical-auth
+            namespace: default
