@@ -68,3 +68,11 @@ SELECT
 FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID_GEOSPATIAL_LAYERS}`
 ORDER BY tipo_camada, categoria, nome
 """
+
+# ========================================================================
+# QUERY PARA MOTIVO DE IRREGULARIDADE
+# ========================================================================
+MOTIVO_IRREGULARIDADE_QUERY = f"""
+SELECT *
+FROM `{PROJECT_ID}.{DATASET_ID}.protocolo_detalhes`
+"""

@@ -1,6 +1,6 @@
 import json
-from typing import List, Optional, TypeVar, Generic, Any
-from pydantic import BaseModel, Field, field_validator
+from typing import Dict, List, Optional, TypeVar, Generic, Any
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import date, datetime
 from src.utils.data_manager_config import DataManagerConfig as config
 
@@ -344,6 +344,47 @@ class EnderecoSMS(BaseModel):
     longitude: Optional[float] = None
     latitude: Optional[float] = None
 
+class DetalhesProtocoloParticipante(BaseModel):
+    """
+    Apresenta os detalhes de um protocolo específico para um participante, em específico o motivo para as irregularidades, caso existam.
+    """
+    id_membro_familia: Optional[str] = None
+    cpf: Optional[str] = None
+    nome: Optional[str] = None
+    protocolo_id: Optional[str] = None
+    protocolo_secretaria: Optional[str] = None
+    protocolo_descricao: Optional[str] = None
+    protocolo_level: Optional[str] = None
+    protocolo_status: Optional[str] = None
+    protocolo_motivo: Optional[str] = None
+    protocolo_debug: Optional[str] = None
+
+class ProtocoloMotivoDetalhe(BaseModel):
+    """
+        Apresenta os detalhes de um motivo de irregularidade de um protocolo específico, incluindo a fonte e a data da partição.
+    """
+    fonte: str
+    data_particao: Optional[str] = None
+
+class ProtocoloMotivo(BaseModel):
+    """
+        Apresenta os detalhes de um motivo de irregularidade de um protocolo específico, incluindo a fonte e a data da partição.
+    """
+    motivos: List[str]
+    detalhes: Dict[str, ProtocoloMotivoDetalhe] = {}
+
+    @model_validator(mode='before')
+    @classmethod
+    def parse_json_string(cls, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        if isinstance(data, dict):
+            detalhes = data.get("detalhes", {})
+            data["detalhes"] = {k: v for k, v in detalhes.items() if v is not None}
+        return data
 
 class ProtocoloListagemItem(BaseModel):
     """Item individual da lista de protocolos do participante"""
@@ -354,6 +395,7 @@ class ProtocoloListagemItem(BaseModel):
     status: Optional[str] = None
     irregular_indicador: Optional[bool] = None
     protocolo_status_label: Optional[str] = None
+    protocolo_motivo: Optional[ProtocoloMotivo] = None  # array de strings com os motivos de irregularidade
 
 
 class Participante(BaseModel):
