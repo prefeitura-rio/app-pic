@@ -13,7 +13,7 @@ from src.api.v1.schemas import (
 )
 from src.utils.data_manager import DataManager
 from src.utils.data_manager_config import DataManagerConfig as config
-from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
+from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY, MOTIVO_IRREGULARIDADE_QUERY
 
 router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 
@@ -210,6 +210,26 @@ async def get_participants(
         json_start = time.perf_counter()
         data_json = DataManager.df_to_json(df_data)
         json_time = time.perf_counter() - json_start
+
+        df_motivos, _, _ = await DataManager.get_dataset(
+            query=MOTIVO_IRREGULARIDADE_QUERY,
+            bypass_cache=bypass_cache, 
+        )
+
+        lookup = {}
+
+        for row in df_motivos.to_dicts():
+            cpf = row.get("cpf")
+            proto_id = row.get("protocolo_id")
+            if cpf and proto_id:
+                lookup[(cpf, proto_id)] = row.get("protocolo_motivo")
+        
+        for participant in data_json:
+            cpf = participant.get("cpf")
+            protocolos = participant.get("protocolo_listagem", [])
+            for protocolo in protocolos:
+                if protocolo.get("irregular_indicador"):
+                    protocolo["protocolo_motivo"] = lookup.get((cpf, protocolo.get("id")), None)
 
         response_start = time.perf_counter()
         response = PaginatedResponse(
