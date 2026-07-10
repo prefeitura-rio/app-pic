@@ -1,6 +1,6 @@
 import json
 from typing import Dict, List, Optional, TypeVar, Generic, Any
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, model_serializer
 from datetime import date, datetime
 from src.utils.data_manager_config import DataManagerConfig as config
 
@@ -396,6 +396,13 @@ class ProtocoloListagemItem(BaseModel):
     irregular_indicador: Optional[bool] = None
     protocolo_status_label: Optional[str] = None
     protocolo_motivo: Optional[ProtocoloMotivo] = None  # array de strings com os motivos de irregularidade
+
+    @model_serializer(mode="wrap")
+    def _drop_none_motivo(self, handler, info):
+        result = handler(self, info)
+        if result.get("protocolo_motivo") is None:
+            result.pop("protocolo_motivo", None)
+        return result
 
 
 class Participante(BaseModel):
