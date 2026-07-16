@@ -8,6 +8,8 @@ import os
 import sys
 
 from src.api import router as api_router
+from src.pic.presentation.v2.filters import router as v2_filters_router
+from src.pic.presentation.v2.participants import router as v2_participants_router
 from src.core.middlewares.logging import LoggingMiddleware
 from src.core.middlewares.static_cache import NoCacheStaticFilesMiddleware
 from src.config import env
@@ -118,3 +120,5 @@ async def custom_swagger_ui_html():
 
 
 app.include_router(api_router)
+app.include_router(v2_participants_router, prefix="/api/v2")
+app.include_router(v2_filters_router, prefix="/api/v2")

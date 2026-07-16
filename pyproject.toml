@@ -25,7 +25,15 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.8.4"]
+dev = ["ruff>=0.8.4", "pytest>=8", "pytest-asyncio>=0.25", "httpx>=0.28"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/pic"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short", "--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [build-system]
 requires = ["uv_build>=0.7,<0.12"]
