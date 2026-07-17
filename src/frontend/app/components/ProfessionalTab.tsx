@@ -10,7 +10,7 @@ import {
 	Search,
 	Users,
 } from "lucide-react";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -43,6 +43,7 @@ import type {
 	GeospatialLayer,
 	PaginationMeta,
 	Participante,
+	ParticipanteListItem,
 	ParticipantFilters,
 	SmartFilterOptions,
 	SortOrder,
@@ -246,12 +247,16 @@ const calcularCompletude = (participant: Participante) => {
 };
 
 interface ProfessionalTabProps {
-	data: Participante[];
+	data: ParticipanteListItem[];
 	meta: PaginationMeta | null;
 	filterOptions: SmartFilterOptions;
 	filters: ParticipantFilters;
 	onFilterChange: (filters: ParticipantFilters) => void;
 	onPageChange: (page: number) => void;
+	onRowClick: (idMembroFamilia: string) => void;
+	onCloseDetail: () => void;
+	selectedParticipant: Participante | null;
+	detailLoading: boolean;
 	onRefresh?: () => void;
 	onDownload?: () => void;
 	loading?: boolean;
@@ -259,12 +264,12 @@ interface ProfessionalTabProps {
 	sortBy?: string | null;
 	sortOrder?: SortOrder;
 	onSortChange?: (sortBy: string, sortOrder: SortOrder) => void;
-	isSuperAdmin?: boolean; // Para mostrar mapa e colunas lat/long
-	geospatialLayers?: GeospatialLayer[]; // Camadas geoespaciais para o mapa
-	geospatialLoading?: boolean; // Loading state das camadas
-	geospatialFilters?: ParticipantFilters; // Filtros do mapa geoespacial
-	geospatialAvailableFilters?: SmartFilterOptions; // Opções de filtros disponíveis do backend
-	onGeospatialFilterChange?: (filters: ParticipantFilters) => void; // Callback para atualizar filtros
+	isSuperAdmin?: boolean;
+	geospatialLayers?: GeospatialLayer[];
+	geospatialLoading?: boolean;
+	geospatialFilters?: ParticipantFilters;
+	geospatialAvailableFilters?: SmartFilterOptions;
+	onGeospatialFilterChange?: (filters: ParticipantFilters) => void;
 }
 
 // Removido MemoizedSelect - agora usando VirtualizedSelect
@@ -276,6 +281,10 @@ const ProfessionalTabComponent = ({
 	filters,
 	onFilterChange,
 	onPageChange,
+	onRowClick,
+	onCloseDetail,
+	selectedParticipant,
+	detailLoading,
 	onRefresh,
 	onDownload,
 	loading = false,
@@ -290,8 +299,6 @@ const ProfessionalTabComponent = ({
 	geospatialAvailableFilters,
 	onGeospatialFilterChange,
 }: ProfessionalTabProps) => {
-	const [selectedParticipant, setSelectedParticipant] =
-		useState<Participante | null>(null);
 
 	// Handler para clique no header de ordenação
 	const handleSort = useCallback(
@@ -372,7 +379,7 @@ const ProfessionalTabComponent = ({
 						{/* Tabela de participantes */}
 						<ParticipantTable
 							data={data}
-							onRowClick={setSelectedParticipant}
+							onRowClick={onRowClick}
 							getBadgeVariant={getBadgeVariant}
 							isLoading={loading}
 							sortBy={sortBy}
@@ -473,24 +480,37 @@ const ProfessionalTabComponent = ({
 
 			{/* Modal de Detalhamento */}
 			<Dialog
-				open={!!selectedParticipant}
-				onOpenChange={() => setSelectedParticipant(null)}
+				open={!!selectedParticipant || detailLoading}
+				onOpenChange={(open) => {
+					if (!open) onCloseDetail();
+				}}
 			>
 				<DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-					{selectedParticipant && (
-						<>
-							<DialogHeader>
-								<DialogTitle className="text-2xl flex items-center gap-2">
-									<Eye className="h-6 w-6 text-primary" />
-									Detalhamento Individual
-								</DialogTitle>
-								<DialogDescription>
-									Visualize informações completas, protocolos e histórico do
-									participante
-								</DialogDescription>
-							</DialogHeader>
+					<DialogHeader>
+						<DialogTitle className="text-2xl flex items-center gap-2">
+							<Eye className="h-6 w-6 text-primary" />
+							Detalhamento Individual
+						</DialogTitle>
+						<DialogDescription>
+							Visualize informações completas, protocolos e histórico do
+							participante
+						</DialogDescription>
+					</DialogHeader>
 
-							<div className="space-y-6 mt-4">
+					{detailLoading ? (
+						<div className="space-y-6 mt-4">
+							<Skeleton className="h-8 w-64" />
+							<Skeleton className="h-4 w-48" />
+							<div className="grid grid-cols-2 gap-4">
+								<Skeleton className="h-20" />
+								<Skeleton className="h-20" />
+								<Skeleton className="h-20" />
+								<Skeleton className="h-20" />
+							</div>
+							<Skeleton className="h-40" />
+						</div>
+					) : selectedParticipant ? (
+						<div className="space-y-6 mt-4">
 								{/* Informações Básicas */}
 								<div>
 									<h3 className="text-lg font-semibold mb-3 text-foreground">
@@ -1222,8 +1242,7 @@ const ProfessionalTabComponent = ({
 									);
 								})()}
 							</div>
-						</>
-					)}
+					) : null}
 				</DialogContent>
 			</Dialog>
 		</div>

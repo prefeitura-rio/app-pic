@@ -1,6 +1,12 @@
+import json
 from typing import Any
 
-from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
+import polars as pl
+
+from src.api.v1.queries import (
+    MOTIVO_IRREGULARIDADE_QUERY,
+    PARTICIPANTS_TABLE_QUERY,
+)
 from src.pic.application.ports.participant_repository import IParticipantRepository
 from src.pic.domain.models.filters import FilterCriteria, FilterVocabulary
 from src.pic.domain.models.pagination import (
@@ -9,7 +15,9 @@ from src.pic.domain.models.pagination import (
     SortParams,
 )
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
+from src.pic.domain.models.protocolo import ProtocoloMotivo
 from src.utils.data_manager import DataManager
+from src.utils.log import logger
 
 # --- Constants (imported from V1 for wrapping; extracted when V1 deprecated) ---
 
@@ -164,20 +172,60 @@ class BigQueryParticipantRepository(IParticipantRepository):
         permissions: Any = None,
         bypass_cache: bool = False,
     ) -> Participante | None:
-        df, _, _ = await DataManager.fetch_filter_paginate(
-            query=PARTICIPANTS_TABLE_QUERY,
-            filters_dict={"id_membro_familia": id_membro_familia},
-            page=1,
-            page_size=1,
-            user_permissions=permissions,
-            bypass_cache=bypass_cache,
+        import asyncio
+
+        participants_result, motivos_result = await asyncio.gather(
+            DataManager.fetch_filter_paginate(
+                query=PARTICIPANTS_TABLE_QUERY,
+                filters_dict={"id_membro_familia": id_membro_familia},
+                page=1,
+                page_size=1,
+                user_permissions=permissions,
+                bypass_cache=bypass_cache,
+            ),
+            DataManager.get_dataset(
+                MOTIVO_IRREGULARIDADE_QUERY,
+                bypass_cache=bypass_cache,
+            ),
+            return_exceptions=True,
         )
+
+        if isinstance(participants_result, Exception):
+            raise participants_result
+
+        df, _, _ = participants_result
 
         if df.is_empty():
             return None
 
         row = df.to_dicts()[0]
-        return Participante(**row)
+        participante = Participante(**row)
+
+        if not isinstance(motivos_result, Exception):
+            motivos_df, _, _ = motivos_result
+            cpf = participante.cpf
+            if cpf and not motivos_df.is_empty():
+                df_lookup = motivos_df.filter(pl.col("cpf") == cpf)
+                lookup: dict[str, str] = {}
+                for r in df_lookup.iter_rows(named=True):
+                    lookup[r["protocolo_id"]] = r["protocolo_motivo"]
+
+                for protocolo in participante.protocolo_listagem or []:
+                    if protocolo.irregular_indicador and protocolo.id:
+                        motivo_raw = lookup.get(protocolo.id)
+                        if motivo_raw:
+                            data = (
+                                json.loads(motivo_raw)
+                                if isinstance(motivo_raw, str)
+                                else motivo_raw
+                            )
+                            protocolo.protocolo_motivo = ProtocoloMotivo.model_validate(data)
+        else:
+            logger.warning(
+                f"Failed to fetch protocolo_detalhes, proceeding without irregularity reasons: {motivos_result}"
+            )
+
+        return participante
 
     async def get_filter_vocabulary(
         self,

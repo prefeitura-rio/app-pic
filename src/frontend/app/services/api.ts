@@ -1,6 +1,9 @@
 import {
   PaginatedResponse,
+  PaginatedResponseV2,
   Participante,
+  ParticipanteListItem,
+  ParticipantDetailResponse,
   ProtocoloDetalhes,
   SmartFilterOptions,
   ParticipantFilters,
@@ -189,6 +192,53 @@ export const apiService = {
     const res = await fetchFn();
 
     return handleResponse<PaginatedResponse<Participante>>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Lista paginada enxuta (13 campos, sem protocolo_listagem, sem cascade).
+   */
+  async getParticipantsV2(
+    filters: ParticipantFilters = {},
+    page: number = 1,
+    pageSize: number = 100
+  ): Promise<PaginatedResponseV2<ParticipanteListItem>> {
+    const params = buildFilterParams(filters);
+    params.append("page", page.toString());
+    params.append("page_size", pageSize.toString());
+
+    const url = `${BASE_URL}/api/v2/participants?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<PaginatedResponseV2<ParticipanteListItem>>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Detalhe completo de um participante por id_membro_familia.
+   */
+  async getParticipantDetailV2(
+    idMembroFamilia: string
+  ): Promise<ParticipantDetailResponse> {
+    const url = `${BASE_URL}/api/v2/participants/${idMembroFamilia}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<ParticipantDetailResponse>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Vocabulário completo de opções de filtro (16 arrays).
+   * Chamado 1 vez no mount, staleTime 1h.
+   */
+  async getFilterVocabulary(): Promise<SmartFilterOptions> {
+    const url = `${BASE_URL}/api/v2/filters`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<SmartFilterOptions>(res, fetchFn);
   },
 
   /**
