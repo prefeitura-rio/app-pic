@@ -289,12 +289,12 @@ export function DashboardClient({
     isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
-    queryKey: ["dashboard", overviewFilters, bypassCacheDashboardTimestamp],
+    queryKey: ["dashboardV2", overviewFilters, bypassCacheDashboardTimestamp],
     queryFn: async ({ queryKey }) => {
       const timestamp = queryKey[queryKey.length - 1] as number | null;
       const shouldBypassCache = timestamp !== null;
 
-      const result = await apiService.getDashboard({
+      const result = await apiService.getDashboardV2({
         ...overviewFilters,
         ...(shouldBypassCache && { bypass_cache: true }),
       });
@@ -391,7 +391,7 @@ export function DashboardClient({
   // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
   // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
   const canViewDashboard =
-    dashboardResponse?.meta?.can_view_dashboard !== false;
+    dashboardResponse?.can_view_dashboard !== false;
 
   // Force professional tab if user cannot view dashboard
   useEffect(() => {
@@ -470,7 +470,7 @@ export function DashboardClient({
    */
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -680,9 +680,9 @@ export function DashboardClient({
           {canViewDashboard && activeTab === "overview" && (
             <TabsContent value="overview" className="mt-6">
               <OverviewTab
-                data={dashboardResponse?.data?.[0] || null}
+                data={dashboardResponse?.data || null}
                 filterOptions={
-                  dashboardResponse?.filters || emptyFilterOptions
+                  filterVocabulary || emptyFilterOptions
                 }
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}

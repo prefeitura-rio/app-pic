@@ -171,6 +171,12 @@ export interface ParticipantDetailResponse {
 	data: Participante;
 }
 
+/** V2 dashboard — response do GET /api/v2/dashboard */
+export interface DashboardV2Response {
+	data: Dashboard;
+	can_view_dashboard: boolean;
+}
+
 export interface ProtocoloDetalhes {
 	cpf?: string;
 	id_membro_familia?: string;

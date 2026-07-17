@@ -5,6 +5,7 @@ import {
   Participante,
   ParticipanteListItem,
   ParticipantDetailResponse,
+  DashboardV2Response,
   ProtocoloDetalhes,
   SmartFilterOptions,
   ParticipantFilters,
@@ -167,6 +168,21 @@ export const apiService = {
     const res = await fetchFn();
 
     return handleResponse<PaginatedResponse<any>>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Dashboard metrics without inline filters.
+   */
+  async getDashboardV2(
+    filters: DashboardFilterValues = {}
+  ): Promise<DashboardV2Response> {
+    const params = buildFilterParams(filters);
+    const url = `${BASE_URL}/api/v2/dashboard?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<DashboardV2Response>(res, fetchFn);
   },
 
   /**
