@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from src.api.v1.schemas import Dashboard
 from src.pic.domain.models.filters import FilterVocabulary
 from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
@@ -16,3 +17,8 @@ class ParticipantDetailResponse(BaseModel):
 
 class FilterVocabularyResponse(FilterVocabulary):
     pass
+
+
+class DashboardV2Response(BaseModel):
+    data: Dashboard
+    can_view_dashboard: bool = True
