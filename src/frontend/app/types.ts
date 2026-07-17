@@ -19,6 +19,12 @@ export interface PaginatedResponse<T> {
 	filters?: SmartFilterOptions; // Opções de filtros dinâmicas baseadas nos dados filtrados
 }
 
+/** V2 listagem — sem filters inline */
+export interface PaginatedResponseV2<T> {
+	data: T[];
+	meta: PaginationMeta;
+}
+
 // ============================================================================
 // PARTICIPANT TYPES
 // ============================================================================
@@ -141,6 +147,28 @@ export interface Participante {
 
 	// Infraestrutura
 	cpf_particao?: number;
+}
+
+/** V2 listagem enxuta — 13 campos, sem protocolo_listagem */
+export interface ParticipanteListItem {
+	id_familia?: string;
+	id_membro_familia?: string;
+	nome?: string;
+	cpf?: string;
+	grupo?: string;
+	bairro?: string;
+	idade?: number;
+	status?: string;
+	situacao?: string;
+	total_fracao?: string;
+	assistencia_fracao?: string;
+	educacao_fracao?: string;
+	saude_fracao?: string;
+}
+
+/** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
+export interface ParticipantDetailResponse {
+	data: Participante;
 }
 
 export interface ProtocoloDetalhes {
