@@ -18,17 +18,18 @@ interface ParticipantTableProps {
 }
 
 const SORTABLE_COLUMNS = [
-  { key: "nome", label: "Nome", align: "left" as const },
-  { key: "cpf", label: "CPF", align: "left" as const },
-  { key: "grupo", label: "Grupo", align: "left" as const },
-  { key: "bairro", label: "Bairro", align: "left" as const },
-  { key: "idade", label: "Idade", align: "center" as const },
-  { key: "status", label: "Status", align: "center" as const },
-  { key: "total_fracao", label: "Total", align: "center" as const },
-  { key: "assistencia_fracao", label: "Assist.", align: "center" as const },
-  { key: "educacao_fracao", label: "Educ.", align: "center" as const },
-  { key: "saude_fracao", label: "Saúde", align: "center" as const },
-  { key: "situacao", label: "Situação", align: "center" as const },
+	{ key: "nome", label: "Nome", align: "left" as const },
+	{ key: "cpf", label: "CPF", align: "left" as const },
+	{ key: "grupo", label: "Grupo", align: "left" as const },
+	{ key: "bairro", label: "Bairro", align: "left" as const },
+	{ key: "idade", label: "Idade", align: "center" as const },
+	{ key: "status", label: "Status", align: "center" as const },
+	{ key: "total_fracao", label: "Total", align: "center" as const },
+	{ key: "total_irregular", label: "Total Irreg.", align: "center" as const },
+	{ key: "assistencia_fracao", label: "Assist.", align: "center" as const },
+	{ key: "educacao_fracao", label: "Educ.", align: "center" as const },
+	{ key: "saude_fracao", label: "Saúde", align: "center" as const },
+	{ key: "situacao", label: "Situação", align: "center" as const },
 ];
 
 const SortIcon = ({ column, sortBy, sortOrder }: { column: string; sortBy?: string | null; sortOrder?: SortOrder }) => {
@@ -222,6 +223,18 @@ export const ParticipantTable = memo(({
 												</td>
 											);
 										}
+
+										if (key === "total_irregular")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 text-center font-mono whitespace-nowrap"
+												>
+													{participant.total_protocolos_irregular != null
+														? participant.total_protocolos_irregular
+														: "-"}
+												</td>
+											);
 
 										if (key === "situacao")
 											return (
