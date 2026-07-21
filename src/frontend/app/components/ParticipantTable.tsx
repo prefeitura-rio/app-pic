@@ -71,6 +71,7 @@ const renderGrupo = (grupo?: string) => {
 	const lower = grupo.toLowerCase();
 	if (lower.includes("crian") || lower.includes("criança")) return "👶 Criança";
 	if (lower.includes("gestante")) return "🤰 Gestante";
+	if (lower.includes("puérpera")) return "🤱 Puérpera";
 	return grupo;
 };
 
@@ -101,14 +102,7 @@ export const ParticipantTable = memo(
 			return null;
 		}
 
-		// Filter columns - mostra apenas colunas que existem nos dados retornados do backend
-		// Backend já dropa colunas sensíveis (lat/long) para não-super-admins
-		const visibleColumns = SORTABLE_COLUMNS.filter((col) => {
-			if (data.length === 0) return true;
-			const firstRow = data[0] as any;
-			// Mostrar coluna apenas se existir nos dados E não for null/undefined
-			return firstRow[col.key] !== undefined && firstRow[col.key] !== null;
-		});
+		const visibleColumns = SORTABLE_COLUMNS;
 
 		const handleHeaderClick = (column: string) => {
 			if (onSort) {
@@ -170,66 +164,111 @@ export const ParticipantTable = memo(
 									className="border-b last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
 									onClick={() => onRowClick(participant)}
 								>
-									<td className="px-3 py-3 font-medium max-w-[200px]">
-										<span className="line-clamp-2">
-											{participant.nome || "-"}
-										</span>
-									</td>
-									<td className="px-3 py-3 font-mono whitespace-nowrap">
-										{participant.cpf || "-"}
-									</td>
-									<td className="px-3 py-3 whitespace-nowrap">
-										{renderGrupo(participant.grupo)}
-									</td>
-									<td className="px-3 py-3 max-w-[150px]">
-										<span className="line-clamp-2">
-											{participant.bairro || "-"}
-										</span>
-									</td>
-									<td className="px-3 py-3 text-center whitespace-nowrap">
-										{participant.idade != null
-											? `${participant.idade} anos`
-											: "-"}
-									</td>
-									<td className="px-3 py-3 text-center capitalize whitespace-nowrap">
-										{participant.status || "-"}
-									</td>
+									{visibleColumns.map((col) => {
+										const key = col.key;
 
-									{/* Renderizar colunas de protocolos dinamicamente baseado em visibleColumns */}
-									{visibleColumns
-										.filter((col) => col.key.includes("_fracao"))
-										.map((col) => {
-											const value = (participant as any)[col.key];
-											// Aplicar cores:
-											// - Se existe total_fracao: apenas ela tem cores
-											// - Se NÃO existe total_fracao (usuário de secretaria): a coluna específica tem cores
+										if (key === "nome")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 font-medium max-w-[200px]"
+												>
+													<span className="line-clamp-2">
+														{participant.nome || "-"}
+													</span>
+												</td>
+											);
+
+										if (key === "cpf")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 font-mono whitespace-nowrap"
+												>
+													{participant.cpf || "-"}
+												</td>
+											);
+
+										if (key === "grupo")
+											return (
+												<td key={key} className="px-3 py-3 whitespace-nowrap">
+													{renderGrupo(participant.grupo)}
+												</td>
+											);
+
+										if (key === "bairro")
+											return (
+												<td key={key} className="px-3 py-3 max-w-[150px]">
+													<span className="line-clamp-2">
+														{participant.bairro || "-"}
+													</span>
+												</td>
+											);
+
+										if (key === "idade")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 text-center whitespace-nowrap"
+												>
+													{participant.idade != null
+														? `${participant.idade} anos`
+														: "-"}
+												</td>
+											);
+
+										if (key === "status")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 text-center capitalize whitespace-nowrap"
+												>
+													{participant.status || "-"}
+												</td>
+											);
+
+										if (key.includes("_fracao")) {
+											const value = (participant as any)[key];
 											const hasTotalFracao = visibleColumns.some(
 												(c) => c.key === "total_fracao",
 											);
 											const shouldApplyColor = hasTotalFracao
-												? col.key === "total_fracao" // Admin: só total tem cor
-												: true; // Secretaria específica: qualquer fração tem cor
+												? key === "total_fracao"
+												: true;
 											const colorClass = shouldApplyColor
 												? getTotalColor(value)
 												: "";
 											return (
 												<td
-													key={col.key}
+													key={key}
 													className={`px-3 py-3 text-center font-mono whitespace-nowrap ${colorClass}`}
 												>
 													{value || "-"}
 												</td>
 											);
-										})}
+										}
 
-									<td className="px-3 py-3 text-center whitespace-nowrap">
-										<Badge
-											variant={getBadgeVariant(participant.situacao)}
-											className="text-xs"
-										>
-											{capitalizeSituacao(participant.situacao)}
-										</Badge>
-									</td>
+										if (key === "situacao")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 text-center whitespace-nowrap"
+												>
+													<Badge
+														variant={getBadgeVariant(participant.situacao)}
+														className="text-xs"
+													>
+														{capitalizeSituacao(participant.situacao)}
+													</Badge>
+												</td>
+											);
+
+										return (
+											<td key={key} className="px-3 py-3">
+												-
+											</td>
+										);
+									})}
 								</tr>
 							))}
 						</tbody>
