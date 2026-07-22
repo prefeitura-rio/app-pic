@@ -21,6 +21,7 @@ class ParticipanteListItem(BaseModel):
     assistencia_fracao: str | None = None
     educacao_fracao: str | None = None
     saude_fracao: str | None = None
+    total_protocolos_irregular: int | None = None
 
 
 class Participante(BaseModel):
