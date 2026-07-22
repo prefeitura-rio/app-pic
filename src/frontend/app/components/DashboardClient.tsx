@@ -29,6 +29,7 @@ import {
   ParticipantFilters,
   PaginationMeta,
   SortOrder,
+  Participante,
 } from "@/app/types";
 import { DashboardFilterValues } from "@/app/components/DashboardFilterCard";
 import { Loader2, BarChart3, Search } from "lucide-react";
@@ -205,6 +206,26 @@ export function DashboardClient({
     return "asc";
   });
 
+  // V2 detail — clicked participant
+  const [selectedParticipantId, setSelectedParticipantId] = useState<
+    string | null
+  >(null);
+
+  // V2 detail fetch
+  const {
+    data: participantDetailResponse,
+    isLoading: detailLoading,
+  } = useQuery({
+    queryKey: ["participantDetailV2", selectedParticipantId],
+    queryFn: () =>
+      apiService.getParticipantDetailV2(selectedParticipantId!),
+    enabled: !!selectedParticipantId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selectedParticipant: Participante | null =
+    participantDetailResponse?.data ?? null;
+
   // Persistir estado no sessionStorage sempre que mudar
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -268,12 +289,12 @@ export function DashboardClient({
     isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
-    queryKey: ["dashboard", overviewFilters, bypassCacheDashboardTimestamp],
+    queryKey: ["dashboardV2", overviewFilters, bypassCacheDashboardTimestamp],
     queryFn: async ({ queryKey }) => {
       const timestamp = queryKey[queryKey.length - 1] as number | null;
       const shouldBypassCache = timestamp !== null;
 
-      const result = await apiService.getDashboard({
+      const result = await apiService.getDashboardV2({
         ...overviewFilters,
         ...(shouldBypassCache && { bypass_cache: true }),
       });
@@ -288,9 +309,15 @@ export function DashboardClient({
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
 
-  // TanStack Query para Participants (Busca Individual)
-  // OTIMIZAÇÃO: Roda em paralelo com currentUser (não espera auth terminar)
-  // O backend já valida auth e retorna 401/403 se não autorizado
+  // V2 — Vocabulário de filtros (chamado 1 vez, cache 1h)
+  const { data: filterVocabulary } = useQuery({
+    queryKey: ["filterVocabulary"],
+    queryFn: () => apiService.getFilterVocabulary(),
+    staleTime: 60 * 60 * 1000, // 1 hora
+  });
+
+  // V2 — Participants (Busca Individual)
+  // Substitui getParticipants V1 pelo endpoint enxuto (13 campos)
   const {
     data: participantsResponse,
     isLoading: participantsLoading,
@@ -298,7 +325,7 @@ export function DashboardClient({
     error: participantsError,
   } = useQuery({
     queryKey: [
-      "participants",
+      "participantsV2",
       professionalFilters,
       professionalPage,
       sortBy,
@@ -309,7 +336,7 @@ export function DashboardClient({
       const timestamp = queryKey[queryKey.length - 1] as number | null;
       const shouldBypassCache = timestamp !== null;
 
-      const result = await apiService.getParticipants(
+      const result = await apiService.getParticipantsV2(
         {
           ...professionalFilters,
           ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
@@ -357,14 +384,21 @@ export function DashboardClient({
     placeholderData: (prev) => prev,
   });
 
-  // Extrair dados e filtros disponíveis da resposta
+  // TanStack Query para vocabulário de filtros geoespaciais
+  const { data: geospatialFilterVocabulary } = useQuery({
+    queryKey: ["geospatialFilterVocabulary"],
+    queryFn: () => apiService.getGeospatialFilterVocabulary(),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  // Extrair dados e filtros disponíveis
   const geospatialLayers = geospatialLayersResponse?.data || [];
-  const geospatialAvailableFilters = geospatialLayersResponse?.filters;
+  const geospatialAvailableFilters = geospatialFilterVocabulary ?? undefined;
 
   // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
   // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
   const canViewDashboard =
-    dashboardResponse?.meta?.can_view_dashboard !== false;
+    dashboardResponse?.can_view_dashboard !== false;
 
   // Force professional tab if user cannot view dashboard
   useEffect(() => {
@@ -443,7 +477,7 @@ export function DashboardClient({
    */
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -451,12 +485,19 @@ export function DashboardClient({
    * Handle refresh with cache bypass (for Professional tab)
    */
   const handleProfessionalRefresh = useCallback(() => {
-    // Invalidate TanStack Query cache to force refetch
-    queryClient.invalidateQueries({ queryKey: ["participants"] });
+    queryClient.invalidateQueries({ queryKey: ["participantsV2"] });
     queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
     setBypassCacheParticipantsTimestamp(Date.now());
     setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
+
+  const handleRowClick = useCallback((idMembroFamilia: string) => {
+    setSelectedParticipantId(idMembroFamilia);
+  }, []);
+
+  const handleCloseDetail = useCallback(() => {
+    setSelectedParticipantId(null);
+  }, []);
 
   /**
    * Handle download all filtered participants as CSV via server-side streaming,
@@ -646,9 +687,9 @@ export function DashboardClient({
           {canViewDashboard && activeTab === "overview" && (
             <TabsContent value="overview" className="mt-6">
               <OverviewTab
-                data={dashboardResponse?.data?.[0] || null}
+                data={dashboardResponse?.data || null}
                 filterOptions={
-                  dashboardResponse?.filters || emptyFilterOptions
+                  filterVocabulary || emptyFilterOptions
                 }
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
@@ -664,11 +705,15 @@ export function DashboardClient({
                 data={participantsResponse?.data || []}
                 meta={participantsResponse?.meta || null}
                 filterOptions={
-                  participantsResponse?.filters || emptyFilterOptions
+                  filterVocabulary || emptyFilterOptions
                 }
                 filters={professionalFilters}
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
+                onRowClick={handleRowClick}
+                onCloseDetail={handleCloseDetail}
+                selectedParticipant={selectedParticipant}
+                detailLoading={detailLoading}
                 onRefresh={handleProfessionalRefresh}
                 onDownload={handleDownloadParticipants}
                 loading={participantsFetching}

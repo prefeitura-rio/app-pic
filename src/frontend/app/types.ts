@@ -19,6 +19,12 @@ export interface PaginatedResponse<T> {
 	filters?: SmartFilterOptions; // Opções de filtros dinâmicas baseadas nos dados filtrados
 }
 
+/** V2 listagem — sem filters inline */
+export interface PaginatedResponseV2<T> {
+	data: T[];
+	meta: PaginationMeta;
+}
+
 // ============================================================================
 // PARTICIPANT TYPES
 // ============================================================================
@@ -141,6 +147,35 @@ export interface Participante {
 
 	// Infraestrutura
 	cpf_particao?: number;
+}
+
+/** V2 listagem enxuta — 14 campos, sem protocolo_listagem */
+export interface ParticipanteListItem {
+	id_familia?: string;
+	id_membro_familia?: string;
+	nome?: string;
+	cpf?: string;
+	grupo?: string;
+	bairro?: string;
+	idade?: number;
+	status?: string;
+	situacao?: string;
+	total_fracao?: string;
+	assistencia_fracao?: string;
+	educacao_fracao?: string;
+	saude_fracao?: string;
+	total_protocolos_irregular?: number;
+}
+
+/** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
+export interface ParticipantDetailResponse {
+	data: Participante;
+}
+
+/** V2 dashboard — response do GET /api/v2/dashboard */
+export interface DashboardV2Response {
+	data: Dashboard;
+	can_view_dashboard: boolean;
 }
 
 export interface ProtocoloDetalhes {
@@ -656,6 +691,31 @@ export interface GeospatialLayer {
 	subprefeitura?: string | null;
 	metadata?: string | null; // JSON string com metadados adicionais
 }
+
+/**
+ * Opções de filtros disponíveis para camadas geoespaciais (V2)
+ */
+export interface GeospatialFilterOptions {
+	tipos_camada: FilterOptionItem[];
+	categorias: FilterOptionItem[];
+	regionais: FilterOptionItem[];
+	bairros: FilterOptionItem[];
+	regioes_administrativas: FilterOptionItem[];
+	subprefeituras: FilterOptionItem[];
+	nomes: FilterOptionItem[];
+}
+
+/**
+ * Resposta do endpoint de camadas geoespaciais V2
+ */
+export interface GeospatialLayersResponse {
+	data: GeospatialLayer[];
+}
+
+/**
+ * Resposta do endpoint de vocabulário de filtros geoespaciais V2
+ */
+export type GeospatialFilterVocabularyResponse = GeospatialFilterOptions;
 
 /**
  * Error for a specific CPF during batch permissions update

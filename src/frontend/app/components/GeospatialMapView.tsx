@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { MapPin, Layers, Filter, X } from "lucide-react";
-import { GeospatialLayer, SmartFilterOptions } from "@/app/types";
+import { GeospatialLayer, GeospatialFilterOptions } from "@/app/types";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const INITIAL_VIEW_STATE = {
@@ -52,7 +52,7 @@ interface GeospatialMapViewProps {
   loading?: boolean;
   layers?: GeospatialLayer[]; // Camadas já filtradas do backend
   filters?: Record<string, any>; // Filtros atuais
-  availableFilters?: SmartFilterOptions; // Opções de filtros disponíveis do backend
+  availableFilters?: GeospatialFilterOptions; // Opções de filtros disponíveis do backend
   onFilterChange?: (filters: Record<string, any>) => void; // Callback para atualizar filtros
   participantLocation?: ParticipantLocation; // Localização do participante para sobrepor no mapa
   hideHeader?: boolean; // Esconder o header com título quando embedded no modal
