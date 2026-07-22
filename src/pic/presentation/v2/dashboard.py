@@ -2,13 +2,11 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.api.v1.dashboard import (
-    DASHBOARD_FILTER_OPTIONS_CONFIG,
-    _calculate_dashboard_metrics,
-    _create_empty_dashboard,
-)
 from src.api.v1.queries import DASHBOARD_TABLE_QUERY
 from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.pic.infrastructure.dashboard.compute import _calculate_dashboard_metrics
+from src.pic.infrastructure.dashboard.config import DASHBOARD_FILTER_OPTIONS_CONFIG
+from src.pic.infrastructure.dashboard.factory import _create_empty_dashboard
 from src.pic.presentation.v2.schemas import DashboardV2Response
 from src.utils.data_manager import DataManager
 from src.utils.log import logger
