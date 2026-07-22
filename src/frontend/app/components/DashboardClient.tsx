@@ -384,9 +384,16 @@ export function DashboardClient({
     placeholderData: (prev) => prev,
   });
 
-  // Extrair dados e filtros disponíveis da resposta
+  // TanStack Query para vocabulário de filtros geoespaciais
+  const { data: geospatialFilterVocabulary } = useQuery({
+    queryKey: ["geospatialFilterVocabulary"],
+    queryFn: () => apiService.getGeospatialFilterVocabulary(),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  // Extrair dados e filtros disponíveis
   const geospatialLayers = geospatialLayersResponse?.data || [];
-  const geospatialAvailableFilters = geospatialLayersResponse?.filters;
+  const geospatialAvailableFilters = geospatialFilterVocabulary ?? undefined;
 
   // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
   // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"

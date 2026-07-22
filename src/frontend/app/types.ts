@@ -693,6 +693,31 @@ export interface GeospatialLayer {
 }
 
 /**
+ * Opções de filtros disponíveis para camadas geoespaciais (V2)
+ */
+export interface GeospatialFilterOptions {
+	tipos_camada: FilterOptionItem[];
+	categorias: FilterOptionItem[];
+	regionais: FilterOptionItem[];
+	bairros: FilterOptionItem[];
+	regioes_administrativas: FilterOptionItem[];
+	subprefeituras: FilterOptionItem[];
+	nomes: FilterOptionItem[];
+}
+
+/**
+ * Resposta do endpoint de camadas geoespaciais V2
+ */
+export interface GeospatialLayersResponse {
+	data: GeospatialLayer[];
+}
+
+/**
+ * Resposta do endpoint de vocabulário de filtros geoespaciais V2
+ */
+export type GeospatialFilterVocabularyResponse = GeospatialFilterOptions;
+
+/**
  * Error for a specific CPF during batch permissions update
  */
 export interface BatchPermissionsError {
