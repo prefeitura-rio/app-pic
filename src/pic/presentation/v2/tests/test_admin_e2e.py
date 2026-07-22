@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -7,12 +7,33 @@ from httpx import ASGITransport, AsyncClient
 from src.core.security.jwt import get_current_user_permissions, verify_jwt
 from src.core.security.permissions_models import IdWithName, UserPermissions
 from src.main import app
+from src.pic.application.use_cases.admin_batch import (
+    BatchImportUsersUseCase,
+    BatchUpdatePermissionsUseCase,
+)
+from src.pic.application.use_cases.admin_read import (
+    GetAvailableIdsUseCase,
+    GetCurrentUserUseCase,
+)
+from src.pic.application.use_cases.admin_write import (
+    DeleteUserUseCase,
+    ListUsersUseCase,
+    UpsertUserUseCase,
+)
 from src.pic.domain.models.admin import (
     AvailableIds,
     BatchImportResult,
     BatchPermissionsResult,
-    UpsertUserRequest,
     UserAccessRecord,
+)
+from src.pic.presentation.di import (
+    get_available_ids_use_case,
+    get_batch_import_users_use_case,
+    get_batch_update_permissions_use_case,
+    get_current_user_use_case,
+    get_delete_user_use_case,
+    get_list_users_use_case,
+    get_upsert_user_use_case,
 )
 
 
@@ -48,23 +69,27 @@ def _make_user_record() -> UserAccessRecord:
         secretaria_acesso="TODOS",
         active=True,
         created_by="system",
-        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
     )
 
 
 class TestAdminMe:
     @pytest.mark.asyncio
     async def test_get_me_200(self, client):
-        with patch(
-            "src.pic.presentation.v2.admin.get_current_user_info",
-            return_value=_make_user_record(),
-        ):
-            response = await client.get("/api/v2/admin/me")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["cpf"] == "12345678900"
-            assert body["is_admin"] is True
-            assert body["permission"] == "super_admin"
+
+        def _override_use_case():
+            uc = MagicMock(spec=GetCurrentUserUseCase)
+            uc.execute.return_value = _make_user_record()
+            return uc
+
+        app.dependency_overrides[get_current_user_use_case] = _override_use_case
+
+        response = await client.get("/api/v2/admin/me")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cpf"] == "12345678900"
+        assert body["is_admin"] is True
+        assert body["permission"] == "super_admin"
 
     @pytest.mark.asyncio
     async def test_get_me_401(self):
@@ -81,16 +106,19 @@ class TestAdminAvailableIds:
             cras=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
             escolas=[IdWithName(id="ESC_001", nome="Escola A")],
         )
-        with patch(
-            "src.pic.presentation.v2.admin.get_available_ids_data",
-            new_callable=AsyncMock,
-            return_value=mock_ids,
-        ):
-            response = await client.get("/api/v2/admin/available-ids")
-            assert response.status_code == 200
-            body = response.json()
-            assert len(body["cras"]) == 1
-            assert body["cras"][0]["id"] == "CRAS_001"
+
+        def _override_use_case():
+            uc = MagicMock(spec=GetAvailableIdsUseCase)
+            uc.execute = AsyncMock(return_value=mock_ids)
+            return uc
+
+        app.dependency_overrides[get_available_ids_use_case] = _override_use_case
+
+        response = await client.get("/api/v2/admin/available-ids")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["cras"]) == 1
+        assert body["cras"][0]["id"] == "CRAS_001"
 
 
 class TestAdminListUsers:
@@ -102,18 +130,20 @@ class TestAdminListUsers:
             page=1, page_size=20, total_rows=1, total_pages=1, cache_hit=True
         )
 
-        with patch(
-            "src.pic.presentation.v2.admin.list_users_data",
-            new_callable=AsyncMock,
-            return_value=(mock_users, mock_meta, None),
-        ):
-            response = await client.get("/api/v2/admin/users?page=1&page_size=20")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["meta"]["page"] == 1
-            assert body["meta"]["total_rows"] == 1
-            assert len(body["data"]) == 1
-            assert body["data"][0]["cpf"] == "12345678900"
+        def _override_use_case():
+            uc = MagicMock(spec=ListUsersUseCase)
+            uc.execute = AsyncMock(return_value=(mock_users, mock_meta, None))
+            return uc
+
+        app.dependency_overrides[get_list_users_use_case] = _override_use_case
+
+        response = await client.get("/api/v2/admin/users?page=1&page_size=20")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["meta"]["page"] == 1
+        assert body["meta"]["total_rows"] == 1
+        assert len(body["data"]) == 1
+        assert body["data"][0]["cpf"] == "12345678900"
 
     @pytest.mark.asyncio
     async def test_list_users_422_invalid_page(self, client):
@@ -125,18 +155,21 @@ class TestAdminUpsertUser:
     @pytest.mark.asyncio
     async def test_upsert_user_200(self, client):
         user = _make_user_record()
-        with patch(
-            "src.pic.presentation.v2.admin.upsert_user_data",
-            new_callable=AsyncMock,
-            return_value=user,
-        ):
-            response = await client.put(
-                "/api/v2/admin/users/12345678900",
-                json={"is_admin": True, "active": True},
-            )
-            assert response.status_code == 200
-            body = response.json()
-            assert body["cpf"] == "12345678900"
+
+        def _override_use_case():
+            uc = MagicMock(spec=UpsertUserUseCase)
+            uc.execute = AsyncMock(return_value=user)
+            return uc
+
+        app.dependency_overrides[get_upsert_user_use_case] = _override_use_case
+
+        response = await client.put(
+            "/api/v2/admin/users/12345678900",
+            json={"is_admin": True, "active": True},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cpf"] == "12345678900"
 
     @pytest.mark.asyncio
     async def test_upsert_user_422_invalid_cpf(self, client):
@@ -150,13 +183,16 @@ class TestAdminUpsertUser:
 class TestAdminDeleteUser:
     @pytest.mark.asyncio
     async def test_delete_user_204(self, client):
-        with patch(
-            "src.pic.presentation.v2.admin.delete_user_data",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            response = await client.delete("/api/v2/admin/users/12345678900")
-            assert response.status_code == 204
+
+        def _override_use_case():
+            uc = MagicMock(spec=DeleteUserUseCase)
+            uc.execute = AsyncMock(return_value=None)
+            return uc
+
+        app.dependency_overrides[get_delete_user_use_case] = _override_use_case
+
+        response = await client.delete("/api/v2/admin/users/12345678900")
+        assert response.status_code == 204
 
     @pytest.mark.asyncio
     async def test_delete_user_422_invalid_cpf(self, client):
@@ -174,38 +210,44 @@ class TestAdminBatchImport:
             errors=[],
             imported_users=[],
         )
-        with patch(
-            "src.pic.presentation.v2.admin.batch_import_users_data",
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ):
-            response = await client.post(
-                "/api/v2/admin/users-batch",
-                files={"file": ("test.csv", b"cpf\n12345678900", "text/csv")},
-            )
-            assert response.status_code == 200
-            body = response.json()
-            assert body["total"] == 10
-            assert body["imported"] == 8
+
+        def _override_use_case():
+            uc = MagicMock(spec=BatchImportUsersUseCase)
+            uc.execute = AsyncMock(return_value=mock_result)
+            return uc
+
+        app.dependency_overrides[get_batch_import_users_use_case] = _override_use_case
+
+        response = await client.post(
+            "/api/v2/admin/users-batch",
+            files={"file": ("test.csv", b"cpf\n12345678900", "text/csv")},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 10
+        assert body["imported"] == 8
 
 
 class TestAdminBatchPermissions:
     @pytest.mark.asyncio
     async def test_batch_permissions_200(self, client):
         mock_result = BatchPermissionsResult(total=10, updated=9, errors=[])
-        with patch(
-            "src.pic.presentation.v2.admin.batch_update_permissions_data",
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ):
-            response = await client.put(
-                "/api/v2/admin/users-batch/permissions",
-                json={
-                    "users": [{"cpf": "12345678900", "nome": "Test"}],
-                    "is_admin": True,
-                },
-            )
-            assert response.status_code == 200
-            body = response.json()
-            assert body["total"] == 10
-            assert body["updated"] == 9
+
+        def _override_use_case():
+            uc = MagicMock(spec=BatchUpdatePermissionsUseCase)
+            uc.execute = AsyncMock(return_value=mock_result)
+            return uc
+
+        app.dependency_overrides[get_batch_update_permissions_use_case] = _override_use_case
+
+        response = await client.put(
+            "/api/v2/admin/users-batch/permissions",
+            json={
+                "users": [{"cpf": "12345678900", "nome": "Test"}],
+                "is_admin": True,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 10
+        assert body["updated"] == 9

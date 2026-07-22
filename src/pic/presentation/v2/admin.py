@@ -1,8 +1,20 @@
-
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 
 from src.api.v1.schemas import PaginatedResponse, PaginationParams
 from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.pic.application.use_cases.admin_batch import (
+    BatchImportUsersUseCase,
+    BatchUpdatePermissionsUseCase,
+)
+from src.pic.application.use_cases.admin_read import (
+    GetAvailableIdsUseCase,
+    GetCurrentUserUseCase,
+)
+from src.pic.application.use_cases.admin_write import (
+    DeleteUserUseCase,
+    ListUsersUseCase,
+    UpsertUserUseCase,
+)
 from src.pic.domain.models.admin import (
     AvailableIds,
     BatchImportResult,
@@ -11,29 +23,34 @@ from src.pic.domain.models.admin import (
     UpsertUserRequest,
     UserAccessRecord,
 )
-from src.pic.infrastructure.admin.batch_ops import (
-    batch_import_users_data,
-    batch_update_permissions_data,
+from src.pic.presentation.di import (
+    get_available_ids_use_case,
+    get_batch_import_users_use_case,
+    get_batch_update_permissions_use_case,
+    get_current_user_use_case,
+    get_delete_user_use_case,
+    get_list_users_use_case,
+    get_upsert_user_use_case,
 )
-from src.pic.infrastructure.admin.user_read import (
-    get_available_ids_data,
-    get_current_user_info,
-    list_users_data,
-)
-from src.pic.infrastructure.admin.user_write import delete_user_data, upsert_user_data
 from src.utils.log import logger
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(verify_jwt)], tags=["Admin V2"])
 
 
 @router.get("/available-ids", response_model=AvailableIds)
-async def get_available_ids_v2(permissions: CurrentUserPermissions):
-    return await get_available_ids_data(permissions)
+async def get_available_ids_v2(
+    permissions: CurrentUserPermissions,
+    use_case: GetAvailableIdsUseCase = Depends(get_available_ids_use_case),
+):
+    return await use_case.execute(permissions)
 
 
 @router.get("/me", response_model=UserAccessRecord)
-async def get_current_user_v2(permissions: CurrentUserPermissions):
-    return await get_current_user_info(permissions)
+async def get_current_user_v2(
+    permissions: CurrentUserPermissions,
+    use_case: GetCurrentUserUseCase = Depends(get_current_user_use_case),
+):
+    return use_case.execute(permissions)
 
 
 @router.get("/users", response_model=PaginatedResponse[UserAccessRecord])
@@ -47,12 +64,12 @@ async def list_users_v2(
     secretaria_acesso: str | None = Query(None),
     search: str | None = Query(None),
     bypass_cache: bool = Query(False),
+    use_case: ListUsersUseCase = Depends(get_list_users_use_case),
 ):
     try:
-        users, meta, filter_options = await list_users_data(
+        users, meta, filter_options = await use_case.execute(
             permissions=permissions,
-            page=pagination.page,
-            page_size=pagination.page_size,
+            pagination=pagination,
             active=active,
             ocupacao=ocupacao,
             secretaria=secretaria,
@@ -64,7 +81,7 @@ async def list_users_v2(
         return PaginatedResponse(data=users, meta=meta, filters=filter_options)
     except Exception as e:
         logger.error(f"Erro ao listar usuarios: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/users/{cpf}", response_model=UserAccessRecord)
@@ -72,29 +89,33 @@ async def upsert_user_v2(
     request: UpsertUserRequest,
     permissions: CurrentUserPermissions,
     cpf: str = Path(..., pattern=r"^\d{11}$"),
+    use_case: UpsertUserUseCase = Depends(get_upsert_user_use_case),
 ):
-    return await upsert_user_data(permissions, cpf, request)
+    return await use_case.execute(permissions, cpf, request)
 
 
 @router.delete("/users/{cpf}", status_code=204)
 async def delete_user_v2(
     permissions: CurrentUserPermissions,
     cpf: str = Path(..., pattern=r"^\d{11}$"),
+    use_case: DeleteUserUseCase = Depends(get_delete_user_use_case),
 ):
-    await delete_user_data(permissions, cpf)
+    await use_case.execute(permissions, cpf)
 
 
 @router.post("/users-batch", response_model=BatchImportResult)
 async def batch_import_users_v2(
     permissions: CurrentUserPermissions,
     file: UploadFile = File(...),
+    use_case: BatchImportUsersUseCase = Depends(get_batch_import_users_use_case),
 ):
-    return await batch_import_users_data(permissions, file)
+    return await use_case.execute(permissions, file)
 
 
 @router.put("/users-batch/permissions", response_model=BatchPermissionsResult)
 async def batch_update_permissions_v2(
     request: BatchPermissionsRequest,
     permissions: CurrentUserPermissions,
+    use_case: BatchUpdatePermissionsUseCase = Depends(get_batch_update_permissions_use_case),
 ):
-    return await batch_update_permissions_data(permissions, request)
+    return await use_case.execute(permissions, request)
