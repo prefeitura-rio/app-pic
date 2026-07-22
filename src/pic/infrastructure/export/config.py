@@ -1,0 +1,2 @@
+_DELIMITER = ";"
+_CHUNK_ROWS = 5000

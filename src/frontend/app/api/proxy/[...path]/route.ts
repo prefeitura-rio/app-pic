@@ -24,7 +24,7 @@ const API_URL = process.env.API_URL;
  * Paths que retornam streams binários (CSV, etc.) e NÃO devem ser bufferizados.
  * O proxy faz pipe direto do response.body sem chamar response.json().
  */
-const STREAM_PATHS = ["api/v1/participants/export"];
+const STREAM_PATHS = ["api/v1/participants/export", "api/v2/participants/export"];
 
 function isStreamPath(path: string): boolean {
   return STREAM_PATHS.some((p) => path === p || path.startsWith(p + "?"));

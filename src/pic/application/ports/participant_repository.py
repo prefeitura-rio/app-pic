@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+import polars as pl
+
 from src.pic.domain.models.filters import FilterCriteria, FilterVocabulary
 from src.pic.domain.models.pagination import (
     PaginationMeta,
@@ -37,4 +39,14 @@ class IParticipantRepository(ABC):
         permissions: Any = None,
         bypass_cache: bool = False,
     ) -> FilterVocabulary:
+        ...
+
+    @abstractmethod
+    async def export_dataframe(
+        self,
+        filters: FilterCriteria,
+        sort: SortParams,
+        permissions: Any = None,
+        bypass_cache: bool = False,
+    ) -> pl.DataFrame:
         ...

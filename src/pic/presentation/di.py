@@ -16,6 +16,7 @@ from src.pic.application.use_cases.admin_write import (
     ListUsersUseCase,
     UpsertUserUseCase,
 )
+from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
 from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
 from src.pic.application.use_cases.get_debug_participant import (
     GetDebugParticipantUseCase,
@@ -84,6 +85,10 @@ def get_filter_vocabulary_use_case() -> GetFilterVocabularyUseCase:
 
 def get_dashboard_use_case() -> GetDashboardUseCase:
     return GetDashboardUseCase(repository=get_dashboard_repo())
+
+
+def get_export_participants_use_case() -> ExportParticipantsUseCase:
+    return ExportParticipantsUseCase(repository=get_participant_repo())
 
 
 def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:

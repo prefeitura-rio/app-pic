@@ -320,7 +320,7 @@ export const apiService = {
     filters: ParticipantFilters = {}
   ): Promise<Response> {
     const params = buildFilterParams(filters);
-    const url = `${BASE_URL}/api/v1/participants/export?${params.toString()}`;
+    const url = `${BASE_URL}/api/v2/participants/export?${params.toString()}`;
 
     const response = await fetch(url, { cache: "no-store" });
 
