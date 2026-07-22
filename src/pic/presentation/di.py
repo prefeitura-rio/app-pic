@@ -1,5 +1,7 @@
 from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
+from src.pic.application.ports.debug_repository import IDebugRepository
+from src.pic.application.ports.geospatial_repository import IGeospatialRepository
 from src.pic.application.ports.participant_repository import IParticipantRepository
 from src.pic.application.use_cases.admin_batch import (
     BatchImportUsersUseCase,
@@ -15,8 +17,17 @@ from src.pic.application.use_cases.admin_write import (
     UpsertUserUseCase,
 )
 from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
+from src.pic.application.use_cases.get_debug_participant import (
+    GetDebugParticipantUseCase,
+)
 from src.pic.application.use_cases.get_filter_vocabulary import (
     GetFilterVocabularyUseCase,
+)
+from src.pic.application.use_cases.get_geospatial_filter_vocabulary import (
+    GetGeospatialFilterVocabularyUseCase,
+)
+from src.pic.application.use_cases.get_geospatial_layers import (
+    GetGeospatialLayersUseCase,
 )
 from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
@@ -27,6 +38,12 @@ from src.pic.infrastructure.repositories.bigquery_admin import (
 )
 from src.pic.infrastructure.repositories.bigquery_dashboard import (
     BigQueryDashboardRepository,
+)
+from src.pic.infrastructure.repositories.bigquery_debug import (
+    BigQueryDebugRepository,
+)
+from src.pic.infrastructure.repositories.bigquery_geospatial import (
+    BigQueryGeospatialRepository,
 )
 from src.pic.infrastructure.repositories.bigquery_participant import (
     BigQueryParticipantRepository,
@@ -45,6 +62,14 @@ def get_admin_repo() -> IAdminRepository:
     return BigQueryAdminRepository()
 
 
+def get_geospatial_repo() -> IGeospatialRepository:
+    return BigQueryGeospatialRepository()
+
+
+def get_debug_repo() -> IDebugRepository:
+    return BigQueryDebugRepository()
+
+
 def get_list_participants_use_case() -> ListParticipantsUseCase:
     return ListParticipantsUseCase(repository=get_participant_repo())
 
@@ -59,6 +84,18 @@ def get_filter_vocabulary_use_case() -> GetFilterVocabularyUseCase:
 
 def get_dashboard_use_case() -> GetDashboardUseCase:
     return GetDashboardUseCase(repository=get_dashboard_repo())
+
+
+def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:
+    return GetGeospatialLayersUseCase(repository=get_geospatial_repo())
+
+
+def get_geospatial_filter_vocabulary_use_case() -> GetGeospatialFilterVocabularyUseCase:
+    return GetGeospatialFilterVocabularyUseCase(repository=get_geospatial_repo())
+
+
+def get_debug_participant_use_case() -> GetDebugParticipantUseCase:
+    return GetDebugParticipantUseCase(repository=get_debug_repo())
 
 
 def get_current_user_use_case() -> GetCurrentUserUseCase:

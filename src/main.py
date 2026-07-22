@@ -13,7 +13,9 @@ from src.core.middlewares.logging import LoggingMiddleware
 from src.core.middlewares.static_cache import NoCacheStaticFilesMiddleware
 from src.pic.presentation.v2.admin import router as v2_admin_router
 from src.pic.presentation.v2.dashboard import router as v2_dashboard_router
+from src.pic.presentation.v2.debug import router as v2_debug_router
 from src.pic.presentation.v2.filters import router as v2_filters_router
+from src.pic.presentation.v2.geospatial import router as v2_geospatial_router
 from src.pic.presentation.v2.participants import router as v2_participants_router
 from src.utils.log import logger
 
@@ -124,3 +126,5 @@ app.include_router(v2_participants_router, prefix="/api/v2")
 app.include_router(v2_filters_router, prefix="/api/v2")
 app.include_router(v2_dashboard_router, prefix="/api/v2")
 app.include_router(v2_admin_router, prefix="/api/v2")
+app.include_router(v2_geospatial_router, prefix="/api/v2")
+app.include_router(v2_debug_router, prefix="/api/v2")

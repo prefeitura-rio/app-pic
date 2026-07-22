@@ -46,6 +46,7 @@ import type {
 	ParticipanteListItem,
 	ParticipantFilters,
 	SmartFilterOptions,
+	GeospatialFilterOptions,
 	SortOrder,
 } from "../types";
 import { FilterCard } from "./FilterCard";
@@ -268,7 +269,7 @@ interface ProfessionalTabProps {
 	geospatialLayers?: GeospatialLayer[];
 	geospatialLoading?: boolean;
 	geospatialFilters?: ParticipantFilters;
-	geospatialAvailableFilters?: SmartFilterOptions;
+	geospatialAvailableFilters?: GeospatialFilterOptions;
 	onGeospatialFilterChange?: (filters: ParticipantFilters) => void;
 }
 

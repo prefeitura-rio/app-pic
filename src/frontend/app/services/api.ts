@@ -15,6 +15,8 @@ import {
   BatchPermissionsRequest,
   BatchPermissionsResult,
   GeospatialLayer,
+  GeospatialLayersResponse,
+  GeospatialFilterVocabularyResponse,
 } from "../types";
 import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
@@ -500,7 +502,7 @@ export const apiService = {
       params.append("bypass_cache", "true");
     }
 
-    const url = `${BASE_URL}/api/v1/debug/participants?${params.toString()}`;
+    const url = `${BASE_URL}/api/v2/debug/participants?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -522,18 +524,31 @@ export const apiService = {
   async getGeospatialLayers(
     filters: Partial<ParticipantFilters> = {},
     bypassCache: boolean = false
-  ): Promise<PaginatedResponse<GeospatialLayer>> {
+  ): Promise<GeospatialLayersResponse> {
     const params = buildFilterParams(filters);
     if (bypassCache) {
       params.append("bypass_cache", "true");
     }
 
-    const url = `${BASE_URL}/api/v1/geospatial/layers?${params.toString()}`;
+    const url = `${BASE_URL}/api/v2/geospatial/layers?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<PaginatedResponse<GeospatialLayer>>(res, fetchFn);
+    return handleResponse<GeospatialLayersResponse>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Vocabulario de filtros geoespaciais
+   * Chamado 1 vez, staleTime 30min.
+   */
+  async getGeospatialFilterVocabulary(): Promise<GeospatialFilterVocabularyResponse> {
+    const url = `${BASE_URL}/api/v2/geospatial/filters`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<GeospatialFilterVocabularyResponse>(res, fetchFn);
   },
 
 };
