@@ -159,11 +159,6 @@ class GeospatialPaginatedResponse(BaseModel, Generic[T]):
 # Shared / Nested Models
 
 
-class DistribuicaoMotivoSaida(BaseModel):
-    motivo: Optional[str] = None
-    total: Optional[int] = None
-
-
 class DistribuicaoGrupo(BaseModel):
     grupo: Optional[str] = None
     total_participantes: Optional[int] = None
@@ -174,144 +169,16 @@ class DistribuicaoBairro(BaseModel):
     total_participantes: Optional[int] = None
 
 
-class DistribuicaoSafra(BaseModel):
-    safra: Optional[str] = None  # Changed to str to match DataFrame output usually
-    total_participantes: Optional[int] = None
-    total_ativos: Optional[int] = None
-    total_inativos: Optional[int] = None
-
-
-class ResultadoProgramaPoint(BaseModel):
-    """
-    Ponto de evolução temporal do programa por dimensão.
-    Usado no gráfico de linha "Resultado do Programa".
-    """
-
-    mes: str  # "2025-12", "2025-11", etc.
-    mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
-    todos: float = 0.0  # % completude geral (todos protocolos)
-    saude: float = 0.0  # % completude SMS
-    educacao: float = 0.0  # % completude SME
-    assistencia: float = 0.0  # % completude SMAS
-
-
-class DistribuicaoTempoIrregularidade(BaseModel):
-    """
-    Distribuição de participantes por faixa de tempo de irregularidade.
-    Usado no histograma "Distribuição por Tempo de Irregularidade".
-    """
-
-    faixa: str  # "0-30", "31-60", "61-90", "90+"
-    faixa_label: str = ""  # "0-30 dias", "31-60 dias", etc.
-    count: int = 0  # Quantidade de participantes na faixa
-    percentual: float = 0.0  # Percentual do total
-
-
-class TempoMedioIrregularidade(BaseModel):
-    """
-    Tempo médio de irregularidade por secretaria.
-    Usado nos cards de tempo médio.
-    """
-
-    secretaria: str  # "geral", "smas", "sme", "sms"
-    secretaria_label: str = ""  # "Geral", "Assistência Social", "Educação", "Saúde"
-    tempo_medio_dias: float = 0.0  # Tempo médio em dias
-    total_irregulares: int = 0  # Quantidade de participantes irregulares
-
-
-class TaxaResolucaoMensalPoint(BaseModel):
-    """
-    Ponto de taxa de resolução mensal por secretaria.
-    Usado no gráfico de linha "Taxa de Resolução Mensal".
-    """
-
-    mes: str  # "2025-12", "2025-11", etc.
-    mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
-    todos: float = 0.0  # % resolução geral
-    saude: float = 0.0  # % resolução SMS
-    educacao: float = 0.0  # % resolução SME
-    assistencia: float = 0.0  # % resolução SMAS
-
-
-# ========================================================================
-# DASHBOARD - Cards de Indicadores por Protocolo
-# ========================================================================
-
-
-class ProtocoloIndicador(BaseModel):
-    """
-    Card de indicador individual de um protocolo.
-    Calculado a partir de `valor_mais_recente` do BigQuery.
-    """
-
-    protocolo_id: str  # "sms_vacinacao_pentavalente"
-    protocolo_descricao: str  # "Vacinação Pentavalente"
-    protocolo_secretaria: str  # "SMS", "SME", "SMAS"
-    numerador: int = 0  # Quantos estão regulares
-    denominador: int = 0  # Total aplicável
-    percentual_regular: float = 0.0  # (numerador/denominador) * 100
-    percentual_irregular: float = 0.0  # 100 - percentual_regular
-
-
-# Endpoint Models
-
-
-class Dashboard(BaseModel):
-    """
-    Modelo principal do Dashboard.
-    Todos os valores são calculados no backend e prontos para exibição no frontend.
-    """
-
-    # =========================================================================
-    # SEÇÃO 1: INDICADORES PRINCIPAIS (3 cards)
-    # Fonte: indicador_participantes_percentual_regular/irregular
-    # =========================================================================
-    total_participantes: int = 0  # Total de participantes (denominador)
-    total_regulares: int = 0  # Participantes com TODOS protocolos regulares
-    total_irregulares: int = 0  # Participantes com ALGUM protocolo irregular
-    percentual_regular: float = 0.0  # (total_regulares / total_participantes) * 100
-    percentual_irregular: float = 0.0  # (total_irregulares / total_participantes) * 100
-
-    # =========================================================================
-    # SEÇÃO 2: INDICADORES POR PROTOCOLO (cards individuais)
-    # Fonte: indicador_protocolos_percentual_regular[].valor_mais_recente
-    # =========================================================================
-    protocolos: List[ProtocoloIndicador] = []
-
-    # =========================================================================
-    # SEÇÃO 3: RESULTADO DO PROGRAMA (gráfico de linha evolução temporal)
-    # Fonte: indicador_protocolos_percentual_regular[].valores_mensais
-    # Agrupa por mês e por secretaria (SMAS, SME, SMS)
-    # =========================================================================
-    resultado_programa: List[ResultadoProgramaPoint] = []
-
-    # =========================================================================
-    # SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA (gráfico de barras)
-    # =========================================================================
-    distribuicao_por_safra: List[DistribuicaoSafra] = []
-
-    # =========================================================================
-    # SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza)
-    # =========================================================================
-    distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
-
-    # =========================================================================
-    # SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma)
-    # Fonte: indicador_tempo_irregular
-    # =========================================================================
-    tempo_medio_irregularidade: List["TempoMedioIrregularidade"] = []
-    distribuicao_tempo_irregularidade: List["DistribuicaoTempoIrregularidade"] = []
-
-    # =========================================================================
-    # SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)
-    # Fonte: serie_resolucao_alertas_percentual
-    # =========================================================================
-    taxa_resolucao_mensal: List["TaxaResolucaoMensalPoint"] = []
-
-    # =========================================================================
-    # METADADOS
-    # =========================================================================
-    data_atualizacao: Optional[datetime] = None
+from src.pic.domain.models.dashboard import (  # noqa: E402, F401
+    Dashboard,
+    DistribuicaoMotivoSaida,
+    DistribuicaoSafra,
+    DistribuicaoTempoIrregularidade,
+    ProtocoloIndicador,
+    ResultadoProgramaPoint,
+    TaxaResolucaoMensalPoint,
+    TempoMedioIrregularidade,
+)
 
 
 class FiltroRegional(BaseModel):
