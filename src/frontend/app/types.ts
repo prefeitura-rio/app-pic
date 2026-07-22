@@ -149,7 +149,7 @@ export interface Participante {
 	cpf_particao?: number;
 }
 
-/** V2 listagem enxuta — 13 campos, sem protocolo_listagem */
+/** V2 listagem enxuta — 14 campos, sem protocolo_listagem */
 export interface ParticipanteListItem {
 	id_familia?: string;
 	id_membro_familia?: string;
@@ -164,6 +164,7 @@ export interface ParticipanteListItem {
 	assistencia_fracao?: string;
 	educacao_fracao?: string;
 	saude_fracao?: string;
+	total_protocolos_irregular?: number;
 }
 
 /** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */

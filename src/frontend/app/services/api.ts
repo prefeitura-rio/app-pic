@@ -355,7 +355,7 @@ export const apiService = {
    * @returns Available IDs grouped by type
    */
   async getCurrentUser(): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v1/admin/me`;
+    const url = `${BASE_URL}/api/v2/admin/me`;
 
     const fetchFn = () => fetch(url);
     const res = await fetchFn();
@@ -364,7 +364,7 @@ export const apiService = {
   },
 
   async getAvailableIds(): Promise<AvailableIds> {
-    const url = `${BASE_URL}/api/v1/admin/available-ids`;
+    const url = `${BASE_URL}/api/v2/admin/available-ids`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -405,7 +405,7 @@ export const apiService = {
       params.append("search", search);
     }
 
-    const url = `${BASE_URL}/api/v1/admin/users?${params.toString()}`;
+    const url = `${BASE_URL}/api/v2/admin/users?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -428,7 +428,7 @@ export const apiService = {
     cpf: string,
     userData: Omit<CreateUserRequest, "cpf">
   ): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+    const url = `${BASE_URL}/api/v2/admin/users/${cpf}`;
 
     const fetchFn = () =>
       fetch(url, {
@@ -452,7 +452,7 @@ export const apiService = {
    * @param cpf - User CPF
    */
   async deleteUser(cpf: string): Promise<void> {
-    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+    const url = `${BASE_URL}/api/v2/admin/users/${cpf}`;
 
     const fetchFn = () =>
       fetch(url, {
@@ -481,7 +481,7 @@ export const apiService = {
    * @returns Batch import result with list of processed users
    */
   async batchImportUsers(file: File): Promise<BatchImportResult> {
-    const url = `${BASE_URL}/api/v1/admin/users-batch`;
+    const url = `${BASE_URL}/api/v2/admin/users-batch`;
 
     const formData = new FormData();
     formData.append("file", file);
@@ -507,7 +507,7 @@ export const apiService = {
   async batchUpdatePermissions(
     request: BatchPermissionsRequest
   ): Promise<BatchPermissionsResult> {
-    const url = `${BASE_URL}/api/v1/admin/users-batch/permissions`;
+    const url = `${BASE_URL}/api/v2/admin/users-batch/permissions`;
 
     const fetchFn = () =>
       fetch(url, {
