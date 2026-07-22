@@ -262,3 +262,45 @@ class BigQueryParticipantRepository(IParticipantRepository):
         )
 
         return FilterVocabulary.model_validate(smart_filters.model_dump())
+
+    async def export_dataframe(
+        self,
+        filters: FilterCriteria,
+        sort: SortParams,
+        permissions: Any = None,
+        bypass_cache: bool = False,
+    ) -> pl.DataFrame:
+        filters_dict = filters.model_dump(exclude_none=True)
+
+        search_term = filters_dict.pop("search", None)
+
+        column_filters: dict[str, Any] = {}
+        for key, value in filters_dict.items():
+            if key in FILTER_COLUMN_MAP:
+                column_name = FILTER_COLUMN_MAP[key]
+                if isinstance(value, str) and "|" in value:
+                    value = [v.strip() for v in value.split("|") if v.strip()]
+                column_filters[column_name] = value
+
+        sort_column = None
+        sort_descending = False
+        if sort.sort_by and sort.sort_by in SORTABLE_COLUMNS:
+            sort_column = SORTABLE_COLUMNS[sort.sort_by]
+            sort_descending = sort.sort_order == "desc"
+
+        df, meta, _ = await DataManager.fetch_filter_paginate(
+            query=PARTICIPANTS_TABLE_QUERY,
+            filters_dict=column_filters,
+            page=1,
+            page_size=-1,
+            filter_columns_config={},
+            search_term=search_term,
+            search_columns=SEARCH_COLUMNS if search_term else None,
+            user_permissions=permissions,
+            bypass_cache=bypass_cache,
+            sort_by=sort_column,
+            sort_descending=sort_descending,
+        )
+
+        logger.info(f"Export dataset: {len(df)} rows")
+        return df
