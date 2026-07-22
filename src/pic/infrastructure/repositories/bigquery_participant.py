@@ -50,6 +50,7 @@ SORTABLE_COLUMNS = {
     "idade": "idade",
     "status": "status",
     "total_fracao": "total_protocolos_regular",
+    "total_irregular": "total_protocolos_irregular",
     "assistencia_fracao": "assistencia_protocolos_regular",
     "educacao_fracao": "educacao_protocolos_regular",
     "saude_fracao": "saude_protocolos_regular",
@@ -144,6 +145,7 @@ class BigQueryParticipantRepository(IParticipantRepository):
             "assistencia_fracao",
             "educacao_fracao",
             "saude_fracao",
+            "total_protocolos_irregular",
         ]
 
         data: list[ParticipanteListItem] = []
