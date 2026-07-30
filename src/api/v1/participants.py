@@ -1,3 +1,5 @@
+import asyncio
+import polars as pl
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional, Union
 
@@ -5,7 +7,6 @@ from src.core.security.jwt import verify_jwt, CurrentUserPermissions
 from src.utils.log import logger
 from src.api.v1.schemas import (
     Participante,
-    ProtocoloDetalhes,
     PaginatedResponse,
     CommonFilters,
     PaginationParams,
@@ -13,7 +14,7 @@ from src.api.v1.schemas import (
 )
 from src.utils.data_manager import DataManager
 from src.utils.data_manager_config import DataManagerConfig as config
-from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
+from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY, MOTIVO_IRREGULARIDADE_QUERY
 
 router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 
@@ -177,23 +178,38 @@ async def get_participants(
 
         # Pipeline completo: fetch -> governance -> filter -> search -> sort -> filter_options -> paginate
         # Se bypass_cache=True, força query no BigQuery para garantir dados frescos
-        df_data, meta, filter_options = await DataManager.fetch_filter_paginate(
-            query=query,
-            filters_dict=column_filters,
-            page=pagination.page,
-            page_size=pagination.page_size,
-            filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
-            search_term=search_term,
-            search_columns=(
-                ["nome", "cpf", "id_membro_familia", "id_familia"]
-                if search_term
-                else None
+        # Dispara as duas queries em paralelo (participantes + protocolo_detalhes)
+        results = await asyncio.gather(
+            DataManager.fetch_filter_paginate(
+                query=query,
+                filters_dict=column_filters,
+                page=pagination.page,
+                page_size=pagination.page_size,
+                filter_columns_config=PARTICIPANT_FILTER_OPTIONS_CONFIG,
+                search_term=search_term,
+                search_columns=(
+                    ["nome", "cpf", "id_membro_familia", "id_familia"]
+                    if search_term
+                    else None
+                ),
+                user_permissions=permissions,
+                bypass_cache=bypass_cache,
+                sort_by=sort_column,
+                sort_descending=sort_descending,
             ),
-            user_permissions=permissions,  # NOVO: Pass user permissions
-            bypass_cache=bypass_cache,  # IMPORTANTE: Passa bypass_cache para forçar refresh
-            sort_by=sort_column,  # NOVO: Coluna para ordenação
-            sort_descending=sort_descending,  # NOVO: Direção da ordenação
+            DataManager.get_dataset(
+                MOTIVO_IRREGULARIDADE_QUERY,
+                bypass_cache=bypass_cache,
+            ),
+            return_exceptions=True,
         )
+
+        participants_result, motivos_result = results
+
+        if isinstance(participants_result, Exception):
+            raise participants_result
+
+        df_data, meta, filter_options = participants_result
 
         # Dropar colunas sensíveis (latitude/longitude) se não for super admin
         if not permissions.is_super_admin:
@@ -210,6 +226,33 @@ async def get_participants(
         json_start = time.perf_counter()
         data_json = DataManager.df_to_json(df_data)
         json_time = time.perf_counter() - json_start
+
+        if isinstance(motivos_result, Exception):
+            logger.warning(
+                f"⚠️ Failed to fetch protocolo_detalhes, proceeding without irregularity reasons: {motivos_result}"
+            )
+        else:
+            df_motivos, _, _ = motivos_result
+
+            cpfs_pagina = [p["cpf"] for p in data_json if p.get("cpf")]
+            if cpfs_pagina:
+                df_lookup = (
+                    df_motivos
+                    .select(["cpf", "protocolo_id", "protocolo_motivo"])
+                    .filter(pl.col("cpf").is_in(cpfs_pagina))
+                )
+
+                lookup = {}
+                for row in df_lookup.iter_rows(named=True):
+                    lookup[(row["cpf"], row["protocolo_id"])] = row["protocolo_motivo"]
+
+                for participant in data_json:
+                    cpf = participant.get("cpf")
+                    for protocolo in (participant.get("protocolo_listagem") or []):
+                        if protocolo.get("irregular_indicador"):
+                            protocolo["protocolo_motivo"] = lookup.get(
+                                (cpf, protocolo.get("id")), None
+                            )
 
         response_start = time.perf_counter()
         response = PaginatedResponse(
