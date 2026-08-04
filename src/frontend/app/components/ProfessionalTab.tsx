@@ -40,13 +40,13 @@ import {
 	TooltipTrigger,
 } from "@/app/components/ui/tooltip";
 import type {
+	GeospatialFilterOptions,
 	GeospatialLayer,
 	PaginationMeta,
 	Participante,
 	ParticipanteListItem,
 	ParticipantFilters,
 	SmartFilterOptions,
-	GeospatialFilterOptions,
 	SortOrder,
 } from "../types";
 import { FilterCard } from "./FilterCard";
@@ -300,7 +300,6 @@ const ProfessionalTabComponent = ({
 	geospatialAvailableFilters,
 	onGeospatialFilterChange,
 }: ProfessionalTabProps) => {
-
 	// Handler para clique no header de ordenação
 	const handleSort = useCallback(
 		(column: string) => {
@@ -512,404 +511,273 @@ const ProfessionalTabComponent = ({
 						</div>
 					) : selectedParticipant ? (
 						<div className="space-y-6 mt-4">
-								{/* Informações Básicas */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3 text-foreground">
-										Informações Básicas
-									</h3>
-									<div className="space-y-4">
-										{/* ── Seção 1: Identificação ── */}
-										<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
-											<div>
-												<p className="text-sm text-muted-foreground">Nome</p>
-												<p className="font-medium">
-													{selectedParticipant.nome || "-"}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">CPF</p>
-												<p className="font-mono font-medium">
-													{selectedParticipant.cpf || "-"}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">
-													ID Família (CadÚnico)
-												</p>
-												<p className="font-mono font-medium">
-													{selectedParticipant.id_familia || "-"}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">
-													ID Membro Família (CadÚnico)
-												</p>
-												<p className="font-mono font-medium">
-													{selectedParticipant.id_membro_familia || "-"}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">Grupo</p>
-												<p className="font-medium">
-													{renderGrupoCompleto(selectedParticipant.grupo)}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">Idade</p>
-												<p className="font-medium">
-													{selectedParticipant.idade != null &&
-													selectedParticipant.nascimento_data
-														? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
-														: selectedParticipant.idade != null
-															? `${selectedParticipant.idade} anos`
-															: "-"}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">
-													Idade em 31/03/{new Date().getFullYear()}
-												</p>
-												<p className="font-medium">
-													{selectedParticipant.nascimento_data
-														? (() => {
-																const dataReferencia = new Date(
-																	new Date().getFullYear(),
-																	2,
-																	31,
-																);
-																const { anos, meses, dias } =
-																	calcularIdadeDetalhada(
-																		selectedParticipant.nascimento_data,
-																		dataReferencia,
-																	);
-																return formatarIdadeDetalhada(
-																	anos,
-																	meses,
-																	dias,
-																);
-															})()
+							{/* Informações Básicas */}
+							<div>
+								<h3 className="text-lg font-semibold mb-3 text-foreground">
+									Informações Básicas
+								</h3>
+								<div className="space-y-4">
+									{/* ── Seção 1: Identificação ── */}
+									<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+										<div>
+											<p className="text-sm text-muted-foreground">Nome</p>
+											<p className="font-medium">
+												{selectedParticipant.nome || "-"}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">CPF</p>
+											<p className="font-mono font-medium">
+												{selectedParticipant.cpf || "-"}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">
+												ID Família (CadÚnico)
+											</p>
+											<p className="font-mono font-medium">
+												{selectedParticipant.id_familia || "-"}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">
+												ID Membro Família (CadÚnico)
+											</p>
+											<p className="font-mono font-medium">
+												{selectedParticipant.id_membro_familia || "-"}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">Grupo</p>
+											<p className="font-medium">
+												{renderGrupoCompleto(selectedParticipant.grupo)}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">Idade</p>
+											<p className="font-medium">
+												{selectedParticipant.idade != null &&
+												selectedParticipant.nascimento_data
+													? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
+													: selectedParticipant.idade != null
+														? `${selectedParticipant.idade} anos`
 														: "-"}
-												</p>
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">
+												Idade em 31/03/{new Date().getFullYear()}
+											</p>
+											<p className="font-medium">
+												{selectedParticipant.nascimento_data
+													? (() => {
+															const dataReferencia = new Date(
+																new Date().getFullYear(),
+																2,
+																31,
+															);
+															const { anos, meses, dias } =
+																calcularIdadeDetalhada(
+																	selectedParticipant.nascimento_data,
+																	dataReferencia,
+																);
+															return formatarIdadeDetalhada(anos, meses, dias);
+														})()
+													: "-"}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">
+												Perfil Racial Declarado
+											</p>
+											<p className="font-medium">
+												{selectedParticipant.raca
+													? selectedParticipant.raca.charAt(0).toUpperCase() +
+														selectedParticipant.raca.slice(1).toLowerCase()
+													: "NÃO DECLARADO"}
+											</p>
+										</div>
+									</div>
+
+									{/* ── Seção 2: Localização & Contato ── */}
+									<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+										{/* Endereço SMAS */}
+										<div className="space-y-1">
+											<p className="text-sm text-muted-foreground">
+												Endereço SMAS
+											</p>
+											<div>
+												<span className="text-xs text-muted-foreground">
+													Endereço:{" "}
+												</span>
+												<span className="font-medium">
+													{[
+														selectedParticipant.endereco,
+														selectedParticipant.complemento,
+													]
+														.filter(Boolean)
+														.join(", ") || "-"}
+												</span>
+											</div>
+											<div>
+												<span className="text-xs text-muted-foreground">
+													Bairro:{" "}
+												</span>
+												<span className="font-medium uppercase">
+													{selectedParticipant.bairro || "-"}
+												</span>
 											</div>
 										</div>
 
-										{/* ── Seção 2: Localização & Contato ── */}
-										<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
-											{/* Endereço SMAS */}
-											<div className="space-y-1">
-												<p className="text-sm text-muted-foreground">
-													Endereço SMAS
-												</p>
+										{/* Endereço SMS */}
+										<div className="space-y-1">
+											<p className="text-sm text-muted-foreground">
+												Endereço SMS
+											</p>
+											<div>
+												<span className="text-xs text-muted-foreground">
+													Endereço:{" "}
+												</span>
+												<span className="font-medium">
+													{[
+														selectedParticipant.endereco_sms?.endereco,
+														selectedParticipant.endereco_sms?.complemento,
+													]
+														.filter(Boolean)
+														.join(", ") || "-"}
+												</span>
+											</div>
+											<div>
+												<span className="text-xs text-muted-foreground">
+													Bairro:{" "}
+												</span>
+												<span className="font-medium uppercase">
+													{selectedParticipant.endereco_sms?.bairro || "-"}
+												</span>
+											</div>
+										</div>
+
+										{/* Contato */}
+										<div className="space-y-1">
+											<p className="text-sm text-muted-foreground">Contato</p>
+											{selectedParticipant.telefone_1_ddd &&
+											selectedParticipant.telefone_1_numero ? (
 												<div>
 													<span className="text-xs text-muted-foreground">
-														Endereço:{" "}
+														Principal:{" "}
 													</span>
 													<span className="font-medium">
-														{[
-															selectedParticipant.endereco,
-															selectedParticipant.complemento,
-														]
-															.filter(Boolean)
-															.join(", ") || "-"}
+														({selectedParticipant.telefone_1_ddd}){" "}
+														{selectedParticipant.telefone_1_numero.replace(
+															/\D/g,
+															"",
+														).length === 9
+															? selectedParticipant.telefone_1_numero
+																	.replace(/\D/g, "")
+																	.replace(/(\d{5})(\d{4})/, "$1-$2")
+															: selectedParticipant.telefone_1_numero
+																	.replace(/\D/g, "")
+																	.replace(/(\d{4})(\d{4})/, "$1-$2")}
 													</span>
 												</div>
-												<div>
-													<span className="text-xs text-muted-foreground">
-														Bairro:{" "}
-													</span>
-													<span className="font-medium uppercase">
-														{selectedParticipant.bairro || "-"}
-													</span>
-												</div>
-											</div>
-
-											{/* Endereço SMS */}
-											<div className="space-y-1">
-												<p className="text-sm text-muted-foreground">
-													Endereço SMS
-												</p>
-												<div>
-													<span className="text-xs text-muted-foreground">
-														Endereço:{" "}
-													</span>
-													<span className="font-medium">
-														{[
-															selectedParticipant.endereco_sms?.endereco,
-															selectedParticipant.endereco_sms?.complemento,
-														]
-															.filter(Boolean)
-															.join(", ") || "-"}
-													</span>
-												</div>
-												<div>
-													<span className="text-xs text-muted-foreground">
-														Bairro:{" "}
-													</span>
-													<span className="font-medium uppercase">
-														{selectedParticipant.endereco_sms?.bairro || "-"}
-													</span>
-												</div>
-											</div>
-
-											{/* Contato */}
-											<div className="space-y-1">
-												<p className="text-sm text-muted-foreground">Contato</p>
-												{selectedParticipant.telefone_1_ddd &&
-												selectedParticipant.telefone_1_numero ? (
+											) : (
+												<p className="font-medium">-</p>
+											)}
+											{selectedParticipant.telefone_2_ddd &&
+												selectedParticipant.telefone_2_numero && (
 													<div>
 														<span className="text-xs text-muted-foreground">
-															Principal:{" "}
+															Alternativo:{" "}
 														</span>
 														<span className="font-medium">
-															({selectedParticipant.telefone_1_ddd}){" "}
-															{selectedParticipant.telefone_1_numero.replace(
+															({selectedParticipant.telefone_2_ddd}){" "}
+															{selectedParticipant.telefone_2_numero.replace(
 																/\D/g,
 																"",
 															).length === 9
-																? selectedParticipant.telefone_1_numero
+																? selectedParticipant.telefone_2_numero
 																		.replace(/\D/g, "")
 																		.replace(/(\d{5})(\d{4})/, "$1-$2")
-																: selectedParticipant.telefone_1_numero
+																: selectedParticipant.telefone_2_numero
 																		.replace(/\D/g, "")
 																		.replace(/(\d{4})(\d{4})/, "$1-$2")}
 														</span>
 													</div>
-												) : (
-													<p className="font-medium">-</p>
 												)}
-												{selectedParticipant.telefone_2_ddd &&
-													selectedParticipant.telefone_2_numero && (
-														<div>
-															<span className="text-xs text-muted-foreground">
-																Alternativo:{" "}
-															</span>
-															<span className="font-medium">
-																({selectedParticipant.telefone_2_ddd}){" "}
-																{selectedParticipant.telefone_2_numero.replace(
-																	/\D/g,
-																	"",
-																).length === 9
-																	? selectedParticipant.telefone_2_numero
-																			.replace(/\D/g, "")
-																			.replace(/(\d{5})(\d{4})/, "$1-$2")
-																	: selectedParticipant.telefone_2_numero
-																			.replace(/\D/g, "")
-																			.replace(/(\d{4})(\d{4})/, "$1-$2")}
-															</span>
-														</div>
-													)}
-											</div>
 										</div>
+									</div>
 
-										{/* ── Seção 3: Equipamentos ── */}
-										<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
-											{/* Equipamentos Públicos - Educação (SME) */}
-											<EquipamentoField
-												label="CRE"
-												value={selectedParticipant.nome_cre}
-												source={selectedParticipant.source_escola}
-												secretaria="SME"
-											/>
+									{/* ── Seção 3: Equipamentos ── */}
+									<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+										{/* Equipamentos Públicos - Educação (SME) */}
+										<EquipamentoField
+											label="CRE"
+											value={selectedParticipant.nome_cre}
+											source={selectedParticipant.source_escola}
+											secretaria="SME"
+										/>
 
-											{/* Escola mostra "-" se for inferida (source == "geo") */}
-											<EquipamentoField
-												label="Escola"
-												value={
-													selectedParticipant.source_escola === "geo"
-														? null
-														: selectedParticipant.nome_escola
-												}
-												source={
-													selectedParticipant.source_escola === "geo"
-														? undefined
-														: selectedParticipant.source_escola
-												}
-												secretaria="SME"
-											/>
+										{/* Escola mostra "-" se for inferida (source == "geo") */}
+										<EquipamentoField
+											label="Escola"
+											value={
+												selectedParticipant.source_escola === "geo"
+													? null
+													: selectedParticipant.nome_escola
+											}
+											source={
+												selectedParticipant.source_escola === "geo"
+													? undefined
+													: selectedParticipant.source_escola
+											}
+											secretaria="SME"
+										/>
 
-											{/* Equipamentos Públicos - Assistência Social (SMAS) */}
-											<EquipamentoField
-												label="CAS"
-												value={selectedParticipant.nome_cas}
-												source={selectedParticipant.source_cras}
-												secretaria="SMAS"
-											/>
+										{/* Equipamentos Públicos - Assistência Social (SMAS) */}
+										<EquipamentoField
+											label="CAS"
+											value={selectedParticipant.nome_cas}
+											source={selectedParticipant.source_cras}
+											secretaria="SMAS"
+										/>
 
-											<EquipamentoField
-												label="CRAS"
-												value={selectedParticipant.nome_cras}
-												source={selectedParticipant.source_cras}
-												secretaria="SMAS"
-											/>
+										<EquipamentoField
+											label="CRAS"
+											value={selectedParticipant.nome_cras}
+											source={selectedParticipant.source_cras}
+											secretaria="SMAS"
+										/>
 
-											{/* Equipamentos Públicos - Saúde (SMS) */}
-											<EquipamentoField
-												label="Clínica da Família"
-												value={selectedParticipant.nome_clinica_familia}
-												source={selectedParticipant.source_clinica_familia}
-												secretaria="SMS"
-											/>
+										{/* Equipamentos Públicos - Saúde (SMS) */}
+										<EquipamentoField
+											label="Clínica da Família"
+											value={selectedParticipant.nome_clinica_familia}
+											source={selectedParticipant.source_clinica_familia}
+											secretaria="SMS"
+										/>
 
-											<EquipamentoField
-												label="Equipe da Família"
-												value={selectedParticipant.nome_equipe_familia}
-												source={selectedParticipant.source_equipe_familia}
-												isEquipeSaude={true}
-												secretaria="SMS"
-											/>
-											{(() => {
-												const equipeMedicos =
-													selectedParticipant.equipe_familia;
-												const sourceEquipe =
-													selectedParticipant.source_equipe_familia;
+										<EquipamentoField
+											label="Equipe da Família"
+											value={selectedParticipant.nome_equipe_familia}
+											source={selectedParticipant.source_equipe_familia}
+											isEquipeSaude={true}
+											secretaria="SMS"
+										/>
+										{(() => {
+											const equipeMedicos = selectedParticipant.equipe_familia;
+											const sourceEquipe =
+												selectedParticipant.source_equipe_familia;
 
-												const hasValidEquipe =
-													equipeMedicos &&
-													equipeMedicos !== "SEM VÍNCULO" &&
-													equipeMedicos !== "0";
+											const hasValidEquipe =
+												equipeMedicos &&
+												equipeMedicos !== "SEM VÍNCULO" &&
+												equipeMedicos !== "0";
 
-												if (!hasValidEquipe) {
-													// Componente para exibir badge mesmo sem equipe válida
-													const EmptyEquipeBadge = () => {
-														// source === "geo" + SEM VÍNCULO = sem cobertura na região
-														if (sourceEquipe === "geo") {
-															return (
-																<TooltipProvider>
-																	<Tooltip>
-																		<TooltipTrigger asChild>
-																			<div className="inline-flex items-center justify-center cursor-help">
-																				<AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-																			</div>
-																		</TooltipTrigger>
-																		<TooltipContent>
-																			<p className="text-xs font-medium max-w-xs">
-																				Sem cobertura de equipamento na região
-																			</p>
-																		</TooltipContent>
-																	</Tooltip>
-																</TooltipProvider>
-															);
-														}
-														// source === null = sem informação de endereço
-														if (sourceEquipe === null) {
-															return (
-																<TooltipProvider>
-																	<Tooltip>
-																		<TooltipTrigger asChild>
-																			<div className="inline-flex items-center justify-center cursor-help">
-																				<AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-																			</div>
-																		</TooltipTrigger>
-																		<TooltipContent>
-																			<p className="text-xs font-medium max-w-xs">
-																				Sem informação de endereço
-																			</p>
-																		</TooltipContent>
-																	</Tooltip>
-																</TooltipProvider>
-															);
-														}
-														return null;
-													};
-
-													return (
-														<>
-															<div>
-																<div className="flex items-center gap-1.5 mb-1">
-																	<p className="text-sm text-muted-foreground">
-																		Médicos
-																	</p>
-																	<EmptyEquipeBadge />
-																</div>
-																<p className="font-medium">-</p>
-															</div>
-															<div>
-																<div className="flex items-center gap-1.5 mb-1">
-																	<p className="text-sm text-muted-foreground">
-																		Enfermeiros
-																	</p>
-																	<EmptyEquipeBadge />
-																</div>
-																<p className="font-medium">-</p>
-															</div>
-														</>
-													);
-												}
-
-												// Parse da string: "MEDICOS:\nNome1\nNome2\n\nENFERMEIROS:\nNome3\nNome4"
-												const lines = equipeMedicos
-													.split("\n")
-													.map((l) => l.trim())
-													.filter((l) => l);
-												const medicos: string[] = [];
-												const enfermeiros: string[] = [];
-												let currentSection = "";
-
-												for (const line of lines) {
-													if (
-														line.startsWith("MEDICOS:") ||
-														line === "MEDICOS"
-													) {
-														currentSection = "medicos";
-													} else if (
-														line.startsWith("ENFERMEIROS:") ||
-														line === "ENFERMEIROS"
-													) {
-														currentSection = "enfermeiros";
-													} else if (
-														line !== "SEM MÉDICOS" &&
-														line !== "SEM ENFERMEIROS"
-													) {
-														if (currentSection === "medicos") {
-															medicos.push(line);
-														} else if (currentSection === "enfermeiros") {
-															enfermeiros.push(line);
-														}
-													}
-												}
-
-												// Componente Badge para equipe (usado em médicos e enfermeiros)
-												const EquipeBadge = () => {
-													if (sourceEquipe === "rmi") {
-														return (
-															<TooltipProvider>
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<div className="inline-flex items-center justify-center cursor-help">
-																			<CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-																		</div>
-																	</TooltipTrigger>
-																	<TooltipContent>
-																		<p className="text-xs font-medium">
-																			Vínculo oficial confirmado (fonte
-																			VitaCare)
-																		</p>
-																	</TooltipContent>
-																</Tooltip>
-															</TooltipProvider>
-														);
-													}
+											if (!hasValidEquipe) {
+												// Componente para exibir badge mesmo sem equipe válida
+												const EmptyEquipeBadge = () => {
+													// source === "geo" + SEM VÍNCULO = sem cobertura na região
 													if (sourceEquipe === "geo") {
-														return (
-															<TooltipProvider>
-																<Tooltip>
-																	<TooltipTrigger asChild>
-																		<div className="inline-flex items-center justify-center cursor-help">
-																			<MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-																		</div>
-																	</TooltipTrigger>
-																	<TooltipContent>
-																		<p className="text-xs font-medium max-w-xs">
-																			Sugestão baseada em geolocalização. Use
-																			esta equipe para direcionar atendimento
-																			quando o protocolo estiver violado.
-																		</p>
-																	</TooltipContent>
-																</Tooltip>
-															</TooltipProvider>
-														);
-													}
-													if (sourceEquipe === null && equipeMedicos) {
 														return (
 															<TooltipProvider>
 																<Tooltip>
@@ -920,8 +788,26 @@ const ProfessionalTabComponent = ({
 																	</TooltipTrigger>
 																	<TooltipContent>
 																		<p className="text-xs font-medium max-w-xs">
-																			Sem informação de endereço ou sem
-																			cobertura de equipamento na região
+																			Sem cobertura de equipamento na região
+																		</p>
+																	</TooltipContent>
+																</Tooltip>
+															</TooltipProvider>
+														);
+													}
+													// source === null = sem informação de endereço
+													if (sourceEquipe === null) {
+														return (
+															<TooltipProvider>
+																<Tooltip>
+																	<TooltipTrigger asChild>
+																		<div className="inline-flex items-center justify-center cursor-help">
+																			<AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+																		</div>
+																	</TooltipTrigger>
+																	<TooltipContent>
+																		<p className="text-xs font-medium max-w-xs">
+																			Sem informação de endereço
 																		</p>
 																	</TooltipContent>
 																</Tooltip>
@@ -938,311 +824,422 @@ const ProfessionalTabComponent = ({
 																<p className="text-sm text-muted-foreground">
 																	Médicos
 																</p>
-																<EquipeBadge />
+																<EmptyEquipeBadge />
 															</div>
-															{medicos.length > 0 ? (
-																<div className="space-y-0.5">
-																	{medicos.map((medico, idx) => (
-																		<p key={idx} className="font-medium">
-																			{medico}
-																		</p>
-																	))}
-																</div>
-															) : (
-																<p className="font-medium">-</p>
-															)}
+															<p className="font-medium">-</p>
 														</div>
 														<div>
 															<div className="flex items-center gap-1.5 mb-1">
 																<p className="text-sm text-muted-foreground">
 																	Enfermeiros
 																</p>
-																<EquipeBadge />
+																<EmptyEquipeBadge />
 															</div>
-															{enfermeiros.length > 0 ? (
-																<div className="space-y-0.5">
-																	{enfermeiros.map((enfermeiro, idx) => (
-																		<p key={idx} className="font-medium">
-																			{enfermeiro}
-																		</p>
-																	))}
-																</div>
-															) : (
-																<p className="font-medium">-</p>
-															)}
+															<p className="font-medium">-</p>
 														</div>
 													</>
 												);
-											})()}
-										</div>
-										{/* fim Seção 3 */}
+											}
 
-										{/* ── Seção 4: Programa ── */}
-										<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
-											<div>
-												<p className="text-sm text-muted-foreground">
-													Bolsa Família
-												</p>
-												<Badge
-													variant={
-														selectedParticipant.has_bolsa_familia === true
-															? "success"
-															: selectedParticipant.has_bolsa_familia === false
-																? "secondary"
-																: "outline"
-													}
-												>
-													{selectedParticipant.has_bolsa_familia === true
-														? "Beneficiário"
-														: selectedParticipant.has_bolsa_familia === false
-															? "Não beneficiário"
-															: "-"}
-												</Badge>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">
-													Cartão PIC
-												</p>
-												<Badge
-													variant={
-														selectedParticipant.has_cartao_pic === true
-															? "success"
-															: selectedParticipant.has_cartao_pic === false
-																? "warning"
-																: "secondary"
-													}
-												>
-													{selectedParticipant.has_cartao_pic === true
-														? "Possui cartão"
-														: selectedParticipant.has_cartao_pic === false
-															? "Tem direito, mas não retirou"
-															: "Não tem direito"}
-												</Badge>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">
-													Mês de Ingresso no Programa
-												</p>
-												<p className="font-medium">
-													{selectedParticipant.cohort || "-"}
-												</p>
-											</div>
-											<div>
-												<p className="text-sm text-muted-foreground">Status</p>
-												<Badge
-													variant={
-														selectedParticipant.status?.toLowerCase() ===
-														"ativo"
-															? "success"
-															: "destructive"
-													}
-												>
-													{selectedParticipant.status || "-"}
-												</Badge>
-											</div>
-										</div>
-										{/* fim Seção 4 */}
-									</div>
-									{/* fim space-y-4 */}
-								</div>
+											// Parse da string: "MEDICOS:\nNome1\nNome2\n\nENFERMEIROS:\nNome3\nNome4"
+											const lines = equipeMedicos
+												.split("\n")
+												.map((l) => l.trim())
+												.filter((l) => l);
+											const medicos: string[] = [];
+											const enfermeiros: string[] = [];
+											let currentSection = "";
 
-								{/* Visualização Geoespacial - Apenas Super Admin */}
-								{isSuperAdmin &&
-									selectedParticipant.latitude &&
-									selectedParticipant.longitude && (
-										<>
-											<Separator />
-											<Collapsible defaultOpen={false} className="w-full">
-												<CollapsibleTrigger asChild>
-													<Button
-														variant="ghost"
-														className="w-full justify-start p-0 hover:bg-transparent"
-													>
-														<div className="flex items-center gap-2 py-2">
-															<h3 className="text-lg font-semibold text-foreground">
-																Visualização Geoespacial
-															</h3>
-															<ChevronDown className="h-4 w-4 text-muted-foreground ml-auto transition-transform duration-200 ui-expanded:rotate-180" />
+											for (const line of lines) {
+												if (line.startsWith("MEDICOS:") || line === "MEDICOS") {
+													currentSection = "medicos";
+												} else if (
+													line.startsWith("ENFERMEIROS:") ||
+													line === "ENFERMEIROS"
+												) {
+													currentSection = "enfermeiros";
+												} else if (
+													line !== "SEM MÉDICOS" &&
+													line !== "SEM ENFERMEIROS"
+												) {
+													if (currentSection === "medicos") {
+														medicos.push(line);
+													} else if (currentSection === "enfermeiros") {
+														enfermeiros.push(line);
+													}
+												}
+											}
+
+											// Componente Badge para equipe (usado em médicos e enfermeiros)
+											const EquipeBadge = () => {
+												if (sourceEquipe === "rmi") {
+													return (
+														<TooltipProvider>
+															<Tooltip>
+																<TooltipTrigger asChild>
+																	<div className="inline-flex items-center justify-center cursor-help">
+																		<CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+																	</div>
+																</TooltipTrigger>
+																<TooltipContent>
+																	<p className="text-xs font-medium">
+																		Vínculo oficial confirmado (fonte VitaCare)
+																	</p>
+																</TooltipContent>
+															</Tooltip>
+														</TooltipProvider>
+													);
+												}
+												if (sourceEquipe === "geo") {
+													return (
+														<TooltipProvider>
+															<Tooltip>
+																<TooltipTrigger asChild>
+																	<div className="inline-flex items-center justify-center cursor-help">
+																		<MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+																	</div>
+																</TooltipTrigger>
+																<TooltipContent>
+																	<p className="text-xs font-medium max-w-xs">
+																		Sugestão baseada em geolocalização. Use esta
+																		equipe para direcionar atendimento quando o
+																		protocolo estiver violado.
+																	</p>
+																</TooltipContent>
+															</Tooltip>
+														</TooltipProvider>
+													);
+												}
+												if (sourceEquipe === null && equipeMedicos) {
+													return (
+														<TooltipProvider>
+															<Tooltip>
+																<TooltipTrigger asChild>
+																	<div className="inline-flex items-center justify-center cursor-help">
+																		<AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+																	</div>
+																</TooltipTrigger>
+																<TooltipContent>
+																	<p className="text-xs font-medium max-w-xs">
+																		Sem informação de endereço ou sem cobertura
+																		de equipamento na região
+																	</p>
+																</TooltipContent>
+															</Tooltip>
+														</TooltipProvider>
+													);
+												}
+												return null;
+											};
+
+											return (
+												<>
+													<div>
+														<div className="flex items-center gap-1.5 mb-1">
+															<p className="text-sm text-muted-foreground">
+																Médicos
+															</p>
+															<EquipeBadge />
 														</div>
-													</Button>
-												</CollapsibleTrigger>
-												<CollapsibleContent>
-													<div className="pt-4">
-														<GeospatialMapView
-															loading={geospatialLoading}
-															layers={geospatialLayers}
-															filters={geospatialFilters}
-															availableFilters={geospatialAvailableFilters}
-															onFilterChange={onGeospatialFilterChange}
-															hideHeader={true}
-															participantLocation={{
-																latitude: selectedParticipant.latitude,
-																longitude: selectedParticipant.longitude,
-																nome:
-																	selectedParticipant.nome || "Participante",
-																idade: selectedParticipant.idade,
-																grupo: selectedParticipant.grupo,
-																bairro: selectedParticipant.bairro,
-																situacao: selectedParticipant.situacao,
-																status: selectedParticipant.status,
-																nome_escola: selectedParticipant.nome_escola,
-																nome_cras: selectedParticipant.nome_cras,
-																nome_clinica_familia:
-																	selectedParticipant.nome_clinica_familia,
-																nome_equipe_familia:
-																	selectedParticipant.nome_equipe_familia,
-																equipe_familia:
-																	selectedParticipant.equipe_familia,
-															}}
-														/>
+														{medicos.length > 0 ? (
+															<div className="space-y-0.5">
+																{medicos.map((medico, idx) => (
+																	<p key={idx} className="font-medium">
+																		{medico}
+																	</p>
+																))}
+															</div>
+														) : (
+															<p className="font-medium">-</p>
+														)}
 													</div>
-												</CollapsibleContent>
-											</Collapsible>
-										</>
-									)}
+													<div>
+														<div className="flex items-center gap-1.5 mb-1">
+															<p className="text-sm text-muted-foreground">
+																Enfermeiros
+															</p>
+															<EquipeBadge />
+														</div>
+														{enfermeiros.length > 0 ? (
+															<div className="space-y-0.5">
+																{enfermeiros.map((enfermeiro, idx) => (
+																	<p key={idx} className="font-medium">
+																		{enfermeiro}
+																	</p>
+																))}
+															</div>
+														) : (
+															<p className="font-medium">-</p>
+														)}
+													</div>
+												</>
+											);
+										})()}
+									</div>
+									{/* fim Seção 3 */}
 
-								<Separator />
+									{/* ── Seção 4: Programa ── */}
+									<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+										<div>
+											<p className="text-sm text-muted-foreground">
+												Bolsa Família
+											</p>
+											<Badge
+												variant={
+													selectedParticipant.has_bolsa_familia === true
+														? "success"
+														: selectedParticipant.has_bolsa_familia === false
+															? "secondary"
+															: "outline"
+												}
+											>
+												{selectedParticipant.has_bolsa_familia === true
+													? "Beneficiário"
+													: selectedParticipant.has_bolsa_familia === false
+														? "Não beneficiário"
+														: "-"}
+											</Badge>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">
+												Cartão PIC
+											</p>
+											<Badge
+												variant={
+													selectedParticipant.has_cartao_pic === true
+														? "success"
+														: selectedParticipant.has_cartao_pic === false
+															? "warning"
+															: "secondary"
+												}
+											>
+												{selectedParticipant.has_cartao_pic === true
+													? "Possui cartão"
+													: selectedParticipant.has_cartao_pic === false
+														? "Tem direito, mas não retirou"
+														: "Não tem direito"}
+											</Badge>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">
+												Mês de Ingresso no Programa
+											</p>
+											<p className="font-medium">
+												{selectedParticipant.cohort || "-"}
+											</p>
+										</div>
+										<div>
+											<p className="text-sm text-muted-foreground">Status</p>
+											<Badge
+												variant={
+													selectedParticipant.status?.toLowerCase() === "ativo"
+														? "success"
+														: "destructive"
+												}
+											>
+												{selectedParticipant.status || "-"}
+											</Badge>
+										</div>
+									</div>
+									{/* fim Seção 4 */}
+								</div>
+								{/* fim space-y-4 */}
+							</div>
 
-								{/* Situação Geral - Simplificada */}
-								<div>
-									<h3 className="text-lg font-semibold mb-3 text-foreground">
-										Situação Geral
-									</h3>
-									<div className="bg-muted/50 p-4 rounded-lg">
-										<div className="flex items-center justify-between">
-											<div>
-												<p className="text-sm text-muted-foreground mb-1">
-													Status
-												</p>
-												<Badge
-													variant={getBadgeVariant(
-														selectedParticipant.situacao,
-													)}
-													className="text-base"
+							{/* Visualização Geoespacial - Apenas Super Admin */}
+							{isSuperAdmin &&
+								selectedParticipant.latitude &&
+								selectedParticipant.longitude && (
+									<>
+										<Separator />
+										<Collapsible defaultOpen={false} className="w-full">
+											<CollapsibleTrigger asChild>
+												<Button
+													variant="ghost"
+													className="w-full justify-start p-0 hover:bg-transparent"
 												>
-													{selectedParticipant.situacao || "-"}
-												</Badge>
-											</div>
-											<div className="text-right">
-												<p className="text-sm text-muted-foreground mb-1">
-													Completude Total
-												</p>
-												<p className="text-3xl font-bold text-primary">
-													{calcularCompletude(selectedParticipant)}%
-												</p>
-											</div>
+													<div className="flex items-center gap-2 py-2">
+														<h3 className="text-lg font-semibold text-foreground">
+															Visualização Geoespacial
+														</h3>
+														<ChevronDown className="h-4 w-4 text-muted-foreground ml-auto transition-transform duration-200 ui-expanded:rotate-180" />
+													</div>
+												</Button>
+											</CollapsibleTrigger>
+											<CollapsibleContent>
+												<div className="pt-4">
+													<GeospatialMapView
+														loading={geospatialLoading}
+														layers={geospatialLayers}
+														filters={geospatialFilters}
+														availableFilters={geospatialAvailableFilters}
+														onFilterChange={onGeospatialFilterChange}
+														hideHeader={true}
+														participantLocation={{
+															latitude: selectedParticipant.latitude,
+															longitude: selectedParticipant.longitude,
+															nome: selectedParticipant.nome || "Participante",
+															idade: selectedParticipant.idade,
+															grupo: selectedParticipant.grupo,
+															bairro: selectedParticipant.bairro,
+															situacao: selectedParticipant.situacao,
+															status: selectedParticipant.status,
+															nome_escola: selectedParticipant.nome_escola,
+															nome_cras: selectedParticipant.nome_cras,
+															nome_clinica_familia:
+																selectedParticipant.nome_clinica_familia,
+															nome_equipe_familia:
+																selectedParticipant.nome_equipe_familia,
+															equipe_familia:
+																selectedParticipant.equipe_familia,
+														}}
+													/>
+												</div>
+											</CollapsibleContent>
+										</Collapsible>
+									</>
+								)}
+
+							<Separator />
+
+							{/* Situação Geral - Simplificada */}
+							<div>
+								<h3 className="text-lg font-semibold mb-3 text-foreground">
+									Situação Geral
+								</h3>
+								<div className="bg-muted/50 p-4 rounded-lg">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm text-muted-foreground mb-1">
+												Status
+											</p>
+											<Badge
+												variant={getBadgeVariant(selectedParticipant.situacao)}
+												className="text-base"
+											>
+												{selectedParticipant.situacao || "-"}
+											</Badge>
+										</div>
+										<div className="text-right">
+											<p className="text-sm text-muted-foreground mb-1">
+												Completude Total
+											</p>
+											<p className="text-3xl font-bold text-primary">
+												{calcularCompletude(selectedParticipant)}%
+											</p>
 										</div>
 									</div>
 								</div>
-
-								<Separator />
-
-								{/* Dimensão Assistência Social */}
-								{(() => {
-									const protocolosAssistencia = (
-										selectedParticipant.protocolo_listagem || []
-									)
-										.filter((p) => p.secretaria?.toLowerCase() === "smas")
-										.filter((p) => {
-											const status = p.status?.toLowerCase() || "";
-											return (
-												status !== "nao_aplica" &&
-												status !== "não aplica" &&
-												status !== "n/a" &&
-												status !== "não aplicável" &&
-												status !== "nao_priorizado"
-											);
-										});
-									if (protocolosAssistencia.length === 0) return null;
-									return (
-										<>
-											<div>
-												<h3 className="text-lg font-semibold mb-3 text-foreground">
-													📋 Dimensão Assistência Social
-												</h3>
-												<div className="space-y-2">
-													{protocolosAssistencia.map((protocolo, idx) => (
-														<ProtocoloItem key={idx} protocolo={protocolo} />
-													))}
-												</div>
-											</div>
-											<Separator />
-										</>
-									);
-								})()}
-
-								{/* Dimensão Educação */}
-								{(() => {
-									const protocolosEducacao = (
-										selectedParticipant.protocolo_listagem || []
-									)
-										.filter((p) => p.secretaria?.toLowerCase() === "sme")
-										.filter((p) => {
-											const status = p.status?.toLowerCase() || "";
-											return (
-												status !== "nao_aplica" &&
-												status !== "não aplica" &&
-												status !== "n/a" &&
-												status !== "não aplicável" &&
-												status !== "nao_priorizado"
-											);
-										});
-									if (protocolosEducacao.length === 0) return null;
-									return (
-										<>
-											<div>
-												<h3 className="text-lg font-semibold mb-3 text-foreground">
-													📚 Dimensão Educação
-												</h3>
-												<div className="space-y-2">
-													{protocolosEducacao.map((protocolo, idx) => (
-														<ProtocoloItem key={idx} protocolo={protocolo} />
-													))}
-												</div>
-											</div>
-											<Separator />
-										</>
-									);
-								})()}
-
-								{/* Dimensão Saúde */}
-								{(() => {
-									const protocolosSaude = (
-										selectedParticipant.protocolo_listagem || []
-									)
-										.filter(
-											(p) =>
-												p.secretaria?.toLowerCase() === "sms" ||
-												p.secretaria?.toLowerCase() === "subpav",
-										)
-										.filter((p) => {
-											const status = p.status?.toLowerCase() || "";
-											return (
-												status !== "nao_aplica" &&
-												status !== "não aplica" &&
-												status !== "n/a" &&
-												status !== "não aplicável" &&
-												status !== "nao_priorizado"
-											);
-										});
-									if (protocolosSaude.length === 0) return null;
-									return (
-										<>
-											<div>
-												<h3 className="text-lg font-semibold mb-3 text-foreground">
-													🏥 Dimensão Saúde
-												</h3>
-												<div className="space-y-2">
-													{protocolosSaude.map((protocolo, idx) => (
-														<ProtocoloItem key={idx} protocolo={protocolo} />
-													))}
-												</div>
-											</div>
-											<Separator />
-										</>
-									);
-								})()}
 							</div>
+
+							<Separator />
+
+							{/* Dimensão Assistência Social */}
+							{(() => {
+								const protocolosAssistencia = (
+									selectedParticipant.protocolo_listagem || []
+								)
+									.filter((p) => p.secretaria?.toLowerCase() === "smas")
+									.filter((p) => {
+										const status = p.status?.toLowerCase() || "";
+										return (
+											status !== "nao_aplica" &&
+											status !== "não aplica" &&
+											status !== "n/a" &&
+											status !== "não aplicável" &&
+											status !== "nao_priorizado"
+										);
+									});
+								if (protocolosAssistencia.length === 0) return null;
+								return (
+									<>
+										<div>
+											<h3 className="text-lg font-semibold mb-3 text-foreground">
+												📋 Dimensão Assistência Social
+											</h3>
+											<div className="space-y-2">
+												{protocolosAssistencia.map((protocolo, idx) => (
+													<ProtocoloItem key={idx} protocolo={protocolo} />
+												))}
+											</div>
+										</div>
+										<Separator />
+									</>
+								);
+							})()}
+
+							{/* Dimensão Educação */}
+							{(() => {
+								const protocolosEducacao = (
+									selectedParticipant.protocolo_listagem || []
+								)
+									.filter((p) => p.secretaria?.toLowerCase() === "sme")
+									.filter((p) => {
+										const status = p.status?.toLowerCase() || "";
+										return (
+											status !== "nao_aplica" &&
+											status !== "não aplica" &&
+											status !== "n/a" &&
+											status !== "não aplicável" &&
+											status !== "nao_priorizado"
+										);
+									});
+								if (protocolosEducacao.length === 0) return null;
+								return (
+									<>
+										<div>
+											<h3 className="text-lg font-semibold mb-3 text-foreground">
+												📚 Dimensão Educação
+											</h3>
+											<div className="space-y-2">
+												{protocolosEducacao.map((protocolo, idx) => (
+													<ProtocoloItem key={idx} protocolo={protocolo} />
+												))}
+											</div>
+										</div>
+										<Separator />
+									</>
+								);
+							})()}
+
+							{/* Dimensão Saúde */}
+							{(() => {
+								const protocolosSaude = (
+									selectedParticipant.protocolo_listagem || []
+								)
+									.filter(
+										(p) =>
+											p.secretaria?.toLowerCase() === "sms" ||
+											p.secretaria?.toLowerCase() === "subpav",
+									)
+									.filter((p) => {
+										const status = p.status?.toLowerCase() || "";
+										return (
+											status !== "nao_aplica" &&
+											status !== "não aplica" &&
+											status !== "n/a" &&
+											status !== "não aplicável" &&
+											status !== "nao_priorizado"
+										);
+									});
+								if (protocolosSaude.length === 0) return null;
+								return (
+									<>
+										<div>
+											<h3 className="text-lg font-semibold mb-3 text-foreground">
+												🏥 Dimensão Saúde
+											</h3>
+											<div className="space-y-2">
+												{protocolosSaude.map((protocolo, idx) => (
+													<ProtocoloItem key={idx} protocolo={protocolo} />
+												))}
+											</div>
+										</div>
+										<Separator />
+									</>
+								);
+							})()}
+						</div>
 					) : null}
 				</DialogContent>
 			</Dialog>

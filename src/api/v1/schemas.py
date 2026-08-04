@@ -293,6 +293,7 @@ class Participante(BaseModel):
     # Dados demográficos
     nascimento_data: Optional[date] = None
     idade: Optional[int] = None
+    raca: Optional[str] = None
     endereco: Optional[str] = None
     complemento: Optional[str] = None
     endereco_sms: Optional[EnderecoSMS] = None

@@ -146,6 +146,7 @@ class BigQueryParticipantRepository(IParticipantRepository):
             "educacao_fracao",
             "saude_fracao",
             "total_protocolos_irregular",
+            "raca",
         ]
 
         data: list[ParticipanteListItem] = []
