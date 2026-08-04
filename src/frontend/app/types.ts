@@ -63,6 +63,7 @@ export interface Participante {
 	// Dados demográficos
 	nascimento_data?: string; // ISO date string
 	idade?: number;
+	raca?: string;
 	endereco?: string;
 	complemento?: string;
 	endereco_sms?: EnderecoSMS;

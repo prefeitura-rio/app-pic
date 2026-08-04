@@ -22,6 +22,7 @@ class ParticipanteListItem(BaseModel):
     educacao_fracao: str | None = None
     saude_fracao: str | None = None
     total_protocolos_irregular: int | None = None
+    raca: str | None = None
 
 
 class Participante(BaseModel):
@@ -41,6 +42,7 @@ class Participante(BaseModel):
     cpf: str | None = None
     grupo: str | None = None
     idade: int | None = None
+    raca: str | None = None
     nascimento_data: date | None = None
     endereco: str | None = None
     complemento: str | None = None
