@@ -1,15 +1,15 @@
 "use client";
 
 import { memo } from "react";
-import { Participante, SortOrder } from "../types";
+import { ParticipanteListItem, SortOrder } from "../types";
 import { Badge } from "@/app/components/ui/badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
 type BadgeVariant = "outline" | "default" | "secondary" | "destructive" | "warning" | "success";
 
 interface ParticipantTableProps {
-  data: Participante[];
-  onRowClick: (participant: Participante) => void;
+  data: ParticipanteListItem[];
+  onRowClick: (idMembroFamilia: string) => void;
   getBadgeVariant: (situacao?: string) => BadgeVariant;
   isLoading?: boolean;
   sortBy?: string | null;
@@ -138,7 +138,7 @@ export const ParticipantTable = memo(({
 								<tr
 									key={`${participant.cpf}-${index}`}
 									className="border-b last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
-									onClick={() => onRowClick(participant)}
+									onClick={() => onRowClick(participant.id_membro_familia!)}
 								>
 									{visibleColumns.map((col) => {
 										const key = col.key;

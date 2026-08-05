@@ -375,36 +375,57 @@ export const apiService = {
   },
 
   /**
-   * Get list of users the admin can manage (with pagination)
+   * Get paginated list of users (admin only)
    * Requires admin permission
    *
-   * @param page - Page number (1-indexed)
-   * @param pageSize - Items per page
-   * @param activeOnly - Filter only active users (true/false/null for all)
-   * @param search - Search by CPF or name
+   * @param options - Filter and pagination options
    * @returns Paginated response with user access records
    */
   async getUsers(
-    page: number = 1,
-    pageSize: number = 100,
-    activeOnly?: boolean,
-    search?: string
+    options: {
+      page?: number;
+      pageSize?: number;
+      activeOnly?: boolean;
+      search?: string;
+      ocupacao?: string;
+      secretaria?: string;
+      permission?: string;
+      secretariaAcesso?: string;
+      bypassCache?: boolean;
+    } = {}
   ): Promise<PaginatedResponse<UserAccessRecord>> {
     const params = new URLSearchParams();
-    
-    // Defensive programming: ensure page is a number
-    // This handles cases where page might be passed as "true" or boolean by mistake
-    const pageNum = typeof page === 'number' ? page : 1;
-    
-    params.append("page", pageNum.toString());
-    params.append("page_size", pageSize.toString());
 
-    if (activeOnly !== undefined) {
-      params.append("active_only", activeOnly.toString());
+    const pageNum = typeof options.page === 'number' ? options.page : 1;
+    params.append("page", pageNum.toString());
+    params.append("page_size", String(options.pageSize ?? 100));
+
+    if (options.activeOnly !== undefined) {
+      params.append("active", options.activeOnly.toString());
     }
 
-    if (search) {
-      params.append("search", search);
+    if (options.search) {
+      params.append("search", options.search);
+    }
+
+    if (options.ocupacao) {
+      params.append("ocupacao", options.ocupacao);
+    }
+
+    if (options.secretaria) {
+      params.append("secretaria", options.secretaria);
+    }
+
+    if (options.permission) {
+      params.append("permission", options.permission);
+    }
+
+    if (options.secretariaAcesso) {
+      params.append("secretaria_acesso", options.secretariaAcesso);
+    }
+
+    if (options.bypassCache) {
+      params.append("bypass_cache", "true");
     }
 
     const url = `${BASE_URL}/api/v2/admin/users?${params.toString()}`;

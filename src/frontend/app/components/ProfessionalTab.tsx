@@ -379,7 +379,7 @@ const ProfessionalTabComponent = ({
 						{/* Tabela de participantes */}
 						<ParticipantTable
 							data={data}
-							onRowClick={(participant) => onRowClick(participant.id_membro_familia!)}
+							onRowClick={onRowClick}
 							getBadgeVariant={getBadgeVariant}
 							isLoading={loading}
 							sortBy={sortBy}
