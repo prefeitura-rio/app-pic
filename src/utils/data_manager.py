@@ -603,7 +603,7 @@ class DataManager:
             options = []
             for label, ids in label_to_ids.items():
                 options.append(
-                    {"id": ",".join(ids), "label": label}
+                    {"id": "|".join(ids), "label": label}
                 )
 
             options.sort(key=lambda x: natural_sort_key(x["label"]))
@@ -1381,7 +1381,7 @@ class DataManager:
             for label, ids in label_to_ids.items():
                 options.append(
                     FilterOptionItem(
-                        id=",".join(ids), label=label
+                        id="|".join(ids), label=label
                     )
                 )
 
