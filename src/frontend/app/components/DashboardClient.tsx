@@ -613,6 +613,7 @@ export function DashboardClient({
       escolas: [],
       clinicas: [],
       equipes_familia: [],
+      racas: [],
       protocolo_descricoes: [],
       protocolo_status_list: [],
       // Filtros geoespaciais

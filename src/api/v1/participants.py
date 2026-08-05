@@ -40,6 +40,7 @@ PARTICIPANT_FILTER_COLUMN_MAP = {
     "status": "status",
     "situacao": "situacao",
     "has_bolsa_familia": "has_bolsa_familia",
+    "raca": "raca",
     # Filtros de array (protocolo_listagem) - usa dot notation para indicar campo do array
     "protocolo_descricao": "protocolo_listagem.id",
     "protocolo_status": "protocolo_listagem.protocolo_status_label",
@@ -54,6 +55,7 @@ PARTICIPANT_FILTER_OPTIONS_CONFIG = {
     "cohorts": {"column": "cohort"},
     "status_list": {"column": "status"},
     "situacoes": {"column": "situacao"},
+    "racas": {"column": "raca"},
     "cres": {"column": "id_cre", "label_column": "nome_cre"},
     "aps": {
         "column": "id_ap",
