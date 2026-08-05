@@ -17,6 +17,7 @@ class _FilterFields(BaseModel):
     cohorts: list[FilterOption] = []
     status_list: list[FilterOption] = []
     situacoes: list[FilterOption] = []
+    racas: list[FilterOption] = []
     cres: list[FilterOption] = []
     aps: list[FilterOption] = []
     cas_list: list[FilterOption] = []
@@ -55,6 +56,7 @@ class FilterCriteria(BaseModel):
     status: str | None = None
     situacao: str | None = None
     has_bolsa_familia: bool | None = None
+    raca: str | None = None
     search: str | None = None
     protocolo_descricao: str | None = None
     protocolo_status: str | None = None

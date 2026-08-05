@@ -221,6 +221,7 @@ export interface SmartFilterOptions {
 	escolas: FilterOptionItem[];
 	clinicas: FilterOptionItem[];
 	equipes_familia: FilterOptionItem[];
+	racas: FilterOptionItem[];
 	protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
 	protocolo_status_list: FilterOptionItem[]; // Status de protocolos
 
@@ -442,6 +443,7 @@ export interface ParticipantFilters {
 	status?: string | string[]; // Multi-select
 	situacao?: string | string[]; // Multi-select
 	has_bolsa_familia?: boolean; // Filtro booleano
+	raca?: string | string[]; // Multi-select
 	search?: string; // CPF or name search
 	bypass_cache?: boolean;
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)

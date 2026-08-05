@@ -50,6 +50,7 @@ class CommonFilters(BaseModel):
     status: Optional[str] = None  # Multi-select
     situacao: Optional[str] = None  # Multi-select
     has_bolsa_familia: Optional[bool] = None  # Filtro booleano
+    raca: Optional[str] = None  # Multi-select
     search: Optional[str] = None  # CPF or name search (NOT multi-select)
     protocolo_descricao: Optional[str] = None  # Multi-select
     protocolo_status: Optional[str] = None  # Multi-select
@@ -119,6 +120,7 @@ class SmartFilterOptions(BaseModel):
     cohorts: List[FilterOptionItem] = []
     status_list: List[FilterOptionItem] = []
     situacoes: List[FilterOptionItem] = []
+    racas: List[FilterOptionItem] = []
     cres: List[FilterOptionItem] = []
     aps: List[FilterOptionItem] = []
     cas_list: List[FilterOptionItem] = []
