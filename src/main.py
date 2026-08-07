@@ -1,18 +1,22 @@
+import logging
+import sys
 import time
-import uvicorn
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
-import os
-import sys
 
 from src.api import router as api_router
+from src.config import env
 from src.core.middlewares.logging import LoggingMiddleware
 from src.core.middlewares.static_cache import NoCacheStaticFilesMiddleware
-from src.config import env
-import logging
-
+from src.pic.presentation.v2.admin import router as v2_admin_router
+from src.pic.presentation.v2.dashboard import router as v2_dashboard_router
+from src.pic.presentation.v2.debug import router as v2_debug_router
+from src.pic.presentation.v2.filters import router as v2_filters_router
+from src.pic.presentation.v2.geospatial import router as v2_geospatial_router
+from src.pic.presentation.v2.participants import router as v2_participants_router
 from src.utils.log import logger
 
 
@@ -118,3 +122,9 @@ async def custom_swagger_ui_html():
 
 
 app.include_router(api_router)
+app.include_router(v2_participants_router, prefix="/api/v2")
+app.include_router(v2_filters_router, prefix="/api/v2")
+app.include_router(v2_dashboard_router, prefix="/api/v2")
+app.include_router(v2_admin_router, prefix="/api/v2")
+app.include_router(v2_geospatial_router, prefix="/api/v2")
+app.include_router(v2_debug_router, prefix="/api/v2")

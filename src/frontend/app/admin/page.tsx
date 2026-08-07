@@ -69,54 +69,22 @@ export default function AdminPage() {
   } = useQuery({
     queryKey: ["admin", "users", currentPage, filterStatus, filterOcupacao, filterSecretaria, filterPermission, filterSecretariaAcesso, searchTerm],
     queryFn: async () => {
-      // Usar ref para bypass (não muda query key)
       const shouldBypassCache = bypassCacheRef.current;
-      bypassCacheRef.current = false; // Reset após usar
+      bypassCacheRef.current = false;
 
-      // Construir query params (seguindo padrão de participants)
-      const params = new URLSearchParams();
-      params.append("page", currentPage.toString());
-      params.append("page_size", pageSize.toString());
+      const activeOnly = filterStatus === "active" ? true : filterStatus === "inactive" ? false : undefined;
 
-      // Filtro de ocupação (valor direto do backend)
-      if (filterOcupacao && filterOcupacao !== "todas") {
-        params.append("ocupacao", filterOcupacao);
-      }
-
-      // Filtro de secretaria (valor direto do backend)
-      if (filterSecretaria && filterSecretaria !== "todas") {
-        params.append("secretaria", filterSecretaria);
-      }
-
-      // Filtro de permissão (valor direto: super_admin/admin/user)
-      if (filterPermission && filterPermission !== "todas") {
-        params.append("permission", filterPermission);
-      }
-
-      // Filtro de secretaria_acesso (valor direto do backend)
-      if (filterSecretariaAcesso && filterSecretariaAcesso !== "todas") {
-        params.append("secretaria_acesso", filterSecretariaAcesso);
-      }
-
-      // Busca por CPF ou nome
-      if (searchTerm) {
-        params.append("search", searchTerm);
-      }
-
-      // Bypass cache se solicitado (força refresh no backend)
-      if (shouldBypassCache) {
-        params.append("bypass_cache", "true");
-      }
-
-      const url = `/api/proxy/api/v1/admin/users?${params.toString()}`;
-      const response = await fetch(url, { cache: "no-store" });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API Error ${response.status}: ${errorText}`);
-      }
-
-      return response.json();
+      return apiService.getUsers({
+        page: currentPage,
+        pageSize,
+        activeOnly,
+        search: searchTerm || undefined,
+        ocupacao: filterOcupacao && filterOcupacao !== "todas" ? filterOcupacao : undefined,
+        secretaria: filterSecretaria && filterSecretaria !== "todas" ? filterSecretaria : undefined,
+        permission: filterPermission && filterPermission !== "todas" ? filterPermission : undefined,
+        secretariaAcesso: filterSecretariaAcesso && filterSecretariaAcesso !== "todas" ? filterSecretariaAcesso : undefined,
+        bypassCache: shouldBypassCache || undefined,
+      });
     },
     retry: false, // Don't retry on 403
     staleTime: 0, // Sempre considera stale para garantir dados frescos após invalidação

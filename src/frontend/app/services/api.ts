@@ -1,6 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   PaginatedResponse,
+  PaginatedResponseV2,
   Participante,
+  ParticipanteListItem,
+  ParticipantDetailResponse,
+  DashboardV2Response,
   ProtocoloDetalhes,
   SmartFilterOptions,
   ParticipantFilters,
@@ -11,6 +16,8 @@ import {
   BatchPermissionsRequest,
   BatchPermissionsResult,
   GeospatialLayer,
+  GeospatialLayersResponse,
+  GeospatialFilterVocabularyResponse,
 } from "../types";
 import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
@@ -32,7 +39,7 @@ async function tryRefreshToken(): Promise<boolean> {
     }
 
     return false;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -166,6 +173,21 @@ export const apiService = {
   },
 
   /**
+   * V2 — Dashboard metrics without inline filters.
+   */
+  async getDashboardV2(
+    filters: DashboardFilterValues = {}
+  ): Promise<DashboardV2Response> {
+    const params = buildFilterParams(filters);
+    const url = `${BASE_URL}/api/v2/dashboard?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<DashboardV2Response>(res, fetchFn);
+  },
+
+  /**
    * Get participants with filters and pagination.
    * Used by both Overview tab (for calculations) and Professional tab (for table display).
    *
@@ -189,6 +211,53 @@ export const apiService = {
     const res = await fetchFn();
 
     return handleResponse<PaginatedResponse<Participante>>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Lista paginada enxuta (13 campos, sem protocolo_listagem, sem cascade).
+   */
+  async getParticipantsV2(
+    filters: ParticipantFilters = {},
+    page: number = 1,
+    pageSize: number = 100
+  ): Promise<PaginatedResponseV2<ParticipanteListItem>> {
+    const params = buildFilterParams(filters);
+    params.append("page", page.toString());
+    params.append("page_size", pageSize.toString());
+
+    const url = `${BASE_URL}/api/v2/participants?${params.toString()}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<PaginatedResponseV2<ParticipanteListItem>>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Detalhe completo de um participante por id_membro_familia.
+   */
+  async getParticipantDetailV2(
+    idMembroFamilia: string
+  ): Promise<ParticipantDetailResponse> {
+    const url = `${BASE_URL}/api/v2/participants/${idMembroFamilia}`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<ParticipantDetailResponse>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Vocabulário completo de opções de filtro (16 arrays).
+   * Chamado 1 vez no mount, staleTime 1h.
+   */
+  async getFilterVocabulary(): Promise<SmartFilterOptions> {
+    const url = `${BASE_URL}/api/v2/filters`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<SmartFilterOptions>(res, fetchFn);
   },
 
   /**
@@ -236,6 +305,47 @@ export const apiService = {
     return response.data || [];
   },
 
+
+  /**
+   * Export all filtered participants as a streaming CSV download.
+   *
+   * Returns a Response with a ReadableStream body — the caller should
+   * consume it via response.blob() or pipe it to the File System API.
+   * No JSON parsing involved; the proxy pipes the CSV bytes directly.
+   *
+   * @param filters - Filter criteria (same as getParticipants)
+   * @returns Raw fetch Response (streaming)
+   */
+  async exportParticipants(
+    filters: ParticipantFilters = {}
+  ): Promise<Response> {
+    const params = buildFilterParams(filters);
+    const url = `${BASE_URL}/api/v2/participants/export?${params.toString()}`;
+
+    const response = await fetch(url, { cache: "no-store" });
+
+    if (response.status === 401) {
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        const retry = await fetch(url, { cache: "no-store" });
+        if (!retry.ok) {
+          window.location.href = "/login";
+          throw new Error("Unauthorized");
+        }
+        return retry;
+      }
+      window.location.href = "/login";
+      throw new Error("Unauthorized");
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Export Error ${response.status}: ${errorText}`);
+    }
+
+    return response;
+  },
+
   // ========================================================================
   // ADMIN ENDPOINTS
   // ========================================================================
@@ -247,7 +357,7 @@ export const apiService = {
    * @returns Available IDs grouped by type
    */
   async getCurrentUser(): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v1/admin/me`;
+    const url = `${BASE_URL}/api/v2/admin/me`;
 
     const fetchFn = () => fetch(url);
     const res = await fetchFn();
@@ -256,7 +366,7 @@ export const apiService = {
   },
 
   async getAvailableIds(): Promise<AvailableIds> {
-    const url = `${BASE_URL}/api/v1/admin/available-ids`;
+    const url = `${BASE_URL}/api/v2/admin/available-ids`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -265,39 +375,60 @@ export const apiService = {
   },
 
   /**
-   * Get list of users the admin can manage (with pagination)
+   * Get paginated list of users (admin only)
    * Requires admin permission
    *
-   * @param page - Page number (1-indexed)
-   * @param pageSize - Items per page
-   * @param activeOnly - Filter only active users (true/false/null for all)
-   * @param search - Search by CPF or name
+   * @param options - Filter and pagination options
    * @returns Paginated response with user access records
    */
   async getUsers(
-    page: number = 1,
-    pageSize: number = 100,
-    activeOnly?: boolean,
-    search?: string
+    options: {
+      page?: number;
+      pageSize?: number;
+      activeOnly?: boolean;
+      search?: string;
+      ocupacao?: string;
+      secretaria?: string;
+      permission?: string;
+      secretariaAcesso?: string;
+      bypassCache?: boolean;
+    } = {}
   ): Promise<PaginatedResponse<UserAccessRecord>> {
     const params = new URLSearchParams();
-    
-    // Defensive programming: ensure page is a number
-    // This handles cases where page might be passed as "true" or boolean by mistake
-    const pageNum = typeof page === 'number' ? page : 1;
-    
+
+    const pageNum = typeof options.page === 'number' ? options.page : 1;
     params.append("page", pageNum.toString());
-    params.append("page_size", pageSize.toString());
+    params.append("page_size", String(options.pageSize ?? 100));
 
-    if (activeOnly !== undefined) {
-      params.append("active_only", activeOnly.toString());
+    if (options.activeOnly !== undefined) {
+      params.append("active", options.activeOnly.toString());
     }
 
-    if (search) {
-      params.append("search", search);
+    if (options.search) {
+      params.append("search", options.search);
     }
 
-    const url = `${BASE_URL}/api/v1/admin/users?${params.toString()}`;
+    if (options.ocupacao) {
+      params.append("ocupacao", options.ocupacao);
+    }
+
+    if (options.secretaria) {
+      params.append("secretaria", options.secretaria);
+    }
+
+    if (options.permission) {
+      params.append("permission", options.permission);
+    }
+
+    if (options.secretariaAcesso) {
+      params.append("secretaria_acesso", options.secretariaAcesso);
+    }
+
+    if (options.bypassCache) {
+      params.append("bypass_cache", "true");
+    }
+
+    const url = `${BASE_URL}/api/v2/admin/users?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -320,7 +451,7 @@ export const apiService = {
     cpf: string,
     userData: Omit<CreateUserRequest, "cpf">
   ): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+    const url = `${BASE_URL}/api/v2/admin/users/${cpf}`;
 
     const fetchFn = () =>
       fetch(url, {
@@ -344,7 +475,7 @@ export const apiService = {
    * @param cpf - User CPF
    */
   async deleteUser(cpf: string): Promise<void> {
-    const url = `${BASE_URL}/api/v1/admin/users/${cpf}`;
+    const url = `${BASE_URL}/api/v2/admin/users/${cpf}`;
 
     const fetchFn = () =>
       fetch(url, {
@@ -373,7 +504,7 @@ export const apiService = {
    * @returns Batch import result with list of processed users
    */
   async batchImportUsers(file: File): Promise<BatchImportResult> {
-    const url = `${BASE_URL}/api/v1/admin/users-batch`;
+    const url = `${BASE_URL}/api/v2/admin/users-batch`;
 
     const formData = new FormData();
     formData.append("file", file);
@@ -399,7 +530,7 @@ export const apiService = {
   async batchUpdatePermissions(
     request: BatchPermissionsRequest
   ): Promise<BatchPermissionsResult> {
-    const url = `${BASE_URL}/api/v1/admin/users-batch/permissions`;
+    const url = `${BASE_URL}/api/v2/admin/users-batch/permissions`;
 
     const fetchFn = () =>
       fetch(url, {
@@ -434,7 +565,7 @@ export const apiService = {
       params.append("bypass_cache", "true");
     }
 
-    const url = `${BASE_URL}/api/v1/debug/participants?${params.toString()}`;
+    const url = `${BASE_URL}/api/v2/debug/participants?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
@@ -456,18 +587,31 @@ export const apiService = {
   async getGeospatialLayers(
     filters: Partial<ParticipantFilters> = {},
     bypassCache: boolean = false
-  ): Promise<PaginatedResponse<GeospatialLayer>> {
+  ): Promise<GeospatialLayersResponse> {
     const params = buildFilterParams(filters);
     if (bypassCache) {
       params.append("bypass_cache", "true");
     }
 
-    const url = `${BASE_URL}/api/v1/geospatial/layers?${params.toString()}`;
+    const url = `${BASE_URL}/api/v2/geospatial/layers?${params.toString()}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<PaginatedResponse<GeospatialLayer>>(res, fetchFn);
+    return handleResponse<GeospatialLayersResponse>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Vocabulario de filtros geoespaciais
+   * Chamado 1 vez, staleTime 30min.
+   */
+  async getGeospatialFilterVocabulary(): Promise<GeospatialFilterVocabularyResponse> {
+    const url = `${BASE_URL}/api/v2/geospatial/filters`;
+
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<GeospatialFilterVocabularyResponse>(res, fetchFn);
   },
 
 };

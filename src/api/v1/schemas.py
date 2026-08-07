@@ -1,6 +1,6 @@
 import json
-from typing import List, Optional, TypeVar, Generic, Any
-from pydantic import BaseModel, Field, field_validator
+from typing import Dict, List, Optional, TypeVar, Generic, Any
+from pydantic import BaseModel, Field, field_validator, model_validator, model_serializer
 from datetime import date, datetime
 from src.utils.data_manager_config import DataManagerConfig as config
 
@@ -50,6 +50,7 @@ class CommonFilters(BaseModel):
     status: Optional[str] = None  # Multi-select
     situacao: Optional[str] = None  # Multi-select
     has_bolsa_familia: Optional[bool] = None  # Filtro booleano
+    raca: Optional[str] = None  # Multi-select
     search: Optional[str] = None  # CPF or name search (NOT multi-select)
     protocolo_descricao: Optional[str] = None  # Multi-select
     protocolo_status: Optional[str] = None  # Multi-select
@@ -119,6 +120,7 @@ class SmartFilterOptions(BaseModel):
     cohorts: List[FilterOptionItem] = []
     status_list: List[FilterOptionItem] = []
     situacoes: List[FilterOptionItem] = []
+    racas: List[FilterOptionItem] = []
     cres: List[FilterOptionItem] = []
     aps: List[FilterOptionItem] = []
     cas_list: List[FilterOptionItem] = []
@@ -159,11 +161,6 @@ class GeospatialPaginatedResponse(BaseModel, Generic[T]):
 # Shared / Nested Models
 
 
-class DistribuicaoMotivoSaida(BaseModel):
-    motivo: Optional[str] = None
-    total: Optional[int] = None
-
-
 class DistribuicaoGrupo(BaseModel):
     grupo: Optional[str] = None
     total_participantes: Optional[int] = None
@@ -174,144 +171,16 @@ class DistribuicaoBairro(BaseModel):
     total_participantes: Optional[int] = None
 
 
-class DistribuicaoSafra(BaseModel):
-    safra: Optional[str] = None  # Changed to str to match DataFrame output usually
-    total_participantes: Optional[int] = None
-    total_ativos: Optional[int] = None
-    total_inativos: Optional[int] = None
-
-
-class ResultadoProgramaPoint(BaseModel):
-    """
-    Ponto de evolução temporal do programa por dimensão.
-    Usado no gráfico de linha "Resultado do Programa".
-    """
-
-    mes: str  # "2025-12", "2025-11", etc.
-    mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
-    todos: float = 0.0  # % completude geral (todos protocolos)
-    saude: float = 0.0  # % completude SMS
-    educacao: float = 0.0  # % completude SME
-    assistencia: float = 0.0  # % completude SMAS
-
-
-class DistribuicaoTempoIrregularidade(BaseModel):
-    """
-    Distribuição de participantes por faixa de tempo de irregularidade.
-    Usado no histograma "Distribuição por Tempo de Irregularidade".
-    """
-
-    faixa: str  # "0-30", "31-60", "61-90", "90+"
-    faixa_label: str = ""  # "0-30 dias", "31-60 dias", etc.
-    count: int = 0  # Quantidade de participantes na faixa
-    percentual: float = 0.0  # Percentual do total
-
-
-class TempoMedioIrregularidade(BaseModel):
-    """
-    Tempo médio de irregularidade por secretaria.
-    Usado nos cards de tempo médio.
-    """
-
-    secretaria: str  # "geral", "smas", "sme", "sms"
-    secretaria_label: str = ""  # "Geral", "Assistência Social", "Educação", "Saúde"
-    tempo_medio_dias: float = 0.0  # Tempo médio em dias
-    total_irregulares: int = 0  # Quantidade de participantes irregulares
-
-
-class TaxaResolucaoMensalPoint(BaseModel):
-    """
-    Ponto de taxa de resolução mensal por secretaria.
-    Usado no gráfico de linha "Taxa de Resolução Mensal".
-    """
-
-    mes: str  # "2025-12", "2025-11", etc.
-    mes_label: str = ""  # "Dez/25", "Nov/25", etc. (para exibição)
-    todos: float = 0.0  # % resolução geral
-    saude: float = 0.0  # % resolução SMS
-    educacao: float = 0.0  # % resolução SME
-    assistencia: float = 0.0  # % resolução SMAS
-
-
-# ========================================================================
-# DASHBOARD - Cards de Indicadores por Protocolo
-# ========================================================================
-
-
-class ProtocoloIndicador(BaseModel):
-    """
-    Card de indicador individual de um protocolo.
-    Calculado a partir de `valor_mais_recente` do BigQuery.
-    """
-
-    protocolo_id: str  # "sms_vacinacao_pentavalente"
-    protocolo_descricao: str  # "Vacinação Pentavalente"
-    protocolo_secretaria: str  # "SMS", "SME", "SMAS"
-    numerador: int = 0  # Quantos estão regulares
-    denominador: int = 0  # Total aplicável
-    percentual_regular: float = 0.0  # (numerador/denominador) * 100
-    percentual_irregular: float = 0.0  # 100 - percentual_regular
-
-
-# Endpoint Models
-
-
-class Dashboard(BaseModel):
-    """
-    Modelo principal do Dashboard.
-    Todos os valores são calculados no backend e prontos para exibição no frontend.
-    """
-
-    # =========================================================================
-    # SEÇÃO 1: INDICADORES PRINCIPAIS (3 cards)
-    # Fonte: indicador_participantes_percentual_regular/irregular
-    # =========================================================================
-    total_participantes: int = 0  # Total de participantes (denominador)
-    total_regulares: int = 0  # Participantes com TODOS protocolos regulares
-    total_irregulares: int = 0  # Participantes com ALGUM protocolo irregular
-    percentual_regular: float = 0.0  # (total_regulares / total_participantes) * 100
-    percentual_irregular: float = 0.0  # (total_irregulares / total_participantes) * 100
-
-    # =========================================================================
-    # SEÇÃO 2: INDICADORES POR PROTOCOLO (cards individuais)
-    # Fonte: indicador_protocolos_percentual_regular[].valor_mais_recente
-    # =========================================================================
-    protocolos: List[ProtocoloIndicador] = []
-
-    # =========================================================================
-    # SEÇÃO 3: RESULTADO DO PROGRAMA (gráfico de linha evolução temporal)
-    # Fonte: indicador_protocolos_percentual_regular[].valores_mensais
-    # Agrupa por mês e por secretaria (SMAS, SME, SMS)
-    # =========================================================================
-    resultado_programa: List[ResultadoProgramaPoint] = []
-
-    # =========================================================================
-    # SEÇÃO 4: DISTRIBUIÇÃO POR SAFRA (gráfico de barras)
-    # =========================================================================
-    distribuicao_por_safra: List[DistribuicaoSafra] = []
-
-    # =========================================================================
-    # SEÇÃO 5: MOTIVOS DE SAÍDA (gráfico pizza)
-    # =========================================================================
-    distribuicao_motivo_saida: List[DistribuicaoMotivoSaida] = []
-
-    # =========================================================================
-    # SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma)
-    # Fonte: indicador_tempo_irregular
-    # =========================================================================
-    tempo_medio_irregularidade: List["TempoMedioIrregularidade"] = []
-    distribuicao_tempo_irregularidade: List["DistribuicaoTempoIrregularidade"] = []
-
-    # =========================================================================
-    # SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)
-    # Fonte: serie_resolucao_alertas_percentual
-    # =========================================================================
-    taxa_resolucao_mensal: List["TaxaResolucaoMensalPoint"] = []
-
-    # =========================================================================
-    # METADADOS
-    # =========================================================================
-    data_atualizacao: Optional[datetime] = None
+from src.pic.domain.models.dashboard import (  # noqa: E402, F401
+    Dashboard,
+    DistribuicaoMotivoSaida,
+    DistribuicaoSafra,
+    DistribuicaoTempoIrregularidade,
+    ProtocoloIndicador,
+    ResultadoProgramaPoint,
+    TaxaResolucaoMensalPoint,
+    TempoMedioIrregularidade,
+)
 
 
 class FiltroRegional(BaseModel):
@@ -344,6 +213,47 @@ class EnderecoSMS(BaseModel):
     longitude: Optional[float] = None
     latitude: Optional[float] = None
 
+class DetalhesProtocoloParticipante(BaseModel):
+    """
+    Apresenta os detalhes de um protocolo específico para um participante, em específico o motivo para as irregularidades, caso existam.
+    """
+    id_membro_familia: Optional[str] = None
+    cpf: Optional[str] = None
+    nome: Optional[str] = None
+    protocolo_id: Optional[str] = None
+    protocolo_secretaria: Optional[str] = None
+    protocolo_descricao: Optional[str] = None
+    protocolo_level: Optional[str] = None
+    protocolo_status: Optional[str] = None
+    protocolo_motivo: Optional[str] = None
+    protocolo_debug: Optional[str] = None
+
+class ProtocoloMotivoDetalhe(BaseModel):
+    """
+        Apresenta os detalhes de um motivo de irregularidade de um protocolo específico, incluindo a fonte e a data da partição.
+    """
+    fonte: str
+    data_particao: Optional[str] = None
+
+class ProtocoloMotivo(BaseModel):
+    """
+        Apresenta os detalhes de um motivo de irregularidade de um protocolo específico, incluindo a fonte e a data da partição.
+    """
+    motivos: List[str]
+    detalhes: Dict[str, ProtocoloMotivoDetalhe] = {}
+
+    @model_validator(mode='before')
+    @classmethod
+    def parse_json_string(cls, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        if isinstance(data, dict):
+            detalhes = data.get("detalhes", {})
+            data["detalhes"] = {k: v for k, v in detalhes.items() if v is not None}
+        return data
 
 class ProtocoloListagemItem(BaseModel):
     """Item individual da lista de protocolos do participante"""
@@ -354,6 +264,14 @@ class ProtocoloListagemItem(BaseModel):
     status: Optional[str] = None
     irregular_indicador: Optional[bool] = None
     protocolo_status_label: Optional[str] = None
+    protocolo_motivo: Optional[ProtocoloMotivo] = None  # array de strings com os motivos de irregularidade
+
+    @model_serializer(mode="wrap")
+    def _drop_none_motivo(self, handler, info):
+        result = handler(self, info)
+        if result.get("protocolo_motivo") is None:
+            result.pop("protocolo_motivo", None)
+        return result
 
 
 class Participante(BaseModel):
@@ -377,6 +295,7 @@ class Participante(BaseModel):
     # Dados demográficos
     nascimento_data: Optional[date] = None
     idade: Optional[int] = None
+    raca: Optional[str] = None
     endereco: Optional[str] = None
     complemento: Optional[str] = None
     endereco_sms: Optional[EnderecoSMS] = None
