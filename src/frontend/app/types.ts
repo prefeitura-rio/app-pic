@@ -236,6 +236,7 @@ export interface SmartFilterOptions {
 	secretarias: FilterOptionItem[];
 	status_ativo: FilterOptionItem[];
 	permissions: FilterOptionItem[];
+	secretaria_acesso_list: FilterOptionItem[];
 }
 
 // ============================================================================

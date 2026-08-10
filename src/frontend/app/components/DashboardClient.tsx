@@ -626,6 +626,7 @@ export function DashboardClient({
       secretarias: [],
       status_ativo: [],
       permissions: [],
+      secretaria_acesso_list: [],
     }),
     [],
   );
