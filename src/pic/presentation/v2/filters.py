@@ -6,6 +6,7 @@ from src.core.security.jwt import CurrentUserPermissions, verify_jwt
 from src.pic.application.use_cases.get_filter_vocabulary import (
     GetFilterVocabularyUseCase,
 )
+from src.pic.domain.models.filters import FilterCriteria
 from src.pic.presentation.di import get_filter_vocabulary_use_case
 from src.pic.presentation.v2.schemas import FilterVocabularyResponse
 from src.utils.log import logger
@@ -20,6 +21,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Filtros V2"])
 )
 async def get_filters(
     permissions: CurrentUserPermissions,
+    filters: FilterCriteria = Depends(),
     bypass_cache: bool = Query(False, description="Forcar refresh do cache"),
     use_case: GetFilterVocabularyUseCase = Depends(
         get_filter_vocabulary_use_case
@@ -29,6 +31,7 @@ async def get_filters(
     logger.info("V2 filters endpoint started")
 
     result = await use_case.execute(
+        filters=filters,
         permissions=permissions,
         bypass_cache=bypass_cache,
     )

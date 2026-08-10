@@ -309,11 +309,17 @@ export function DashboardClient({
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
 
-  // V2 — Vocabulário de filtros (chamado 1 vez, cache 1h)
+  // Deriva os filtros da aba ativa para o vocabulário contextual
+  const activeFiltersForVocabulary = useMemo(() => {
+    return activeTab === "overview" ? overviewFilters : professionalFilters;
+  }, [activeTab, overviewFilters, professionalFilters]);
+
+  // V2 — Vocabulário de filtros contextual (refetch quando filtros ou aba mudam)
   const { data: filterVocabulary } = useQuery({
-    queryKey: ["filterVocabulary"],
-    queryFn: () => apiService.getFilterVocabulary(),
-    staleTime: 60 * 60 * 1000, // 1 hora
+    queryKey: ["filterVocabulary", activeTab, activeFiltersForVocabulary],
+    queryFn: () => apiService.getFilterVocabulary(activeFiltersForVocabulary),
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
 
   // V2 — Participants (Busca Individual)
