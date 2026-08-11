@@ -5,8 +5,7 @@ from src.pic.infrastructure.export.config import _CHUNK_ROWS, _DELIMITER
 _CSV_HEADERS = [
     "nome",
     "cpf",
-    "nis",
-    "data_nascimento",
+    "nascimento_data",
     "idade",
     "raca",
     "endereco_smas_endereco",
@@ -108,8 +107,7 @@ def _df_to_csv_stream(df: pl.DataFrame):
             return [
                 _escape_csv(row.get("nome")),
                 _escape_csv(row.get("cpf")),
-                _escape_csv(row.get("nis")),
-                _escape_csv(row.get("data_nascimento")),
+                _escape_csv(row.get("nascimento_data")),
                 _escape_csv(row.get("idade")),
                 _escape_csv(row.get("raca")),
                 _escape_csv(row.get("endereco")),
