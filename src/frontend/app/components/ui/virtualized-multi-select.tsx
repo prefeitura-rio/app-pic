@@ -129,7 +129,7 @@ export function VirtualizedMultiSelect({
 
   return (
     <div className={className} style={style}>
-      <Popover open={open} onOpenChange={setOpen} modal={true}>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             ref={triggerRef}
