@@ -1,7 +1,7 @@
 from typing import Any
 
 from src.pic.application.ports.participant_repository import IParticipantRepository
-from src.pic.domain.models.filters import FilterVocabulary
+from src.pic.domain.models.filters import FilterCriteria, FilterVocabulary
 
 
 class GetFilterVocabularyUseCase:
@@ -10,10 +10,12 @@ class GetFilterVocabularyUseCase:
 
     async def execute(
         self,
+        filters: FilterCriteria,
         permissions: Any = None,
         bypass_cache: bool = False,
     ) -> FilterVocabulary:
         return await self._repository.get_filter_vocabulary(
+            filters=filters,
             permissions=permissions,
             bypass_cache=bypass_cache,
         )

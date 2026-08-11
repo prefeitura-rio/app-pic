@@ -249,10 +249,16 @@ export const apiService = {
 
   /**
    * V2 — Vocabulário completo de opções de filtro (16 arrays).
-   * Chamado 1 vez no mount, staleTime 1h.
+   * Aceita filtros ativos para cascateamento contextual.
    */
-  async getFilterVocabulary(): Promise<SmartFilterOptions> {
-    const url = `${BASE_URL}/api/v2/filters`;
+  async getFilterVocabulary(activeFilters?: DashboardFilterValues | ParticipantFilters): Promise<SmartFilterOptions> {
+    let url = `${BASE_URL}/api/v2/filters`;
+
+    if (activeFilters) {
+      const params = buildFilterParams(activeFilters);
+      const qs = params.toString();
+      if (qs) url += `?${qs}`;
+    }
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
