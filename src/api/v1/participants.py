@@ -290,8 +290,7 @@ async def get_participants(
 _PARTICIPANT_CSV_COLUMNS = [
     "nome",
     "cpf",
-    "nis",
-    "data_nascimento",
+    "nascimento_data",
     "idade",
     "endereco",
     "complemento",
@@ -356,8 +355,7 @@ _PARTICIPANT_CSV_COLUMNS = [
 _CSV_HEADERS = [
     "nome",
     "cpf",
-    "nis",
-    "data_nascimento",
+    "nascimento_data",
     "idade",
     "endereco_smas_endereco",
     "endereco_smas_complemento",
@@ -461,8 +459,7 @@ def _df_to_csv_stream(df: pl.DataFrame):
             return [
                 _escape_csv(row.get("nome")),
                 _escape_csv(row.get("cpf")),
-                _escape_csv(row.get("nis")),
-                _escape_csv(row.get("data_nascimento")),
+                _escape_csv(row.get("nascimento_data")),
                 _escape_csv(row.get("idade")),
                 _escape_csv(row.get("endereco")),
                 _escape_csv(row.get("complemento")),
