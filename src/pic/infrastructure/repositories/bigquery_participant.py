@@ -234,9 +234,22 @@ class BigQueryParticipantRepository(IParticipantRepository):
 
     async def get_filter_vocabulary(
         self,
+        filters: FilterCriteria,
         permissions: Any = None,
         bypass_cache: bool = False,
     ) -> FilterVocabulary:
+        filters_dict = filters.model_dump(exclude_none=True)
+
+        search_term = filters_dict.pop("search", None)
+
+        column_filters: dict[str, Any] = {}
+        for key, value in filters_dict.items():
+            if key in FILTER_COLUMN_MAP:
+                column_name = FILTER_COLUMN_MAP[key]
+                if isinstance(value, str) and "|" in value:
+                    value = [v.strip() for v in value.split("|") if v.strip()]
+                column_filters[column_name] = value
+
         df, _, precomputed = await DataManager.get_dataset(
             query=PARTICIPANTS_TABLE_QUERY,
             bypass_cache=bypass_cache,
@@ -245,6 +258,8 @@ class BigQueryParticipantRepository(IParticipantRepository):
 
         use_precomputed = (
             precomputed
+            and not column_filters
+            and not search_term
             and permissions
             and permissions.is_super_admin
         )
@@ -257,10 +272,21 @@ class BigQueryParticipantRepository(IParticipantRepository):
         if df.is_empty():
             return FilterVocabulary()
 
+        df_after_governance = df
+
+        if column_filters:
+            df = DataManager.apply_filters(df, column_filters)
+
+        if search_term:
+            df = DataManager.apply_search(df, search_term, SEARCH_COLUMNS)
+
+        if df.is_empty():
+            return FilterVocabulary()
+
         smart_filters = DataManager.calculate_filter_options_fast(
-            df_original=df,
+            df_original=df_after_governance,
             filter_columns_config=FILTER_OPTIONS_CONFIG,
-            active_filters={},
+            active_filters=column_filters,
             df_already_filtered=df,
         )
 

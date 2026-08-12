@@ -36,6 +36,7 @@ class IParticipantRepository(ABC):
     @abstractmethod
     async def get_filter_vocabulary(
         self,
+        filters: FilterCriteria,
         permissions: Any = None,
         bypass_cache: bool = False,
     ) -> FilterVocabulary:
