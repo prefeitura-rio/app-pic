@@ -84,6 +84,11 @@ async def verify_jwt(
         )
 
         logger.info(f"Token verified for user: {payload.get('sub')}")
+        from src.pic.infrastructure.postgrest_client.request_context import (
+            set_postgrest_token,
+        )
+
+        set_postgrest_token(token)
         return payload
 
     except jwt.ExpiredSignatureError:

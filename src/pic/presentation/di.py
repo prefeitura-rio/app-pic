@@ -34,6 +34,9 @@ from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
+from src.pic.infrastructure.postgrest_client.auth import PostgrestJwtAuth
+from src.pic.infrastructure.postgrest_client.client import PostgrestClient
+from src.pic.infrastructure.postgrest_client.config import load_postgrest_config
 from src.pic.infrastructure.repositories.bigquery_admin import (
     BigQueryAdminRepository,
 )
@@ -49,6 +52,48 @@ from src.pic.infrastructure.repositories.bigquery_geospatial import (
 from src.pic.infrastructure.repositories.bigquery_participant import (
     BigQueryParticipantRepository,
 )
+
+_postgrest_client: PostgrestClient | None = None
+
+
+def get_postgrest_client() -> PostgrestClient:
+    """Retorna o singleton do client PostgREST do processo.
+
+    Criado de forma lazy na primeira chamada, dentro do loop de eventos
+    da aplicação (lifespan do FastAPI).
+    """
+    global _postgrest_client
+    if _postgrest_client is None:
+        config = load_postgrest_config()
+        auth = None
+        if config.jwt_secret:
+            auth = PostgrestJwtAuth(
+                config.jwt_secret,
+                role=config.role,
+                ttl_seconds=config.jwt_ttl_seconds,
+            )
+        _postgrest_client = PostgrestClient(
+            config.url,
+            schema=config.schema,
+            auth=auth,
+            timeout_seconds=config.timeout_seconds,
+            max_connections=config.max_connections,
+        )
+    return _postgrest_client
+
+
+async def shutdown_postgrest_client() -> None:
+    """Fecha o singleton do client PostgREST, se existir."""
+    global _postgrest_client
+    if _postgrest_client is not None:
+        await _postgrest_client.aclose()
+        _postgrest_client = None
+
+
+def reset_postgrest_client() -> None:
+    """Descarta o singleton sem fechar conexões (uso em testes)."""
+    global _postgrest_client
+    _postgrest_client = None
 
 
 def get_participant_repo() -> IParticipantRepository:

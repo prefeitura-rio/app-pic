@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,10 @@ from src.api import router as api_router
 from src.config import env
 from src.core.middlewares.logging import LoggingMiddleware
 from src.core.middlewares.static_cache import NoCacheStaticFilesMiddleware
+from src.pic.presentation.di import (
+    get_postgrest_client,
+    shutdown_postgrest_client,
+)
 from src.pic.presentation.v2.admin import router as v2_admin_router
 from src.pic.presentation.v2.dashboard import router as v2_dashboard_router
 from src.pic.presentation.v2.debug import router as v2_debug_router
@@ -66,10 +71,25 @@ logger.configure(
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        client = get_postgrest_client()
+        if await client.ping():
+            logger.info("PostgREST conectado no startup")
+        else:
+            logger.warning("PostgREST não respondeu ao ping de warm-up")
+    except Exception:
+        logger.exception("Falha ao conectar ao PostgREST no startup")
+    yield
+    await shutdown_postgrest_client()
+
+
 app = FastAPI(
     title="PIC API",
     description="API que gerencia fluxo de dados do PIC da Prefeitura do Rio de Janeiro",
     version="0.1.0",
+    lifespan=lifespan,
     servers=[
         {
             "url": (
