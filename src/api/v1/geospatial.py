@@ -160,4 +160,4 @@ async def get_geospatial_layers(
 
         logger.error(f"❌ Error fetching geospatial layers: {e}")
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

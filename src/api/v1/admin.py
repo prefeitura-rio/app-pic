@@ -219,7 +219,7 @@ def _filter_manageable_users(
         return df.head(0)  # Retorna DataFrame vazio
 
     # FILTRO 1: Remover super admins (admin segmentado não pode gerenciar super admins)
-    df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
+    df_non_super_admin = df.filter(~pl.col("is_super_admin"))
 
     # FILTRO 2: Filtrar por secretaria_acesso
     from src.utils.constants import SECRETARIA_NULL, SECRETARIA_TODOS
@@ -713,7 +713,7 @@ async def get_available_ids(permissions: CurrentUserPermissions):
 
     except Exception as e:
         logger.error(f"❌ Erro ao buscar IDs disponíveis: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/me", response_model=UserAccessRecord)
@@ -929,7 +929,7 @@ async def list_users(
         import traceback
 
         logger.error(f"❌ Full traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/users/{cpf}", response_model=UserAccessRecord)
@@ -1390,7 +1390,7 @@ async def upsert_user(
 
     except Exception as e:
         logger.error(f"❌ Erro ao fazer upsert do usuário {cpf}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/users/{cpf}", status_code=204)
@@ -1495,7 +1495,7 @@ async def delete_user(
 
     except Exception as e:
         logger.error(f"❌ Erro ao deletar usuário: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========================================================================
@@ -1688,7 +1688,6 @@ async def batch_import_users(
         # Processar cada linha
         errors: list[BatchImportError] = []
         imported_users: list[ImportedUser] = []
-        users_to_insert: list[dict] = []
 
         for row_idx, row in enumerate(df.to_dicts(), start=1):
             cpf_raw = row.get("cpf", "")
@@ -1786,7 +1785,7 @@ async def batch_import_users(
         import traceback
 
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/users-batch/permissions", response_model=BatchPermissionsResult)
@@ -2025,7 +2024,7 @@ async def batch_update_permissions(
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500, detail=f"Erro ao processar batch: {str(e)}"
-        )
+        ) from e
 
     # Invalidar cache
     refresh_governance_cache()

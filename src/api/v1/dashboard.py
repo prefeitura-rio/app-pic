@@ -205,7 +205,7 @@ async def get_dashboard_metrics(
 
     except Exception as e:
         logger.error(f"❌ Error fetching dashboard metrics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _format_mes_label(mes: str) -> str:
@@ -306,10 +306,6 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: str | None
 
     participantes_irregular_num = df.select(
         pl.col("indicador_participantes_percentual_irregular").struct.field("numerador").sum()
-    ).item() or 0
-
-    participantes_irregular_den = df.select(
-        pl.col("indicador_participantes_percentual_irregular").struct.field("denominador").sum()
     ).item() or 0
 
     logger.info(f"⚡ Seção 1 (Indicadores): {perf_time.perf_counter() - section_start:.3f}s")
@@ -539,7 +535,8 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: str | None
     resultado_programa: list[ResultadoProgramaPoint] = []
     for mes in sorted(evolucao_mensal.keys()):
         dados_mes = evolucao_mensal[mes]
-        def calc_perc(sec: str) -> float:
+
+        def calc_perc(sec: str, dados_mes: dict = dados_mes) -> float:
             d = dados_mes.get(sec, {"num": 0, "den": 0})
             return round(d["num"] / d["den"] * 100, 1) if d["den"] > 0 else 0.0
         resultado_programa.append(
@@ -612,7 +609,8 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: str | None
     taxa_resolucao_lista: list[TaxaResolucaoMensalPoint] = []
     for mes in sorted(resolucao_mensal.keys()):
         dados_mes = resolucao_mensal[mes]
-        def calc_res(sec: str) -> float:
+
+        def calc_res(sec: str, dados_mes: dict = dados_mes) -> float:
             d = dados_mes.get(sec, {"num": 0, "den": 0})
             return round(d["num"] / d["den"] * 100, 1) if d["den"] > 0 else 0.0
         taxa_resolucao_lista.append(

@@ -65,7 +65,7 @@ def _filter_manageable_users(df: pl.DataFrame, admin_permissions: UserPermission
         logger.warning("Admin nao possui nenhum ID - nao pode gerenciar usuarios")
         return df.head(0)
 
-    df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
+    df_non_super_admin = df.filter(~pl.col("is_super_admin"))
 
     # Boundary rule: an admin can only manage users whose secretarias_acesso
     # is a SUBSET of the admin's own secretarias_acesso (a user with no

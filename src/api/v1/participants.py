@@ -279,7 +279,7 @@ async def get_participants(
     except Exception as e:
         logger.error(f"❌ Error fetching participants: {e}")
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -450,9 +450,6 @@ def _df_to_csv_stream(df: pl.DataFrame):
     header_line = DELIM.join(_CSV_HEADERS)
     yield ("\uFEFF" + header_line + "\n").encode("utf-8")
 
-    # Verificar quais colunas existem no DataFrame
-    existing_cols = set(df.columns)
-
     rows_buffer: list[str] = []
 
     for row in df.iter_rows(named=True):
@@ -468,75 +465,72 @@ def _df_to_csv_stream(df: pl.DataFrame):
         # Protocolos: lista de dicts
         protocolos = row.get("protocolo_listagem") or []
 
-        def _build_participant_cells() -> list[str]:
-            return [
-                _escape_csv(row.get("nome")),
-                _escape_csv(row.get("cpf")),
-                _escape_csv(row.get("nascimento_data")),
-                _escape_csv(row.get("idade")),
-                _escape_csv(row.get("endereco")),
-                _escape_csv(row.get("complemento")),
-                _escape_csv(row.get("bairro")),
-                _escape_csv(sms_end),
-                _escape_csv(sms_comp),
-                _escape_csv(sms_bairro),
-                _escape_csv(row.get("telefone_1_ddd")),
-                _escape_csv(row.get("telefone_1_numero")),
-                _escape_csv(row.get("telefone_2_ddd")),
-                _escape_csv(row.get("telefone_2_numero")),
-                _escape_csv(row.get("subprefeitura")),
-                _escape_csv(row.get("regiao_administrativa")),
-                _escape_csv(row.get("grupo")),
-                _escape_csv(row.get("cohort")),
-                _escape_csv(row.get("has_bolsa_familia")),
-                _escape_csv(row.get("has_cartao_pic")),
-                _escape_csv(row.get("status")),
-                _escape_csv(row.get("status_inativo_motivo")),
-                _escape_csv(row.get("situacao")),
-                _escape_csv(row.get("total_protocolos")),
-                _escape_csv(row.get("total_protocolos_regular")),
-                _escape_csv(row.get("total_protocolos_irregular")),
-                _escape_csv(row.get("total_protocolos_atencao")),
-                _escape_csv(row.get("total_fracao")),
-                _escape_csv(row.get("assistencia_protocolos_total")),
-                _escape_csv(row.get("assistencia_protocolos_regular")),
-                _escape_csv(row.get("assistencia_protocolos_irregular")),
-                _escape_csv(row.get("assistencia_protocolos_atencao")),
-                _escape_csv(row.get("assistencia_fracao")),
-                _escape_csv(row.get("educacao_protocolos_total")),
-                _escape_csv(row.get("educacao_protocolos_regular")),
-                _escape_csv(row.get("educacao_protocolos_irregular")),
-                _escape_csv(row.get("educacao_protocolos_atencao")),
-                _escape_csv(row.get("educacao_fracao")),
-                _escape_csv(row.get("saude_protocolos_total")),
-                _escape_csv(row.get("saude_protocolos_regular")),
-                _escape_csv(row.get("saude_protocolos_irregular")),
-                _escape_csv(row.get("saude_protocolos_atencao")),
-                _escape_csv(row.get("saude_fracao")),
-                _escape_csv(row.get("id_cras")),
-                _escape_csv(row.get("nome_cras")),
-                _escape_csv(row.get("source_cras")),
-                _escape_csv(row.get("id_cas")),
-                _escape_csv(row.get("nome_cas")),
-                _escape_csv(row.get("id_escola")),
-                _escape_csv(row.get("nome_escola")),
-                _escape_csv(row.get("source_escola")),
-                _escape_csv(row.get("id_cre")),
-                _escape_csv(row.get("nome_cre")),
-                _escape_csv(row.get("id_ap")),
-                _escape_csv(row.get("nome_ap")),
-                _escape_csv(row.get("id_clinica_familia")),
-                _escape_csv(row.get("nome_clinica_familia")),
-                _escape_csv(row.get("source_clinica_familia")),
-                _escape_csv(row.get("has_cobertura_clinica_familia")),
-                _escape_csv(row.get("id_equipe_familia")),
-                _escape_csv(row.get("nome_equipe_familia")),
-                _escape_csv(row.get("source_equipe_familia")),
-                _escape_csv(row.get("has_cobertura_equipe_familia")),
-                _escape_csv(row.get("equipe_familia")),
-            ]
-
-        participant_cells = _build_participant_cells()
+        participant_cells = [
+            _escape_csv(row.get("nome")),
+            _escape_csv(row.get("cpf")),
+            _escape_csv(row.get("nascimento_data")),
+            _escape_csv(row.get("idade")),
+            _escape_csv(row.get("endereco")),
+            _escape_csv(row.get("complemento")),
+            _escape_csv(row.get("bairro")),
+            _escape_csv(sms_end),
+            _escape_csv(sms_comp),
+            _escape_csv(sms_bairro),
+            _escape_csv(row.get("telefone_1_ddd")),
+            _escape_csv(row.get("telefone_1_numero")),
+            _escape_csv(row.get("telefone_2_ddd")),
+            _escape_csv(row.get("telefone_2_numero")),
+            _escape_csv(row.get("subprefeitura")),
+            _escape_csv(row.get("regiao_administrativa")),
+            _escape_csv(row.get("grupo")),
+            _escape_csv(row.get("cohort")),
+            _escape_csv(row.get("has_bolsa_familia")),
+            _escape_csv(row.get("has_cartao_pic")),
+            _escape_csv(row.get("status")),
+            _escape_csv(row.get("status_inativo_motivo")),
+            _escape_csv(row.get("situacao")),
+            _escape_csv(row.get("total_protocolos")),
+            _escape_csv(row.get("total_protocolos_regular")),
+            _escape_csv(row.get("total_protocolos_irregular")),
+            _escape_csv(row.get("total_protocolos_atencao")),
+            _escape_csv(row.get("total_fracao")),
+            _escape_csv(row.get("assistencia_protocolos_total")),
+            _escape_csv(row.get("assistencia_protocolos_regular")),
+            _escape_csv(row.get("assistencia_protocolos_irregular")),
+            _escape_csv(row.get("assistencia_protocolos_atencao")),
+            _escape_csv(row.get("assistencia_fracao")),
+            _escape_csv(row.get("educacao_protocolos_total")),
+            _escape_csv(row.get("educacao_protocolos_regular")),
+            _escape_csv(row.get("educacao_protocolos_irregular")),
+            _escape_csv(row.get("educacao_protocolos_atencao")),
+            _escape_csv(row.get("educacao_fracao")),
+            _escape_csv(row.get("saude_protocolos_total")),
+            _escape_csv(row.get("saude_protocolos_regular")),
+            _escape_csv(row.get("saude_protocolos_irregular")),
+            _escape_csv(row.get("saude_protocolos_atencao")),
+            _escape_csv(row.get("saude_fracao")),
+            _escape_csv(row.get("id_cras")),
+            _escape_csv(row.get("nome_cras")),
+            _escape_csv(row.get("source_cras")),
+            _escape_csv(row.get("id_cas")),
+            _escape_csv(row.get("nome_cas")),
+            _escape_csv(row.get("id_escola")),
+            _escape_csv(row.get("nome_escola")),
+            _escape_csv(row.get("source_escola")),
+            _escape_csv(row.get("id_cre")),
+            _escape_csv(row.get("nome_cre")),
+            _escape_csv(row.get("id_ap")),
+            _escape_csv(row.get("nome_ap")),
+            _escape_csv(row.get("id_clinica_familia")),
+            _escape_csv(row.get("nome_clinica_familia")),
+            _escape_csv(row.get("source_clinica_familia")),
+            _escape_csv(row.get("has_cobertura_clinica_familia")),
+            _escape_csv(row.get("id_equipe_familia")),
+            _escape_csv(row.get("nome_equipe_familia")),
+            _escape_csv(row.get("source_equipe_familia")),
+            _escape_csv(row.get("has_cobertura_equipe_familia")),
+            _escape_csv(row.get("equipe_familia")),
+        ]
 
         if protocolos:
             for prot in protocolos:
@@ -651,4 +645,4 @@ async def export_participants_csv(
     except Exception as e:
         logger.error(f"❌ [EXPORT] Erro ao exportar CSV: {e}")
         logger.error(f"❌ [EXPORT] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

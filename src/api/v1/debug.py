@@ -260,4 +260,4 @@ async def get_debug_participants(
 
     except Exception as e:
         logger.error(f"❌ Erro ao buscar dados de debug: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

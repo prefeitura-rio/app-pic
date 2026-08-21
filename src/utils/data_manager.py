@@ -5,12 +5,6 @@ from typing import Any
 
 import polars as pl
 
-# Limit concurrent BQ fetches to 1 to prevent OOM on cold start / pod restart.
-# When multiple endpoints hit BQ simultaneously (cache miss), they serialise here.
-# Double-checked locking ensures the second waiter re-uses the cache populated by
-# the first waiter instead of launching a redundant fetch.
-_bq_semaphore: asyncio.Semaphore | None = None
-
 from src.api.v1.schemas import (
     FilterOptionItem,
     PaginationMeta,
@@ -28,6 +22,12 @@ from src.utils.data_manager_config import (
 from src.utils.log import logger
 from src.utils.secretaria_access import filter_and_recalculate_by_secretaria
 from src.utils.text_utils import TextNormalizer
+
+# Limit concurrent BQ fetches to 1 to prevent OOM on cold start / pod restart.
+# When multiple endpoints hit BQ simultaneously (cache miss), they serialise here.
+# Double-checked locking ensures the second waiter re-uses the cache populated by
+# the first waiter instead of launching a redundant fetch.
+_bq_semaphore: asyncio.Semaphore | None = None
 
 
 # =============================================================================
