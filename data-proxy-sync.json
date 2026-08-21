@@ -1,0 +1,87 @@
+{
+  "$comment": "Draft syncConfig for the data-proxy service, covering app-pic. Handoff artifact for plan.md #9 checklist item 3. Format per data-proxy's docs/sync.md. Project ID below is the dev/staging BigQuery project (rj-pic-dev, from src/config/.env) — CONFIRM THE PROD PROJECT ID with Pedro before deploying to production; it is not present anywhere in this repo.",
+  "schemas": {
+    "app_pequenos_cariocas": {
+      "claim": "preferred_username",
+      "tables": [
+        {
+          "name": "rj-pic-dev.app_pequenos_cariocas.endpoint_participante_listagem",
+          "strategy": "full",
+          "rls": [
+            { "column": "id_cras", "unit_type": "cras" },
+            { "column": "id_escola", "unit_type": "escola" },
+            { "column": "id_cre", "unit_type": "cre" },
+            { "column": "id_ap", "unit_type": "ap" },
+            { "column": "id_cas", "unit_type": "cas" },
+            { "column": "id_clinica_familia", "unit_type": "clinica_familia" },
+            { "column": "id_equipe_familia", "unit_type": "equipe_familia" }
+          ],
+          "indexes": [
+            { "name": "idx_epl_id_cras", "columns": ["id_cras"] },
+            { "name": "idx_epl_id_escola", "columns": ["id_escola"] },
+            { "name": "idx_epl_id_cre", "columns": ["id_cre"] },
+            { "name": "idx_epl_id_ap", "columns": ["id_ap"] },
+            { "name": "idx_epl_id_cas", "columns": ["id_cas"] },
+            { "name": "idx_epl_id_clinica_familia", "columns": ["id_clinica_familia"] },
+            { "name": "idx_epl_id_equipe_familia", "columns": ["id_equipe_familia"] },
+            { "name": "idx_epl_cpf", "columns": ["cpf"] },
+            { "name": "idx_epl_id_membro_familia", "columns": ["id_membro_familia"] },
+            { "name": "idx_epl_id_familia", "columns": ["id_familia"] },
+            { "name": "idx_epl_nome", "columns": ["nome"] }
+          ]
+        },
+        {
+          "name": "rj-pic-dev.app_pequenos_cariocas.endpoint_participante_visao_geral",
+          "strategy": "full",
+          "rls": [
+            { "column": "id_cras", "unit_type": "cras" },
+            { "column": "id_escola", "unit_type": "escola" },
+            { "column": "id_cre", "unit_type": "cre" },
+            { "column": "id_ap", "unit_type": "ap" },
+            { "column": "id_cas", "unit_type": "cas" },
+            { "column": "id_clinica_familia", "unit_type": "clinica_familia" },
+            { "column": "id_equipe_familia", "unit_type": "equipe_familia" }
+          ],
+          "indexes": [
+            { "name": "idx_epvg_id_cras", "columns": ["id_cras"] },
+            { "name": "idx_epvg_id_escola", "columns": ["id_escola"] },
+            { "name": "idx_epvg_id_cre", "columns": ["id_cre"] },
+            { "name": "idx_epvg_id_ap", "columns": ["id_ap"] },
+            { "name": "idx_epvg_id_cas", "columns": ["id_cas"] },
+            { "name": "idx_epvg_id_clinica_familia", "columns": ["id_clinica_familia"] },
+            { "name": "idx_epvg_id_equipe_familia", "columns": ["id_equipe_familia"] }
+          ]
+        },
+        {
+          "$comment": "Sem RLS: tabela de layers estaticos do mapa, hoje consultada com user_permissions=None (src/pic/infrastructure/repositories/bigquery_geospatial.py). Nao tem colunas de unidade.",
+          "name": "rj-pic-dev.app_pequenos_cariocas.endpoint_camadas_geoespaciais",
+          "strategy": "full"
+        },
+        {
+          "$comment": "Sem RLS: so tem cpf/protocolo_id/protocolo_motivo, sem coluna de unidade. Hoje e' buscada inteira e filtrada em memoria por cpf de um participante ja filtrado por RLS na query principal (src/pic/infrastructure/repositories/bigquery_participant.py:213).",
+          "name": "rj-pic-dev.app_pequenos_cariocas.protocolo_detalhes",
+          "strategy": "full",
+          "indexes": [
+            { "name": "idx_pd_cpf", "columns": ["cpf"] },
+            { "name": "idx_pd_id_membro_familia", "columns": ["id_membro_familia"] }
+          ]
+        },
+        {
+          "$comment": "Sem RLS: acesso restrito a super-admin no proprio app-pic (checado antes da query); hoje buscada por cpf_particao pontual, nao via DataManager/cache (src/pic/infrastructure/repositories/bigquery_debug.py).",
+          "name": "rj-pic-dev.app_pequenos_cariocas.endpoint_participante_debug",
+          "strategy": "full",
+          "indexes": [
+            { "name": "idx_epd_cpf", "columns": ["cpf"] },
+            { "name": "idx_epd_nome", "columns": ["nome"] },
+            { "name": "idx_epd_id_membro_familia", "columns": ["id_membro_familia"] }
+          ]
+        },
+        {
+          "$comment": "Sem RLS: tabela de dimensao/catalogo pequena (protocolo_id -> lineage/regras_negocio), so acessivel a super-admin junto com endpoint_participante_debug.",
+          "name": "rj-pic-dev.app_pequenos_cariocas.endpoint_participante_debug_origins",
+          "strategy": "full"
+        }
+      ]
+    }
+  }
+}

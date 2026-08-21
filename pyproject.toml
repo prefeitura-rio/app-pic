@@ -26,6 +26,7 @@ dependencies = [
   "asyncpg>=0.31.0",
   "alembic>=1.19.1",
   "cloud-sql-python-connector[asyncpg]>=1.22.0",
+  "postgrest>=2.31.0",
 ]
 
 [dependency-groups]
