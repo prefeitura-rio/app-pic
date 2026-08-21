@@ -10,7 +10,6 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
-from src.config import env
 
 # revision identifiers, used by Alembic.
 revision: str = '82e4a2ad54ff'
@@ -18,12 +17,11 @@ down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# Table names come from APP_PIC_USERS_TABLE/APP_PIC_POLICY_TABLE (not
-# hardcoded) so this exact migration creates users_staging/policy_staging or
-# users_prod/policy_prod depending on which env is active when it runs — see
-# alembic/env.py for how each environment tracks its own applied revisions.
-USERS_TABLE = env.APP_PIC_USERS_TABLE
-POLICY_TABLE = env.APP_PIC_POLICY_TABLE
+# Table names are fixed — environment isolation (staging/prod) is done via
+# Postgres schema (APP_PIC_PG_SCHEMA / schema_translate_map), applied at the
+# connection level. See alembic/env.py and src/pic/infrastructure/db/engine.py.
+USERS_TABLE = "users"
+POLICY_TABLE = "policy"
 
 
 def upgrade() -> None:

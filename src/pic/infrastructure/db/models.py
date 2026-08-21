@@ -22,15 +22,15 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.config import env
 from src.pic.infrastructure.db.base import Base
 
 
 class User(Base):
-    # Table name is env-driven (users_staging/users_prod) — staging and prod
-    # share the same Postgres instance/database, so isolation is by table
-    # name rather than by separate database/schema. See plan.md section 7.
-    __tablename__ = env.APP_PIC_USERS_TABLE
+    # Table name is fixed — staging and prod share the same Postgres
+    # instance/database, but isolation is by Postgres schema (see
+    # `schema_translate_map` in engine.py), not by table name. See plan.md
+    # section 7.
+    __tablename__ = "users"
 
     cpf: Mapped[str] = mapped_column(String, primary_key=True)
 
@@ -90,18 +90,14 @@ class PolicyRow(Base):
     mirrored here; we never use it.
     """
 
-    __tablename__ = env.APP_PIC_POLICY_TABLE
+    __tablename__ = "policy"
     __table_args__ = (
-        # Constraint name includes the table name: unique/index names are
-        # namespaced per schema in Postgres, not per table, and staging/prod
-        # tables live in the same schema — a fixed name would collide once
-        # both `policy_staging` and `policy_prod` exist.
         UniqueConstraint(
             "schema",
             "subject",
             "unit_type",
             "unit_id",
-            name=f"uq_{env.APP_PIC_POLICY_TABLE}_grant",
+            name="uq_policy_grant",
         ),
     )
 

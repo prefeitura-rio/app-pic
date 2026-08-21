@@ -60,6 +60,11 @@ def get_engine() -> AsyncEngine:
             "postgresql+asyncpg://",
             async_creator=_getconn,
             pool_pre_ping=True,
+            # Environment isolation (staging vs prod) is done via Postgres
+            # schema, not table name — models declare no schema (`schema=None`),
+            # and this maps that to the schema for the active environment at
+            # execution time. See plan.md section 7.
+            execution_options={"schema_translate_map": {None: env.APP_PIC_PG_SCHEMA}},
         )
     return _engine
 

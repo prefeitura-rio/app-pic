@@ -84,13 +84,12 @@ APP_PIC_PG_DB = getenv_or_action(env_name="APP_PIC_PG_DB", action="raise")
 APP_PIC_PG_USER = getenv_or_action(env_name="APP_PIC_PG_USER", action="raise")
 APP_PIC_PG_PW = getenv_or_action(env_name="APP_PIC_PG_PW", action="raise")
 
-# Nomes de tabela por ambiente — a mesma instância/banco Postgres é
-# compartilhada entre staging e prod (ver plan.md seção 7), então o
-# isolamento de dados entre ambientes é feito por nome de tabela em vez de
-# banco/schema separado. staging e prod devem apontar para valores diferentes
-# (ex: "users_staging"/"users_prod") via configuração de deploy.
-APP_PIC_USERS_TABLE = getenv_or_action(env_name="APP_PIC_USERS_TABLE", action="raise")
-APP_PIC_POLICY_TABLE = getenv_or_action(env_name="APP_PIC_POLICY_TABLE", action="raise")
+# Schema por ambiente — a mesma instância/banco Postgres é compartilhada
+# entre staging e prod (ver plan.md seção 7), então o isolamento de dados
+# entre ambientes é feito por schema Postgres (não por nome de tabela).
+# Tabelas (`users`, `policy`) têm nome fixo; staging e prod devem apontar
+# para schemas diferentes (ex: "staging"/"prod") via configuração de deploy.
+APP_PIC_PG_SCHEMA = getenv_or_action(env_name="APP_PIC_PG_SCHEMA", action="raise")
 
 # data-proxy (PostgREST) — writes to rls.access_policy for RLS enforcement.
 DATA_PROXY_API_URL = getenv_or_action(env_name="DATA_PROXY_API_URL", action="raise")

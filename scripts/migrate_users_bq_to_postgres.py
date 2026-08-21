@@ -1,7 +1,7 @@
 """
 Backfill de identidade de usuários: BigQuery (`endpoint_data_access`) -> Postgres
-do app-pic (tabela `users_staging`/`users_prod`, conforme APP_PIC_USERS_TABLE
-no .env ativo — ver plan.md seção 7).
+do app-pic (tabela `users`, no schema conforme APP_PIC_PG_SCHEMA no .env ativo —
+ver plan.md seção 7).
 
 Escopo deste script (ver plan.md seções 3.1 e 10.9): migra só os campos de
 IDENTIDADE (cpf, nome, email, ocupacao, secretaria, is_admin, is_super_admin,
