@@ -82,7 +82,7 @@ export default function AdminPage() {
         ocupacao: filterOcupacao && filterOcupacao !== "todas" ? filterOcupacao : undefined,
         secretaria: filterSecretaria && filterSecretaria !== "todas" ? filterSecretaria : undefined,
         permission: filterPermission && filterPermission !== "todas" ? filterPermission : undefined,
-        secretariaAcesso: filterSecretariaAcesso && filterSecretariaAcesso !== "todas" ? filterSecretariaAcesso : undefined,
+        secretariasAcesso: filterSecretariaAcesso && filterSecretariaAcesso !== "todas" ? [filterSecretariaAcesso] : undefined,
         bypassCache: shouldBypassCache || undefined,
       });
     },
@@ -637,13 +637,9 @@ export default function AdminPage() {
                   placeholder="Acesso Protocolos"
                   defaultLabel="Todos os Acessos"
                   options={
-                    filterOptions?.secretaria_acesso_list?.map((opt: any) => ({
+                    filterOptions?.secretarias_acesso_list?.map((opt: any) => ({
                       id: opt.id,
-                      label: opt.id === "NULL" || !opt.id
-                        ? "🚫 Sem Acesso"
-                        : opt.id === "TODOS"
-                        ? "🌐 Todos"
-                        : opt.id === "SME"
+                      label: opt.id === "SME"
                         ? "📚 Educação"
                         : opt.id === "SMS"
                         ? "🏥 Saúde"

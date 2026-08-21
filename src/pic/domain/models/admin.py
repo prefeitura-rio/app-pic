@@ -33,7 +33,7 @@ class UserAccessRecord(BaseModel):
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
 
-    secretaria_acesso: str | None = None
+    secretarias_acesso: list[str] = Field(default_factory=list)
 
     active: bool = True
     notes: str | None = None
@@ -59,7 +59,7 @@ class UpsertUserRequest(BaseModel):
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
 
-    secretaria_acesso: str | None = None
+    secretarias_acesso: list[str] | None = None
 
     notes: str | None = None
     active: bool = True
@@ -90,7 +90,7 @@ class ImportedUser(BaseModel):
     id_cas_list: list[IdWithName] | None = None
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
-    secretaria_acesso: str | None = None
+    secretarias_acesso: list[str] | None = None
 
 
 class BatchImportResult(BaseModel):
@@ -119,7 +119,7 @@ class BatchPermissionsRequest(BaseModel):
     id_cas_list: list[IdWithName] | None = None
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
-    secretaria_acesso: str | None = None
+    secretarias_acesso: list[str] | None = None
 
 
 class BatchPermissionsError(BaseModel):

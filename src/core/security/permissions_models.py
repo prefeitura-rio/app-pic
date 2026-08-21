@@ -4,8 +4,13 @@ Data models for CPF-based data governance.
 This module defines the permission models used to control user access
 to data based on their assigned facility IDs (CRAS, schools, CRE, etc).
 """
+import logging
 from typing import Optional, List
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+_ALL_SECRETARIAS = {"SME", "SMS", "SMAS"}
 
 
 class IdWithName(BaseModel):
@@ -21,7 +26,7 @@ class PermissionDeniedError(Exception):
 
 class UserPermissions(BaseModel):
     """
-    User permission record from data_access table.
+    User permission record loaded from Postgres (users/policy tables).
 
     Defines which facility IDs a user has access to and their admin status.
     """
@@ -31,7 +36,7 @@ class UserPermissions(BaseModel):
     is_super_admin: bool = False
     permission: Optional[str] = None
 
-    # Segmentation lists (None = no restriction for that category)
+    # Segmentation lists (None/empty = no restriction for that category)
     id_cras_list: Optional[List[IdWithName]] = None
     id_escola_list: Optional[List[IdWithName]] = None
     id_cre_list: Optional[List[IdWithName]] = None
@@ -40,11 +45,39 @@ class UserPermissions(BaseModel):
     id_clinica_familia_list: Optional[List[IdWithName]] = None
     id_equipe_familia_list: Optional[List[IdWithName]] = None
 
-    # Protocol access control
-    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
+    # Protocol access control: subset of {"SME", "SMS", "SMAS"}.
+    # Empty list = no access to protocolo-gated data.
+    secretarias_acesso: List[str] = []
 
     active: bool = True
     notes: Optional[str] = None
+
+    @property
+    def secretaria_acesso(self) -> Optional[str]:
+        """
+        Backward-compat shim for legacy (v1) code that still expects the old
+        single-value representation (SME/SMS/SMAS/TODOS/NULL).
+
+        - No secretarias -> None (old "NULL")
+        - All three -> "TODOS"
+        - Exactly one -> that value
+        - Any other combination (2 of 3) has no equivalent in the old model;
+          fall back to "TODOS" (permissive) rather than silently dropping
+          access, and log so it's visible if this ever triggers.
+        """
+        if not self.secretarias_acesso:
+            return None
+        if set(self.secretarias_acesso) >= _ALL_SECRETARIAS:
+            return "TODOS"
+        if len(self.secretarias_acesso) == 1:
+            return self.secretarias_acesso[0]
+        logger.warning(
+            "secretarias_acesso=%s has no equivalent in the legacy "
+            "single-value model; falling back to TODOS for cpf=%s",
+            self.secretarias_acesso,
+            self.cpf,
+        )
+        return "TODOS"
 
     def has_full_access(self) -> bool:
         """Super admins have full access to all data"""

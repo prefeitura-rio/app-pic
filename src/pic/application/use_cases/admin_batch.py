@@ -4,7 +4,7 @@ from typing import Any
 import polars as pl
 from fastapi import HTTPException, UploadFile
 
-from src.core.security.jwt import CurrentUserPermissions
+from src.core.security.jwt import CurrentUserPermissionsV2
 from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.domain.models.admin import (
     BatchImportError,
@@ -20,7 +20,7 @@ from src.pic.infrastructure.admin.validation import (
     calculate_permission,
     require_admin,
     validate_equipment_secretaria_consistency,
-    validate_secretaria_acesso_permission,
+    validate_secretarias_acesso_permission,
     validate_segmented_admin_can_manage,
 )
 from src.utils.log import logger
@@ -32,7 +32,7 @@ class BatchImportUsersUseCase:
 
     async def execute(
         self,
-        permissions: CurrentUserPermissions,
+        permissions: CurrentUserPermissionsV2,
         file: UploadFile,
     ) -> BatchImportResult:
         require_admin(permissions)
@@ -102,7 +102,8 @@ class BatchImportUsersUseCase:
                         "id_ap_list": user_dict.get("id_ap_list"),
                         "id_cas_list": user_dict.get("id_cas_list"),
                         "id_clinica_familia_list": user_dict.get("id_clinica_familia_list"),
-                        "secretaria_acesso": user_dict.get("secretaria_acesso"),
+                        "id_equipe_familia_list": user_dict.get("id_equipe_familia_list"),
+                        "secretarias_acesso": user_dict.get("secretarias_acesso"),
                     }
 
                 imported_users.append(ImportedUser(
@@ -139,7 +140,7 @@ class BatchUpdatePermissionsUseCase:
 
     async def execute(
         self,
-        permissions: CurrentUserPermissions,
+        permissions: CurrentUserPermissionsV2,
         request: BatchPermissionsRequest,
     ) -> BatchPermissionsResult:
         require_admin(permissions)
@@ -162,9 +163,9 @@ class BatchUpdatePermissionsUseCase:
 
         if target_ids_to_validate:
             validate_segmented_admin_can_manage(permissions, target_ids_to_validate)
-        if request.secretaria_acesso is not None:
-            validate_secretaria_acesso_permission(permissions, request.secretaria_acesso)
-        validate_equipment_secretaria_consistency(target_ids_dict, request.secretaria_acesso)
+        if request.secretarias_acesso is not None:
+            validate_secretarias_acesso_permission(permissions, request.secretarias_acesso)
+        validate_equipment_secretaria_consistency(target_ids_dict, request.secretarias_acesso)
 
         permission_value = calculate_permission(request.is_admin, False)
 
@@ -192,11 +193,6 @@ class BatchUpdatePermissionsUseCase:
 
         valid_users: list[dict[str, Any]] = []
 
-        def _escape_sql(val: str | None) -> str:
-            if val is None:
-                return "NULL"
-            return f"'{val.replace('\'', '\\\'')}'"
-
         for cpf, user_data in cpf_to_user_data.items():
             if cpf in existing_users:
                 target_user = existing_users[cpf]
@@ -209,10 +205,10 @@ class BatchUpdatePermissionsUseCase:
 
             valid_users.append({
                 "cpf": cpf,
-                "nome": _escape_sql(user_data.nome),
-                "email": _escape_sql(user_data.email),
-                "ocupacao": _escape_sql(user_data.ocupacao),
-                "secretaria": _escape_sql(user_data.secretaria),
+                "nome": user_data.nome,
+                "email": user_data.email,
+                "ocupacao": user_data.ocupacao,
+                "secretaria": user_data.secretaria,
             })
 
         if not valid_users:
@@ -233,7 +229,7 @@ class BatchUpdatePermissionsUseCase:
             is_admin=request.is_admin,
             permission=permission_value,
             id_lists=id_lists,
-            secretaria_acesso=request.secretaria_acesso,
+            secretarias_acesso=request.secretarias_acesso,
             updated_by=permissions.cpf,
         )
 

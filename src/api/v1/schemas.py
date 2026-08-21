@@ -136,7 +136,7 @@ class SmartFilterOptions(BaseModel):
     secretarias: List[FilterOptionItem] = []
     status_ativo: List[FilterOptionItem] = []
     permissions: List[FilterOptionItem] = []
-    secretaria_acesso_list: List[FilterOptionItem] = []
+    secretarias_acesso_list: List[FilterOptionItem] = []
 
 
 class GeospatialFilterOptions(BaseModel):

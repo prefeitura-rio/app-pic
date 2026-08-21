@@ -2,7 +2,7 @@ import time
 
 from fastapi import APIRouter, Depends, Query
 
-from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.get_filter_vocabulary import (
     GetFilterVocabularyUseCase,
 )
@@ -20,7 +20,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Filtros V2"])
     response_model=FilterVocabularyResponse,
 )
 async def get_filters(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     filters: FilterCriteria = Depends(),
     bypass_cache: bool = Query(False, description="Forcar refresh do cache"),
     use_case: GetFilterVocabularyUseCase = Depends(

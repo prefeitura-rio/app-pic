@@ -1,13 +1,11 @@
 """
-Módulo para filtragem e recálculo de protocolos baseado em secretaria_acesso.
+Módulo para filtragem e recálculo de protocolos baseado em secretarias_acesso.
 Centraliza toda a lógica de governança por secretaria em um único local.
 """
 import polars as pl
-from typing import Optional, List
+from typing import List
 from src.utils.log import logger
 from src.utils.constants import (
-    SECRETARIA_TODOS,
-    SECRETARIA_NULL,
     SECRETARIA_SME,
     SECRETARIA_SMS,
     SECRETARIA_SMAS,
@@ -17,6 +15,8 @@ from src.utils.constants import (
 # ============================================================================
 # CONSTANTES LOCAIS
 # ============================================================================
+
+_ALL_SECRETARIAS = {SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS}
 
 # Tipos de contadores (NOTA: coluna total é "total_protocolos", sem sufixo _total)
 COUNTER_SUFFIXES = ["", "_irregular", "_atencao", "_regular"]
@@ -28,60 +28,54 @@ COUNTER_SUFFIXES = ["", "_irregular", "_atencao", "_regular"]
 
 def get_allowed_secretaria_options(
     user_is_super_admin: bool,
-    user_secretaria_acesso: Optional[str]
+    user_secretarias_acesso: List[str],
 ) -> List[str]:
     """
-    Retorna lista de valores de secretaria_acesso que o usuário pode atribuir.
+    Retorna lista de secretarias que o usuário pode atribuir a outros usuários.
 
     Args:
         user_is_super_admin: Se o usuário é super admin
-        user_secretaria_acesso: Valor de secretaria_acesso do usuário
+        user_secretarias_acesso: Secretarias do usuário (subset de SME/SMS/SMAS)
 
     Returns:
-        Lista de valores permitidos (NULL, TODOS, SME, SMS, SMAS)
+        Lista de códigos permitidos (SME, SMS, SMAS). Uma lista vazia
+        (= sem acesso a nenhuma) é sempre atribuível por qualquer admin,
+        já que remover/zerar acesso nunca é um privilege escalation.
     """
-    # Super admin pode atribuir tudo
     if user_is_super_admin:
-        return [SECRETARIA_NULL, SECRETARIA_TODOS, SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
+        return [SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
 
-    # Admin com TODOS pode atribuir tudo
-    if user_secretaria_acesso == SECRETARIA_TODOS:
-        return [SECRETARIA_NULL, SECRETARIA_TODOS, SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
-
-    # Admin com secretaria específica pode atribuir NULL ou sua secretaria
-    if user_secretaria_acesso in SECRETARIA_COLUMN_PREFIX:
-        return [SECRETARIA_NULL, user_secretaria_acesso]
-
-    # Admin sem secretaria_acesso pode atribuir apenas NULL
-    return [SECRETARIA_NULL]
+    return list(user_secretarias_acesso)
 
 
 def filter_and_recalculate_by_secretaria(
     df: pl.DataFrame,
-    secretaria_acesso: str
+    secretarias_acesso: List[str],
 ) -> pl.DataFrame:
     """
-    Filtra protocolo_listagem por secretaria e recalcula todos os contadores.
+    Filtra protocolo_listagem pelas secretarias do usuário e recalcula
+    todos os contadores.
 
     Args:
         df: DataFrame com coluna protocolo_listagem
-        secretaria_acesso: SME, SMS, SMAS, TODOS, ou NULL
+        secretarias_acesso: Subset de {SME, SMS, SMAS}. Vazio = sem acesso
+            a nenhum protocolo. As três = acesso total (sem filtragem).
 
     Returns:
         DataFrame filtrado com contadores recalculados
     """
-    # TODOS = vê tudo (sem filtragem)
-    if secretaria_acesso == SECRETARIA_TODOS:
+    # Acesso total (as 3 secretarias) = vê tudo, sem filtragem
+    if set(secretarias_acesso) >= _ALL_SECRETARIAS:
         return df
 
     # IMPORTANTE: Só aplicar se o DataFrame tiver protocolo_listagem (tabela dashboard não tem)
     if "protocolo_listagem" not in df.columns:
-        logger.warning(f"⚠️ DataFrame não tem coluna protocolo_listagem - skip filtro de protocolos")
+        logger.warning("⚠️ DataFrame não tem coluna protocolo_listagem - skip filtro de protocolos")
         return df
 
-    # NULL ou vazio = sem acesso a protocolos (remover TODOS)
-    if not secretaria_acesso or secretaria_acesso == SECRETARIA_NULL:
-        logger.info(f"🚫 Usuário sem acesso a protocolos - removendo todos os protocolos")
+    # Vazio = sem acesso a nenhum protocolo (remover todos)
+    if not secretarias_acesso:
+        logger.info("🚫 Usuário sem acesso a protocolos - removendo todos os protocolos")
         # Esvaziar lista de protocolos mantendo o schema (filtrar com condição impossível)
         df_filtered = df.with_columns([
             pl.when(pl.col("protocolo_listagem").is_not_null())
@@ -97,7 +91,7 @@ def filter_and_recalculate_by_secretaria(
         ])
         # Não remover participantes (diferente de secretaria específica)
         # Apenas recalcular contadores (todos vão para null)
-        df_filtered = _recalculate_secretaria_counters(df_filtered, secretaria_acesso)
+        df_filtered = _recalculate_secretaria_counters(df_filtered, secretarias_acesso)
         # Recalcular frações (todas null)
         df_filtered = _recalculate_fractions(df_filtered)
         # Recalcular situacao (null)
@@ -107,15 +101,15 @@ def filter_and_recalculate_by_secretaria(
         logger.info(f"✅ Removidos todos os protocolos: {len(df_filtered)} participantes")
         return df_filtered
 
-    logger.info(f"🔒 Filtrando protocolos por secretaria: {secretaria_acesso}")
+    logger.info(f"🔒 Filtrando protocolos por secretarias: {secretarias_acesso}")
 
-    # 1. Filtrar array protocolo_listagem por secretaria
+    # 1. Filtrar array protocolo_listagem para manter só as secretarias permitidas
     df_filtered = df.with_columns([
         pl.when(pl.col("protocolo_listagem").is_not_null())
         .then(
             pl.col("protocolo_listagem").list.eval(
                 pl.element().filter(
-                    pl.element().struct.field("secretaria") == secretaria_acesso
+                    pl.element().struct.field("secretaria").is_in(secretarias_acesso)
                 )
             )
         )
@@ -123,24 +117,25 @@ def filter_and_recalculate_by_secretaria(
         .alias("protocolo_listagem")
     ])
 
-    # 2. Remover participantes sem protocolos da secretaria
+    # 2. Remover participantes sem protocolos nas secretarias permitidas
     df_filtered = df_filtered.filter(
         pl.col("protocolo_listagem").list.len() > 0
     )
 
-    # 3. Recalcular contadores totais
+    # 3. Recalcular contadores totais (soma de todas as secretarias permitidas)
     df_filtered = _recalculate_total_counters(df_filtered)
 
-    # 4. Recalcular situacao (ANTES de dropar colunas total_*)
+    # 4. Recalcular situacao (ANTES de anular colunas total_*)
     df_filtered = _recalculate_situacao(df_filtered)
 
-    # 5. Recalcular contadores por secretaria (NÃO dropa mais, apenas recalcula)
-    df_filtered = _recalculate_secretaria_counters(df_filtered, secretaria_acesso)
+    # 5. Recalcular contadores por secretaria (uma coluna por secretaria permitida,
+    #    demais anuladas)
+    df_filtered = _recalculate_secretaria_counters(df_filtered, secretarias_acesso)
 
     # 6. Recalcular frações
     df_filtered = _recalculate_fractions(df_filtered)
 
-    logger.info(f"✅ Filtrado: {len(df_filtered)} participantes com protocolos {secretaria_acesso}")
+    logger.info(f"✅ Filtrado: {len(df_filtered)} participantes com protocolos {secretarias_acesso}")
 
     return df_filtered
 
@@ -171,53 +166,51 @@ def _recalculate_total_counters(df: pl.DataFrame) -> pl.DataFrame:
 
 def _recalculate_secretaria_counters(
     df: pl.DataFrame,
-    secretaria_acesso: str
+    secretarias_acesso: List[str],
 ) -> pl.DataFrame:
     """
-    Recalcula contadores por secretaria e seta outras secretarias como null.
+    Recalcula contadores por secretaria e seta secretarias sem acesso como null.
 
     PM confirmou que não há problema em usuários verem colunas null de outras secretarias.
     """
-    # Se TODOS, não fazer nada - mantém todas as colunas
-    if secretaria_acesso == SECRETARIA_TODOS:
+    # Acesso total, não faz nada - mantém todas as colunas
+    if set(secretarias_acesso) >= _ALL_SECRETARIAS:
         return df
 
-    # Construir lista de colunas dinamicamente
     columns = []
 
-    # Se NULL (sem acesso), setar TODAS as colunas como null
-    if not secretaria_acesso or secretaria_acesso == SECRETARIA_NULL:
-        # Setar contadores totais como null
-        for suffix in COUNTER_SUFFIXES:
-            columns.append(pl.lit(None).cast(pl.Int64).alias(f"total_protocolos{suffix}"))
+    # Acesso parcial (0, 1 ou 2 secretarias): total_* não é exibido nesse caso
+    # (só faz sentido com acesso total), então sempre anulamos.
+    for suffix in COUNTER_SUFFIXES:
+        columns.append(pl.lit(None).cast(pl.Int64).alias(f"total_protocolos{suffix}"))
 
-        # Setar todas as secretarias como null
-        for prefix in SECRETARIA_COLUMN_PREFIX.values():
+    for sec_code, prefix in SECRETARIA_COLUMN_PREFIX.items():
+        if sec_code in secretarias_acesso:
+            sec_field = pl.element().struct.field("secretaria") == sec_code
+
+            columns.append(
+                pl.col("protocolo_listagem").list.eval(sec_field)
+                .list.sum().cast(pl.Int64).alias(f"{prefix}_protocolos_total")
+            )
+            columns.append(
+                pl.col("protocolo_listagem").list.eval(
+                    sec_field & (pl.element().struct.field("irregular_indicador") == "true")
+                ).list.sum().cast(pl.Int64).alias(f"{prefix}_protocolos_irregular")
+            )
+            columns.append(
+                pl.col("protocolo_listagem").list.eval(
+                    sec_field & (pl.element().struct.field("protocolo_status_label") == "Atenção")
+                ).list.sum().cast(pl.Int64).alias(f"{prefix}_protocolos_atencao")
+            )
+            columns.append(
+                pl.col("protocolo_listagem").list.eval(
+                    sec_field & (pl.element().struct.field("protocolo_status_label") == "Regular")
+                ).list.sum().cast(pl.Int64).alias(f"{prefix}_protocolos_regular")
+            )
+        else:
             for suffix in COUNTER_SUFFIXES:
-                # Para secretarias, o primeiro é sempre _total
                 sec_suffix = "_total" if suffix == "" else suffix
                 columns.append(pl.lit(None).cast(pl.Int64).alias(f"{prefix}_protocolos{sec_suffix}"))
-
-    # Secretaria específica (SME, SMS, SMAS)
-    elif secretaria_acesso in SECRETARIA_COLUMN_PREFIX:
-        active_prefix = SECRETARIA_COLUMN_PREFIX[secretaria_acesso]
-
-        # Renomear total_protocolos* para a secretaria ativa
-        for suffix in COUNTER_SUFFIXES:
-            # Para secretarias, o primeiro é sempre _total (não vazio)
-            sec_suffix = "_total" if suffix == "" else suffix
-            columns.append(pl.col(f"total_protocolos{suffix}").alias(f"{active_prefix}_protocolos{sec_suffix}"))
-
-        # Setar outras secretarias como null
-        for sec_code, prefix in SECRETARIA_COLUMN_PREFIX.items():
-            if sec_code != secretaria_acesso:  # Pular a secretaria ativa
-                for suffix in COUNTER_SUFFIXES:
-                    sec_suffix = "_total" if suffix == "" else suffix
-                    columns.append(pl.lit(None).cast(pl.Int64).alias(f"{prefix}_protocolos{sec_suffix}"))
-
-        # Setar total como null
-        for suffix in COUNTER_SUFFIXES:
-            columns.append(pl.lit(None).cast(pl.Int64).alias(f"total_protocolos{suffix}"))
 
     return df.with_columns(columns)
 

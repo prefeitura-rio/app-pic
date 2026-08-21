@@ -32,7 +32,7 @@ interface UserInfo {
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
-  secretaria_acesso?: string | null;
+  secretarias_acesso?: string[] | null;
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;

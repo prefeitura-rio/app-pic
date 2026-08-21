@@ -49,7 +49,7 @@ def _filter_manageable_users(df: pl.DataFrame, admin_permissions: UserPermission
     logger.info("Verificando permissoes do admin:")
     logger.info(f"  - is_super_admin: {admin_permissions.is_super_admin}")
     logger.info(f"  - is_admin: {admin_permissions.is_admin}")
-    logger.info(f"  - secretaria_acesso: {admin_permissions.secretaria_acesso}")
+    logger.info(f"  - secretarias_acesso: {admin_permissions.secretarias_acesso}")
 
     has_any_ids = any([
         admin_permissions.id_cras_list,
@@ -67,21 +67,16 @@ def _filter_manageable_users(df: pl.DataFrame, admin_permissions: UserPermission
 
     df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
 
-    from src.utils.constants import SECRETARIA_NULL, SECRETARIA_TODOS
-
-    admin_secretaria = admin_permissions.secretaria_acesso
-
-    if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
-        df_non_super_admin = df_non_super_admin.filter(
-            (pl.col("secretaria_acesso").is_null())
-            | (pl.col("secretaria_acesso") == SECRETARIA_NULL)
-        )
-    elif admin_secretaria not in [SECRETARIA_TODOS]:
-        df_non_super_admin = df_non_super_admin.filter(
-            (pl.col("secretaria_acesso") == admin_secretaria)
-            | (pl.col("secretaria_acesso").is_null())
-            | (pl.col("secretaria_acesso") == SECRETARIA_NULL)
-        )
+    # Boundary rule: an admin can only manage users whose secretarias_acesso
+    # is a SUBSET of the admin's own secretarias_acesso (a user with no
+    # protocol access, i.e. empty list, is always manageable since {} is a
+    # subset of any set).
+    admin_secretarias = admin_permissions.secretarias_acesso or []
+    df_non_super_admin = df_non_super_admin.filter(
+        pl.col("secretarias_acesso")
+        .list.eval(pl.element().is_in(admin_secretarias))
+        .list.all()
+    )
 
     if df_non_super_admin.is_empty():
         return df.head(0)
@@ -133,23 +128,21 @@ def _filter_manageable_users(df: pl.DataFrame, admin_permissions: UserPermission
 
 
 def validate_equipment_secretaria_consistency(
-    target_ids: dict[str, list[IdWithName]], target_secretaria_acesso: str | None
+    target_ids: dict[str, list[IdWithName]], target_secretarias_acesso: list[str] | None
 ):
-    from src.utils.constants import (
-        SECRETARIA_EQUIPMENT,
-        SECRETARIA_EQUIPMENT_LABELS,
-        SECRETARIA_NULL,
-        SECRETARIA_TODOS,
-    )
+    from src.utils.constants import SECRETARIA_EQUIPMENT, SECRETARIA_EQUIPMENT_LABELS
 
-    if (
-        not target_secretaria_acesso
-        or target_secretaria_acesso == SECRETARIA_NULL
-        or target_secretaria_acesso == SECRETARIA_TODOS
-    ):
+    secretarias = set(target_secretarias_acesso or [])
+
+    # No protocol access, or full access (all secretarias) -> no equipment
+    # restriction (the old NULL/TODOS cases).
+    if not secretarias or secretarias >= set(SECRETARIA_EQUIPMENT.keys()):
         return
 
-    allowed = SECRETARIA_EQUIPMENT.get(target_secretaria_acesso, [])
+    # Union of every allowed equipment across all of the target's secretarias.
+    allowed: set[str] = set()
+    for secretaria in secretarias:
+        allowed.update(SECRETARIA_EQUIPMENT.get(secretaria, []))
 
     equipment_names = {
         "id_cre_list": "CRE", "id_escola_list": "Escolas",
@@ -161,43 +154,43 @@ def validate_equipment_secretaria_consistency(
         if id_list and len(id_list) > 0:
             if id_type not in allowed:
                 equipment_name = equipment_names.get(id_type, id_type)
-                allowed_names = SECRETARIA_EQUIPMENT_LABELS.get(target_secretaria_acesso, "nenhum equipamento")
+                allowed_names = ", ".join(
+                    SECRETARIA_EQUIPMENT_LABELS.get(s, s) for s in sorted(secretarias)
+                )
+                secretarias_label = ", ".join(sorted(secretarias))
                 raise HTTPException(
                     status_code=400,
                     detail=f"Inconsistencia: Nao e permitido atribuir {equipment_name} "
-                    f"para usuario com acesso {target_secretaria_acesso}. "
-                    f"Usuarios com acesso {target_secretaria_acesso} so podem ter: {allowed_names}.",
+                    f"para usuario com acesso a {secretarias_label}. "
+                    f"Usuarios com este acesso so podem ter: {allowed_names}.",
                 )
 
 
-def validate_secretaria_acesso_permission(
-    admin_permissions: UserPermissions, target_secretaria_acesso: str | None
+def validate_secretarias_acesso_permission(
+    admin_permissions: UserPermissions, target_secretarias_acesso: list[str] | None
 ):
+    """An admin can only grant a subset of the secretarias_acesso they
+    themselves have. Super admins (implicitly full access) can grant any
+    combination."""
     if admin_permissions.is_super_admin:
         return
 
-    if admin_permissions.secretaria_acesso == "TODOS":
+    target_set = set(target_secretarias_acesso or [])
+    if not target_set:
         return
 
-    if not target_secretaria_acesso or target_secretaria_acesso == "NULL":
-        return
+    admin_set = set(admin_permissions.secretarias_acesso or [])
 
-    if target_secretaria_acesso == "TODOS":
-        raise HTTPException(
-            status_code=403,
-            detail="Apenas super admins ou admins com acesso TODOS podem atribuir acesso TODOS aos protocolos",
-        )
-
-    if not admin_permissions.secretaria_acesso or admin_permissions.secretaria_acesso == "NULL":
+    if not admin_set:
         raise HTTPException(
             status_code=403,
             detail="Voce nao possui acesso a protocolos e nao pode atribuir acesso a outros usuarios",
         )
 
-    if target_secretaria_acesso != admin_permissions.secretaria_acesso:
+    if not target_set.issubset(admin_set):
         raise HTTPException(
             status_code=403,
-            detail=f"Voce so pode atribuir acesso {admin_permissions.secretaria_acesso} (sua propria secretaria)",
+            detail=f"Voce so pode atribuir secretarias que voce mesmo possui: {sorted(admin_set)}",
         )
 
 

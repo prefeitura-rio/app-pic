@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.get_debug_participant import (
     GetDebugParticipantUseCase,
 )
@@ -17,7 +17,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Debug V2"])
     response_model=DebugParticipantResponse,
 )
 async def get_debug_participants(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     search: str | None = Query(
         None, description="Buscar por CPF, nome ou ID membro familia"
     ),

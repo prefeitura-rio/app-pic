@@ -396,7 +396,7 @@ export const apiService = {
       ocupacao?: string;
       secretaria?: string;
       permission?: string;
-      secretariaAcesso?: string;
+      secretariasAcesso?: string[];
       bypassCache?: boolean;
     } = {}
   ): Promise<PaginatedResponse<UserAccessRecord>> {
@@ -426,8 +426,10 @@ export const apiService = {
       params.append("permission", options.permission);
     }
 
-    if (options.secretariaAcesso) {
-      params.append("secretaria_acesso", options.secretariaAcesso);
+    if (options.secretariasAcesso) {
+      for (const value of options.secretariasAcesso) {
+        params.append("secretarias_acesso", value);
+      }
     }
 
     if (options.bypassCache) {
