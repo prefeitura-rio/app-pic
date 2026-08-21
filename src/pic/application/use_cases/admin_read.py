@@ -9,6 +9,7 @@ from src.pic.infrastructure.admin.id_utils import (
 )
 from src.pic.infrastructure.admin.validation import require_admin
 from src.utils.data_manager import DataManager
+from src.utils.log import logger
 
 
 class GetCurrentUserUseCase:
@@ -25,6 +26,14 @@ class GetCurrentUserUseCase:
 
     async def execute(self, permissions: CurrentUserPermissionsV2) -> UserAccessRecord:
         from datetime import UTC, datetime
+
+        # Self-heal safety net: retry any policy grant that failed to push
+        # eagerly to the data-proxy at write time. Best-effort, never blocks
+        # this request. See plan.md section 5.
+        try:
+            await self._repo.self_heal_policy_sync(permissions.cpf)
+        except Exception:
+            logger.exception(f"Self-heal de policy sync falhou para {permissions.cpf}")
 
         governance_df, _, _ = await self._repo.fetch_governance_df()
         user_row = governance_df.filter(pl.col("cpf") == permissions.cpf) if not governance_df.is_empty() else governance_df

@@ -176,7 +176,7 @@ async def get_current_user_permissions_v2(
     Get current user's permissions from Postgres (users/policy tables).
 
     Used by v2 routes only. Extracts CPF from JWT token and loads permissions
-    via PostgresAdminRepository. This is the hot path: it does NOT join
+    via HybridAdminRepository. This is the hot path: it does NOT join
     against the participants catalog, so id_*_list entries have `nome == id`
     as a fallback (real names require fetch_governance_df).
 
@@ -194,8 +194,8 @@ async def get_current_user_permissions_v2(
     perm_start = time.perf_counter()
 
     from src.core.security.permissions_models import PermissionDeniedError
-    from src.pic.infrastructure.repositories.postgres_admin import (
-        PostgresAdminRepository,
+    from src.pic.infrastructure.repositories.hybrid_admin import (
+        HybridAdminRepository,
     )
 
     # Extract CPF from JWT (RMI/gov.br sends it in preferred_username)
@@ -208,7 +208,7 @@ async def get_current_user_permissions_v2(
         )
 
     try:
-        permissions = await PostgresAdminRepository().fetch_user_permissions(cpf)
+        permissions = await HybridAdminRepository().fetch_user_permissions(cpf)
         perm_time = time.perf_counter() - perm_start
         logger.info(
             f"⏱️ [TIMING] fetch_user_permissions took {perm_time:.3f}s - "
