@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
 // BACKEND RESPONSE TYPES (matching src/api/v1/schemas.py)
 // ============================================================================
@@ -9,7 +8,7 @@ export interface PaginationMeta {
 	total_rows: number;
 	total_pages: number;
 	cache_hit: boolean;
-	profiling?: any;
+	profiling?: Record<string, unknown> | null; // Dados de profiling do backend (formato livre, uso apenas em debug)
 	can_view_dashboard?: boolean; // Indica se o usuário pode visualizar a aba Dashboard
 }
 

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
@@ -229,7 +228,17 @@ export const ParticipantTable = memo(
 											);
 
 										if (key.includes("_fracao")) {
-											const value = (participant as any)[key];
+											// key é sempre um dos campos "*_fracao" (string) de
+											// ParticipanteListItem nesse ponto (garantido pelo includes acima)
+											const value = participant[
+												key as keyof Pick<
+													ParticipanteListItem,
+													| "total_fracao"
+													| "assistencia_fracao"
+													| "educacao_fracao"
+													| "saude_fracao"
+												>
+											];
 											const hasTotalFracao = visibleColumns.some(
 												(c) => c.key === "total_fracao",
 											);
