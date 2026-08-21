@@ -80,3 +80,14 @@ class IAdminRepository(ABC):
     @abstractmethod
     async def refresh_cache(self) -> None:
         ...
+
+    @abstractmethod
+    async def self_heal_policy_sync(self, cpf: str) -> None:
+        """Retry pushing this subject's `policy` rows that are still pending
+        sync to the data-proxy (eager push failed or was never attempted).
+
+        Best-effort and non-blocking: implementations must never raise.
+        Called once per login from `GET /admin/me` as a safety net — see
+        plan.md section 5.
+        """
+        ...

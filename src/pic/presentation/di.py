@@ -46,8 +46,8 @@ from src.pic.infrastructure.repositories.bigquery_geospatial import (
 from src.pic.infrastructure.repositories.bigquery_participant import (
     BigQueryParticipantRepository,
 )
-from src.pic.infrastructure.repositories.postgres_admin import (
-    PostgresAdminRepository,
+from src.pic.infrastructure.repositories.hybrid_admin import (
+    HybridAdminRepository,
 )
 
 
@@ -60,7 +60,7 @@ def get_dashboard_repo() -> IDashboardRepository:
 
 
 def get_admin_repo() -> IAdminRepository:
-    return PostgresAdminRepository()
+    return HybridAdminRepository()
 
 
 def get_geospatial_repo() -> IGeospatialRepository:

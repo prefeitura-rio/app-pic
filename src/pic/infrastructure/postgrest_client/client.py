@@ -43,6 +43,7 @@ class PostgrestClient:
     ) -> None:
         """`transport` is a test seam (e.g. `httpx.MockTransport`); leave it
         `None` in production to use real network I/O."""
+        self._config = config
         self._auth = ClientCredentialsAuth(config, transport=transport)
         self._http_client = httpx.AsyncClient(
             base_url=config.base_url,
@@ -66,6 +67,25 @@ class PostgrestClient:
     def rpc(self, func: str, params: dict) -> AsyncRPCFilterRequestBuilder:
         """Call one PostgREST stored procedure (`POST /rpc/<func>`)."""
         return self._postgrest.rpc(func, params)
+
+    def for_schema(self, schema: str) -> AsyncPostgrestClient:
+        """Return a raw `AsyncPostgrestClient` scoped to a different PostgREST
+        schema (`Accept-Profile`/`Content-Profile`), reusing this instance's
+        authenticated `httpx.AsyncClient` (same connection pool, same bearer
+        token event hooks).
+
+        Safe to share the underlying http client across schemas: each
+        `AsyncPostgrestClient` keeps its own copy of those headers and
+        injects them per-request from its own request builders, rather than
+        mutating the shared client's default headers. Confirmed by reading
+        `postgrest/_async/client.py` (`AsyncPostgrestClient.__init__` builds
+        `self.headers` once and passes it down to every `AsyncRequestBuilder`
+        it creates) and validated empirically with two schemas sharing one
+        `httpx.AsyncClient`.
+        """
+        return AsyncPostgrestClient(
+            self._config.base_url, schema=schema, http_client=self._http_client
+        )
 
     async def aclose(self) -> None:
         await self._http_client.aclose()

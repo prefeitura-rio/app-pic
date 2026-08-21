@@ -1407,7 +1407,7 @@ class DataManager:
         Fetch permissions for a specific CPF from cached governance table (POLARS).
 
         NOTE: v1-only. BigQuery-backed (endpoint_data_access). v2 uses
-        PostgresAdminRepository.fetch_user_permissions instead. Keep this on
+        HybridAdminRepository.fetch_user_permissions instead. Keep this on
         BigQuery as long as v1's admin CRUD writes to BigQuery.
 
         OPTIMIZATION: Uses get_dataset() with shared cache.

@@ -8,8 +8,8 @@ Escopo deste script:
 1. Para cada usuário, gera linhas de `policy` (uma por item nas colunas
    id_cras_list, id_escola_list, id_cre_list, id_ap_list, id_cas_list,
    id_clinica_familia_list, id_equipe_familia_list) e, só para
-   `is_super_admin=True`, uma linha "base" (unit_type/unit_id NULL,
-   is_admin=True) que dá bypass total de RLS.
+   `is_super_admin=True`, uma linha "base" (unit_type/unit_id = sentinela
+   `_base`, is_admin=True) que dá bypass total de RLS.
 2. Converte o valor único legado `secretaria_acesso` (None/"NULL"/"TODOS"/
    "SME"/"SMS"/"SMAS") para a lista `users.secretarias_acesso` (subconjunto
    de {SME, SMS, SMAS}) — ver plan.md seção 3.1.
@@ -25,10 +25,8 @@ etapa NÃO fala com o data-proxy — é só nomenclatura compartilhada.
 `synced_at` fica sempre NULL (nada foi confirmado no data-proxy ainda).
 
 Idempotente: para cada CPF migrado, faz DELETE de todas as linhas de `policy`
-daquele subject antes de inserir as novas (evita duplicar linha "base" em
-reruns — UNIQUE (schema, subject, unit_type, unit_id) não pega colisão de
-NULL/NULL via ON CONFLICT, já que Postgres trata NULLs como distintos por
-padrão). Pode ser rodado mais de uma vez sem duplicar.
+daquele subject antes de inserir as novas. Pode ser rodado mais de uma vez
+sem duplicar.
 
 Pré-requisito: scripts/migrate_users_bq_to_postgres.py já deve ter rodado
 (policy.subject tem FK pra users.cpf).
@@ -55,7 +53,12 @@ from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
 from src.config import env
 from src.pic.infrastructure.admin.validation import _sanitize_cpf, _validate_cpf
 from src.pic.infrastructure.db.engine import close_engine, get_session
-from src.pic.infrastructure.db.models import PolicyRow, User
+from src.pic.infrastructure.db.models import (
+    BASE_UNIT_ID,
+    BASE_UNIT_TYPE,
+    PolicyRow,
+    User,
+)
 from src.utils.bigquery import execute_query
 from src.utils.constants import (
     SECRETARIA_NULL,
@@ -163,8 +166,8 @@ def build_policy_rows(row: dict) -> list[dict]:
                 "subject": row["cpf"],
                 "is_admin": True,
                 "is_enabled": row["active"],
-                "unit_type": None,
-                "unit_id": None,
+                "unit_type": BASE_UNIT_TYPE,
+                "unit_id": BASE_UNIT_ID,
                 "synced_at": None,
             }
         )
@@ -226,10 +229,9 @@ async def apply_policy_rows(rows: list[dict]) -> None:
             policy_rows = build_policy_rows(row)
             secretarias = map_secretaria_acesso(row["secretaria_acesso"])
 
-            # DELETE+INSERT em vez de upsert: a linha "base" tem unit_type/
-            # unit_id NULL, e Postgres trata NULLs como distintos numa
-            # UNIQUE constraint por padrão, então ON CONFLICT não a
-            # re-encontraria num rerun.
+            # DELETE+INSERT em vez de upsert: mais simples para um
+            # backfill único a partir da fonte de verdade do BigQuery
+            # (o `policy` local ainda não existe antes deste script rodar).
             await session.execute(
                 delete(PolicyRow).where(PolicyRow.schema == SCHEMA, PolicyRow.subject == cpf)
             )

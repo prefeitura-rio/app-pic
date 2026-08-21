@@ -3,9 +3,10 @@
 Two tables, per plan.md sections 3.1/3.2:
 
 - `users`: identity + app-only business flags (never sent to the data-proxy).
-- `policy`: local mirror of data-proxy's `rls.access_policy`, written only
-  after a write is confirmed on the data-proxy side (data-proxy is the gate;
-  this table just reflects what's already true there for fast local reads).
+- `policy`: local mirror of data-proxy's `rls.access_policy`. Postgres local
+  is the write of record (writes here always succeed independently of the
+  data-proxy); `synced_at` tracks whether this row has been pushed to the
+  data-proxy yet — see `AccessPolicySync` and plan.md section 5.
 """
 
 from datetime import datetime
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -23,6 +25,17 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.pic.infrastructure.db.base import Base
+
+# Sentinel for the subject's "base" row (identity/super_admin bypass row),
+# used instead of NULL/NULL so the (schema, subject, unit_type, unit_id)
+# unique constraint behaves correctly on upsert (Postgres treats NULL <> NULL
+# in unique constraints, which would let two upsert attempts for the base row
+# create two rows instead of merging into one). Only a local-table
+# convention; the data-proxy's `rls.access_policy.unit_type`/`unit_id` stay
+# nullable (shared table, outside our control) but we never write NULL into
+# them either. See plan.md section 3.2.
+BASE_UNIT_TYPE = "_base"
+BASE_UNIT_ID = "_base"
 
 
 class User(Base):
@@ -85,9 +98,10 @@ class User(Base):
 class PolicyRow(Base):
     """Local mirror of one row of data-proxy's `rls.access_policy`.
 
-    Only written after the equivalent PATCH/POST succeeds against the
-    data-proxy — see plan.md section 5. `metadata` is intentionally not
-    mirrored here; we never use it.
+    Postgres local is the write of record — see plan.md section 5.
+    `metadata` is intentionally not mirrored here; we never use it. Never
+    hard-deleted: like the data-proxy's `access_policy`, this table is
+    append-only; revoking a grant sets `is_enabled=false` instead.
     """
 
     __tablename__ = "policy"
@@ -101,21 +115,29 @@ class PolicyRow(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # `.with_variant(Integer, "sqlite")`: SQLite only auto-increments a
+    # primary key declared as plain `INTEGER` (its rowid alias), not
+    # `BIGINT` - this variant is a no-op on Postgres (still BIGINT there)
+    # and only exists so an in-memory sqlite engine can be used in tests
+    # (see repositories/tests/test_hybrid_admin.py) without a real Postgres.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
 
     schema: Mapped[str] = mapped_column(String, nullable=False)
     subject: Mapped[str] = mapped_column(String, ForeignKey(User.cpf), nullable=False)
 
-    # True only on the super_admin's base row (unit_type/unit_id NULL) —
-    # never combined with a specific unit. See plan.md section 4.
+    # True only on the super_admin's base row (unit_type/unit_id ==
+    # BASE_UNIT_TYPE/BASE_UNIT_ID) — never combined with a specific unit. See
+    # plan.md section 4.
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    # NULL/NULL = the subject's "base" row (identity/super_admin bypass row).
-    # Otherwise one of: cras, escola, cre, ap, cas, clinica_familia,
-    # equipe_familia, secretaria.
-    unit_type: Mapped[str | None] = mapped_column(String)
-    unit_id: Mapped[str | None] = mapped_column(String)
+    # BASE_UNIT_TYPE/BASE_UNIT_ID = the subject's "base" row (identity/
+    # super_admin bypass row). Otherwise one of: cras, escola, cre, ap, cas,
+    # clinica_familia, equipe_familia, secretaria.
+    unit_type: Mapped[str] = mapped_column(String, nullable=False)
+    unit_id: Mapped[str] = mapped_column(String, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -127,9 +149,10 @@ class PolicyRow(Base):
         onupdate=func.now(),
     )
     # Timestamp of the last write confirmed on the data-proxy side for this
-    # exact row. NULL means this row was never successfully synced (shouldn't
-    # happen given the write order in plan.md section 5, but useful as a
-    # canary for manual/out-of-band drift).
+    # exact row. NULL, or older than `updated_at`, means this row is pending
+    # sync — either the eager push after the local write failed (data-proxy
+    # unavailable), or it hasn't been attempted yet. The login-time self-heal
+    # (`GET /admin/me`) retries rows in this state. See plan.md section 5.
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship(

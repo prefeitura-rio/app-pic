@@ -121,6 +121,33 @@ async def test_request_without_valid_token_raises_api_error():
     await client.aclose()
 
 
+async def test_for_schema_shares_auth_and_scopes_to_the_new_schema():
+    handler = fake_data_proxy()
+    client = make_client(handler)
+
+    rls_client = client.for_schema("rls")
+    await rls_client.from_("access_policy").select("*").execute()
+
+    sent = handler.requests[0]
+    assert sent.headers["accept-profile"] == "rls"
+    assert sent.headers["authorization"] == "Bearer good-token"
+
+    await client.aclose()
+
+
+async def test_for_schema_does_not_leak_into_the_original_schema():
+    handler = fake_data_proxy()
+    client = make_client(handler)
+
+    client.for_schema("rls")
+    await client.table("access_policy").select("*").execute()
+
+    sent = handler.requests[0]
+    assert sent.headers["accept-profile"] == "app_pequenos_cariocas"
+
+    await client.aclose()
+
+
 async def test_get_postgrest_client_returns_singleton(monkeypatch):
     monkeypatch.setattr(client_module, "load_config", lambda: CONFIG)
     client_module._client = None
