@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,6 @@ export function UserForm({
   error,
 }: UserFormProps) {
   const isEditMode = !!user;
-  const canEditSuperAdmin = currentUser.is_super_admin;
 
   // Filter available IDs based on current user permissions
   // Super admin sees all, segmented admin only sees their own IDs
@@ -65,64 +64,27 @@ export function UserForm({
   }, [currentUser]);
 
   // Form state
-  const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
-  const [nome, setNome] = useState("");
-  const [ocupacao, setOcupacao] = useState("");
-  const [secretaria, setSecretaria] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [notes, setNotes] = useState("");
+  // NOTA: inicializado direto a partir de `user` (sem useEffect) porque este
+  // componente sempre remonta ao trocar de aba (Radix TabsContent desmonta
+  // conteúdo inativo), então `user` já está correto no momento do mount.
+  const [cpf, setCpf] = useState(user?.cpf ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [nome, setNome] = useState(user?.nome ?? "");
+  const [ocupacao, setOcupacao] = useState(user?.ocupacao ?? "");
+  const [secretaria, setSecretaria] = useState(user?.secretaria ?? "");
+  const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false);
+  // Não há UI para promover/rebaixar super admin neste formulário; apenas preserva o valor existente.
+  const isSuperAdmin = user?.is_super_admin ?? false;
+  const [notes, setNotes] = useState(user?.notes ?? "");
 
-  const [selectedCras, setSelectedCras] = useState<IdWithName[]>([]);
-  const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>([]);
-  const [selectedCres, setSelectedCres] = useState<IdWithName[]>([]);
-  const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
-  const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
-  const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
-  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
-  const [secretariasAcesso, setSecretariasAcesso] = useState<string[]>([]);
-
-  // Initialize form with user data if editing
-  useEffect(() => {
-    if (user) {
-      setCpf(user.cpf);
-      setEmail(user.email || "");
-      setNome(user.nome || "");
-      setOcupacao(user.ocupacao || "");
-      setSecretaria(user.secretaria || "");
-      setIsAdmin(user.is_admin);
-      setIsSuperAdmin(user.is_super_admin);
-      setNotes(user.notes || "");
-
-      setSelectedCras(user.id_cras_list || []);
-      setSelectedEscolas(user.id_escola_list || []);
-      setSelectedCres(user.id_cre_list || []);
-      setSelectedAps(user.id_ap_list || []);
-      setSelectedCas(user.id_cas_list || []);
-      setSelectedClinicas(user.id_clinica_familia_list || []);
-      setSelectedEquipesFamilia(user.id_equipe_familia_list || []);
-      setSecretariasAcesso(user.secretarias_acesso || []);
-    } else {
-      // Reset form
-      setCpf("");
-      setEmail("");
-      setNome("");
-      setOcupacao("");
-      setSecretaria("");
-      setIsAdmin(false);
-      setIsSuperAdmin(false);
-      setNotes("");
-      setSelectedCras([]);
-      setSelectedEscolas([]);
-      setSelectedCres([]);
-      setSelectedAps([]);
-      setSelectedCas([]);
-      setSelectedClinicas([]);
-      setSelectedEquipesFamilia([]);
-      setSecretariasAcesso([]);
-    }
-  }, [user]);
+  const [selectedCras, setSelectedCras] = useState<IdWithName[]>(user?.id_cras_list ?? []);
+  const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>(user?.id_escola_list ?? []);
+  const [selectedCres, setSelectedCres] = useState<IdWithName[]>(user?.id_cre_list ?? []);
+  const [selectedAps, setSelectedAps] = useState<IdWithName[]>(user?.id_ap_list ?? []);
+  const [selectedCas, setSelectedCas] = useState<IdWithName[]>(user?.id_cas_list ?? []);
+  const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>(user?.id_clinica_familia_list ?? []);
+  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>(user?.id_equipe_familia_list ?? []);
+  const [secretariasAcesso, setSecretariasAcesso] = useState<string[]>(user?.secretarias_acesso ?? []);
 
   // Handle CPF input (only numbers)
   const handleCpfChange = (value: string) => {

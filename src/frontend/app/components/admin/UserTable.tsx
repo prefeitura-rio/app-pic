@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useRef, useCallback } from "react";
-import { UserAccessRecord, AvailableIds, PaginationMeta } from "@/app/types";
+import { UserAccessRecord, PaginationMeta } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,6 @@ import { cn } from "@/app/utils/utils";
 
 interface UserTableProps {
   users: UserAccessRecord[];
-  availableIds: AvailableIds;
   currentUserCpf: string; // CPF do usuário logado
   currentUserIsSuperAdmin: boolean; // Se o usuário logado é super admin
   meta: PaginationMeta; // Metadados de paginação do backend
@@ -29,7 +28,6 @@ interface UserTableProps {
 
 const UserTableComponent = ({
   users,
-  availableIds,
   currentUserCpf,
   currentUserIsSuperAdmin,
   meta,

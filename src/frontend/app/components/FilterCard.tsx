@@ -10,7 +10,7 @@ import {
 	Table,
 	X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import {
 	Card,
@@ -56,17 +56,19 @@ const FilterCardComponent = ({
 }: FilterCardProps) => {
 	const [searchInput, setSearchInput] = useState("");
 
-	// Sincronizar searchInput com filters.search quando mudar (ex: após refresh)
-	// IMPORTANTE: depender só do valor de search, não do objeto filters inteiro —
-	// se depender de [filters], qualquer mudança de filtro (protocolo, bairro, etc.)
-	// dispara o effect e sobrescreve um searchInput que o usuário acabou de apagar.
+	// Sincronizar searchInput com filters.search quando mudar (ex: após refresh).
+	// Ajuste feito durante a renderização (não em um efeito), comparando com o
+	// valor externo anterior — evita sobrescrever um searchInput que o usuário
+	// acabou de digitar/apagar quando outros filtros (protocolo, bairro, etc.) mudam.
 	const externalSearch =
 		"search" in filters ? (filters as { search?: string }).search : undefined;
-	useEffect(() => {
+	const [prevExternalSearch, setPrevExternalSearch] = useState(externalSearch);
+	if (externalSearch !== prevExternalSearch) {
+		setPrevExternalSearch(externalSearch);
 		if (externalSearch && externalSearch !== searchInput) {
 			setSearchInput(externalSearch);
 		}
-	}, [externalSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+	}
 
 	// Memoizar callbacks para evitar re-criação
 	const handleFilterUpdate = useCallback(

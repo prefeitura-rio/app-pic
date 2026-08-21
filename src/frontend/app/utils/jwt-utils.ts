@@ -29,7 +29,16 @@ export function getUserInfoFromToken(token: string): {
   exp?: number;
 } | null {
   try {
-    const decoded: any = jwtDecode(token);
+    const decoded: {
+      sub?: string;
+      name?: string;
+      email?: string;
+      preferred_username?: string;
+      given_name?: string;
+      family_name?: string;
+      iat?: number;
+      exp?: number;
+    } = jwtDecode(token);
     return {
       sub: decoded.sub,
       name: decoded.name,
