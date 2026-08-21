@@ -28,7 +28,7 @@ async def get_jwks() -> dict[str, Any]:
             return jwks
     except Exception as e:
         logger.error(f"❌ Failed to fetch JWKS: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch JWKS")
+        raise HTTPException(status_code=500, detail="Failed to fetch JWKS") from e
 
 
 def get_signing_key(token: str, jwks: dict[str, Any]) -> Any:
@@ -56,7 +56,7 @@ def get_signing_key(token: str, jwks: dict[str, Any]) -> Any:
         return jwt.algorithms.RSAAlgorithm.from_jwk(rsa_key)
     except Exception as e:
         logger.error(f"❌ Error getting signing key: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token header")
+        raise HTTPException(status_code=401, detail="Invalid token header") from e
 
 
 async def verify_jwt(
@@ -88,21 +88,23 @@ async def verify_jwt(
         logger.info(f"Token verified for user: {payload.get('sub')}")
         return payload
 
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as e:
         logger.warning("Token has expired")
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidAudienceError:
+        raise HTTPException(status_code=401, detail="Token has expired") from e
+    except jwt.InvalidAudienceError as e:
         logger.warning("Invalid token audience")
-        raise HTTPException(status_code=401, detail="Invalid token audience")
-    except jwt.InvalidIssuerError:
+        raise HTTPException(status_code=401, detail="Invalid token audience") from e
+    except jwt.InvalidIssuerError as e:
         logger.warning("Invalid token issuer")
-        raise HTTPException(status_code=401, detail="Invalid token issuer")
+        raise HTTPException(status_code=401, detail="Invalid token issuer") from e
     except jwt.InvalidTokenError as e:
         logger.warning(f"Invalid token: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token") from e
     except Exception as e:
         logger.error(f"❌ Token verification failed: {e}")
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
+        raise HTTPException(
+            status_code=401, detail="Could not validate credentials"
+        ) from e
 
 
 async def get_current_user_permissions(
@@ -159,12 +161,12 @@ async def get_current_user_permissions(
         raise HTTPException(
             status_code=403,
             detail=error_msg,  # Passar a mensagem específica da PermissionDeniedError
-        )
+        ) from e
     except Exception as e:
         logger.error(f"❌ Error loading permissions for CPF {cpf}: {e}")
         raise HTTPException(
             status_code=500, detail="Falha ao carregar permissões do usuário"
-        )
+        ) from e
 
 
 async def get_current_user_permissions_v2(
@@ -220,12 +222,12 @@ async def get_current_user_permissions_v2(
         raise HTTPException(
             status_code=403,
             detail=error_msg,  # Passar a mensagem específica da PermissionDeniedError
-        )
+        ) from e
     except Exception as e:
         logger.error(f"❌ Error loading permissions for CPF {cpf}: {e}")
         raise HTTPException(
             status_code=500, detail="Falha ao carregar permissões do usuário"
-        )
+        ) from e
 
 
 # Type aliases for dependency injection

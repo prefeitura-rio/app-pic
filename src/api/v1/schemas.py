@@ -1,6 +1,6 @@
 import json
 from datetime import date, datetime
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Optional
 
 from pydantic import (
     BaseModel,
@@ -11,8 +11,6 @@ from pydantic import (
 )
 
 from src.utils.data_manager_config import DataManagerConfig as config
-
-T = TypeVar("T")
 
 # --- Request Models ---
 
@@ -93,7 +91,7 @@ class PaginationMeta(BaseModel):
     )
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     meta: PaginationMeta
     data: list[T]
     filters: Optional["SmartFilterOptions"] = (
@@ -159,7 +157,7 @@ class GeospatialFilterOptions(BaseModel):
     nomes: list[FilterOptionItem] = []
 
 
-class GeospatialPaginatedResponse(BaseModel, Generic[T]):
+class GeospatialPaginatedResponse[T](BaseModel):
     """Resposta paginada específica para geospatial com seus próprios filtros"""
     meta: PaginationMeta
     data: list[T]
