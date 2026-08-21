@@ -288,6 +288,16 @@ Implicações pro código:
   `iam.gke.io/gcp-service-account: <gsa>@rj-iplanrio-dia.iam.gserviceaccount.com`) nos
   charts de `k8s/api/{staging,prod}` assim que Pedro criar a GSA — hoje esses
   manifests não têm essa configuração.
+- **Isolamento staging/prod**: staging e prod compartilham a mesma instância e o
+  mesmo banco (`pic`), mas cada um tem seu próprio **schema** Postgres
+  (`staging`/`prod`, via `APP_PIC_PG_SCHEMA`) — não mais isolamento por sufixo de
+  nome de tabela (`users_staging`/`users_prod`). As tabelas (`users`, `policy`,
+  `alembic_version`) têm nome fixo dentro de cada schema; a engine aplica
+  `execution_options={"schema_translate_map": {None: APP_PIC_PG_SCHEMA}}`
+  (`src/pic/infrastructure/db/engine.py`) e o Alembic usa
+  `version_table_schema=APP_PIC_PG_SCHEMA` (`alembic/env.py`). Migração one-shot das
+  tabelas já existentes (criadas com o esquema antigo de sufixo): ver
+  `scripts/migrate_schema_isolation.sql`.
 
 ---
 

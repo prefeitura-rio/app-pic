@@ -1,7 +1,7 @@
 """
 Backfill de grants: BigQuery (`endpoint_data_access`) -> Postgres do app-pic
-(tabela `policy_staging`/`policy_prod`, conforme APP_PIC_POLICY_TABLE no .env
-ativo — ver plan.md seção 7), mais a coluna `users.secretarias_acesso`.
+(tabela `policy`, no schema conforme APP_PIC_PG_SCHEMA no .env ativo — ver
+plan.md seção 7), mais a coluna `users.secretarias_acesso`.
 
 Escopo deste script:
 

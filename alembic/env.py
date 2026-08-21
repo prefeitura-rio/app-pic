@@ -25,13 +25,11 @@ target_metadata = Base.metadata
 # staging and prod share the same Postgres database (see plan.md section 7),
 # so a single `alembic_version` table can't track both independently — using
 # it as-is would make Alembic think a migration already ran for prod just
-# because it ran for staging (or vice-versa). Instead each environment gets
-# its own version-tracking table, named after its table suffix (the same
-# suffix used in users_staging/policy_staging vs users_prod/policy_prod), so
-# migrations are still driven by which .env / deploy config is active — same
-# as everything else in this app.
-_env_suffix = env.APP_PIC_USERS_TABLE.removeprefix("users_")
-version_table = f"alembic_version_{_env_suffix}"
+# because it ran for staging (or vice-versa). Environment isolation is done
+# via Postgres schema (APP_PIC_PG_SCHEMA): `alembic_version` lives inside
+# that schema, same as `users`/`policy`, so each environment naturally
+# tracks its own applied revisions.
+schema = env.APP_PIC_PG_SCHEMA
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -57,7 +55,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table=version_table,
+        version_table_schema=schema,
+        include_schemas=True,
     )
 
     with context.begin_transaction():
@@ -68,7 +67,8 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table=version_table,
+        version_table_schema=schema,
+        include_schemas=True,
     )
 
     with context.begin_transaction():
