@@ -1,16 +1,17 @@
-from google.cloud import bigquery
-from google.oauth2 import service_account
-from typing import List, Optional
 import base64
 import json
+
 import polars as pl
+from google.cloud import bigquery
+from google.oauth2 import service_account
+
 import src.config.env as env
 from src.utils.log import logger
 
 
 def execute_query(
     query: str,
-    parameters: Optional[List[bigquery.ScalarQueryParameter]] = None,
+    parameters: list[bigquery.ScalarQueryParameter] | None = None,
     return_polars: bool = True,  # Parâmetro mantido por compatibilidade, mas sempre retorna Polars
 ) -> pl.DataFrame:
     """
@@ -55,7 +56,7 @@ def build_update_query(
     updates: dict,
     where_field: str,
     where_value: str
-) -> tuple[str, List[bigquery.ScalarQueryParameter]]:
+) -> tuple[str, list[bigquery.ScalarQueryParameter]]:
     """
     Constrói UPDATE query parametrizada de forma segura.
 
@@ -123,7 +124,7 @@ def get_bigquery_client() -> bigquery.Client:
     return bigquery.Client(credentials=credentials, project=credentials.project_id)
 
 
-def get_gcp_credentials(scopes: Optional[List[str]] = None) -> service_account.Credentials:
+def get_gcp_credentials(scopes: list[str] | None = None) -> service_account.Credentials:
     info: dict = json.loads(base64.b64decode(env.GCP_SERVICE_ACCOUNT_CREDENTIALS))
     creds = service_account.Credentials.from_service_account_info(info)
     if scopes:

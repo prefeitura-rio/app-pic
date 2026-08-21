@@ -5,7 +5,7 @@ This module defines the permission models used to control user access
 to data based on their assigned facility IDs (CRAS, schools, CRE, etc).
 """
 import logging
-from typing import Optional, List
+
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -31,29 +31,29 @@ class UserPermissions(BaseModel):
     Defines which facility IDs a user has access to and their admin status.
     """
     cpf: str
-    email: Optional[str] = None
+    email: str | None = None
     is_admin: bool = False
     is_super_admin: bool = False
-    permission: Optional[str] = None
+    permission: str | None = None
 
     # Segmentation lists (None/empty = no restriction for that category)
-    id_cras_list: Optional[List[IdWithName]] = None
-    id_escola_list: Optional[List[IdWithName]] = None
-    id_cre_list: Optional[List[IdWithName]] = None
-    id_ap_list: Optional[List[IdWithName]] = None
-    id_cas_list: Optional[List[IdWithName]] = None
-    id_clinica_familia_list: Optional[List[IdWithName]] = None
-    id_equipe_familia_list: Optional[List[IdWithName]] = None
+    id_cras_list: list[IdWithName] | None = None
+    id_escola_list: list[IdWithName] | None = None
+    id_cre_list: list[IdWithName] | None = None
+    id_ap_list: list[IdWithName] | None = None
+    id_cas_list: list[IdWithName] | None = None
+    id_clinica_familia_list: list[IdWithName] | None = None
+    id_equipe_familia_list: list[IdWithName] | None = None
 
     # Protocol access control: subset of {"SME", "SMS", "SMAS"}.
     # Empty list = no access to protocolo-gated data.
-    secretarias_acesso: List[str] = []
+    secretarias_acesso: list[str] = []
 
     active: bool = True
-    notes: Optional[str] = None
+    notes: str | None = None
 
     @property
-    def secretaria_acesso(self) -> Optional[str]:
+    def secretaria_acesso(self) -> str | None:
         """
         Backward-compat shim for legacy (v1) code that still expects the old
         single-value representation (SME/SMS/SMAS/TODOS/NULL).
@@ -83,7 +83,7 @@ class UserPermissions(BaseModel):
         """Super admins have full access to all data"""
         return self.is_super_admin
 
-    def get_filter_ids(self, id_type: str) -> List[str]:
+    def get_filter_ids(self, id_type: str) -> list[str]:
         """
         Get list of IDs for a specific type (e.g., 'id_cras').
 

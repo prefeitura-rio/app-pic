@@ -359,7 +359,7 @@ const UserTableComponent = ({
 
                 // Mostrar até 5 páginas
                 let startPage = Math.max(1, currentPage - 2);
-                let endPage = Math.min(totalPages, startPage + 4);
+                const endPage = Math.min(totalPages, startPage + 4);
 
                 // Ajustar se estiver no final
                 if (endPage - startPage < 4) {
