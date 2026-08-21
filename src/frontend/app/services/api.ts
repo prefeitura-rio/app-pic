@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   PaginatedResponse,
   PaginatedResponseV2,
@@ -15,9 +14,10 @@ import {
   BatchImportResult,
   BatchPermissionsRequest,
   BatchPermissionsResult,
-  GeospatialLayer,
   GeospatialLayersResponse,
   GeospatialFilterVocabularyResponse,
+  GeospatialFilters,
+  DebugParticipant,
 } from "../types";
 import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
@@ -39,7 +39,7 @@ async function tryRefreshToken(): Promise<boolean> {
     }
 
     return false;
-  } catch (_error) {
+  } catch {
     return false;
   }
 }
@@ -116,7 +116,7 @@ async function handleResponse<T>(
  * Build query parameters from filter object, excluding default "todos"/"todas" values
  */
 function buildFilterParams(
-  filters: DashboardFilterValues | ParticipantFilters
+  filters: DashboardFilterValues | ParticipantFilters | GeospatialFilters
 ): URLSearchParams {
   const params = new URLSearchParams();
 
@@ -153,24 +153,6 @@ function buildFilterParams(
  * Main API service - agora todos os endpoints retornam filtros dinâmicos na resposta
  */
 export const apiService = {
-
-  /**
-   * Get dashboard metrics with filters.
-   *
-   * @param filters - Filter criteria
-   * @returns Dashboard data
-   */
-  async getDashboard(
-    filters: DashboardFilterValues = {}
-  ): Promise<PaginatedResponse<any>> {
-    const params = buildFilterParams(filters);
-    const url = `${BASE_URL}/api/v1/dashboard?${params.toString()}`;
-
-    const fetchFn = () => fetch(url, { cache: "no-store" });
-    const res = await fetchFn();
-
-    return handleResponse<PaginatedResponse<any>>(res, fetchFn);
-  },
 
   /**
    * V2 — Dashboard metrics without inline filters.
@@ -566,7 +548,7 @@ export const apiService = {
    * @param bypassCache - If true, forces fresh data from BigQuery
    * @returns Debug participant data with protocol metadata
    */
-  async getDebugParticipants(search: string, bypassCache: boolean = false): Promise<{ total_found: number; total_returned: number; data: any[] }> {
+  async getDebugParticipants(search: string, bypassCache: boolean = false): Promise<{ total_found: number; total_returned: number; data: DebugParticipant[] }> {
     const params = new URLSearchParams();
     params.append("search", search);
     if (bypassCache) {
@@ -578,7 +560,7 @@ export const apiService = {
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<{ total_found: number; total_returned: number; data: any[] }>(res, fetchFn);
+    return handleResponse<{ total_found: number; total_returned: number; data: DebugParticipant[] }>(res, fetchFn);
   },
 
   // ========================================================================
@@ -593,7 +575,7 @@ export const apiService = {
    * @param bypassCache - If true, forces fresh data from BigQuery
    */
   async getGeospatialLayers(
-    filters: Partial<ParticipantFilters> = {},
+    filters: GeospatialFilters = {},
     bypassCache: boolean = false
   ): Promise<GeospatialLayersResponse> {
     const params = buildFilterParams(filters);

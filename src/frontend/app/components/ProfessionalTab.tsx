@@ -41,6 +41,7 @@ import {
 } from "@/app/components/ui/tooltip";
 import type {
 	GeospatialFilterOptions,
+	GeospatialFilters,
 	GeospatialLayer,
 	PaginationMeta,
 	Participante,
@@ -268,9 +269,9 @@ interface ProfessionalTabProps {
 	isSuperAdmin?: boolean;
 	geospatialLayers?: GeospatialLayer[];
 	geospatialLoading?: boolean;
-	geospatialFilters?: ParticipantFilters;
+	geospatialFilters?: GeospatialFilters;
 	geospatialAvailableFilters?: GeospatialFilterOptions;
-	onGeospatialFilterChange?: (filters: ParticipantFilters) => void;
+	onGeospatialFilterChange?: (filters: GeospatialFilters) => void;
 }
 
 // Removido MemoizedSelect - agora usando VirtualizedSelect

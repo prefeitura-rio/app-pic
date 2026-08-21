@@ -81,7 +81,7 @@ const DashboardFilterCardComponent = ({
   const handleMultiFilterUpdate = useCallback((key: keyof DashboardFilterValues, values: string[]) => {
     const newFilters = { ...filters };
     if (values.length > 0) {
-      newFilters[key] = values as any;
+      (newFilters as Record<string, unknown>)[key] = values;
     } else {
       delete newFilters[key];
     }

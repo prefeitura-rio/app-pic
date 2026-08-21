@@ -570,6 +570,7 @@ export interface CreateUserRequest {
 	secretarias_acesso?: string[] | null;
 
 	notes?: string | null;
+	active?: boolean; // Backend UpsertUserRequest aceita `active` tanto na criação quanto na atualização
 	is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
 }
 
@@ -697,6 +698,22 @@ export interface GeospatialLayer {
 }
 
 /**
+ * Filtros aplicáveis às camadas geoespaciais (V2). Cada valor é enviado ao
+ * backend como string única (multi-selects são combinados com ",") ou,
+ * por compatibilidade com estado persistido antigo, como array de strings.
+ */
+export interface GeospatialFilters {
+	tipo_camada?: string | string[];
+	categoria?: string | string[];
+	regional?: string | string[];
+	bairro?: string | string[];
+	regiao_administrativa?: string | string[];
+	subprefeitura?: string | string[];
+	nome?: string | string[];
+	[key: string]: string | string[] | undefined;
+}
+
+/**
  * Opções de filtros disponíveis para camadas geoespaciais (V2)
  */
 export interface GeospatialFilterOptions {
@@ -779,4 +796,56 @@ export interface ProtocoloMotivoDetalhe {
 export interface ProtocoloMotivo {
 	motivos: string[];
 	detalhes: Record<string, ProtocoloMotivoDetalhe>;
+}
+
+// ============================================================================
+// DEBUG (super admin only) — dados brutos de origem BigQuery
+// ============================================================================
+
+/** Metadados de uma fonte de dados que alimentou um protocolo (rastreamento) */
+export interface DebugProtocoloMetadata {
+	id_origem?: string;
+	dados?: string; // JSON stringificado, parseado sob demanda no viewer
+	tabela_bq?: string;
+	dbt_model_path?: string;
+	dbt_model_type?: string;
+	updated_at?: string;
+	dados_schema?: unknown;
+}
+
+export interface DebugProtocoloRegrasNegocio {
+	publico_alvo?: string;
+	regular?: string;
+	irregular?: string;
+	atencao?: string;
+	nao_aplica?: string;
+}
+
+export interface DebugProtocolo {
+	protocolo_id?: string;
+	protocolo_descricao?: string;
+	protocolo_status?: string;
+	protocolo_status_label?: string;
+	protocolo_secretaria?: string;
+	protocolo_level?: string;
+	metadata?: DebugProtocoloMetadata[];
+	regras_negocio?: DebugProtocoloRegrasNegocio;
+}
+
+/**
+ * Participante retornado pelo endpoint de debug. Os campos abaixo são os
+ * consumidos pela página de debug; o restante vem bruto do BigQuery sem
+ * schema fixo (por isso a index signature).
+ */
+export interface DebugParticipant {
+	nome?: string;
+	cpf?: string;
+	id_membro_familia?: string;
+	nascimento_data?: string;
+	pic_grupo?: string;
+	pic_cohort?: string;
+	pic_status?: string;
+	pic_fase_atual?: string;
+	protocolos?: DebugProtocolo[];
+	[key: string]: unknown;
 }

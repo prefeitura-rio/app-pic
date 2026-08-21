@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useMemo, useRef } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import ExcelJS from "exceljs";
@@ -10,7 +10,6 @@ import { apiService } from "@/app/services/api";
 import {
   IdWithName,
   AvailableIds,
-  ImportedUser,
   ImportedUserWithEdits,
   BatchImportResult,
   UserAccessRecord,
@@ -35,9 +34,7 @@ import {
   Download,
   Upload,
   Search,
-  Filter,
   Check,
-  X,
   AlertCircle,
   CheckCircle2,
   Clock,
@@ -86,6 +83,37 @@ type StatusFilter = "all" | UserStatus | "selectable" | "blocked";
 type SortBy = "nome" | "cpf" | "status";
 type SortOrder = "asc" | "desc";
 
+// Deduplicar por CPF (mantém a primeira ocorrência)
+function dedupeByCpf(users?: UserAccessRecord[]): UserAccessRecord[] {
+  if (!users || users.length === 0) return [];
+  const seen = new Set<string>();
+  return users.filter((u) => {
+    if (seen.has(u.cpf)) return false;
+    seen.add(u.cpf);
+    return true;
+  });
+}
+
+function buildImportedUsersFromPrePopulated(users?: UserAccessRecord[]): ImportedUserWithEdits[] {
+  return dedupeByCpf(users).map((user) => ({
+    cpf: user.cpf,
+    nome: user.nome,
+    email: user.email,
+    ocupacao: user.ocupacao,
+    secretaria: user.secretaria,
+    status: "exists" as const,
+    is_admin: user.is_admin,
+    is_super_admin: user.is_super_admin,
+    id_cras_list: user.id_cras_list,
+    id_escola_list: user.id_escola_list,
+    id_cre_list: user.id_cre_list,
+    id_ap_list: user.id_ap_list,
+    id_cas_list: user.id_cas_list,
+    id_clinica_familia_list: user.id_clinica_familia_list,
+    secretarias_acesso: user.secretarias_acesso,
+  }));
+}
+
 export function ImportTab({ availableIds, currentUser, onPermissionsApplied, prePopulatedUsers }: ImportTabProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,11 +123,18 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
   const [isUploading, setIsUploading] = useState(false);
 
   // Imported users state (with local edits)
-  const [importedUsers, setImportedUsers] = useState<ImportedUserWithEdits[]>([]);
+  // NOTA: inicializado direto a partir de `prePopulatedUsers` (sem useEffect)
+  // porque este componente sempre remonta ao trocar de aba (Radix TabsContent
+  // desmonta conteúdo inativo), então a prop já está correta no momento do mount.
+  const [importedUsers, setImportedUsers] = useState<ImportedUserWithEdits[]>(() =>
+    buildImportedUsersFromPrePopulated(prePopulatedUsers)
+  );
   const [importResult, setImportResult] = useState<BatchImportResult | null>(null);
 
   // Selection state
-  const [selectedCpfs, setSelectedCpfs] = useState<Set<string>>(new Set());
+  const [selectedCpfs, setSelectedCpfs] = useState<Set<string>>(
+    () => new Set(dedupeByCpf(prePopulatedUsers).map((u) => u.cpf))
+  );
 
   // Filter state
   const [searchTerm, setSearchTerm] = useState("");
@@ -128,40 +163,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
     }
     return [];
   }, [currentUser]);
-
-
-  // Populate importedUsers when prePopulatedUsers is provided
-  useEffect(() => {
-    if (prePopulatedUsers && prePopulatedUsers.length > 0) {
-      // Deduplicar por CPF (manter primeiro)
-      const seen = new Set<string>();
-      const dedupedUsers = prePopulatedUsers.filter((u) => {
-        if (seen.has(u.cpf)) return false;
-        seen.add(u.cpf);
-        return true;
-      });
-      const usersWithStatus: ImportedUserWithEdits[] = dedupedUsers.map((user) => ({
-        cpf: user.cpf,
-        nome: user.nome,
-        email: user.email,
-        ocupacao: user.ocupacao,
-        secretaria: user.secretaria,
-        status: "exists" as const,
-        is_admin: user.is_admin,
-        is_super_admin: user.is_super_admin,
-        id_cras_list: user.id_cras_list,
-        id_escola_list: user.id_escola_list,
-        id_cre_list: user.id_cre_list,
-        id_ap_list: user.id_ap_list,
-        id_cas_list: user.id_cas_list,
-        id_clinica_familia_list: user.id_clinica_familia_list,
-        secretarias_acesso: user.secretarias_acesso,
-      }));
-      setImportedUsers(usersWithStatus);
-      // Select all pre-populated users
-      setSelectedCpfs(new Set(dedupedUsers.map((u) => u.cpf)));
-    }
-  }, [prePopulatedUsers]);
 
   // Filter available IDs based on current user permissions
   // Super admin sees all, segmented admin only sees their own IDs

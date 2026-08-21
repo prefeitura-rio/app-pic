@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiService } from "@/app/services/api";
+import { DebugProtocolo, DebugProtocoloMetadata } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +22,6 @@ import {
   Database,
   Clock,
   FileCode,
-  Table,
   Filter,
   X,
   RefreshCw,
@@ -56,13 +56,7 @@ const formatProtocolStatus = (status?: string, protocolo_status_label?: string) 
   return status || "Null";
 };
 
-const formatValue = (value: any): string => {
-  if (value === null || value === undefined) return "null";
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-};
-
-const renderValue = (value: any) => {
+const renderValue = (value: unknown) => {
   // null/undefined → texto azul
   if (value === null || value === undefined) {
     return <span className="font-medium text-blue-600">null</span>;
@@ -145,17 +139,6 @@ export default function DebugPage() {
     setSearchTerm(term);
   };
 
-  const handleClear = () => {
-    setSearchInput("");
-    setSearchTerm(null);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSearch();
-    }
-  };
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
 
@@ -173,7 +156,7 @@ export default function DebugPage() {
         // Sem busca: apenas atualiza cache
         toast.success("Cache atualizado! Faça uma busca para ver dados frescos.");
       }
-    } catch (error) {
+    } catch {
       toast.error("Erro ao atualizar cache");
     } finally {
       setIsRefreshing(false);
@@ -194,8 +177,8 @@ export default function DebugPage() {
     const status = new Set<string>();
     const secretarias = new Set<string>();
 
-    debugData.data.forEach((participant: any) => {
-      participant.protocolos?.forEach((p: any) => {
+    debugData.data.forEach((participant) => {
+      participant.protocolos?.forEach((p) => {
         if (p.protocolo_id && p.protocolo_descricao) {
           protocolos.set(p.protocolo_id, p.protocolo_descricao);
         }
@@ -358,7 +341,7 @@ export default function DebugPage() {
         <Alert variant="destructive" className="mb-6">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Erro ao buscar dados: {(debugError as any)?.message || "Erro desconhecido"}
+            Erro ao buscar dados: {debugError?.message || "Erro desconhecido"}
           </AlertDescription>
         </Alert>
       )}
@@ -426,7 +409,7 @@ export default function DebugPage() {
                   {participant.protocolos && participant.protocolos.length > 0 && (() => {
                     // Aplicar filtros e ordenação
                     const filteredProtocolos = participant.protocolos
-                      .filter((p: any) => {
+                      .filter((p) => {
                         // Filtro de protocolo ID
                         if (protocoloFilter && !p.protocolo_id?.toLowerCase().includes(protocoloFilter.toLowerCase())) {
                           return false;
@@ -448,7 +431,7 @@ export default function DebugPage() {
 
                         return true;
                       })
-                      .sort((a: any, b: any) => {
+                      .sort((a, b) => {
                         const idA = a.protocolo_id || "";
                         const idB = b.protocolo_id || "";
                         return idA.localeCompare(idB);
@@ -460,15 +443,15 @@ export default function DebugPage() {
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold">Protocolos ({filteredProtocolos.length})</h3>
 
-                      {filteredProtocolos.map((protocolo: any, prtIdx: number) => {
+                      {filteredProtocolos.map((protocolo: DebugProtocolo, prtIdx: number) => {
                         // Associate data with their sources
                         const dataBySource: Array<{
-                          data: Record<string, any>,
+                          data: Record<string, unknown>,
                           source: {table: string | null, model: string | null, githubUrl: string | null, updated: string | null}
                         }> = [];
 
                         if (protocolo.metadata) {
-                          protocolo.metadata.forEach((meta: any) => {
+                          protocolo.metadata.forEach((meta: DebugProtocoloMetadata) => {
                             const parsed = meta.dados ? JSON.parse(meta.dados) : {};
 
                             // Clean BQ table name (remove backticks)

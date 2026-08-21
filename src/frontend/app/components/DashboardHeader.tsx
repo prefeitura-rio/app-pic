@@ -61,7 +61,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
     queryFn: async () => {
       try {
         return await apiService.getCurrentUser();
-      } catch (error) {
+      } catch {
         return null;
       }
     },
