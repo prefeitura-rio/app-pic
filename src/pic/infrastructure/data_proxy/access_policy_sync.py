@@ -39,6 +39,19 @@ ACCESS_POLICY_TABLE = "access_policy"
 ON_CONFLICT_COLUMNS = "schema,subject,unit_type,unit_id"
 
 
+def _group_by_revoke_key(
+    rows: list[PolicyRow],
+) -> list[list[PolicyRow]]:
+    """Group rows sharing (schema, subject, unit_type) so `_revoke` can
+    disable all their `unit_id`s in a single `PATCH ...&unit_id=in.(...)`
+    request instead of one `PATCH` per row. Preserves first-seen group
+    order for deterministic test assertions."""
+    groups: dict[tuple[str, str, str], list[PolicyRow]] = {}
+    for row in rows:
+        groups.setdefault((row.schema, row.subject, row.unit_type), []).append(row)
+    return list(groups.values())
+
+
 class AccessPolicySync:
     """Best-effort push of local `policy` rows into `rls.access_policy`."""
 
@@ -48,11 +61,13 @@ class AccessPolicySync:
     async def push(self, rows: list[PolicyRow]) -> list[PolicyRow]:
         """Push every row's current state to the data-proxy, best-effort.
 
-        Enabled rows are upserted (grant) as a single batch; disabled rows
-        are soft-revoked (`is_enabled=false`) one at a time — never deleted.
-        Returns the subset of `rows` that were confirmed pushed; callers
-        should leave `synced_at` unset on the rest so the next self-heal
-        pass retries them.
+        Enabled rows are upserted (grant) as a single batch. Disabled rows
+        are soft-revoked (`is_enabled=false`) in as few `PATCH` requests as
+        possible — one per distinct (schema, subject, unit_type) group,
+        matching every `unit_id` in that group with a single `in.(...)`
+        filter — never deleted. Returns the subset of `rows` that were
+        confirmed pushed; callers should leave `synced_at` unset on the rest
+        so the next self-heal pass retries them.
         """
         if not rows:
             return []
@@ -75,9 +90,9 @@ class AccessPolicySync:
         pushed: list[PolicyRow] = []
         if to_grant and await self._grant(to_grant):
             pushed.extend(to_grant)
-        for row in to_revoke:
-            if await self._revoke(row):
-                pushed.append(row)
+        for group in _group_by_revoke_key(to_revoke):
+            if await self._revoke(group):
+                pushed.extend(group)
         return pushed
 
     async def _grant(self, rows: list[PolicyRow]) -> bool:
@@ -105,21 +120,30 @@ class AccessPolicySync:
             return False
         return True
 
-    async def _revoke(self, row: PolicyRow) -> bool:
+    async def _revoke(self, rows: list[PolicyRow]) -> bool:
+        """Soft-revoke every row in `rows` with a single `PATCH`. All rows
+        must share (schema, subject, unit_type) — see `_group_by_revoke_key`
+        — so a single `unit_id=in.(...)` filter matches exactly this group.
+        `policy_writer_<schema>` has `UPDATE` (not just `INSERT`) on
+        `rls.access_policy` (see `access_policy_writer.sql` in the
+        data-proxy repo), and PostgREST applies a `PATCH` to every row
+        matching the filter — see docs/security.md in that repo.
+        """
+        first = rows[0]
         try:
             await (
                 self._client.from_(ACCESS_POLICY_TABLE)
                 .update({"is_enabled": False})
-                .eq("schema", row.schema)
-                .eq("subject", row.subject)
-                .eq("unit_type", row.unit_type)
-                .eq("unit_id", row.unit_id)
+                .eq("schema", first.schema)
+                .eq("subject", first.subject)
+                .eq("unit_type", first.unit_type)
+                .in_("unit_id", [row.unit_id for row in rows])
                 .execute()
             )
         except Exception:
             logger.exception(
-                f"Falha ao revogar grant em rls.access_policy "
-                f"(subject={row.subject}, unit_type={row.unit_type}, unit_id={row.unit_id})"
+                f"Falha ao revogar {len(rows)} grant(s) em rls.access_policy "
+                f"(subject={first.subject}, unit_type={first.unit_type})"
             )
             return False
         return True

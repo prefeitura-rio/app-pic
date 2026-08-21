@@ -91,8 +91,44 @@ async def test_revoke_patches_is_enabled_false_filtered_by_row():
     sent = handler.requests[0]
     assert sent.method == "PATCH"
     assert sent.headers["content-profile"] == "rls"
-    assert sent.url.params["unit_id"] == "eq.42"
+    assert sent.url.params["unit_id"] == "in.(42)"
     assert sent.url.params["subject"] == "eq.12345678900"
+
+
+async def test_revoke_batches_same_unit_type_into_a_single_patch():
+    """Revoking many units of the same (schema, subject, unit_type) should
+    cost one PATCH request, not one per unit_id."""
+    handler = fake_data_proxy()
+    sync = make_sync(handler)
+    rows = [revoke_row(id=i, unit_id=str(i)) for i in range(1, 6)]
+
+    pushed = await sync.push(rows)
+
+    assert set(pushed) == set(rows)
+    assert len(handler.requests) == 1
+    sent = handler.requests[0]
+    assert sent.method == "PATCH"
+    assert sent.url.params["unit_id"] == "in.(1,2,3,4,5)"
+
+
+async def test_revoke_groups_by_unit_type_into_separate_patches():
+    """Different unit_types can't share one `unit_id=in.(...)` filter
+    (it would revoke the cross-product), so each unit_type gets its own
+    PATCH — still far fewer requests than one per row."""
+    handler = fake_data_proxy()
+    sync = make_sync(handler)
+    cras = [revoke_row(id=1, unit_type="cras", unit_id="1")]
+    escola = [
+        revoke_row(id=2, unit_type="escola", unit_id="9"),
+        revoke_row(id=3, unit_type="escola", unit_id="10"),
+    ]
+
+    pushed = await sync.push(cras + escola)
+
+    assert set(pushed) == set(cras + escola)
+    assert len(handler.requests) == 2
+    unit_id_filters = {req.url.params["unit_id"] for req in handler.requests}
+    assert unit_id_filters == {"in.(1)", "in.(9,10)"}
 
 
 async def test_push_mixes_grants_and_revokes_in_one_call():
