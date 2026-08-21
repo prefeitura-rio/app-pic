@@ -116,18 +116,38 @@ CREATE TABLE policy (
   subject     text NOT NULL,                  -- cpf
   is_admin    boolean NOT NULL DEFAULT false, -- true só na linha base do super_admin
   is_enabled  boolean NOT NULL DEFAULT true,
-  unit_type   text,                           -- NULL = linha "base" (identidade/super_admin)
-  unit_id     text,                           -- valores possíveis: cras, escola, cre, ap,
+  unit_type   text NOT NULL,                  -- '_base' = linha "base" (identidade/
+                                               -- super_admin); ou cras, escola, cre, ap,
                                                -- cas, clinica_familia, equipe_familia,
                                                -- secretaria (este último com unit_id em
                                                -- {SME, SMS, SMAS})
+  unit_id     text NOT NULL,                  -- '_base' na linha base, senão o id da unidade
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
-  synced_at   timestamptz,                    -- carimbo do último write confirmado no
-                                               -- data-proxy
+  synced_at   timestamptz,                    -- carimbo do último push confirmado no
+                                               -- data-proxy; NULL = pendente de sync
+                                               -- (nunca sincronizado, ou mudou desde o
+                                               -- último push bem-sucedido)
   UNIQUE (schema, subject, unit_type, unit_id)
 );
 ```
+
+`unit_type`/`unit_id` são **NOT NULL** de propósito: a linha base usa o sentinela
+`'_base'`/`'_base'` em vez de `NULL`/`NULL`. Motivo: Postgres trata `NULL <> NULL` em
+`UNIQUE`/`ON CONFLICT`, então duas tentativas de upsert da linha base com `NULL` criariam
+duas linhas duplicadas em vez de atualizar uma só — tanto aqui quanto no
+`rls.access_policy` do data-proxy (mesma constraint lá, seção 3.3). Confirmado que
+`unit_type`/`unit_id` são só convenção nossa: o RLS do data-proxy dá bypass com
+`is_admin=true` **independente** do valor dessas colunas (seção 4) — não há exigência de
+serem `NULL`. O `NOT NULL` acima é só na nossa tabela local, por disciplina — não
+mexemos no schema do `rls.access_policy` (repo `data-proxy`, `helm/templates/_db.tpl`):
+lá `unit_type`/`unit_id` continuam `text` nullable (tabela compartilhada por todos os
+tenants do data-proxy, fora do nosso controle). O sentinela `'_base'` funciona de
+qualquer forma — nunca escrevemos `NULL` naquela tabela, então a nulabilidade dela é
+irrelevante pra nós.
+
+Nunca fazemos `DELETE` nesta tabela (espelha o `access_policy`, que é append-only — seção
+3.3): revogar uma unidade é sempre `is_enabled=false`, nunca remover a linha.
 
 Não guardamos `metadata` aqui — decidimos não usar o `metadata` jsonb do data-proxy
 para nada (nem espelhar localmente), já que toda identidade mora em `users`.
@@ -148,7 +168,14 @@ rls.access_policy(
 
 - `policy_writer_<schema>` só tem `SELECT, INSERT, UPDATE` — **sem DELETE**. Revogar é
   sempre `PATCH is_enabled=false`.
-- Unique key: `(schema, subject, unit_type, unit_id)`.
+- Unique key: `(schema, subject, unit_type, unit_id)` — grants novos usam `POST` com
+  `Prefer: resolution=merge-duplicates` (upsert idempotente via `.upsert(...,
+  on_conflict="schema,subject,unit_type,unit_id")` no `postgrest-py`); revogar é `PATCH
+  is_enabled=false` filtrado por `schema`+`subject` (+ `unit_type`/`unit_id` pra revogar
+  só uma unidade — um `PATCH` sem esse filtro desativa todas as linhas do subject numa
+  chamada só, útil pra desativar conta inteira). Requer o header `Content-Profile: rls`
+  (schema diferente do `app_pequenos_cariocas` dos dados) — confirmado em
+  `data-proxy/docs/security.md`.
 
 ---
 
@@ -173,7 +200,7 @@ EXISTS (
   que restrinja `is_admin=true` por unidade, apesar de uma afirmação em contrário do
   Pedro — vale realinhar com ele, mas não muda nosso design).
 - Por isso: **nunca** setamos `is_admin=true` em linha de "admin comum" — só na linha
-  base (`unit_type`/`unit_id` NULL) do `is_super_admin`.
+  base (`unit_type`/`unit_id = '_base'`, sentinela — ver seção 3.2) do `is_super_admin`.
 - Desativar um usuário inteiro (`users.active = false`) precisa colocar
   `is_enabled=false` em **todas** as linhas de `policy` daquele subject (o `EXISTS`
   procura qualquer linha habilitada; uma só linha ativa sobrando já daria acesso).
@@ -203,16 +230,41 @@ dados (Postgres local em vez de BigQuery).
 
 ## 5. Fluxo de escrita (grants/RLS)
 
-Ordem estrita — data-proxy é o gate, Postgres local só reflete o que foi confirmado:
+**Revisão (21/08):** a ordem original desta seção (data-proxy primeiro, Postgres local só
+reflete o que foi confirmado) nunca chegou a ser implementada — o código atual
+(`PostgresAdminRepository`) já escreve só localmente. Decidido manter esse
+comportamento e formalizá-lo: **Postgres local é sempre a escrita que manda** (nunca
+bloqueia/falha por causa do data-proxy); o data-proxy é só o espelho que o RLS de fato
+lê, sincronizado depois, best-effort. Motivo: não acoplar a disponibilidade de uma ação
+administrativa à disponibilidade do data-proxy (`access_policy` tem backup real — ver
+`data-proxy/docs/backups.md` — mas isso não implica alta disponibilidade de escrita).
 
-1. Monta a mudança (grant novo, revogação, toggle de `is_super_admin`/`active`).
-2. `PATCH`/`POST` no `rls.access_policy` do data-proxy via PostgREST (role
-   `policy_writer_app_pequenos_cariocas`, token via `client_credentials` no Keycloak).
-3. Se der certo → grava a mesma mudança em `policy` local, com `synced_at = now()`.
-4. Se falhar → **não** toca no banco local; propaga o erro pro admin.
-5. Campos puramente de identidade (`nome`, `email`, `ocupacao`, `secretaria`, `notes`,
-   `users.is_admin` "comum") não passam pelo data-proxy — gravam direto em `users`
-   local, sem gate.
+Ordem:
+
+1. Toda mudança (criar usuário, grant novo, revogação, toggle de `is_super_admin`/
+   `active`) grava primeiro em `users`/`policy` local, numa transação — isso já é o
+   suficiente pra considerar a ação do admin bem-sucedida e responder a request.
+2. **Push eager best-effort**, na mesma request, logo após o commit local: tenta
+   `POST`/`PATCH` no `rls.access_policy` via `AccessPolicySync` (role
+   `policy_writer_app_pequenos_cariocas`, token `client_credentials` no Keycloak, ver
+   seção 7). Só as linhas de `policy` que mudaram nesta escrita são enviadas.
+   - Sucesso → `synced_at = now()` nessas linhas.
+   - Falha (data-proxy fora do ar, erro de rede, etc.) → loga o erro e **não propaga
+     pro admin**; as linhas ficam com `synced_at` desatualizado (`NULL` ou anterior à
+     `updated_at`), sinalizando "pendente de sync".
+3. **Self-heal no login** (rede de segurança, não o mecanismo principal): toda vez que
+   o subject autenticado chama `GET /admin/me`, verifica se ele tem linhas de `policy`
+   com `synced_at` pendente (nunca sincronizado, ou `updated_at > synced_at`) e tenta
+   empurrar de novo, best-effort, sem bloquear a resposta em caso de falha. Cobre o
+   caso do push eager do passo 2 ter falhado (data-proxy indisponível no momento da
+   escrita original).
+4. Campos puramente de identidade (`nome`, `email`, `ocupacao`, `secretaria`, `notes`,
+   `users.is_admin` "comum") nunca vão pro data-proxy — só existem em `users` local.
+
+Não existe hoje um job periódico de reconciliação além do self-heal no login — aceito
+por ora porque toda escrita (incluindo revogação) já tenta o push eager imediatamente;
+o self-heal cobre só a janela de indisponibilidade temporária do data-proxy, não perda
+de dados nele (fora de escopo — ver nota acima sobre backup).
 
 ## 6. Fluxo de leitura
 
@@ -301,28 +353,37 @@ Implicações pro código:
 
 ---
 
-## 8. Estrutura de código planejada
+## 8. Estrutura de código (atualizado 21/08 — reflete o que existe/vai existir)
 
 ```
 src/pic/infrastructure/
   db/
-    engine.py                 # engine async SQLAlchemy (Cloud SQL Python Connector + WIF)
-    models.py                 # ORM: User, PolicyRow
+    engine.py                  # engine async SQLAlchemy (Cloud SQL Python Connector + WIF) — feito
+    models.py                  # ORM: User, PolicyRow — feito
+  postgrest_client/             # cliente HTTP genérico pro data-proxy — feito (não sabe nada
+    config.py                  #   de rls.access_policy nem de nenhum schema de dados
+    auth.py                    #   específico; ver seção 7.2 pra detalhes de auth)
+    client.py
   data_proxy/
-    client.py                 # AccessPolicyClient: token client_credentials + cache,
-                               #   GET/POST/PATCH em rls.access_policy via PostgREST
+    access_policy_sync.py      # AccessPolicySync: conhecimento de domínio sobre
+                                #   rls.access_policy — usa postgrest_client.PostgrestClient
+                                #   escopado pro profile "rls" (Content-Profile: rls, diferente
+                                #   do app_pequenos_cariocas dos dados), faz upsert (grant) e
+                                #   PATCH is_enabled=false (revoke), nunca DELETE
   repositories/
-    hybrid_admin.py            # HybridAdminRepository(IAdminRepository):
-                               #   orquestra UsersRepo (SQLAlchemy) + AccessPolicyClient,
-                               #   aplica a ordem de escrita da seção 5
+    hybrid_admin.py             # HybridAdminRepository(IAdminRepository) — renomeado de
+                                #   PostgresAdminRepository: escreve local primeiro, dispara
+                                #   AccessPolicySync eager best-effort (seção 5)
 alembic/
   env.py
   versions/
-    0001_create_users_and_policy.py
+    82e4a2ad54ff_create_users_and_policy_tables.py   # feito
+    511d8916ad94_add_secretarias_acesso_to_users.py   # feito
+    <nova>_policy_unit_type_unit_id_not_null.py        # sentinela '_base' em vez de NULL
 ```
 
-`src/pic/presentation/di.py` troca `BigQueryAdminRepository` por
-`HybridAdminRepository` — único ponto de wiring.
+`src/pic/presentation/di.py` já aponta pra `PostgresAdminRepository`/
+`HybridAdminRepository` (só o wiring precisa acompanhar o rename).
 
 ---
 
@@ -333,7 +394,13 @@ alembic/
 2. Confirmar client Keycloak `policy_writer_app_pequenos_cariocas` (confidential,
    service account) — credenciais já recebidas em `.env`, falta validar em staging.
 3. Confirmar `app_pequenos_cariocas` no `syncConfig` de produção do data-proxy, com os
-   7 `rls` mappings em `endpoint_participante_listagem`/`_visao_geral`.
+   7 `rls` mappings em `endpoint_participante_listagem`/`_visao_geral`, mais as 4 tabelas
+   sem RLS (`endpoint_camadas_geoespaciais`, `protocolo_detalhes`,
+   `endpoint_participante_debug`, `endpoint_participante_debug_origins`) — nenhuma delas
+   tem coluna de unidade. `endpoint_data_access` fica de fora: já migrada para
+   `users`/`policy` no Postgres. Draft pronto em
+   [`data-proxy-sync.json`](./data-proxy-sync.json) (project ID é o de dev/staging —
+   falta confirmar o de produção, que não existe em nenhum lugar deste repo).
 4. Realinhar com o Pedro sobre a semântica de `is_admin` + `unit_type`/`unit_id`
    (seção 4) — divergência encontrada entre o que ele descreveu e o código atual.
 5. (Fora de escopo por ora) client scope `schemas` claim mapper no Keycloak do app-pic,
@@ -346,24 +413,40 @@ alembic/
 
 ## 10. Passos de implementação
 
-1. Adicionar `sqlalchemy[asyncio]`, `asyncpg`, `alembic`,
-   `cloud-sql-python-connector[asyncpg]` via `uv add`; configurar `alembic/env.py`
-   para ler `env.py`.
-2. Criar migration inicial: tabelas `users` e `policy` (seção 3.1/3.2).
-3. Implementar `AccessPolicyClient` (token cache, `GET`/`POST`/`PATCH` em
-   `access_policy`, tratamento de erro sem retry silencioso).
-4. Implementar `HybridAdminRepository` cobrindo todos os métodos de
-   `IAdminRepository` (`fetch_governance_df`, `find_paginated_users`,
-   `find_users_by_cpfs`, `update_user`, `insert_user`, `soft_delete_user`,
-   `batch_merge_permissions`, `refresh_cache`), seguindo a ordem de escrita da seção 5.
-5. Atualizar `env.py` com as novas variáveis (seção 7) e `.env`/`.env.example`.
-6. Trocar `BigQueryAdminRepository` por `HybridAdminRepository` em `di.py`.
-7. Simplificar `example.md` para refletir só o desenho final de grants (sem metadata
-   de usuário) — ou removê-lo em favor deste `plan.md`.
-8. Rodar `just lint-python` / `uv run pytest src/pic` antes de considerar concluído.
-9. Plano de rollout: backfill de `endpoint_data_access` (BigQuery) para `users` +
-   `policy` (novo Postgres + data-proxy), validar paridade com a v2 atual antes do
-   cutover em produção.
+**Feito (Fase 1/2 + preparação do sync, ver histórico do repo/PRs):**
+
+1. ~~Adicionar `sqlalchemy[asyncio]`, `asyncpg`, `alembic`,
+   `cloud-sql-python-connector[asyncpg]`; configurar `alembic/env.py`.~~
+2. ~~Migration inicial: tabelas `users` e `policy` (seção 3.1/3.2).~~
+3. ~~Implementar `PostgresAdminRepository` cobrindo `IAdminRepository`, escrevendo só
+   local (sem push pro data-proxy ainda).~~
+4. ~~Trocar `BigQueryAdminRepository` por `PostgresAdminRepository` em `di.py`,
+   cutover em produção.~~
+5. ~~Limpeza de lint (backend + frontend) completa.~~
+6. ~~Implementar `postgrest_client/` genérico (auth via event hooks, `.table()`/
+   `.rpc()`, testado com `httpx.MockTransport`).~~
+
+**Restante — sync de `access_policy` (fase atual, ver seção 5 para o design):**
+
+7. Migration: `unit_type`/`unit_id` NOT NULL em `policy`, adotando o sentinela
+   `'_base'` em vez de `NULL` pra linha base do super_admin (seção 3.2).
+8. Reescrever `_replace_policy_grants` (upsert + soft-disable, nunca `DELETE` local —
+   necessário pra manter o espelho fiel do `access_policy`, que é append-only).
+9. Adicionar criação/atualização da linha base sentinela (`unit_type=unit_id='_base'`,
+   `is_admin=true`) quando `is_super_admin` vira `true`, e `is_enabled=false` nela
+   quando vira `false` — hoje isso nunca é feito.
+10. Implementar `AccessPolicySync` (`data_proxy/access_policy_sync.py`): upsert
+    (`POST` + `Prefer: resolution=merge-duplicates`) e revoke (`PATCH
+    is_enabled=false`) em `rls.access_policy`, reaproveitando um
+    `postgrest_client.PostgrestClient` escopado pro profile `rls`.
+11. Renomear `PostgresAdminRepository` → `HybridAdminRepository`; adicionar push eager
+    best-effort (`await`, captura exceção, só loga) após cada commit local nos métodos
+    de escrita.
+12. Self-heal no login: em `GET /admin/me`, reenviar linhas de `policy` do subject com
+    `synced_at` pendente.
+13. Testes para os itens 7-12 (padrão `httpx.MockTransport` já usado em
+    `postgrest_client/tests/`).
+14. Rodar `just lint-python` / `uv run pytest src/pic` antes de considerar concluído.
 
 ---
 
@@ -380,3 +463,6 @@ alembic/
   `app_pequenos_cariocas` configurado.
 - Falta validar client Keycloak `policy_writer_app_pequenos_cariocas` em staging (fazer
   um `POST`/`GET` de teste contra `DATA_PROXY_API_URL`).
+- Falta o project ID do BigQuery de produção pra `data-proxy-sync.json` (TODO explícito
+  no `$comment` do arquivo) — pendente confirmação externa (Pedro/data-proxy team). Não
+  bloqueia a fase atual (sync de `access_policy`).
