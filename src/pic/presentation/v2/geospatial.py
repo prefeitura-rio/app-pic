@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.get_geospatial_filter_vocabulary import (
     GetGeospatialFilterVocabularyUseCase,
 )
@@ -25,7 +25,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Geospatial V2"])
     response_model=GeospatialLayersResponse,
 )
 async def get_geospatial_layers(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     filters: GeospatialFilters = Depends(),
     bypass_cache: bool = Query(False, description="Forcar refresh do cache"),
     use_case: GetGeospatialLayersUseCase = Depends(get_geospatial_layers_use_case),

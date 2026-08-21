@@ -2,7 +2,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
 from src.pic.presentation.di import get_dashboard_use_case
 from src.pic.presentation.v2.schemas import DashboardV2Response
@@ -17,7 +17,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Dashboard V2"])
     response_model=DashboardV2Response,
 )
 async def get_dashboard(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     grupo: str | None = Query(None),
     cohort: str | None = Query(None),
     status: str | None = Query(None),

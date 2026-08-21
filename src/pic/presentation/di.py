@@ -34,9 +34,6 @@ from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
-from src.pic.infrastructure.repositories.bigquery_admin import (
-    BigQueryAdminRepository,
-)
 from src.pic.infrastructure.repositories.bigquery_dashboard import (
     BigQueryDashboardRepository,
 )
@@ -49,6 +46,9 @@ from src.pic.infrastructure.repositories.bigquery_geospatial import (
 from src.pic.infrastructure.repositories.bigquery_participant import (
     BigQueryParticipantRepository,
 )
+from src.pic.infrastructure.repositories.postgres_admin import (
+    PostgresAdminRepository,
+)
 
 
 def get_participant_repo() -> IParticipantRepository:
@@ -60,7 +60,7 @@ def get_dashboard_repo() -> IDashboardRepository:
 
 
 def get_admin_repo() -> IAdminRepository:
-    return BigQueryAdminRepository()
+    return PostgresAdminRepository()
 
 
 def get_geospatial_repo() -> IGeospatialRepository:
@@ -104,7 +104,7 @@ def get_debug_participant_use_case() -> GetDebugParticipantUseCase:
 
 
 def get_current_user_use_case() -> GetCurrentUserUseCase:
-    return GetCurrentUserUseCase()
+    return GetCurrentUserUseCase(repository=get_admin_repo())
 
 
 def get_available_ids_use_case() -> GetAvailableIdsUseCase:

@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
-import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { SecretariasAcessoField } from "@/app/components/admin/SecretariasAcessoField";
 
 interface UserFormProps {
   availableIds: AvailableIds;
@@ -53,40 +53,14 @@ export function UserForm({
     };
   }, [availableIds, currentUser]);
 
-  // Filter secretaria access options based on current user permissions
-  const secretariaAccessOptions = useMemo(() => {
-    const allOptions = [
-      { id: "NULL", label: "🚫 Sem Acesso a Protocolos" },
-      { id: "TODOS", label: "🌐 Todos os Protocolos (TODOS)" },
-      { id: "SME", label: "📚 Apenas Educação (SME)" },
-      { id: "SMS", label: "🏥 Apenas Saúde (SMS)" },
-      { id: "SMAS", label: "🤝 Apenas Assistência Social (SMAS)" },
-    ];
-
-    // Super admin sees all options
+  // Secretarias que o admin logado pode atribuir (subset da própria secretarias_acesso)
+  const allowedSecretariasAcesso = useMemo(() => {
     if (currentUser?.is_super_admin) {
-      return allOptions;
+      return ["SME", "SMS", "SMAS"];
     }
-
-    // Segmented admin can assign NULL or their own secretaria_acesso
     if (currentUser?.is_admin) {
-      const userSecretaria = currentUser?.secretaria_acesso;
-
-      // Admin with TODOS can see all options (same as super admin for this field)
-      if (userSecretaria === "TODOS") {
-        return allOptions;
-      }
-
-      // If admin has no secretaria_acesso set, they can only assign NULL
-      if (!userSecretaria || userSecretaria === "NULL") {
-        return allOptions.filter(opt => opt.id === "NULL");
-      }
-
-      // Admin can assign NULL or their own secretariat (not TODOS, not other secretariats)
-      return allOptions.filter(opt => opt.id === "NULL" || opt.id === userSecretaria);
+      return currentUser?.secretarias_acesso || [];
     }
-
-    // Non-admin users can't change this field
     return [];
   }, [currentUser]);
 
@@ -107,7 +81,7 @@ export function UserForm({
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
   const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
-  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
+  const [secretariasAcesso, setSecretariasAcesso] = useState<string[]>([]);
 
   // Initialize form with user data if editing
   useEffect(() => {
@@ -128,7 +102,7 @@ export function UserForm({
       setSelectedCas(user.id_cas_list || []);
       setSelectedClinicas(user.id_clinica_familia_list || []);
       setSelectedEquipesFamilia(user.id_equipe_familia_list || []);
-      setSecretariaAcesso(user.secretaria_acesso || "NULL");
+      setSecretariasAcesso(user.secretarias_acesso || []);
     } else {
       // Reset form
       setCpf("");
@@ -146,7 +120,7 @@ export function UserForm({
       setSelectedCas([]);
       setSelectedClinicas([]);
       setSelectedEquipesFamilia([]);
-      setSecretariaAcesso("NULL");
+      setSecretariasAcesso([]);
     }
   }, [user]);
 
@@ -183,7 +157,7 @@ export function UserForm({
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
         id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
+        secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
       onSubmit(updateData);
@@ -204,7 +178,7 @@ export function UserForm({
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
         id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
+        secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
       onSubmit(createData);
@@ -355,16 +329,14 @@ export function UserForm({
 
           {/* Acesso a Protocolos - PRIMEIRO CAMPO */}
           <div className="space-y-2">
-            <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
+            <Label title="Controla quais protocolos o usuário pode visualizar">
               Acesso a Protocolos
             </Label>
-            <VirtualizedSelect
-              value={secretariaAcesso}
-              onSelect={setSecretariaAcesso}
-              options={secretariaAccessOptions}
-              placeholder="Selecione o acesso"
+            <SecretariasAcessoField
+              value={secretariasAcesso}
+              onChange={setSecretariasAcesso}
+              allowedValues={allowedSecretariasAcesso}
               disabled={isLoading || (!currentUser?.is_admin && !currentUser?.is_super_admin)}
-              showAllOption={false}
             />
             <p className="text-xs text-muted-foreground">
               {currentUser?.is_super_admin

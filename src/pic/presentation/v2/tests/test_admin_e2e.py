@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.core.security.jwt import get_current_user_permissions, verify_jwt
+from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import IdWithName, UserPermissions
 from src.main import app
 from src.pic.application.use_cases.admin_batch import (
@@ -41,11 +41,11 @@ from src.pic.presentation.di import (
 def override_auth():
     token_payload = {"preferred_username": "12345678900"}
     app.dependency_overrides[verify_jwt] = lambda: token_payload
-    app.dependency_overrides[get_current_user_permissions] = lambda: UserPermissions(
+    app.dependency_overrides[get_current_user_permissions_v2] = lambda: UserPermissions(
         cpf="12345678900",
         is_admin=True,
         is_super_admin=True,
-        secretaria_acesso="TODOS",
+        secretarias_acesso=["SME", "SMS", "SMAS"],
     )
     yield
     app.dependency_overrides.clear()
@@ -66,7 +66,7 @@ def _make_user_record() -> UserAccessRecord:
         is_admin=True,
         is_super_admin=True,
         permission="super_admin",
-        secretaria_acesso="TODOS",
+        secretarias_acesso=["SME", "SMS", "SMAS"],
         active=True,
         created_by="system",
         created_at=datetime(2025, 1, 1, tzinfo=UTC),

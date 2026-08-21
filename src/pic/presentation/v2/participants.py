@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
 from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
@@ -35,7 +35,7 @@ router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes V2"]
     response_model=ParticipantListResponse,
 )
 async def get_participants(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     filters: FilterCriteria = Depends(),
     pagination: PaginationParams = Depends(),
     sort: SortParams = Depends(),
@@ -78,7 +78,7 @@ async def get_participants(
     summary="Exportar participantes filtrados como CSV via streaming (V2)",
 )
 async def export_participants_csv_v2(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     filters: FilterCriteria = Depends(),
     sort: SortParams = Depends(),
     bypass_cache: bool = Query(False, description="Forcar refresh do cache"),
@@ -124,7 +124,7 @@ async def export_participants_csv_v2(
 )
 async def get_participant_detail(
     id_membro_familia: str,
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     bypass_cache: bool = Query(False, description="Forcar refresh do cache"),
     use_case: GetParticipantDetailUseCase = Depends(
         get_participant_detail_use_case

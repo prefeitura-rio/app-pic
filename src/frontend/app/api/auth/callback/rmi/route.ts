@@ -39,6 +39,10 @@ export async function GET(req: NextRequest) {
 
     if (!response.ok) {
       const error = await response.text();
+      console.error(
+        `[OAuth Callback] Token exchange failed (${response.status}):`,
+        error,
+      );
       if (!process.env.NEXTAUTH_URL) {
         throw new Error("NEXTAUTH_URL environment variable is required");
       }

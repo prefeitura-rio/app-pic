@@ -1406,6 +1406,10 @@ class DataManager:
         """
         Fetch permissions for a specific CPF from cached governance table (POLARS).
 
+        NOTE: v1-only. BigQuery-backed (endpoint_data_access). v2 uses
+        PostgresAdminRepository.fetch_user_permissions instead. Keep this on
+        BigQuery as long as v1's admin CRUD writes to BigQuery.
+
         OPTIMIZATION: Uses get_dataset() with shared cache.
 
         Args:
@@ -1419,8 +1423,14 @@ class DataManager:
         """
         from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
         from src.core.security.permissions_models import (
-            UserPermissions,
             PermissionDeniedError,
+            UserPermissions,
+        )
+        from src.utils.constants import (
+            SECRETARIA_SMAS,
+            SECRETARIA_SME,
+            SECRETARIA_SMS,
+            SECRETARIA_TODOS,
         )
 
         # Buscar tabela completa (do cache) - agora retorna Polars
@@ -1473,6 +1483,19 @@ class DataManager:
 
         # Garantir que active no objeto final seja bool limpo
         row_dict["active"] = bool(row_dict["_active_bool"])
+
+        # Convert legacy scalar secretaria_acesso (BigQuery column) into the
+        # new secretarias_acesso list field. `secretaria_acesso` itself is now
+        # a read-only compat @property on UserPermissions, so passing it as a
+        # constructor kwarg would be silently dropped (Pydantic ignores
+        # unknown/property kwargs) leaving secretarias_acesso as [].
+        raw_secretaria = row_dict.pop("secretaria_acesso", None)
+        if raw_secretaria == SECRETARIA_TODOS:
+            row_dict["secretarias_acesso"] = [SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
+        elif raw_secretaria:
+            row_dict["secretarias_acesso"] = [raw_secretaria]
+        else:
+            row_dict["secretarias_acesso"] = []
 
         # Convert struct arrays to list of IdWithName
         for id_type in [
@@ -1537,10 +1560,10 @@ class DataManager:
 
         df_filtered = df.filter(filter_expr)
 
-        # Apply protocol filtering by secretaria_acesso
+        # Apply protocol filtering by secretarias_acesso
         df_filtered = filter_and_recalculate_by_secretaria(
             df_filtered,
-            user_permissions.secretaria_acesso
+            user_permissions.secretarias_acesso
         )
 
         logger.info(

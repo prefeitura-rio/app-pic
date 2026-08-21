@@ -1,11 +1,11 @@
 from fastapi import HTTPException
 
-from src.core.security.jwt import CurrentUserPermissions
+from src.core.security.jwt import CurrentUserPermissionsV2
 from src.pic.application.ports.debug_repository import IDebugRepository
 from src.pic.domain.models.debug import DebugParticipantResponse
 
 
-def _require_super_admin(permissions: CurrentUserPermissions) -> None:
+def _require_super_admin(permissions: CurrentUserPermissionsV2) -> None:
     if not permissions.is_super_admin:
         raise HTTPException(
             status_code=403,
@@ -19,7 +19,7 @@ class GetDebugParticipantUseCase:
 
     async def execute(
         self,
-        permissions: CurrentUserPermissions,
+        permissions: CurrentUserPermissionsV2,
         search: str | None = None,
         bypass_cache: bool = False,
     ) -> DebugParticipantResponse:
