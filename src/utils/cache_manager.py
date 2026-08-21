@@ -1,12 +1,12 @@
 import hashlib
-import time
 import pickle
 import threading
-from pathlib import Path
-from enum import Enum
+import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
 from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 from src.config import env
 from src.utils.log import logger
@@ -36,11 +36,11 @@ class InMemoryCache:
     """
 
     def __init__(self, max_size: int = 10):
-        self._cache: Dict[str, MemoryCacheEntry] = {}
+        self._cache: dict[str, MemoryCacheEntry] = {}
         self._lock = threading.RLock()
         self._max_size = max_size
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Busca do cache em memória. Retorna None se expirado ou não existe."""
         with self._lock:
             entry = self._cache.get(key)
@@ -96,11 +96,11 @@ class CacheMode(Enum):
 
 class StorageBackend(ABC):
     @abstractmethod
-    def load(self, key: str) -> Optional[Dict[str, Any]]:
+    def load(self, key: str) -> dict[str, Any] | None:
         pass
 
     @abstractmethod
-    def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+    def save(self, key: str, data: dict[str, Any], ttl_seconds: int) -> None:
         pass
 
 
@@ -112,7 +112,7 @@ class FileBackend(StorageBackend):
     def _get_file_path(self, key: str) -> Path:
         return self.data_dir / f"{key}.pickle"
 
-    def load(self, key: str) -> Optional[Dict[str, Any]]:
+    def load(self, key: str) -> dict[str, Any] | None:
         file_path = self._get_file_path(key)
         if file_path.exists():
             try:
@@ -132,7 +132,7 @@ class FileBackend(StorageBackend):
                 return None
         return None
 
-    def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+    def save(self, key: str, data: dict[str, Any], ttl_seconds: int) -> None:
         # Note: ttl_seconds is embedded in data["metadata"]["ttl"] and checked on load
         _ = ttl_seconds  # Explicitly mark as used (TTL is in metadata)
         file_path = self._get_file_path(key)
@@ -159,7 +159,7 @@ class RedisBackend(StorageBackend):
             socket_timeout=5,
         )
 
-    def load(self, key: str) -> Optional[Dict[str, Any]]:
+    def load(self, key: str) -> dict[str, Any] | None:
         try:
             data = self.client.get(key)
             if data:
@@ -169,7 +169,7 @@ class RedisBackend(StorageBackend):
             logger.error(f"❌ Redis load error for {key[:16]}...: {e}")
             return None
 
-    def save(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+    def save(self, key: str, data: dict[str, Any], ttl_seconds: int) -> None:
         try:
             # OTIMIZAÇÃO: Serializar com Pickle (muito mais rápido que JSON)
             # Pickle preserva tipos do DataFrame (category, datetime, etc)
@@ -184,7 +184,7 @@ class CacheManager:
     def __init__(
         self,
         mode: CacheMode = CacheMode.JSON,
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         default_ttl: int = env.CACHE_TTL_SECONDS,  # 5 minutes default
         data_dir: str = ".cache/queries",
     ):
@@ -202,7 +202,7 @@ class CacheManager:
     def _get_query_hash(self, query: str) -> str:
         return hashlib.sha256(query.encode("utf-8")).hexdigest()
 
-    def get(self, query: str) -> Optional[Dict[str, Any]]:
+    def get(self, query: str) -> dict[str, Any] | None:
         query_hash = self._get_query_hash(query)
 
         # L1: Tentar cache em memória primeiro (INSTANT - evita pickle.loads)
@@ -245,8 +245,8 @@ class CacheManager:
         self,
         query: str,
         data: Any,
-        ttl: Optional[int] = None,
-        profiling_data: Optional[Dict[str, Any]] = None,
+        ttl: int | None = None,
+        profiling_data: dict[str, Any] | None = None,
     ) -> None:
         query_hash = self._get_query_hash(query)
         ttl = ttl or self.default_ttl

@@ -2,8 +2,8 @@
 Configurações e constantes para o DataManager.
 """
 
-from dataclasses import dataclass, asdict, field
-from typing import Dict, Any
+from dataclasses import asdict, dataclass
+from typing import Any
 
 
 class DataManagerConfig:
@@ -95,7 +95,7 @@ class ProfilingData:
     rows_after_filter: int = 0
     rows_after_search: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Converte para dicionário para serialização JSON."""
         return asdict(self)
 

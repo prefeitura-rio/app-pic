@@ -2,15 +2,16 @@
 Módulo para filtragem e recálculo de protocolos baseado em secretarias_acesso.
 Centraliza toda a lógica de governança por secretaria em um único local.
 """
+
 import polars as pl
-from typing import List
-from src.utils.log import logger
+
 from src.utils.constants import (
+    SECRETARIA_COLUMN_PREFIX,
+    SECRETARIA_SMAS,
     SECRETARIA_SME,
     SECRETARIA_SMS,
-    SECRETARIA_SMAS,
-    SECRETARIA_COLUMN_PREFIX,
 )
+from src.utils.log import logger
 
 # ============================================================================
 # CONSTANTES LOCAIS
@@ -28,8 +29,8 @@ COUNTER_SUFFIXES = ["", "_irregular", "_atencao", "_regular"]
 
 def get_allowed_secretaria_options(
     user_is_super_admin: bool,
-    user_secretarias_acesso: List[str],
-) -> List[str]:
+    user_secretarias_acesso: list[str],
+) -> list[str]:
     """
     Retorna lista de secretarias que o usuário pode atribuir a outros usuários.
 
@@ -50,7 +51,7 @@ def get_allowed_secretaria_options(
 
 def filter_and_recalculate_by_secretaria(
     df: pl.DataFrame,
-    secretarias_acesso: List[str],
+    secretarias_acesso: list[str],
 ) -> pl.DataFrame:
     """
     Filtra protocolo_listagem pelas secretarias do usuário e recalcula
@@ -166,7 +167,7 @@ def _recalculate_total_counters(df: pl.DataFrame) -> pl.DataFrame:
 
 def _recalculate_secretaria_counters(
     df: pl.DataFrame,
-    secretarias_acesso: List[str],
+    secretarias_acesso: list[str],
 ) -> pl.DataFrame:
     """
     Recalcula contadores por secretaria e seta secretarias sem acesso como null.

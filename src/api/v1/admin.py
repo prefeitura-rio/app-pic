@@ -10,25 +10,25 @@ REGRAS:
 - Auditoria completa: created_by, updated_by em todas as operações
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, File, Path
-from typing import List, Optional, Dict
-import polars as pl
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from src.core.security.jwt import CurrentUserPermissions
-from src.core.security.permissions_models import IdWithName, UserPermissions
-from src.config import env
-from src.utils.log import logger
-from src.utils.data_manager import DataManager
-from src.utils.bigquery import execute_query, build_update_query
+import polars as pl
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 from google.cloud import bigquery
+from pydantic import BaseModel, Field
+
 from src.api.v1.queries import (
     GOVERNANCE_TABLE_QUERY,
     PARTICIPANTS_TABLE_QUERY,
 )
 from src.api.v1.schemas import PaginatedResponse, PaginationParams
-from pydantic import BaseModel, Field
+from src.config import env
+from src.core.security.jwt import CurrentUserPermissions
+from src.core.security.permissions_models import IdWithName, UserPermissions
+from src.utils.bigquery import build_update_query, execute_query
+from src.utils.data_manager import DataManager
+from src.utils.log import logger
 
 PROJECT_ID = env.BQ_PROJECT_ID
 DATASET_ID = env.BQ_DATASET_ID
@@ -72,66 +72,66 @@ def refresh_governance_cache():
 class AvailableIds(BaseModel):
     """IDs disponíveis para atribuição (extraídos da tabela de participantes)"""
 
-    cras: List[IdWithName] = Field(default_factory=list)
-    escolas: List[IdWithName] = Field(default_factory=list)
-    cres: List[IdWithName] = Field(default_factory=list)
-    aps: List[IdWithName] = Field(default_factory=list)
-    cas: List[IdWithName] = Field(default_factory=list)
-    clinicas: List[IdWithName] = Field(default_factory=list)
-    equipes_familia: List[IdWithName] = Field(default_factory=list)
+    cras: list[IdWithName] = Field(default_factory=list)
+    escolas: list[IdWithName] = Field(default_factory=list)
+    cres: list[IdWithName] = Field(default_factory=list)
+    aps: list[IdWithName] = Field(default_factory=list)
+    cas: list[IdWithName] = Field(default_factory=list)
+    clinicas: list[IdWithName] = Field(default_factory=list)
+    equipes_familia: list[IdWithName] = Field(default_factory=list)
 
 
 class UserAccessRecord(BaseModel):
     """Registro de acesso de um usuário (usado em GET /users)"""
 
     cpf: str
-    email: Optional[str] = None
-    nome: Optional[str] = None
-    ocupacao: Optional[str] = None
-    secretaria: Optional[str] = None
+    email: str | None = None
+    nome: str | None = None
+    ocupacao: str | None = None
+    secretaria: str | None = None
     is_admin: bool = False
     is_super_admin: bool = False
-    permission: Optional[str] = None
+    permission: str | None = None
 
-    id_cras_list: Optional[List[IdWithName]] = None
-    id_escola_list: Optional[List[IdWithName]] = None
-    id_cre_list: Optional[List[IdWithName]] = None
-    id_ap_list: Optional[List[IdWithName]] = None
-    id_cas_list: Optional[List[IdWithName]] = None
-    id_clinica_familia_list: Optional[List[IdWithName]] = None
-    id_equipe_familia_list: Optional[List[IdWithName]] = None
+    id_cras_list: list[IdWithName] | None = None
+    id_escola_list: list[IdWithName] | None = None
+    id_cre_list: list[IdWithName] | None = None
+    id_ap_list: list[IdWithName] | None = None
+    id_cas_list: list[IdWithName] | None = None
+    id_clinica_familia_list: list[IdWithName] | None = None
+    id_equipe_familia_list: list[IdWithName] | None = None
 
-    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
+    secretaria_acesso: str | None = None  # SME, SMS, SMAS, TODOS, NULL
 
     active: bool = True
-    notes: Optional[str] = None
+    notes: str | None = None
     created_by: str
     created_at: datetime
-    updated_by: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    updated_by: str | None = None
+    updated_at: datetime | None = None
 
 
 class UpsertUserRequest(BaseModel):
     """Request para criar ou atualizar usuário (UPSERT)"""
 
-    email: Optional[str] = None
-    nome: Optional[str] = None
-    ocupacao: Optional[str] = None
-    secretaria: Optional[str] = None
+    email: str | None = None
+    nome: str | None = None
+    ocupacao: str | None = None
+    secretaria: str | None = None
     is_admin: bool = False
     is_super_admin: bool = False  # Apenas super admins podem definir isso
 
-    id_cras_list: Optional[List[IdWithName]] = None
-    id_escola_list: Optional[List[IdWithName]] = None
-    id_cre_list: Optional[List[IdWithName]] = None
-    id_ap_list: Optional[List[IdWithName]] = None
-    id_cas_list: Optional[List[IdWithName]] = None
-    id_clinica_familia_list: Optional[List[IdWithName]] = None
-    id_equipe_familia_list: Optional[List[IdWithName]] = None
+    id_cras_list: list[IdWithName] | None = None
+    id_escola_list: list[IdWithName] | None = None
+    id_cre_list: list[IdWithName] | None = None
+    id_ap_list: list[IdWithName] | None = None
+    id_cas_list: list[IdWithName] | None = None
+    id_clinica_familia_list: list[IdWithName] | None = None
+    id_equipe_familia_list: list[IdWithName] | None = None
 
-    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
+    secretaria_acesso: str | None = None  # SME, SMS, SMAS, TODOS, NULL
 
-    notes: Optional[str] = None
+    notes: str | None = None
     active: bool = True
     is_update: bool = False  # Se True, indica que é uma atualização intencional
 
@@ -188,7 +188,7 @@ def _filter_manageable_users(
         return df
 
     # Debug: Log permissões do admin (sem expor CPF completo)
-    logger.info(f"🔍 Verificando permissões do admin:")
+    logger.info("🔍 Verificando permissões do admin:")
     logger.info(f"  - is_super_admin: {admin_permissions.is_super_admin}")
     logger.info(f"  - is_admin: {admin_permissions.is_admin}")
     logger.info(f"  - secretaria_acesso: {admin_permissions.secretaria_acesso}")
@@ -215,20 +215,20 @@ def _filter_manageable_users(
     )
 
     if not has_any_ids:
-        logger.warning(f"❌ Admin não possui nenhum ID - não pode gerenciar usuários")
+        logger.warning("❌ Admin não possui nenhum ID - não pode gerenciar usuários")
         return df.head(0)  # Retorna DataFrame vazio
 
     # FILTRO 1: Remover super admins (admin segmentado não pode gerenciar super admins)
     df_non_super_admin = df.filter(pl.col("is_super_admin") == False)
 
     # FILTRO 2: Filtrar por secretaria_acesso
-    from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+    from src.utils.constants import SECRETARIA_NULL, SECRETARIA_TODOS
 
     admin_secretaria = admin_permissions.secretaria_acesso
 
     if admin_secretaria == SECRETARIA_NULL or not admin_secretaria:
         # Admin com NULL: vê APENAS usuários NULL
-        logger.info(f"🔒 Admin com NULL - Filtrando APENAS usuários com NULL")
+        logger.info("🔒 Admin com NULL - Filtrando APENAS usuários com NULL")
         df_non_super_admin = df_non_super_admin.filter(
             (pl.col("secretaria_acesso").is_null())
             | (pl.col("secretaria_acesso") == SECRETARIA_NULL)
@@ -322,7 +322,7 @@ def _filter_manageable_users(
 
 
 def validate_equipment_secretaria_consistency(
-    target_ids: Dict[str, List[IdWithName]], target_secretaria_acesso: Optional[str]
+    target_ids: dict[str, list[IdWithName]], target_secretaria_acesso: str | None
 ):
     """
     Valida consistência entre equipamentos atribuídos e secretaria_acesso.
@@ -335,10 +335,10 @@ def validate_equipment_secretaria_consistency(
     - secretaria_acesso = "NULL" ou None → Pode ter qualquer equipamento (sem acesso a protocolos)
     """
     from src.utils.constants import (
-        SECRETARIA_NULL,
-        SECRETARIA_TODOS,
         SECRETARIA_EQUIPMENT,
         SECRETARIA_EQUIPMENT_LABELS,
+        SECRETARIA_NULL,
+        SECRETARIA_TODOS,
     )
 
     # Se não tem secretaria_acesso definido, permitir qualquer equipamento
@@ -349,7 +349,7 @@ def validate_equipment_secretaria_consistency(
     ):
         return
 
-    logger.info(f"🔍 Validando consistência equipamentos <-> secretaria_acesso")
+    logger.info("🔍 Validando consistência equipamentos <-> secretaria_acesso")
     logger.info(f"   secretaria_acesso: {target_secretaria_acesso}")
 
     # Equipamentos permitidos para essa secretaria
@@ -385,11 +385,11 @@ def validate_equipment_secretaria_consistency(
                     f"Remova os equipamentos incompatíveis ou altere o acesso a protocolos.",
                 )
 
-    logger.info(f"   ✅ Consistência OK")
+    logger.info("   ✅ Consistência OK")
 
 
 def validate_secretaria_acesso_permission(
-    admin_permissions: UserPermissions, target_secretaria_acesso: Optional[str]
+    admin_permissions: UserPermissions, target_secretaria_acesso: str | None
 ):
     """
     Valida que admin segmentado só pode atribuir secretaria_acesso que ele possui.
@@ -405,20 +405,20 @@ def validate_secretaria_acesso_permission(
 
     # Admin com acesso TODOS também pode atribuir qualquer valor
     if admin_permissions.secretaria_acesso == "TODOS":
-        logger.info(f"✅ Admin com acesso TODOS pode atribuir qualquer valor")
+        logger.info("✅ Admin com acesso TODOS pode atribuir qualquer valor")
         return
 
     # Se target é None ou NULL, permitir (remover acesso é sempre permitido)
     if not target_secretaria_acesso or target_secretaria_acesso == "NULL":
         return
 
-    logger.info(f"🔍 Validando atribuição de secretaria_acesso")
+    logger.info("🔍 Validando atribuição de secretaria_acesso")
     logger.info(f"   Admin tem: {admin_permissions.secretaria_acesso}")
     logger.info(f"   Tentando atribuir: {target_secretaria_acesso}")
 
     # Admin tentando atribuir TODOS (exclusivo de super admin e admin TODOS)
     if target_secretaria_acesso == "TODOS":
-        logger.warning(f"   ❌ BLOQUEADO: Admin segmentado não pode atribuir TODOS")
+        logger.warning("   ❌ BLOQUEADO: Admin segmentado não pode atribuir TODOS")
         raise HTTPException(
             status_code=403,
             detail="Apenas super admins ou admins com acesso TODOS podem atribuir acesso TODOS aos protocolos",
@@ -452,7 +452,7 @@ def validate_secretaria_acesso_permission(
 
 
 def validate_segmented_admin_can_manage(
-    admin_permissions: UserPermissions, target_ids: Dict[str, List[IdWithName]]
+    admin_permissions: UserPermissions, target_ids: dict[str, list[IdWithName]]
 ):
     """
     Valida que admin segmentado só está atribuindo IDs que ele mesmo possui.
@@ -463,7 +463,7 @@ def validate_segmented_admin_can_manage(
     if admin_permissions.is_super_admin:
         return  # Super admin pode tudo
 
-    logger.info(f"🔍 Validando atribuição de IDs por admin")
+    logger.info("🔍 Validando atribuição de IDs por admin")
     logger.info(f"   IDs sendo atribuídos: {list(target_ids.keys())}")
 
     # REGRA: Admin sem nenhum ID não pode atribuir IDs a outros usuários
@@ -480,7 +480,7 @@ def validate_segmented_admin_can_manage(
     )
 
     if not has_any_ids and target_ids:
-        logger.warning(f"   ❌ BLOQUEADO: Admin sem IDs tentando atribuir IDs")
+        logger.warning("   ❌ BLOQUEADO: Admin sem IDs tentando atribuir IDs")
         raise HTTPException(
             status_code=403,
             detail="Você não possui IDs para distribuir. Apenas super admins podem criar usuários com IDs sem possuir IDs próprios.",
@@ -549,12 +549,12 @@ def validate_segmented_admin_can_manage(
                 detail=f"Você não pode atribuir estes {id_type}: {unauthorized_ids}",
             )
 
-    logger.info(f"   ✅ Validação OK - admin pode atribuir esses IDs")
+    logger.info("   ✅ Validação OK - admin pode atribuir esses IDs")
 
 
 def _extract_unique_ids(
     df: pl.DataFrame, id_col: str, nome_col: str
-) -> List[IdWithName]:
+) -> list[IdWithName]:
     """
     Helper para extrair IDs únicos com nomes de um DataFrame.
 
@@ -600,7 +600,7 @@ def _extract_unique_ids(
     return result
 
 
-def _convert_id_list_to_bq_struct(id_list: Optional[List[IdWithName]]) -> str:
+def _convert_id_list_to_bq_struct(id_list: list[IdWithName] | None) -> str:
     """
     Converte lista de IdWithName para formato BigQuery ARRAY<STRUCT>.
 
@@ -724,7 +724,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
     Usado pelo frontend para determinar permissões de UI.
     Acessível a qualquer usuário autenticado.
     """
-    logger.info(f"Retornando informações do usuário atual")
+    logger.info("Retornando informações do usuário atual")
 
     return UserAccessRecord(
         cpf=permissions.cpf,
@@ -742,7 +742,7 @@ async def get_current_user(permissions: CurrentUserPermissions):
         active=permissions.active,
         notes=permissions.notes if hasattr(permissions, "notes") else None,
         created_by=permissions.cpf,  # Placeholder (não temos essa info em UserPermissions)
-        created_at=datetime.now(timezone.utc),  # Placeholder
+        created_at=datetime.now(UTC),  # Placeholder
     )
 
 
@@ -764,18 +764,18 @@ USER_FILTER_OPTIONS_CONFIG = {
 async def list_users(
     permissions: CurrentUserPermissions,
     pagination: PaginationParams = Depends(),
-    active: Optional[bool] = Query(
+    active: bool | None = Query(
         None, description="Filtrar por status ativo (true/false)"
     ),
-    ocupacao: Optional[str] = Query(None, description="Filtrar por ocupação"),
-    secretaria: Optional[str] = Query(None, description="Filtrar por secretaria"),
-    permission: Optional[str] = Query(
+    ocupacao: str | None = Query(None, description="Filtrar por ocupação"),
+    secretaria: str | None = Query(None, description="Filtrar por secretaria"),
+    permission: str | None = Query(
         None, description="Filtrar por tipo de permissão (super_admin/admin/user)"
     ),
-    secretaria_acesso: Optional[str] = Query(
+    secretaria_acesso: str | None = Query(
         None, description="Filtrar por acesso a protocolos (SME/SMS/SMAS/TODOS/NULL)"
     ),
-    search: Optional[str] = Query(None, description="Buscar por CPF ou nome"),
+    search: str | None = Query(None, description="Buscar por CPF ou nome"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ):
     """
@@ -852,7 +852,7 @@ async def list_users(
         )
         if not permissions.is_super_admin:
             logger.info(
-                f"🚨 Admin segmentado detectado - aplicando filtro de usuários gerenciáveis"
+                "🚨 Admin segmentado detectado - aplicando filtro de usuários gerenciáveis"
             )
             df_data = _filter_manageable_users(df_data, permissions)
             # Recalcular meta após filtro de governança
@@ -864,7 +864,7 @@ async def list_users(
                 else 1
             )
         else:
-            logger.info(f"✅ Super admin - sem filtro de governança")
+            logger.info("✅ Super admin - sem filtro de governança")
 
         # OTIMIZAÇÃO: Converter DataFrame para JSON apenas aqui (última etapa)
         users_json = DataManager.df_to_json(df_data)
@@ -962,8 +962,8 @@ async def upsert_user(
             status_code=400, detail="CPF deve conter exatamente 11 dígitos"
         )
 
-    logger.info(f"Admin fazendo upsert de usuário")
-    logger.info(f"  Request recebido:")
+    logger.info("Admin fazendo upsert de usuário")
+    logger.info("  Request recebido:")
     logger.info(f"    - is_admin: {request.is_admin}")
     logger.info(f"    - is_super_admin: {request.is_super_admin}")
     logger.info(
@@ -1008,7 +1008,7 @@ async def upsert_user(
 
         # PROTEÇÃO: Admin segmentado só pode editar usuários da mesma secretaria ou NULL
         if not permissions.is_super_admin:
-            from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+            from src.utils.constants import SECRETARIA_NULL, SECRETARIA_TODOS
 
             admin_secretaria = permissions.secretaria_acesso
             target_secretaria = existing_row.get("secretaria_acesso")
@@ -1092,7 +1092,7 @@ async def upsert_user(
     try:
         if user_exists:
             # UPDATE - Dinâmico (só atualiza campos não nulos)
-            logger.info(f"Atualizando usuário existente")
+            logger.info("Atualizando usuário existente")
 
             # SEGURANÇA: Usar parametrized queries para campos simples
             # ARRAY<STRUCT> ainda usa f-string por limitação do BigQuery
@@ -1144,7 +1144,7 @@ async def upsert_user(
             # Listas - SEMPRE atualiza em full updates (None vira NULL para limpar)
             if is_full_update:
                 logger.info(
-                    f"  Full update detectado - atualizando todas as listas de IDs"
+                    "  Full update detectado - atualizando todas as listas de IDs"
                 )
                 logger.info(
                     f"    CRAS: {len(request.id_cras_list) if request.id_cras_list else 0} IDs"
@@ -1243,14 +1243,14 @@ async def upsert_user(
                 parameters = [bigquery.ScalarQueryParameter("cpf", "STRING", cpf)]
 
             logger.info(
-                f"✅ Usando parametrized query (campos simples parametrizados, ARRAY<STRUCT> inline)"
+                "✅ Usando parametrized query (campos simples parametrizados, ARRAY<STRUCT> inline)"
             )
             execute_query(query, parameters)
-            logger.info(f"✅ Usuário atualizado dinamicamente")
+            logger.info("✅ Usuário atualizado dinamicamente")
 
         else:
             # INSERT - Novo usuário (precisa de todos os campos)
-            logger.info(f"Criando novo usuário")
+            logger.info("Criando novo usuário")
 
             # Calcular permission
             permission_value = calculate_permission(
@@ -1312,10 +1312,10 @@ async def upsert_user(
             ]
 
             logger.info(
-                f"✅ Usando parametrized query para INSERT (campos simples parametrizados)"
+                "✅ Usando parametrized query para INSERT (campos simples parametrizados)"
             )
             execute_query(query, parameters)
-            logger.info(f"✅ Usuário criado com sucesso")
+            logger.info("✅ Usuário criado com sucesso")
 
         # Invalidar cache (lazy refresh)
         refresh_governance_cache()
@@ -1406,7 +1406,7 @@ async def delete_user(
     """
     require_admin(permissions)
 
-    logger.info(f"Admin deletando usuário")
+    logger.info("Admin deletando usuário")
 
     # Verificar que usuário existe e obter suas permissões
     governance_df, _, _ = await DataManager.get_dataset(GOVERNANCE_TABLE_QUERY)
@@ -1435,7 +1435,7 @@ async def delete_user(
 
     # PROTEÇÃO: Admin segmentado só pode deletar usuários da mesma secretaria ou NULL
     if not permissions.is_super_admin:
-        from src.utils.constants import SECRETARIA_TODOS, SECRETARIA_NULL
+        from src.utils.constants import SECRETARIA_NULL, SECRETARIA_TODOS
 
         admin_secretaria = permissions.secretaria_acesso
         target_secretaria = existing_row.get("secretaria_acesso")
@@ -1488,7 +1488,7 @@ async def delete_user(
 
     try:
         execute_query(query, parameters)
-        logger.info(f"✅ Usuário marcado como inativo")
+        logger.info("✅ Usuário marcado como inativo")
 
         # Invalidar E renovar cache imediatamente
         refresh_governance_cache()
@@ -1507,7 +1507,7 @@ class BatchImportError(BaseModel):
     """Erro de importação para uma linha específica"""
 
     row: int
-    cpf: Optional[str] = None
+    cpf: str | None = None
     error: str
 
 
@@ -1515,24 +1515,24 @@ class ImportedUser(BaseModel):
     """Usuário importado com status"""
 
     cpf: str
-    nome: Optional[str] = None
-    email: Optional[str] = None
-    ocupacao: Optional[str] = None
-    secretaria: Optional[str] = None
+    nome: str | None = None
+    email: str | None = None
+    ocupacao: str | None = None
+    secretaria: str | None = None
     status: str  # "new" | "exists" | "error"
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     # Permissões existentes (preenchido apenas para status="exists")
-    is_admin: Optional[bool] = None
-    is_super_admin: Optional[bool] = None
-    id_cras_list: Optional[List[IdWithName]] = None
-    id_escola_list: Optional[List[IdWithName]] = None
-    id_cre_list: Optional[List[IdWithName]] = None
-    id_ap_list: Optional[List[IdWithName]] = None
-    id_cas_list: Optional[List[IdWithName]] = None
-    id_clinica_familia_list: Optional[List[IdWithName]] = None
-    id_equipe_familia_list: Optional[List[IdWithName]] = None
-    secretaria_acesso: Optional[str] = None
+    is_admin: bool | None = None
+    is_super_admin: bool | None = None
+    id_cras_list: list[IdWithName] | None = None
+    id_escola_list: list[IdWithName] | None = None
+    id_cre_list: list[IdWithName] | None = None
+    id_ap_list: list[IdWithName] | None = None
+    id_cas_list: list[IdWithName] | None = None
+    id_clinica_familia_list: list[IdWithName] | None = None
+    id_equipe_familia_list: list[IdWithName] | None = None
+    secretaria_acesso: str | None = None
 
 
 class BatchImportResult(BaseModel):
@@ -1541,33 +1541,33 @@ class BatchImportResult(BaseModel):
     total: int
     imported: int
     skipped: int
-    errors: List[BatchImportError]
-    imported_users: List[ImportedUser]
+    errors: list[BatchImportError]
+    imported_users: list[ImportedUser]
 
 
 class BatchUserData(BaseModel):
     """Dados de um usuário para atualização em batch"""
 
     cpf: str
-    nome: Optional[str] = None
-    email: Optional[str] = None
-    ocupacao: Optional[str] = None
-    secretaria: Optional[str] = None
+    nome: str | None = None
+    email: str | None = None
+    ocupacao: str | None = None
+    secretaria: str | None = None
 
 
 class BatchPermissionsRequest(BaseModel):
     """Request para atribuir permissões em batch"""
 
-    users: List[BatchUserData]
+    users: list[BatchUserData]
     is_admin: bool = False
-    id_cras_list: Optional[List[IdWithName]] = None
-    id_escola_list: Optional[List[IdWithName]] = None
-    id_cre_list: Optional[List[IdWithName]] = None
-    id_ap_list: Optional[List[IdWithName]] = None
-    id_cas_list: Optional[List[IdWithName]] = None
-    id_clinica_familia_list: Optional[List[IdWithName]] = None
-    id_equipe_familia_list: Optional[List[IdWithName]] = None
-    secretaria_acesso: Optional[str] = None
+    id_cras_list: list[IdWithName] | None = None
+    id_escola_list: list[IdWithName] | None = None
+    id_cre_list: list[IdWithName] | None = None
+    id_ap_list: list[IdWithName] | None = None
+    id_cas_list: list[IdWithName] | None = None
+    id_clinica_familia_list: list[IdWithName] | None = None
+    id_equipe_familia_list: list[IdWithName] | None = None
+    secretaria_acesso: str | None = None
 
 
 class BatchPermissionsError(BaseModel):
@@ -1582,7 +1582,7 @@ class BatchPermissionsResult(BaseModel):
 
     total: int
     updated: int
-    errors: List[BatchPermissionsError]
+    errors: list[BatchPermissionsError]
 
 
 # ========================================================================
@@ -1602,7 +1602,7 @@ def _sanitize_cpf(cpf_raw: str) -> str:
     return digits
 
 
-def _validate_cpf(cpf: str) -> Optional[str]:
+def _validate_cpf(cpf: str) -> str | None:
     """Valida CPF e retorna mensagem de erro ou None se válido"""
     if not cpf:
         return "CPF vazio"
@@ -1659,8 +1659,8 @@ async def batch_import_users(
                 df = pl.read_csv(io.BytesIO(content), encoding="latin1")
         else:
             # XLSX - usar openpyxl via pandas e converter para polars
-            import pandas as pd
             import openpyxl  # noqa: F401 - necessário para pandas ler xlsx
+            import pandas as pd
 
             pd_df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
             df = pl.from_pandas(pd_df)
@@ -1686,9 +1686,9 @@ async def batch_import_users(
         existing_cpfs = set(governance_df["cpf"].to_list())
 
         # Processar cada linha
-        errors: List[BatchImportError] = []
-        imported_users: List[ImportedUser] = []
-        users_to_insert: List[dict] = []
+        errors: list[BatchImportError] = []
+        imported_users: list[ImportedUser] = []
+        users_to_insert: list[dict] = []
 
         for row_idx, row in enumerate(df.to_dicts(), start=1):
             cpf_raw = row.get("cpf", "")
@@ -1854,8 +1854,8 @@ async def batch_update_permissions(
         secretaria_acesso_sql = f"'{request.secretaria_acesso}'"
 
     # Fase 1: Validar CPFs e coletar dados
-    errors: List[BatchPermissionsError] = []
-    valid_users: List[dict] = []  # Usuários válidos para processar
+    errors: list[BatchPermissionsError] = []
+    valid_users: list[dict] = []  # Usuários válidos para processar
 
     # Sanitizar e validar CPFs
     cpf_to_user_data: dict = {}
@@ -1920,7 +1920,7 @@ async def batch_update_permissions(
                 continue
 
         # Escapar valores para SQL
-        def escape_sql(val: Optional[str]) -> str:
+        def escape_sql(val: str | None) -> str:
             if val is None:
                 return "NULL"
             # Escapar aspas simples
@@ -2017,7 +2017,7 @@ async def batch_update_permissions(
     try:
         logger.info(f"🚀 Executando MERGE para {len(valid_users)} usuários...")
         execute_query(merge_query)
-        logger.info(f"✅ MERGE executado com sucesso!")
+        logger.info("✅ MERGE executado com sucesso!")
     except Exception as e:
         logger.error(f"❌ Erro no MERGE: {e}")
         import traceback

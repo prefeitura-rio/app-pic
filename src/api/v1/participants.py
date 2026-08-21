@@ -1,25 +1,24 @@
-import traceback
-import time
-from datetime import datetime
 import asyncio
+import time
+import traceback
+from datetime import datetime
+from typing import Any
+
 import polars as pl
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any, List, Optional, Union
 
-
-from src.core.security.jwt import verify_jwt, CurrentUserPermissions
-from src.utils.log import logger
+from src.api.v1.queries import MOTIVO_IRREGULARIDADE_QUERY, PARTICIPANTS_TABLE_QUERY
 from src.api.v1.schemas import (
-    Participante,
-    PaginatedResponse,
     CommonFilters,
+    PaginatedResponse,
     PaginationParams,
+    Participante,
     SortParams,
 )
+from src.core.security.jwt import CurrentUserPermissions, verify_jwt
 from src.utils.data_manager import DataManager
-from src.utils.data_manager_config import DataManagerConfig as config
-from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY, MOTIVO_IRREGULARIDADE_QUERY
+from src.utils.log import logger
 
 router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes"])
 

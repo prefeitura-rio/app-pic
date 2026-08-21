@@ -66,6 +66,10 @@ ignore = [
   "B008", # do not perform function calls in argument defaults
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Facade module: re-exports `logger` for `from src.utils.log import logger`.
+"src/utils/log.py" = ["F401"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

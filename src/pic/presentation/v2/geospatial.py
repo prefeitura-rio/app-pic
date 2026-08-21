@@ -4,7 +4,9 @@ from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.get_geospatial_filter_vocabulary import (
     GetGeospatialFilterVocabularyUseCase,
 )
-from src.pic.application.use_cases.get_geospatial_layers import GetGeospatialLayersUseCase
+from src.pic.application.use_cases.get_geospatial_layers import (
+    GetGeospatialLayersUseCase,
+)
 from src.pic.domain.models.geospatial import GeospatialFilters
 from src.pic.presentation.di import (
     get_geospatial_filter_vocabulary_use_case,
