@@ -1,6 +1,8 @@
 from typing import Any
 
-from src.pic.application.ports.participant_repository import IParticipantRepository
+from src.pic.application.ports.participant_read_repository import (
+    ParticipantRepository,
+)
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.domain.models.pagination import (
     PaginationMeta,
@@ -21,7 +23,7 @@ class ParticipantListOutput:
 
 
 class ListParticipantsUseCase:
-    def __init__(self, repository: IParticipantRepository):
+    def __init__(self, repository: ParticipantRepository):
         self._repository = repository
 
     async def execute(
@@ -31,12 +33,13 @@ class ListParticipantsUseCase:
         sort: SortParams,
         permissions: Any = None,
         bypass_cache: bool = False,
+        user_token: str | None = None,
     ) -> ParticipantListOutput:
-        data, meta = await self._repository.find_paginated(
+        data, meta = await self._repository.list_participants(
             filters=filters,
             pagination=pagination,
             sort=sort,
             permissions=permissions,
-            bypass_cache=bypass_cache,
+            user_token=user_token,
         )
         return ParticipantListOutput(data=data, meta=meta)
