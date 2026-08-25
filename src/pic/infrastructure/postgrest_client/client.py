@@ -13,6 +13,8 @@ reads once that migration happens).
 """
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import httpx
 from postgrest import (
@@ -21,7 +23,10 @@ from postgrest import (
     AsyncRPCFilterRequestBuilder,
 )
 
-from src.pic.infrastructure.postgrest_client.auth import ClientCredentialsAuth
+from src.pic.infrastructure.postgrest_client.auth import (
+    ClientCredentialsAuth,
+    user_token_override,
+)
 from src.pic.infrastructure.postgrest_client.config import (
     PostgrestClientConfig,
     load_config,
@@ -63,6 +68,26 @@ class PostgrestClient:
     def table(self, name: str) -> AsyncRequestBuilder:
         """Return a query builder for one table/view in the configured schema."""
         return self._postgrest.from_(name)
+
+    @asynccontextmanager
+    async def with_user_token(
+        self, token: str | None
+    ) -> AsyncIterator["PostgrestClient"]:
+        """Scope every request made inside the block to the given user JWT.
+
+        Sets `user_token_override` so `ClientCredentialsAuth.on_request`
+        sends `Bearer <token>` instead of the Keycloak client_credentials
+        token, letting PostgREST enforce row-level security for that user.
+        The override is reset when the block exits; a `None` token means
+        "fall back to client_credentials" (e.g. data-proxy roles that bypass
+        RLS). The ContextVar is per-asyncio-task, so concurrent requests are
+        unaffected.
+        """
+        reset_token = user_token_override.set(token)
+        try:
+            yield self
+        finally:
+            user_token_override.reset(reset_token)
 
     def rpc(self, func: str, params: dict) -> AsyncRPCFilterRequestBuilder:
         """Call one PostgREST stored procedure (`POST /rpc/<func>`)."""
