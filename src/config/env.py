@@ -75,11 +75,11 @@ FRONTEND_URL = getenv_or_action(
 )
 
 # App-pic Postgres (identity + local mirror of data-proxy access_policy).
-# Connection is via the Cloud SQL Python Connector (Workload Identity Federation
-# in-cluster; local ADC/gcloud credentials for local dev) — no host/port/proxy
-# needed, just the instance connection name.
-APP_PIC_PG_INSTANCE_CONNECTION_NAME = getenv_or_action(
-    env_name="APP_PIC_PG_INSTANCE_CONNECTION_NAME", action="raise"
+# Plain host:port connection through the cluster's shared `cloudsql-proxy`
+# Service (in-cluster) or a `kubectl port-forward` of it (local dev).
+APP_PIC_PG_HOST = getenv_or_action(env_name="APP_PIC_PG_HOST", action="raise")
+APP_PIC_PG_PORT = int(
+    getenv_or_action(env_name="APP_PIC_PG_PORT", default="5432", action="raise")
 )
 APP_PIC_PG_DB = getenv_or_action(env_name="APP_PIC_PG_DB", action="raise")
 APP_PIC_PG_USER = getenv_or_action(env_name="APP_PIC_PG_USER", action="raise")
@@ -97,12 +97,8 @@ DATA_PROXY_API_URL = getenv_or_action(env_name="DATA_PROXY_API_URL", action="rai
 DATA_PROXY_SCHEMA = getenv_or_action(
     env_name="DATA_PROXY_SCHEMA", default="app_pequenos_cariocas", action="raise"
 )
-DATA_PROXY_CLIENT_ID = getenv_or_action(
-    env_name="DATA_PROXY_CLIENT_ID", action="raise"
-)
+DATA_PROXY_CLIENT_ID = getenv_or_action(env_name="DATA_PROXY_CLIENT_ID", action="raise")
 DATA_PROXY_CLIENT_SECRET = getenv_or_action(
     env_name="DATA_PROXY_CLIENT_SECRET", action="raise"
 )
-DATA_PROXY_TOKEN_URL = getenv_or_action(
-    env_name="DATA_PROXY_TOKEN_URL", action="raise"
-)
+DATA_PROXY_TOKEN_URL = getenv_or_action(env_name="DATA_PROXY_TOKEN_URL", action="raise")

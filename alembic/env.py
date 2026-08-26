@@ -76,9 +76,9 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    """Run migrations using the app's own engine (Cloud SQL Python Connector),
-    instead of building one from `sqlalchemy.url` in alembic.ini — the
-    connection to app-pic's Postgres doesn't use a plain host:port URL.
+    """Run migrations using the app's own engine, instead of building one from
+    `sqlalchemy.url` in alembic.ini — keeps a single source of truth for the
+    connection config (env vars via `src.config.env`).
     """
 
     connectable = get_engine()
