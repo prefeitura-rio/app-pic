@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useRef, useCallback } from "react";
-import { UserAccessRecord, AvailableIds, PaginationMeta } from "@/app/types";
+import { UserAccessRecord, PaginationMeta } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +9,10 @@ import { Edit2, Power, CheckCircle, XCircle, Shield, Crown, ChevronLeft, Chevron
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { cn } from "@/app/utils/utils";
 
 interface UserTableProps {
   users: UserAccessRecord[];
-  availableIds: AvailableIds;
   currentUserCpf: string; // CPF do usuário logado
   currentUserIsSuperAdmin: boolean; // Se o usuário logado é super admin
   meta: PaginationMeta; // Metadados de paginação do backend
@@ -28,7 +28,6 @@ interface UserTableProps {
 
 const UserTableComponent = ({
   users,
-  availableIds,
   currentUserCpf,
   currentUserIsSuperAdmin,
   meta,
@@ -220,17 +219,26 @@ const UserTableComponent = ({
                   </div>
 
                   {/* Secretaria Acesso */}
-                  <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2">
-                    {user.secretaria_acesso === "TODOS" ? (
-                      <Badge variant="default" className="text-xs h-5 px-1.5">Todos</Badge>
-                    ) : user.secretaria_acesso === "SME" ? (
-                      <Badge variant="outline" className="bg-blue-50 text-xs h-5 px-1.5">SME</Badge>
-                    ) : user.secretaria_acesso === "SMS" ? (
-                      <Badge variant="outline" className="bg-green-50 text-xs h-5 px-1.5">SMS</Badge>
-                    ) : user.secretaria_acesso === "SMAS" ? (
-                      <Badge variant="outline" className="bg-purple-50 text-xs h-5 px-1.5">SMAS</Badge>
-                    ) : (
+                  <div style={{ flex: '1 1 0%', minWidth: 110 }} className="px-2 flex flex-wrap gap-1">
+                    {(user.secretarias_acesso?.length ?? 0) === 0 ? (
                       <Badge variant="destructive" className="text-xs h-5 px-1.5">Sem Acesso</Badge>
+                    ) : user.secretarias_acesso.length === 3 ? (
+                      <Badge variant="default" className="text-xs h-5 px-1.5">Todos</Badge>
+                    ) : (
+                      user.secretarias_acesso.map((sec) => (
+                        <Badge
+                          key={sec}
+                          variant="outline"
+                          className={cn(
+                            "text-xs h-5 px-1.5",
+                            sec === "SME" && "bg-blue-50",
+                            sec === "SMS" && "bg-green-50",
+                            sec === "SMAS" && "bg-purple-50",
+                          )}
+                        >
+                          {sec}
+                        </Badge>
+                      ))
                     )}
                   </div>
 
@@ -349,7 +357,7 @@ const UserTableComponent = ({
 
                 // Mostrar até 5 páginas
                 let startPage = Math.max(1, currentPage - 2);
-                let endPage = Math.min(totalPages, startPage + 4);
+                const endPage = Math.min(totalPages, startPage + 4);
 
                 // Ajustar se estiver no final
                 if (endPage - startPage < 4) {

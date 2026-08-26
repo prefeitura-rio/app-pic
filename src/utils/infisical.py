@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 from os import getenv
-from typing import List, Dict
 from pathlib import Path
+
 from src.utils.log import logger
 
+_env_cache: dict[str, str] = {}
 
-_env_cache: Dict[str, str] = {}
 
-
-def _load_dotenv() -> Dict[str, str]:
+def _load_dotenv() -> dict[str, str]:
     """Carrega variáveis do arquivo .env na raiz do projeto.
 
     Returns:
@@ -24,7 +22,7 @@ def _load_dotenv() -> Dict[str, str]:
         return {}
 
     env_vars = {}
-    with open(env_path, "r") as f:
+    with open(env_path) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -80,7 +78,7 @@ def getenv_or_action(
     # Se ainda não encontrou, aplica a ação especificada
     if value is None:
         if action == "raise":
-            raise EnvironmentError(f"Environment variable {env_name} is not set.")
+            raise OSError(f"Environment variable {env_name} is not set.")
         elif action == "warn":
             logger.warning(f"Warning: Environment variable {env_name} is not set.")
     return value
@@ -88,7 +86,7 @@ def getenv_or_action(
 
 def getenv_list_or_action(
     env_name: str, *, action: str = "raise", default: str = None
-) -> List[str]:
+) -> list[str]:
     """Get an environment variable or raise an exception.
 
     Args:

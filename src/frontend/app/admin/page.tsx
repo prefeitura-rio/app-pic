@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiService } from "@/app/services/api";
-import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest } from "@/app/types";
+import { UserAccessRecord, CreateUserRequest, UpdateUserRequest } from "@/app/types";
 import { UserTable } from "@/app/components/admin/UserTable";
 import { UserForm } from "@/app/components/admin/UserForm";
 import { UserTableSkeleton } from "@/app/components/admin/UserTableSkeleton";
@@ -82,7 +82,7 @@ export default function AdminPage() {
         ocupacao: filterOcupacao && filterOcupacao !== "todas" ? filterOcupacao : undefined,
         secretaria: filterSecretaria && filterSecretaria !== "todas" ? filterSecretaria : undefined,
         permission: filterPermission && filterPermission !== "todas" ? filterPermission : undefined,
-        secretariaAcesso: filterSecretariaAcesso && filterSecretariaAcesso !== "todas" ? filterSecretariaAcesso : undefined,
+        secretariasAcesso: filterSecretariaAcesso && filterSecretariaAcesso !== "todas" ? [filterSecretariaAcesso] : undefined,
         bypassCache: shouldBypassCache || undefined,
       });
     },
@@ -92,7 +92,12 @@ export default function AdminPage() {
     refetchOnWindowFocus: false, // Não refetch ao focar a janela (evita requests desnecessários)
   });
 
-  const users = Array.isArray(usersResponse?.data) ? usersResponse.data : [];
+  // Memoizado para manter referência estável do array vazio quando ainda não há dados,
+  // evitando recomputar os useMemo abaixo (activatableSelectedCpfs, editableSelectedCpfs) a cada render.
+  const users = useMemo(
+    () => (Array.isArray(usersResponse?.data) ? usersResponse.data : []),
+    [usersResponse]
+  );
   const meta = usersResponse?.meta ?? {
     page: 1,
     page_size: pageSize,
@@ -166,7 +171,7 @@ export default function AdminPage() {
   const upsertUserMutation = useMutation({
     mutationFn: ({ cpf, data }: { cpf: string; data: Omit<CreateUserRequest, "cpf"> }) =>
       apiService.upsertUser(cpf, data),
-    onSuccess: (data, variables) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
 
       const isUpdate = editingUser !== null;
@@ -188,7 +193,7 @@ export default function AdminPage() {
   // Toggle user active status mutation
   const toggleActiveMutation = useMutation({
     mutationFn: ({ cpf, active }: { cpf: string; active: boolean }) =>
-      apiService.upsertUser(cpf, { active, is_update: true } as any),
+      apiService.upsertUser(cpf, { active, is_update: true }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       const action = variables.active ? "ativado" : "desativado";
@@ -227,13 +232,6 @@ export default function AdminPage() {
     setCurrentPage(1); // Reset to page 1
   };
 
-  // Handle search input keypress (Enter to search)
-  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSearch();
-    }
-  };
-
   // Redirect if not admin (403 error)
   useEffect(() => {
     if (usersError && usersError.message.includes("403")) {
@@ -244,12 +242,6 @@ export default function AdminPage() {
   // Handle edit - switch to form tab
   const handleEdit = (user: UserAccessRecord) => {
     setEditingUser(user);
-    setActiveTab("form");
-  };
-
-  // Handle create - switch to form tab
-  const handleCreate = () => {
-    setEditingUser(null);
     setActiveTab("form");
   };
 
@@ -343,7 +335,7 @@ export default function AdminPage() {
   const batchActivateMutation = useMutation({
     mutationFn: async (cpfs: string[]) => {
       for (const cpf of cpfs) {
-        await apiService.upsertUser(cpf, { active: true, is_update: true } as any);
+        await apiService.upsertUser(cpf, { active: true, is_update: true });
       }
     },
     onSuccess: () => {
@@ -637,13 +629,9 @@ export default function AdminPage() {
                   placeholder="Acesso Protocolos"
                   defaultLabel="Todos os Acessos"
                   options={
-                    filterOptions?.secretaria_acesso_list?.map((opt: any) => ({
+                    filterOptions?.secretarias_acesso_list?.map((opt) => ({
                       id: opt.id,
-                      label: opt.id === "NULL" || !opt.id
-                        ? "🚫 Sem Acesso"
-                        : opt.id === "TODOS"
-                        ? "🌐 Todos"
-                        : opt.id === "SME"
+                      label: opt.id === "SME"
                         ? "📚 Educação"
                         : opt.id === "SMS"
                         ? "🏥 Saúde"
@@ -665,7 +653,7 @@ export default function AdminPage() {
                   placeholder="Status"
                   defaultLabel="Todos os Status"
                   options={
-                    filterOptions?.status_ativo?.map((opt: any) => ({
+                    filterOptions?.status_ativo?.map((opt) => ({
                       id: opt.id === "True" ? "active" : "inactive",
                       label: opt.id === "True" ? "Ativo" : "Inativo",
                     })) || []
@@ -766,7 +754,6 @@ export default function AdminPage() {
           {/* Users table */}
           <UserTable
             users={users}
-            availableIds={availableIds}
             currentUserCpf={currentUser.cpf}
             currentUserIsSuperAdmin={currentUser.is_super_admin}
             meta={meta}

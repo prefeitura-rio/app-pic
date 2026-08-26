@@ -3,16 +3,26 @@ from typing import Any
 
 import polars as pl
 
-from src.core.security.permissions_models import IdWithName
+from src.core.security.permissions_models import IdWithName, UserPermissions
 
 
 class IAdminRepository(ABC):
     @abstractmethod
-    async def fetch_governance_df(self, bypass_cache: bool = False) -> pl.DataFrame:
+    async def fetch_user_permissions(self, cpf: str) -> UserPermissions:
+        """Hot-path lookup used on every authenticated request (via JWT).
+
+        Must be fast (single indexed query) and must NOT resolve unit-id
+        display names (no participants catalog join) - callers that need
+        real names should go through `fetch_governance_df` instead.
+        """
         ...
 
     @abstractmethod
-    async def fetch_participants_df(self, bypass_cache: bool = False) -> pl.DataFrame:
+    async def fetch_governance_df(self, bypass_cache: bool = False) -> tuple[pl.DataFrame, bool, Any]:
+        ...
+
+    @abstractmethod
+    async def fetch_participants_df(self, bypass_cache: bool = False) -> tuple[pl.DataFrame, bool, Any]:
         ...
 
     @abstractmethod
@@ -62,11 +72,22 @@ class IAdminRepository(ABC):
         is_admin: bool,
         permission: str,
         id_lists: dict[str, list[IdWithName] | None],
-        secretaria_acesso: str | None,
+        secretarias_acesso: list[str] | None,
         updated_by: str,
     ) -> None:
         ...
 
     @abstractmethod
     async def refresh_cache(self) -> None:
+        ...
+
+    @abstractmethod
+    async def self_heal_policy_sync(self, cpf: str) -> None:
+        """Retry pushing this subject's `policy` rows that are still pending
+        sync to the data-proxy (eager push failed or was never attempted).
+
+        Best-effort and non-blocking: implementations must never raise.
+        Called once per login from `GET /admin/me` as a safety net — see
+        plan.md section 5.
+        """
         ...

@@ -5,7 +5,6 @@ import {
   useCallback,
   useMemo,
   useTransition,
-  startTransition,
   useEffect,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -25,9 +24,8 @@ import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { apiService } from "@/app/services/api";
 import {
   SmartFilterOptions,
-  Dashboard,
   ParticipantFilters,
-  PaginationMeta,
+  GeospatialFilters,
   SortOrder,
   Participante,
 } from "@/app/types";
@@ -121,7 +119,7 @@ export function DashboardClient({
     });
 
   const [geospatialFilters, setGeospatialFilters] =
-    useState<ParticipantFilters>(() => {
+    useState<GeospatialFilters>(() => {
       if (typeof window === "undefined") return {};
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -165,7 +163,7 @@ export function DashboardClient({
     },
   );
 
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [bypassCacheDashboardTimestamp, setBypassCacheDashboardTimestamp] =
     useState<number | null>(null);
   const [
@@ -367,14 +365,11 @@ export function DashboardClient({
   // Filtros incluídos no queryKey para refetch automático
   const {
     data: geospatialLayersResponse,
-    isLoading: geospatialLoading,
     isFetching: geospatialFetching,
-    error: geospatialError,
-    refetch: refetchGeospatial,
   } = useQuery({
     queryKey: ["geospatialLayers", geospatialFilters, bypassCacheGeospatialTimestamp],
     queryFn: async ({ queryKey }) => {
-      const filters = queryKey[1] as ParticipantFilters;
+      const filters = queryKey[1] as GeospatialFilters;
       const timestamp = queryKey[2] as number | null;
       const shouldBypassCache = timestamp !== null;
 
@@ -406,29 +401,24 @@ export function DashboardClient({
   const canViewDashboard =
     dashboardResponse?.can_view_dashboard !== false;
 
-  // Force professional tab if user cannot view dashboard
-  useEffect(() => {
-    if (dashboardResponse && !canViewDashboard && activeTab === "overview") {
-      setActiveTab("professional");
-    }
-  }, [dashboardResponse, canViewDashboard, activeTab]);
+  // Force professional tab if user cannot view dashboard.
+  // Ajuste feito durante a renderização (não em um efeito): a própria condição
+  // (`activeTab === "overview"`) deixa de ser verdadeira após o ajuste, então
+  // não há loop, e evita o "flash" da aba Visão Geral antes do commit.
+  if (dashboardResponse && !canViewDashboard && activeTab === "overview") {
+    setActiveTab("professional");
+  }
 
   /**
    * Handle authentication errors
    */
   useEffect(() => {
     // Handle errors from queries
-    if (
-      dashboardError &&
-      (dashboardError as any).message === "Unauthorized"
-    ) {
+    if (dashboardError && dashboardError.message === "Unauthorized") {
       router.push("/login");
       return;
     }
-    if (
-      participantsError &&
-      (participantsError as any).message === "Unauthorized"
-    ) {
+    if (participantsError && participantsError.message === "Unauthorized") {
       router.push("/login");
       return;
     }
@@ -632,7 +622,7 @@ export function DashboardClient({
       secretarias: [],
       status_ativo: [],
       permissions: [],
-      secretaria_acesso_list: [],
+      secretarias_acesso_list: [],
     }),
     [],
   );

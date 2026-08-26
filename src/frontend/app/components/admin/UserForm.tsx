@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
-import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { SecretariasAcessoField } from "@/app/components/admin/SecretariasAcessoField";
 
 interface UserFormProps {
   availableIds: AvailableIds;
@@ -32,7 +32,6 @@ export function UserForm({
   error,
 }: UserFormProps) {
   const isEditMode = !!user;
-  const canEditSuperAdmin = currentUser.is_super_admin;
 
   // Filter available IDs based on current user permissions
   // Super admin sees all, segmented admin only sees their own IDs
@@ -53,102 +52,39 @@ export function UserForm({
     };
   }, [availableIds, currentUser]);
 
-  // Filter secretaria access options based on current user permissions
-  const secretariaAccessOptions = useMemo(() => {
-    const allOptions = [
-      { id: "NULL", label: "🚫 Sem Acesso a Protocolos" },
-      { id: "TODOS", label: "🌐 Todos os Protocolos (TODOS)" },
-      { id: "SME", label: "📚 Apenas Educação (SME)" },
-      { id: "SMS", label: "🏥 Apenas Saúde (SMS)" },
-      { id: "SMAS", label: "🤝 Apenas Assistência Social (SMAS)" },
-    ];
-
-    // Super admin sees all options
+  // Secretarias que o admin logado pode atribuir (subset da própria secretarias_acesso)
+  const allowedSecretariasAcesso = useMemo(() => {
     if (currentUser?.is_super_admin) {
-      return allOptions;
+      return ["SME", "SMS", "SMAS"];
     }
-
-    // Segmented admin can assign NULL or their own secretaria_acesso
     if (currentUser?.is_admin) {
-      const userSecretaria = currentUser?.secretaria_acesso;
-
-      // Admin with TODOS can see all options (same as super admin for this field)
-      if (userSecretaria === "TODOS") {
-        return allOptions;
-      }
-
-      // If admin has no secretaria_acesso set, they can only assign NULL
-      if (!userSecretaria || userSecretaria === "NULL") {
-        return allOptions.filter(opt => opt.id === "NULL");
-      }
-
-      // Admin can assign NULL or their own secretariat (not TODOS, not other secretariats)
-      return allOptions.filter(opt => opt.id === "NULL" || opt.id === userSecretaria);
+      return currentUser?.secretarias_acesso || [];
     }
-
-    // Non-admin users can't change this field
     return [];
   }, [currentUser]);
 
   // Form state
-  const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
-  const [nome, setNome] = useState("");
-  const [ocupacao, setOcupacao] = useState("");
-  const [secretaria, setSecretaria] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [notes, setNotes] = useState("");
+  // NOTA: inicializado direto a partir de `user` (sem useEffect) porque este
+  // componente sempre remonta ao trocar de aba (Radix TabsContent desmonta
+  // conteúdo inativo), então `user` já está correto no momento do mount.
+  const [cpf, setCpf] = useState(user?.cpf ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [nome, setNome] = useState(user?.nome ?? "");
+  const [ocupacao, setOcupacao] = useState(user?.ocupacao ?? "");
+  const [secretaria, setSecretaria] = useState(user?.secretaria ?? "");
+  const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false);
+  // Não há UI para promover/rebaixar super admin neste formulário; apenas preserva o valor existente.
+  const isSuperAdmin = user?.is_super_admin ?? false;
+  const [notes, setNotes] = useState(user?.notes ?? "");
 
-  const [selectedCras, setSelectedCras] = useState<IdWithName[]>([]);
-  const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>([]);
-  const [selectedCres, setSelectedCres] = useState<IdWithName[]>([]);
-  const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
-  const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
-  const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
-  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
-  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
-
-  // Initialize form with user data if editing
-  useEffect(() => {
-    if (user) {
-      setCpf(user.cpf);
-      setEmail(user.email || "");
-      setNome(user.nome || "");
-      setOcupacao(user.ocupacao || "");
-      setSecretaria(user.secretaria || "");
-      setIsAdmin(user.is_admin);
-      setIsSuperAdmin(user.is_super_admin);
-      setNotes(user.notes || "");
-
-      setSelectedCras(user.id_cras_list || []);
-      setSelectedEscolas(user.id_escola_list || []);
-      setSelectedCres(user.id_cre_list || []);
-      setSelectedAps(user.id_ap_list || []);
-      setSelectedCas(user.id_cas_list || []);
-      setSelectedClinicas(user.id_clinica_familia_list || []);
-      setSelectedEquipesFamilia(user.id_equipe_familia_list || []);
-      setSecretariaAcesso(user.secretaria_acesso || "NULL");
-    } else {
-      // Reset form
-      setCpf("");
-      setEmail("");
-      setNome("");
-      setOcupacao("");
-      setSecretaria("");
-      setIsAdmin(false);
-      setIsSuperAdmin(false);
-      setNotes("");
-      setSelectedCras([]);
-      setSelectedEscolas([]);
-      setSelectedCres([]);
-      setSelectedAps([]);
-      setSelectedCas([]);
-      setSelectedClinicas([]);
-      setSelectedEquipesFamilia([]);
-      setSecretariaAcesso("NULL");
-    }
-  }, [user]);
+  const [selectedCras, setSelectedCras] = useState<IdWithName[]>(user?.id_cras_list ?? []);
+  const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>(user?.id_escola_list ?? []);
+  const [selectedCres, setSelectedCres] = useState<IdWithName[]>(user?.id_cre_list ?? []);
+  const [selectedAps, setSelectedAps] = useState<IdWithName[]>(user?.id_ap_list ?? []);
+  const [selectedCas, setSelectedCas] = useState<IdWithName[]>(user?.id_cas_list ?? []);
+  const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>(user?.id_clinica_familia_list ?? []);
+  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>(user?.id_equipe_familia_list ?? []);
+  const [secretariasAcesso, setSecretariasAcesso] = useState<string[]>(user?.secretarias_acesso ?? []);
 
   // Handle CPF input (only numbers)
   const handleCpfChange = (value: string) => {
@@ -183,7 +119,7 @@ export function UserForm({
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
         id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
+        secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
       onSubmit(updateData);
@@ -204,7 +140,7 @@ export function UserForm({
         id_cas_list: selectedCas.length > 0 ? selectedCas : null,
         id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
         id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
+        secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
       onSubmit(createData);
@@ -355,16 +291,14 @@ export function UserForm({
 
           {/* Acesso a Protocolos - PRIMEIRO CAMPO */}
           <div className="space-y-2">
-            <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
+            <Label title="Controla quais protocolos o usuário pode visualizar">
               Acesso a Protocolos
             </Label>
-            <VirtualizedSelect
-              value={secretariaAcesso}
-              onSelect={setSecretariaAcesso}
-              options={secretariaAccessOptions}
-              placeholder="Selecione o acesso"
+            <SecretariasAcessoField
+              value={secretariasAcesso}
+              onChange={setSecretariasAcesso}
+              allowedValues={allowedSecretariasAcesso}
               disabled={isLoading || (!currentUser?.is_admin && !currentUser?.is_super_admin)}
-              showAllOption={false}
             />
             <p className="text-xs text-muted-foreground">
               {currentUser?.is_super_admin

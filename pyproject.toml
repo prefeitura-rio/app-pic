@@ -22,10 +22,21 @@ dependencies = [
   "polars>=1.35.2",
   "openpyxl>=3.1.0",
   "python-multipart>=0.0.9",
+  "sqlalchemy[asyncio]>=2.0.52",
+  "asyncpg>=0.31.0",
+  "alembic>=1.19.1",
+  "cloud-sql-python-connector[asyncpg]>=1.22.0",
+  "postgrest>=2.31.0",
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.8.4", "pytest>=8", "pytest-asyncio>=0.25", "httpx>=0.28"]
+dev = [
+    "ruff>=0.8.4",
+    "pytest>=8",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "aiosqlite>=0.22.1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["src/pic"]
@@ -61,6 +72,10 @@ ignore = [
   "E501", # line too long, handled by formatter
   "B008", # do not perform function calls in argument defaults
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Facade module: re-exports `logger` for `from src.utils.log import logger`.
+"src/utils/log.py" = ["F401"]
 
 [tool.ruff.format]
 quote-style = "double"

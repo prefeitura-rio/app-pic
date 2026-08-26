@@ -2,6 +2,9 @@ from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.application.ports.debug_repository import IDebugRepository
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
+from src.pic.application.ports.participant_read_repository import (
+    ParticipantRepository,
+)
 from src.pic.application.ports.participant_repository import IParticipantRepository
 from src.pic.application.use_cases.admin_batch import (
     BatchImportUsersUseCase,
@@ -34,9 +37,7 @@ from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
-from src.pic.infrastructure.repositories.bigquery_admin import (
-    BigQueryAdminRepository,
-)
+from src.pic.infrastructure.postgrest_client.client import get_postgrest_client
 from src.pic.infrastructure.repositories.bigquery_dashboard import (
     BigQueryDashboardRepository,
 )
@@ -49,10 +50,22 @@ from src.pic.infrastructure.repositories.bigquery_geospatial import (
 from src.pic.infrastructure.repositories.bigquery_participant import (
     BigQueryParticipantRepository,
 )
+from src.pic.infrastructure.repositories.hybrid_admin import (
+    HybridAdminRepository,
+)
+from src.pic.infrastructure.repositories.postgrest_participant_repository import (
+    PostgrestParticipantRepository,
+)
 
 
 def get_participant_repo() -> IParticipantRepository:
+    """BigQuery-backed repo, still used by filter vocabulary and CSV export."""
     return BigQueryParticipantRepository()
+
+
+async def get_participant_read_repo() -> ParticipantRepository:
+    """PostgREST-backed repo for participant list/detail (data-proxy)."""
+    return PostgrestParticipantRepository(await get_postgrest_client())
 
 
 def get_dashboard_repo() -> IDashboardRepository:
@@ -60,7 +73,7 @@ def get_dashboard_repo() -> IDashboardRepository:
 
 
 def get_admin_repo() -> IAdminRepository:
-    return BigQueryAdminRepository()
+    return HybridAdminRepository()
 
 
 def get_geospatial_repo() -> IGeospatialRepository:
@@ -71,12 +84,12 @@ def get_debug_repo() -> IDebugRepository:
     return BigQueryDebugRepository()
 
 
-def get_list_participants_use_case() -> ListParticipantsUseCase:
-    return ListParticipantsUseCase(repository=get_participant_repo())
+async def get_list_participants_use_case() -> ListParticipantsUseCase:
+    return ListParticipantsUseCase(repository=await get_participant_read_repo())
 
 
-def get_participant_detail_use_case() -> GetParticipantDetailUseCase:
-    return GetParticipantDetailUseCase(repository=get_participant_repo())
+async def get_participant_detail_use_case() -> GetParticipantDetailUseCase:
+    return GetParticipantDetailUseCase(repository=await get_participant_read_repo())
 
 
 def get_filter_vocabulary_use_case() -> GetFilterVocabularyUseCase:
@@ -104,7 +117,7 @@ def get_debug_participant_use_case() -> GetDebugParticipantUseCase:
 
 
 def get_current_user_use_case() -> GetCurrentUserUseCase:
-    return GetCurrentUserUseCase()
+    return GetCurrentUserUseCase(repository=get_admin_repo())
 
 
 def get_available_ids_use_case() -> GetAvailableIdsUseCase:

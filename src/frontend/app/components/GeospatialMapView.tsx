@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import DeckGL from "@deck.gl/react";
 import { GeoJsonLayer } from "@deck.gl/layers";
+import type { PickingInfo, MapViewState } from "@deck.gl/core";
 import { Map as MapGL } from "react-map-gl/maplibre";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -16,8 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import { MapPin, Layers, Filter, X } from "lucide-react";
-import { GeospatialLayer, GeospatialFilterOptions } from "@/app/types";
+import { MapPin, Filter, X } from "lucide-react";
+import type { Feature, FeatureCollection, Geometry } from "geojson";
+import { GeospatialLayer, GeospatialFilterOptions, FilterOptionItem, GeospatialFilters } from "@/app/types";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const INITIAL_VIEW_STATE = {
@@ -51,9 +53,9 @@ interface GeospatialMapViewProps {
   onBack?: () => void;
   loading?: boolean;
   layers?: GeospatialLayer[]; // Camadas já filtradas do backend
-  filters?: Record<string, any>; // Filtros atuais
+  filters?: GeospatialFilters; // Filtros atuais
   availableFilters?: GeospatialFilterOptions; // Opções de filtros disponíveis do backend
-  onFilterChange?: (filters: Record<string, any>) => void; // Callback para atualizar filtros
+  onFilterChange?: (filters: GeospatialFilters) => void; // Callback para atualizar filtros
   participantLocation?: ParticipantLocation; // Localização do participante para sobrepor no mapa
   hideHeader?: boolean; // Esconder o header com título quando embedded no modal
 }
@@ -68,7 +70,7 @@ export const GeospatialMapView = ({
   participantLocation,
   hideHeader = false,
 }: GeospatialMapViewProps) => {
-  const [viewState, setViewState] = useState(
+  const [viewState, setViewState] = useState<MapViewState>(
     participantLocation
       ? {
           ...INITIAL_VIEW_STATE,
@@ -85,22 +87,21 @@ export const GeospatialMapView = ({
     if (onFilterChange && !filters.tipo_camada && tiposCamada && tiposCamada.length > 0) {
       // Verificar se BAIRRO existe nas opções
       const hasBairro = tiposCamada.some(
-        (opt: any) => opt.id === "BAIRRO" || opt.label === "BAIRRO"
+        (opt) => opt.id === "BAIRRO" || opt.label === "BAIRRO"
       );
       if (hasBairro) {
         onFilterChange({ ...filters, tipo_camada: "BAIRRO" });
       }
     }
-  }, [availableFilters?.tipos_camada]); // Executar apenas quando tipos_camada estiver disponível
+    // Deps intencionalmente limitadas: incluir `filters`/`onFilterChange` faria o
+    // default "BAIRRO" ser reimposto sempre que o usuário limpar esse filtro manualmente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableFilters?.tipos_camada]);
 
   // Converter availableFilters do backend para formato esperado pelos dropdowns
   const filterOptions = useMemo(() => {
-    const toOptions = (items: any[]) =>
-      (items || []).map((item) =>
-        typeof item === "string"
-          ? { id: item, label: item }
-          : { id: item.id || item.value, label: item.label || item.name || item.id || item.value }
-      );
+    const toOptions = (items: FilterOptionItem[]) =>
+      (items || []).map((item) => ({ id: item.id, label: item.label || item.id }));
 
     const options = {
       tipoCamada: toOptions(availableFilters?.tipos_camada || []),
@@ -207,17 +208,12 @@ export const GeospatialMapView = ({
     for (const categoria of categoriesToRender) {
       const categoryLayers = layersByCategory[categoria];
 
-      // Log para debug: quantas camadas temos antes do parse
-      const beforeParse = categoryLayers.length;
-      const withoutGeometry = categoryLayers.filter(layer => !layer.geometry_geojson).length;
-
       // Converter geometry_geojson string para objeto GeoJSON
-      let parseErrors = 0;
       const features = categoryLayers
         .filter(layer => layer.geometry_geojson) // Garantir que geometry existe
-        .map(layer => {
+        .map((layer): Feature | null => {
           try {
-            const geometry = JSON.parse(layer.geometry_geojson!);
+            const geometry: Geometry = JSON.parse(layer.geometry_geojson!);
             return {
               type: "Feature",
               properties: {
@@ -234,7 +230,6 @@ export const GeospatialMapView = ({
               geometry,
             };
           } catch (e) {
-            parseErrors++;
             console.error(
               `Failed to parse geometry for ${layer.nome || layer.id || "unknown"} ` +
               `(ID: ${layer.id}, ${categoria}):`,
@@ -243,10 +238,10 @@ export const GeospatialMapView = ({
             return null;
           }
         })
-        .filter((f): f is NonNullable<typeof f> => f !== null);
+        .filter((f): f is Feature => f !== null);
 
-      const geojson = {
-        type: "FeatureCollection" as const,
+      const geojson: FeatureCollection = {
+        type: "FeatureCollection",
         features,
       };
 
@@ -269,7 +264,7 @@ export const GeospatialMapView = ({
         result.push(
           new GeoJsonLayer({
             id: `geojson-${categoria}`,
-            data: geojson as any,
+            data: geojson,
             pointType: "circle",
             getPointRadius: adaptiveRadius,
             opacity: opacity,
@@ -287,7 +282,7 @@ export const GeospatialMapView = ({
         result.push(
           new GeoJsonLayer({
             id: `geojson-${categoria}`,
-            data: geojson as any,
+            data: geojson,
             stroked: true,
             filled: true,
             extruded: false,
@@ -314,7 +309,7 @@ export const GeospatialMapView = ({
       const baseSize = 0.00036; // Tamanho base no zoom 14
       const baseZoom = 14;
       const size = baseSize * Math.pow(2, baseZoom - viewState.zoom);
-      const { latitude, longitude, nome } = participantLocation;
+      const { latitude, longitude } = participantLocation;
 
       const participantSquare = {
         type: "FeatureCollection" as const,
@@ -356,7 +351,7 @@ export const GeospatialMapView = ({
       result.push(
         new GeoJsonLayer({
           id: "participant-location",
-          data: participantSquare as any,
+          data: participantSquare,
           stroked: true,
           filled: true,
           lineWidthMinPixels: 3,
@@ -375,8 +370,8 @@ export const GeospatialMapView = ({
   }, [layers, participantLocation, viewState.zoom]);
 
   // Tooltip customizado com mais informações
-  const getTooltip = ({ object }: any) => {
-    if (!object) return null;
+  const getTooltip = ({ object }: PickingInfo<Feature>) => {
+    if (!object?.properties) return null;
 
     const props = object.properties;
     const parts: string[] = [];
@@ -673,7 +668,10 @@ export const GeospatialMapView = ({
           <div className="relative h-[600px] w-full rounded-lg overflow-hidden border-2">
             <DeckGL
               viewState={viewState}
-              onViewStateChange={({ viewState }) => setViewState(viewState as any)}
+              // Este app usa apenas MapView (sem views customizadas), então o viewState
+              // recebido é sempre MapViewState; a lib tipa genericamente para suportar
+              // outras Views (ex: TransitionProps), daí a necessidade do cast pontual.
+              onViewStateChange={(params) => setViewState(params.viewState as MapViewState)}
               controller={true}
               layers={deckLayers}
               getTooltip={getTooltip}

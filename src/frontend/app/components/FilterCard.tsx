@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import {
@@ -10,7 +9,7 @@ import {
 	Table,
 	X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import {
 	Card,
@@ -21,18 +20,12 @@ import {
 import { Input } from "@/app/components/ui/input";
 import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
-import type {
-	DashboardFilters,
-	ParticipantFilters,
-	SmartFilterOptions,
-} from "@/app/types";
-
-type FilterType = DashboardFilters | ParticipantFilters;
+import type { ParticipantFilters, SmartFilterOptions } from "@/app/types";
 
 interface FilterCardProps {
 	filterOptions: SmartFilterOptions;
-	filters: FilterType;
-	onFilterChange: (filters: FilterType) => void;
+	filters: ParticipantFilters;
+	onFilterChange: (filters: ParticipantFilters) => void;
 	onRefresh?: () => void;
 	onDownload?: () => void;
 	loading?: boolean;
@@ -56,17 +49,18 @@ const FilterCardComponent = ({
 }: FilterCardProps) => {
 	const [searchInput, setSearchInput] = useState("");
 
-	// Sincronizar searchInput com filters.search quando mudar (ex: após refresh)
-	// IMPORTANTE: depender só do valor de search, não do objeto filters inteiro —
-	// se depender de [filters], qualquer mudança de filtro (protocolo, bairro, etc.)
-	// dispara o effect e sobrescreve um searchInput que o usuário acabou de apagar.
-	const externalSearch =
-		"search" in filters ? (filters as { search?: string }).search : undefined;
-	useEffect(() => {
+	// Sincronizar searchInput com filters.search quando mudar (ex: após refresh).
+	// Ajuste feito durante a renderização (não em um efeito), comparando com o
+	// valor externo anterior — evita sobrescrever um searchInput que o usuário
+	// acabou de digitar/apagar quando outros filtros (protocolo, bairro, etc.) mudam.
+	const externalSearch = filters.search;
+	const [prevExternalSearch, setPrevExternalSearch] = useState(externalSearch);
+	if (externalSearch !== prevExternalSearch) {
+		setPrevExternalSearch(externalSearch);
 		if (externalSearch && externalSearch !== searchInput) {
 			setSearchInput(externalSearch);
 		}
-	}, [externalSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+	}
 
 	// Memoizar callbacks para evitar re-criação
 	const handleFilterUpdate = useCallback(
@@ -94,9 +88,9 @@ const FilterCardComponent = ({
 	const handleBooleanFilterUpdate = useCallback(
 		(key: string, value: string) => {
 			if (value === "todos" || value === "todas" || value === "") {
-				const updated = { ...filters } as Record<string, unknown>;
+				const updated: Record<string, unknown> = { ...filters };
 				delete updated[key];
-				onFilterChange(updated as FilterType);
+				onFilterChange(updated as ParticipantFilters);
 			} else {
 				onFilterChange({ ...filters, [key]: value === "true" });
 			}
@@ -278,10 +272,10 @@ const FilterCardComponent = ({
 						{/* Grupo - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).grupo)
-									? (filters as any).grupo
-									: (filters as any).grupo
-										? [(filters as any).grupo]
+								Array.isArray(filters.grupo)
+									? filters.grupo
+									: filters.grupo
+										? [filters.grupo]
 										: []
 							}
 							onSelect={(values) => handleMultiFilterUpdate("grupo", values)}
@@ -294,10 +288,10 @@ const FilterCardComponent = ({
 						{/* Status - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).status)
-									? (filters as any).status
-									: (filters as any).status
-										? [(filters as any).status]
+								Array.isArray(filters.status)
+									? filters.status
+									: filters.status
+										? [filters.status]
 										: []
 							}
 							onSelect={(values) => handleMultiFilterUpdate("status", values)}
@@ -310,10 +304,10 @@ const FilterCardComponent = ({
 						{/* Situação - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).situacao)
-									? (filters as any).situacao
-									: (filters as any).situacao
-										? [(filters as any).situacao]
+								Array.isArray(filters.situacao)
+									? filters.situacao
+									: filters.situacao
+										? [filters.situacao]
 										: []
 							}
 							onSelect={(values) => handleMultiFilterUpdate("situacao", values)}
@@ -326,10 +320,10 @@ const FilterCardComponent = ({
 						{/* Perfil Racial - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).raca)
-									? (filters as any).raca
-									: (filters as any).raca
-										? [(filters as any).raca]
+								Array.isArray(filters.raca)
+									? filters.raca
+									: filters.raca
+										? [filters.raca]
 										: []
 							}
 							onSelect={(values) => handleMultiFilterUpdate("raca", values)}
@@ -342,10 +336,10 @@ const FilterCardComponent = ({
 						{/* Mês de Ingresso no Programa - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).safra)
-									? (filters as any).safra
-									: (filters as any).safra
-										? [(filters as any).safra]
+								Array.isArray(filters.safra)
+									? filters.safra
+									: filters.safra
+										? [filters.safra]
 										: []
 							}
 							onSelect={(values) => handleMultiFilterUpdate("safra", values)}
@@ -358,8 +352,8 @@ const FilterCardComponent = ({
 						{/* Bolsa Família */}
 						<VirtualizedSelect
 							value={
-								(filters as any).has_bolsa_familia !== undefined
-									? String((filters as any).has_bolsa_familia)
+								filters.has_bolsa_familia !== undefined
+									? String(filters.has_bolsa_familia)
 									: "todas"
 							}
 							onSelect={(v) =>
@@ -376,7 +370,7 @@ const FilterCardComponent = ({
 
 						{/* Secretaria de Protocolo */}
 						<VirtualizedSelect
-							value={(filters as any).protocolo_secretaria || "todas"}
+							value={filters.protocolo_secretaria || "todas"}
 							onSelect={(v) => handleFilterUpdate("protocolo_secretaria", v)}
 							disabled={loading}
 							placeholder="Filtrar Protocolos por Secretaria"
@@ -391,10 +385,10 @@ const FilterCardComponent = ({
 						{/* Protocolo (Multi-select) */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).protocolo_descricao)
-									? (filters as any).protocolo_descricao
-									: (filters as any).protocolo_descricao
-										? [(filters as any).protocolo_descricao]
+								Array.isArray(filters.protocolo_descricao)
+									? filters.protocolo_descricao
+									: filters.protocolo_descricao
+										? [filters.protocolo_descricao]
 										: []
 							}
 							onSelect={(values) =>
@@ -409,10 +403,10 @@ const FilterCardComponent = ({
 						{/* Status Protocolo - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).protocolo_status)
-									? (filters as any).protocolo_status
-									: (filters as any).protocolo_status
-										? [(filters as any).protocolo_status]
+								Array.isArray(filters.protocolo_status)
+									? filters.protocolo_status
+									: filters.protocolo_status
+										? [filters.protocolo_status]
 										: []
 							}
 							onSelect={(values) =>
@@ -435,10 +429,10 @@ const FilterCardComponent = ({
 						{/* Subprefeitura - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).subprefeitura)
-									? (filters as any).subprefeitura
-									: (filters as any).subprefeitura
-										? [(filters as any).subprefeitura]
+								Array.isArray(filters.subprefeitura)
+									? filters.subprefeitura
+									: filters.subprefeitura
+										? [filters.subprefeitura]
 										: []
 							}
 							onSelect={(values) =>
@@ -453,10 +447,10 @@ const FilterCardComponent = ({
 						{/* Região Administrativa - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).regiao_administrativa)
-									? (filters as any).regiao_administrativa
-									: (filters as any).regiao_administrativa
-										? [(filters as any).regiao_administrativa]
+								Array.isArray(filters.regiao_administrativa)
+									? filters.regiao_administrativa
+									: filters.regiao_administrativa
+										? [filters.regiao_administrativa]
 										: []
 							}
 							onSelect={(values) =>
@@ -471,10 +465,10 @@ const FilterCardComponent = ({
 						{/* Bairro - Multi-select */}
 						<VirtualizedMultiSelect
 							value={
-								Array.isArray((filters as any).bairro)
-									? (filters as any).bairro
-									: (filters as any).bairro
-										? [(filters as any).bairro]
+								Array.isArray(filters.bairro)
+									? filters.bairro
+									: filters.bairro
+										? [filters.bairro]
 										: []
 							}
 							onSelect={(values) => handleMultiFilterUpdate("bairro", values)}
@@ -489,10 +483,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).cas)
-										? (filters as any).cas
-										: (filters as any).cas
-											? [(filters as any).cas]
+									Array.isArray(filters.cas)
+										? filters.cas
+										: filters.cas
+											? [filters.cas]
 											: []
 								}
 								onSelect={(values) => handleMultiFilterUpdate("cas", values)}
@@ -507,10 +501,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).cras)
-										? (filters as any).cras
-										: (filters as any).cras
-											? [(filters as any).cras]
+									Array.isArray(filters.cras)
+										? filters.cras
+										: filters.cras
+											? [filters.cras]
 											: []
 								}
 								onSelect={(values) => handleMultiFilterUpdate("cras", values)}
@@ -526,10 +520,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).cre)
-										? (filters as any).cre
-										: (filters as any).cre
-											? [(filters as any).cre]
+									Array.isArray(filters.cre)
+										? filters.cre
+										: filters.cre
+											? [filters.cre]
 											: []
 								}
 								onSelect={(values) => handleMultiFilterUpdate("cre", values)}
@@ -544,10 +538,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).escola)
-										? (filters as any).escola
-										: (filters as any).escola
-											? [(filters as any).escola]
+									Array.isArray(filters.escola)
+										? filters.escola
+										: filters.escola
+											? [filters.escola]
 											: []
 								}
 								onSelect={(values) => handleMultiFilterUpdate("escola", values)}
@@ -563,10 +557,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).ap)
-										? (filters as any).ap
-										: (filters as any).ap
-											? [(filters as any).ap]
+									Array.isArray(filters.ap)
+										? filters.ap
+										: filters.ap
+											? [filters.ap]
 											: []
 								}
 								onSelect={(values) => handleMultiFilterUpdate("ap", values)}
@@ -581,10 +575,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).clinica)
-										? (filters as any).clinica
-										: (filters as any).clinica
-											? [(filters as any).clinica]
+									Array.isArray(filters.clinica)
+										? filters.clinica
+										: filters.clinica
+											? [filters.clinica]
 											: []
 								}
 								onSelect={(values) =>
@@ -601,10 +595,10 @@ const FilterCardComponent = ({
 						{
 							<VirtualizedMultiSelect
 								value={
-									Array.isArray((filters as any).equipe_familia)
-										? (filters as any).equipe_familia
-										: (filters as any).equipe_familia
-											? [(filters as any).equipe_familia]
+									Array.isArray(filters.equipe_familia)
+										? filters.equipe_familia
+										: filters.equipe_familia
+											? [filters.equipe_familia]
 											: []
 								}
 								onSelect={(values) =>

@@ -32,8 +32,8 @@ VALIDAÇÃO:
     Você deve ter acesso total ao sistema e ver o menu Admin.
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
 # Adicionar src ao path para imports
@@ -289,8 +289,8 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
                 if update_to_super_admin(SUPER_ADMIN_CPF, was_super=is_super):
                     # Refresh cache de governança
                     try:
-                        from src.utils.data_manager import DataManager
                         from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+                        from src.utils.data_manager import DataManager
 
                         DataManager.get_dataset(
                             GOVERNANCE_TABLE_QUERY, bypass_cache=True
@@ -317,8 +317,8 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
             if update_to_super_admin(SUPER_ADMIN_CPF, was_super=is_super):
                 # Refresh cache de governança
                 try:
-                    from src.utils.data_manager import DataManager
                     from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+                    from src.utils.data_manager import DataManager
 
                     DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)
                     print("✅ Cache de governança atualizado\n")
@@ -410,8 +410,8 @@ def bootstrap_super_admin(skip_confirmation: bool = False):
 
         # Refresh cache de governança
         try:
-            from src.utils.data_manager import DataManager
             from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+            from src.utils.data_manager import DataManager
 
             # Force refresh usando bypass_cache
             DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)

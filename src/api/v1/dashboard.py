@@ -5,27 +5,28 @@ Este módulo usa uma tabela com indicadores já calculados, permitindo
 performance muito melhor e métricas mais precisas.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Any, Optional, Dict, List
-from collections import defaultdict
-import polars as pl
 import time
+from collections import defaultdict
+from typing import Any
 
-from src.core.security.jwt import verify_jwt, CurrentUserPermissions
-from src.utils.log import logger
+import polars as pl
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from src.api.v1.queries import DASHBOARD_TABLE_QUERY
 from src.api.v1.schemas import (
     Dashboard,
+    DistribuicaoMotivoSaida,
+    DistribuicaoSafra,
+    DistribuicaoTempoIrregularidade,
+    PaginatedResponse,
     ProtocoloIndicador,
     ResultadoProgramaPoint,
-    DistribuicaoSafra,
-    DistribuicaoMotivoSaida,
-    DistribuicaoTempoIrregularidade,
-    TempoMedioIrregularidade,
     TaxaResolucaoMensalPoint,
-    PaginatedResponse,
+    TempoMedioIrregularidade,
 )
+from src.core.security.jwt import CurrentUserPermissions, verify_jwt
 from src.utils.data_manager import DataManager
-from src.api.v1.queries import DASHBOARD_TABLE_QUERY
+from src.utils.log import logger
 
 router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Dashboard"])
 
@@ -62,21 +63,21 @@ MESES_LABELS = {
 async def get_dashboard_metrics(
     permissions: CurrentUserPermissions,
     # Filtros específicos do dashboard
-    grupo: Optional[str] = Query(None, description="Filtrar por grupo (crianca, gestante)"),
-    cohort: Optional[str] = Query(None, description="Filtrar por safra"),
-    status: Optional[str] = Query(None, description="Filtrar por status (ativo, inativo)"),
-    secretaria: Optional[str] = Query(None, description="Filtrar métricas por secretaria (SMAS, SME, SMS) - filtra gráficos, não dados"),
-    subprefeitura: Optional[str] = Query(None, description="Filtrar por subprefeitura(s) - pode ser string separada por vírgula"),
-    regiao_administrativa: Optional[str] = Query(None, description="Filtrar por região administrativa(s) - pode ser string separada por vírgula"),
-    bairro: Optional[str] = Query(None, description="Filtrar por bairro(s) - pode ser string separada por vírgula"),
-    cre: Optional[str] = Query(None, description="Filtrar por CRE"),
-    ap: Optional[str] = Query(None, description="Filtrar por AP"),
-    cas: Optional[str] = Query(None, description="Filtrar por CAS"),
-    cras: Optional[str] = Query(None, description="Filtrar por CRAS"),
-    escola: Optional[str] = Query(None, description="Filtrar por escola"),
-    unidade_saude: Optional[str] = Query(None, description="Filtrar por unidade de saúde"),
-    equipe_saude: Optional[str] = Query(None, description="Filtrar por equipe de saúde"),
-    has_bolsa_familia: Optional[bool] = Query(None, description="Filtrar por beneficiários do Bolsa Família"),
+    grupo: str | None = Query(None, description="Filtrar por grupo (crianca, gestante)"),
+    cohort: str | None = Query(None, description="Filtrar por safra"),
+    status: str | None = Query(None, description="Filtrar por status (ativo, inativo)"),
+    secretaria: str | None = Query(None, description="Filtrar métricas por secretaria (SMAS, SME, SMS) - filtra gráficos, não dados"),
+    subprefeitura: str | None = Query(None, description="Filtrar por subprefeitura(s) - pode ser string separada por vírgula"),
+    regiao_administrativa: str | None = Query(None, description="Filtrar por região administrativa(s) - pode ser string separada por vírgula"),
+    bairro: str | None = Query(None, description="Filtrar por bairro(s) - pode ser string separada por vírgula"),
+    cre: str | None = Query(None, description="Filtrar por CRE"),
+    ap: str | None = Query(None, description="Filtrar por AP"),
+    cas: str | None = Query(None, description="Filtrar por CAS"),
+    cras: str | None = Query(None, description="Filtrar por CRAS"),
+    escola: str | None = Query(None, description="Filtrar por escola"),
+    unidade_saude: str | None = Query(None, description="Filtrar por unidade de saúde"),
+    equipe_saude: str | None = Query(None, description="Filtrar por equipe de saúde"),
+    has_bolsa_familia: bool | None = Query(None, description="Filtrar por beneficiários do Bolsa Família"),
     bypass_cache: bool = Query(False, description="Forçar refresh do cache"),
 ) -> Any:
     """
@@ -97,7 +98,7 @@ async def get_dashboard_metrics(
     filters_dict = {}
 
     # Helper para parse de multi-select
-    def parse_multi_select(value: Optional[str]) -> Optional[str | list[str]]:
+    def parse_multi_select(value: str | None) -> str | list[str] | None:
         if not value:
             return None
         if "|" in value:
@@ -204,7 +205,7 @@ async def get_dashboard_metrics(
 
     except Exception as e:
         logger.error(f"❌ Error fetching dashboard metrics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _format_mes_label(mes: str) -> str:
@@ -223,7 +224,7 @@ def _format_mes_label(mes: str) -> str:
     return mes
 
 
-def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[str] = None) -> Dashboard:
+def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: str | None = None) -> Dashboard:
     """
     Calcula métricas do dashboard a partir de dados pré-agregados do BigQuery.
 
@@ -261,7 +262,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         .agg(pl.col("qtd").sum().alias("total"))
     )
 
-    safras_agregadas: Dict[str, Dict[str, int]] = defaultdict(lambda: {"ativos": 0, "inativos": 0})
+    safras_agregadas: dict[str, dict[str, int]] = defaultdict(lambda: {"ativos": 0, "inativos": 0})
     for row in safra_df.iter_rows(named=True):
         cohort = row["cohort_str"]
         status = row["status_lower"]
@@ -282,7 +283,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         .agg(pl.col("qtd").sum().alias("total"))
     )
 
-    motivos_saida: Dict[str, int] = {}
+    motivos_saida: dict[str, int] = {}
     for row in motivos_df.iter_rows(named=True):
         motivo = row["motivo"] or "Não informado"
         motivos_saida[motivo.strip() if motivo.strip() else "Não informado"] = row["total"] or 0
@@ -307,10 +308,6 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         pl.col("indicador_participantes_percentual_irregular").struct.field("numerador").sum()
     ).item() or 0
 
-    participantes_irregular_den = df.select(
-        pl.col("indicador_participantes_percentual_irregular").struct.field("denominador").sum()
-    ).item() or 0
-
     logger.info(f"⚡ Seção 1 (Indicadores): {perf_time.perf_counter() - section_start:.3f}s")
 
     # =========================================================================
@@ -319,7 +316,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     section_start = perf_time.perf_counter()
 
     # Explode a lista de protocolos e extrair campos
-    protocolos_agregados: Dict[str, Dict[str, Any]] = {}
+    protocolos_agregados: dict[str, dict[str, Any]] = {}
 
     if "indicador_protocolos_percentual_regular" in df.columns:
         df_protocolos = (
@@ -376,7 +373,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     # =========================================================================
     section_start = perf_time.perf_counter()
 
-    evolucao_mensal: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
+    evolucao_mensal: dict[str, dict[str, dict[str, int]]] = defaultdict(
         lambda: defaultdict(lambda: {"num": 0, "den": 0})
     )
 
@@ -417,7 +414,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     # =========================================================================
     section_start = perf_time.perf_counter()
 
-    tempo_irregular_por_secretaria: Dict[str, List[int]] = defaultdict(list)
+    tempo_irregular_por_secretaria: dict[str, list[int]] = defaultdict(list)
 
     if "indicador_tempo_irregular" in df.columns:
         df_tempo = (
@@ -454,7 +451,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     # =========================================================================
     section_start = perf_time.perf_counter()
 
-    resolucao_mensal: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(
+    resolucao_mensal: dict[str, dict[str, dict[str, int]]] = defaultdict(
         lambda: defaultdict(lambda: {"num": 0, "den": 0})
     )
 
@@ -517,7 +514,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     perc_irregular = (total_irregulares / total_participantes * 100) if total_participantes > 0 else 0.0
 
     # 2. Protocolos Individuais
-    protocolos_lista: List[ProtocoloIndicador] = []
+    protocolos_lista: list[ProtocoloIndicador] = []
     for protocolo_id, dados in protocolos_agregados.items():
         num, den = dados["num"], dados["den"]
         perc_reg = (num / den * 100) if den > 0 else 0.0
@@ -535,10 +532,11 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     protocolos_lista.sort(key=lambda p: (p.protocolo_secretaria, p.protocolo_descricao))
 
     # 3. Resultado do Programa
-    resultado_programa: List[ResultadoProgramaPoint] = []
+    resultado_programa: list[ResultadoProgramaPoint] = []
     for mes in sorted(evolucao_mensal.keys()):
         dados_mes = evolucao_mensal[mes]
-        def calc_perc(sec: str) -> float:
+
+        def calc_perc(sec: str, dados_mes: dict = dados_mes) -> float:
             d = dados_mes.get(sec, {"num": 0, "den": 0})
             return round(d["num"] / d["den"] * 100, 1) if d["den"] > 0 else 0.0
         resultado_programa.append(
@@ -550,7 +548,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         )
 
     # 4. Distribuição por Safra
-    distribuicao_safra: List[DistribuicaoSafra] = []
+    distribuicao_safra: list[DistribuicaoSafra] = []
     for safra in sorted(safras_agregadas.keys()):
         dados = safras_agregadas[safra]
         distribuicao_safra.append(
@@ -563,14 +561,14 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         )
 
     # 5. Motivos de Saída
-    distribuicao_motivos: List[DistribuicaoMotivoSaida] = [
+    distribuicao_motivos: list[DistribuicaoMotivoSaida] = [
         DistribuicaoMotivoSaida(motivo=m, total=t)
         for m, t in sorted(motivos_saida.items(), key=lambda x: x[1], reverse=True)
     ]
 
     # 6. Tempo Médio de Irregularidade
     mapa_labels = {"geral": "Geral", "smas": "Assistência Social", "sme": "Educação", "sms": "Saúde"}
-    tempo_medio_lista: List[TempoMedioIrregularidade] = []
+    tempo_medio_lista: list[TempoMedioIrregularidade] = []
 
     # Determinar quais secretarias incluir baseado no filtro
     if filtro_secretaria:
@@ -597,7 +595,7 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
     total_valores = len(todos_valores)
     faixas_config = [("0-30", "0-30 dias", 0, 30), ("31-60", "31-60 dias", 31, 60),
                      ("61-90", "61-90 dias", 61, 90), ("90+", "90+ dias", 91, float("inf"))]
-    distribuicao_tempo: List[DistribuicaoTempoIrregularidade] = []
+    distribuicao_tempo: list[DistribuicaoTempoIrregularidade] = []
     for faixa, faixa_label, min_d, max_d in faixas_config:
         count = sum(1 for v in todos_valores if min_d <= v <= max_d)
         distribuicao_tempo.append(
@@ -608,10 +606,11 @@ def _calculate_dashboard_metrics(df: pl.DataFrame, filtro_secretaria: Optional[s
         )
 
     # 8. Taxa de Resolução Mensal
-    taxa_resolucao_lista: List[TaxaResolucaoMensalPoint] = []
+    taxa_resolucao_lista: list[TaxaResolucaoMensalPoint] = []
     for mes in sorted(resolucao_mensal.keys()):
         dados_mes = resolucao_mensal[mes]
-        def calc_res(sec: str) -> float:
+
+        def calc_res(sec: str, dados_mes: dict = dados_mes) -> float:
             d = dados_mes.get(sec, {"num": 0, "den": 0})
             return round(d["num"] / d["den"] * 100, 1) if d["den"] > 0 else 0.0
         taxa_resolucao_lista.append(

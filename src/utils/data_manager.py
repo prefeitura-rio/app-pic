@@ -1,33 +1,33 @@
 import asyncio
-import polars as pl
-from typing import Dict, Any, Optional, Tuple
-from math import ceil
 import time
+from math import ceil
+from typing import Any
+
+import polars as pl
+
+from src.api.v1.schemas import (
+    FilterOptionItem,
+    PaginationMeta,
+    SmartFilterOptions,
+)
+from src.utils.bigquery import execute_query
+from src.utils.cache_manager import query_cache
+from src.utils.data_manager_config import (
+    DataManagerConfig as config,
+)
+from src.utils.data_manager_config import (
+    ProfilingData,
+    ValidationError,
+)
+from src.utils.log import logger
+from src.utils.secretaria_access import filter_and_recalculate_by_secretaria
+from src.utils.text_utils import TextNormalizer
 
 # Limit concurrent BQ fetches to 1 to prevent OOM on cold start / pod restart.
 # When multiple endpoints hit BQ simultaneously (cache miss), they serialise here.
 # Double-checked locking ensures the second waiter re-uses the cache populated by
 # the first waiter instead of launching a redundant fetch.
-_bq_semaphore: Optional[asyncio.Semaphore] = None
-
-from src.utils.bigquery import execute_query
-from src.utils.log import logger
-from src.utils.cache_manager import query_cache
-from src.utils.text_utils import TextNormalizer
-from src.utils.secretaria_access import filter_and_recalculate_by_secretaria
-from src.utils.data_manager_config import (
-    DataManagerConfig as config,
-    DataManagerError,
-    ValidationError,
-    FilterColumnNotFoundError,
-    ProfilingData,
-)
-from src.api.v1.schemas import (
-    PaginatedResponse,
-    PaginationMeta,
-    SmartFilterOptions,
-    FilterOptionItem,
-)
+_bq_semaphore: asyncio.Semaphore | None = None
 
 
 # =============================================================================
@@ -73,7 +73,7 @@ class CachedDataset:
     def __init__(
         self,
         df: pl.DataFrame,
-        filter_options_cache: Optional[Dict[str, list]] = None,
+        filter_options_cache: dict[str, list] | None = None,
     ):
         self.df = df
         self.filter_options_cache = filter_options_cache or {}
@@ -139,17 +139,17 @@ class DataManager:
     @staticmethod
     async def fetch_filter_paginate(
         query: str,
-        filters_dict: Dict[str, Any],
+        filters_dict: dict[str, Any],
         page: int,
-        page_size: Optional[int],
-        filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
-        search_term: Optional[str] = None,
-        search_columns: Optional[list[str]] = None,
+        page_size: int | None,
+        filter_columns_config: dict[str, dict[str, str]] | None = None,
+        search_term: str | None = None,
+        search_columns: list[str] | None = None,
         user_permissions=None,  # NOVO: Optional[UserPermissions]
         bypass_cache: bool = False,  # NOVO: Força query no BigQuery
-        sort_by: Optional[str] = None,  # NOVO: Coluna para ordenação
+        sort_by: str | None = None,  # NOVO: Coluna para ordenação
         sort_descending: bool = False,  # NOVO: True para DESC, False para ASC
-    ) -> tuple[pl.DataFrame, PaginationMeta, Optional[SmartFilterOptions]]:
+    ) -> tuple[pl.DataFrame, PaginationMeta, SmartFilterOptions | None]:
         """
         Executa pipeline completo de fetch → filter → filter_options → paginate.
 
@@ -407,8 +407,8 @@ class DataManager:
     async def get_dataset(
         query: str,
         bypass_cache: bool = False,
-        filter_columns_config: Optional[Dict[str, Dict[str, str]]] = None,
-    ) -> Tuple[pl.DataFrame, bool, Optional[Dict[str, list]]]:
+        filter_columns_config: dict[str, dict[str, str]] | None = None,
+    ) -> tuple[pl.DataFrame, bool, dict[str, list] | None]:
         """
         Busca dataset completo do cache ou BigQuery.
 
@@ -486,7 +486,7 @@ class DataManager:
 
                 logger.info("❌ Cache MISS confirmed - Fetching from BigQuery (thread pool)")
 
-                def _fetch_and_cache() -> Tuple[pl.DataFrame, bool, Optional[Dict[str, list]]]:
+                def _fetch_and_cache() -> tuple[pl.DataFrame, bool, dict[str, list] | None]:
                     bq_start = time.perf_counter()
                     df = execute_query(query, return_polars=True)  # Polars via Arrow!
                     bq_time = time.perf_counter() - bq_start
@@ -496,7 +496,7 @@ class DataManager:
                         return pl.DataFrame(), False, None
 
                     # PRÉ-COMPUTAR FILTER OPTIONS (durante cache write)
-                    filter_options_cache: Dict[str, list] = {}
+                    filter_options_cache: dict[str, list] = {}
                     if filter_columns_config:
                         precompute_start = time.perf_counter()
                         filter_options_cache = DataManager._precompute_filter_options(
@@ -526,8 +526,8 @@ class DataManager:
     @staticmethod
     def _precompute_filter_options(
         df: pl.DataFrame,
-        filter_columns_config: Dict[str, Dict[str, str]],
-    ) -> Dict[str, list]:
+        filter_columns_config: dict[str, dict[str, str]],
+    ) -> dict[str, list]:
         """
         Pré-computa filter options durante cache write (POLARS).
 
@@ -681,7 +681,7 @@ class DataManager:
     def _filter_array_column_combined_polars(
         df: pl.DataFrame,
         array_col: str,
-        field_filters: Dict[str, list],
+        field_filters: dict[str, list],
     ) -> pl.DataFrame:
         """
         Filtra linhas onde TODOS os campos especificados correspondem no MESMO item do array.
@@ -762,7 +762,7 @@ class DataManager:
             df_filtered_items = df_exploded.filter(combined_expr)
 
             if df_filtered_items.is_empty():
-                logger.info(f"📊 Combined array filter matched 0 rows")
+                logger.info("📊 Combined array filter matched 0 rows")
                 return df.head(0)
 
             matching_idx = df_filtered_items.select("_temp_idx").unique()
@@ -798,12 +798,12 @@ class DataManager:
                     final_idx_set = final_idx_set.intersection(idx_set)
 
                 if not final_idx_set:
-                    logger.info(f"📊 Combined array filter (AND) matched 0 rows")
+                    logger.info("📊 Combined array filter (AND) matched 0 rows")
                     return df.head(0)
 
                 matching_idx = pl.DataFrame({"_temp_idx": list(final_idx_set)})
             else:
-                logger.info(f"📊 Combined array filter matched 0 rows (no values)")
+                logger.info("📊 Combined array filter matched 0 rows (no values)")
                 return df.head(0)
 
         logger.info(
@@ -818,7 +818,7 @@ class DataManager:
         return result
 
     @staticmethod
-    def apply_filters(df: pl.DataFrame, filters_dict: Dict[str, Any]) -> pl.DataFrame:
+    def apply_filters(df: pl.DataFrame, filters_dict: dict[str, Any]) -> pl.DataFrame:
         """
         Aplica filtras CASe-insensitive ao Polars DataFrame.
 
@@ -845,8 +845,8 @@ class DataManager:
         # PASSO 1: Agrupar filtros de array por coluna base para aplicar combinados
         # Isso garante que filtros como protocolo_descricao + protocolo_status
         # sejam aplicados no MESMO item do array (filtros dependentes)
-        array_filters_by_column: Dict[str, Dict[str, list]] = {}
-        scalar_filters: Dict[str, Any] = {}
+        array_filters_by_column: dict[str, dict[str, list]] = {}
+        scalar_filters: dict[str, Any] = {}
 
         for col, filter_value in filters_dict.items():
             # Converter para lista se não for
@@ -1094,8 +1094,8 @@ class DataManager:
         df: pl.DataFrame,
         array_col: str,
         field_name: str,
-        filter_fields: Dict[str, list],
-        exclude_field: Optional[str] = None,
+        filter_fields: dict[str, list],
+        exclude_field: str | None = None,
     ) -> set:
         """
         Extrai valores únicos de um campo do array, aplicando filtros nos itens do array.
@@ -1160,9 +1160,9 @@ class DataManager:
     @staticmethod
     def calculate_filter_options_fast(
         df_original: pl.DataFrame,
-        filter_columns_config: Dict[str, Dict[str, str]],
-        active_filters: Dict[str, Any],
-        df_already_filtered: Optional[pl.DataFrame] = None,
+        filter_columns_config: dict[str, dict[str, str]],
+        active_filters: dict[str, Any],
+        df_already_filtered: pl.DataFrame | None = None,
     ) -> SmartFilterOptions:
         """
         VERSÃO V7 POLARS de calculate_filter_options - SUPER OTIMIZADA.
@@ -1184,8 +1184,8 @@ class DataManager:
         )
 
         # Identificar quais filtros estão ativos
-        active_scalar_filters: Dict[str, list] = {}
-        active_array_filters: Dict[str, Dict[str, list]] = {}
+        active_scalar_filters: dict[str, list] = {}
+        active_array_filters: dict[str, dict[str, list]] = {}
 
         for k, v in active_filters.items():
             if v in [None, "", "todos", "todas"]:
@@ -1406,6 +1406,10 @@ class DataManager:
         """
         Fetch permissions for a specific CPF from cached governance table (POLARS).
 
+        NOTE: v1-only. BigQuery-backed (endpoint_data_access). v2 uses
+        HybridAdminRepository.fetch_user_permissions instead. Keep this on
+        BigQuery as long as v1's admin CRUD writes to BigQuery.
+
         OPTIMIZATION: Uses get_dataset() with shared cache.
 
         Args:
@@ -1419,8 +1423,14 @@ class DataManager:
         """
         from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
         from src.core.security.permissions_models import (
-            UserPermissions,
             PermissionDeniedError,
+            UserPermissions,
+        )
+        from src.utils.constants import (
+            SECRETARIA_SMAS,
+            SECRETARIA_SME,
+            SECRETARIA_SMS,
+            SECRETARIA_TODOS,
         )
 
         # Buscar tabela completa (do cache) - agora retorna Polars
@@ -1473,6 +1483,19 @@ class DataManager:
 
         # Garantir que active no objeto final seja bool limpo
         row_dict["active"] = bool(row_dict["_active_bool"])
+
+        # Convert legacy scalar secretaria_acesso (BigQuery column) into the
+        # new secretarias_acesso list field. `secretaria_acesso` itself is now
+        # a read-only compat @property on UserPermissions, so passing it as a
+        # constructor kwarg would be silently dropped (Pydantic ignores
+        # unknown/property kwargs) leaving secretarias_acesso as [].
+        raw_secretaria = row_dict.pop("secretaria_acesso", None)
+        if raw_secretaria == SECRETARIA_TODOS:
+            row_dict["secretarias_acesso"] = [SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
+        elif raw_secretaria:
+            row_dict["secretarias_acesso"] = [raw_secretaria]
+        else:
+            row_dict["secretarias_acesso"] = []
 
         # Convert struct arrays to list of IdWithName
         for id_type in [
@@ -1537,10 +1560,10 @@ class DataManager:
 
         df_filtered = df.filter(filter_expr)
 
-        # Apply protocol filtering by secretaria_acesso
+        # Apply protocol filtering by secretarias_acesso
         df_filtered = filter_and_recalculate_by_secretaria(
             df_filtered,
-            user_permissions.secretaria_acesso
+            user_permissions.secretarias_acesso
         )
 
         logger.info(

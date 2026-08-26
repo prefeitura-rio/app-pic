@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/app/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Users, Building2, LogIn, AlertCircle, Heart, GraduationCap, Stethoscope, Home } from "lucide-react";
+import { LogIn, AlertCircle, GraduationCap, Stethoscope, Home } from "lucide-react";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { Footer } from "@/app/components/Footer";
 import { LoginFormWithFallback } from "@/app/components/LoginFormWithFallback";

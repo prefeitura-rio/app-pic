@@ -41,15 +41,14 @@ export function VirtualizedSelect({
   options,
   value,
   onSelect,
-  defaultLabel = "Todos",
+  placeholder,
+  defaultLabel = placeholder ?? "Todos",
   disabled = false,
   className,
   style,
   show = true,
   showAllOption = true,
 }: VirtualizedSelectProps) {
-  // Se show=false, não renderiza nada
-  if (!show) return null;
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const [triggerWidth, setTriggerWidth] = React.useState(0);
@@ -113,6 +112,9 @@ export function VirtualizedSelect({
   }, [filteredOptions, value, onSelect]);
 
   const listHeight = Math.min(280, filteredOptions.length * 32);
+
+  // Se show=false, não renderiza nada (após todos os hooks, conforme Rules of Hooks)
+  if (!show) return null;
 
   return (
     <div className={className} style={style}>

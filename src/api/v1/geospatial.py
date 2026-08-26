@@ -1,18 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Any
+from typing import Any
 
-from src.core.security.jwt import verify_jwt, CurrentUserPermissions
-from src.utils.log import logger
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from src.api.v1.queries import GEOSPATIAL_LAYERS_QUERY
 from src.api.v1.schemas import (
+    GeospatialFilterOptions,
+    GeospatialFilters,
     GeospatialLayer,
     GeospatialPaginatedResponse,
-    GeospatialFilters,
-    GeospatialFilterOptions,
-    FilterOptionItem,
-    PaginationMeta,
 )
+from src.core.security.jwt import CurrentUserPermissions, verify_jwt
 from src.utils.data_manager import DataManager
-from src.api.v1.queries import GEOSPATIAL_LAYERS_QUERY
+from src.utils.log import logger
 
 router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Geospatial"])
 
@@ -161,4 +160,4 @@ async def get_geospatial_layers(
 
         logger.error(f"❌ Error fetching geospatial layers: {e}")
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

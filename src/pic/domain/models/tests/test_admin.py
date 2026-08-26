@@ -68,7 +68,7 @@ def test_user_access_record_full():
         is_super_admin=False,
         permission="admin",
         id_cras_list=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
-        secretaria_acesso="SMS",
+        secretarias_acesso=["SMS"],
         active=True,
         created_by="super_admin",
         created_at=now,
@@ -76,7 +76,7 @@ def test_user_access_record_full():
     assert uar.nome == "Joao"
     assert uar.is_admin is True
     assert uar.permission == "admin"
-    assert uar.secretaria_acesso == "SMS"
+    assert uar.secretarias_acesso == ["SMS"]
     assert len(uar.id_cras_list) == 1
 
 
@@ -103,12 +103,12 @@ def test_upsert_user_request_with_ids():
         is_admin=True,
         id_cras_list=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
         id_escola_list=[IdWithName(id="ESC_001", nome="Escola A")],
-        secretaria_acesso="SME",
+        secretarias_acesso=["SME"],
     )
     assert req.email == "user@example.com"
     assert req.is_admin is True
     assert len(req.id_cras_list) == 1
-    assert req.secretaria_acesso == "SME"
+    assert req.secretarias_acesso == ["SME"]
 
 
 def test_batch_import_error():
@@ -137,11 +137,11 @@ def test_imported_user_exists():
         status="exists",
         is_admin=True,
         is_super_admin=False,
-        secretaria_acesso="SMS",
+        secretarias_acesso=["SMS"],
     )
     assert u.status == "exists"
     assert u.is_admin is True
-    assert u.secretaria_acesso == "SMS"
+    assert u.secretarias_acesso == ["SMS"]
 
 
 def test_imported_user_error():
@@ -176,12 +176,12 @@ def test_batch_permissions_request():
         ],
         is_admin=True,
         id_cras_list=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
-        secretaria_acesso="SMAS",
+        secretarias_acesso=["SMAS"],
     )
     assert len(req.users) == 2
     assert req.users[0].cpf == "12345678900"
     assert req.is_admin is True
-    assert req.secretaria_acesso == "SMAS"
+    assert req.secretarias_acesso == ["SMAS"]
 
 
 def test_batch_permissions_error():

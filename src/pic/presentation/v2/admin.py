@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 
 from src.api.v1.schemas import PaginatedResponse, PaginationParams
-from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.admin_batch import (
     BatchImportUsersUseCase,
     BatchUpdatePermissionsUseCase,
@@ -39,7 +39,7 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(verify_jwt)], tags=["A
 
 @router.get("/available-ids", response_model=AvailableIds)
 async def get_available_ids_v2(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     use_case: GetAvailableIdsUseCase = Depends(get_available_ids_use_case),
 ):
     return await use_case.execute(permissions)
@@ -47,21 +47,21 @@ async def get_available_ids_v2(
 
 @router.get("/me", response_model=UserAccessRecord)
 async def get_current_user_v2(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     use_case: GetCurrentUserUseCase = Depends(get_current_user_use_case),
 ):
-    return use_case.execute(permissions)
+    return await use_case.execute(permissions)
 
 
 @router.get("/users", response_model=PaginatedResponse[UserAccessRecord])
 async def list_users_v2(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     pagination: PaginationParams = Depends(),
     active: bool | None = Query(None),
     ocupacao: str | None = Query(None),
     secretaria: str | None = Query(None),
     permission: str | None = Query(None),
-    secretaria_acesso: str | None = Query(None),
+    secretarias_acesso: list[str] | None = Query(None),
     search: str | None = Query(None),
     bypass_cache: bool = Query(False),
     use_case: ListUsersUseCase = Depends(get_list_users_use_case),
@@ -74,7 +74,7 @@ async def list_users_v2(
             ocupacao=ocupacao,
             secretaria=secretaria,
             permission=permission,
-            secretaria_acesso=secretaria_acesso,
+            secretarias_acesso=secretarias_acesso,
             search=search,
             bypass_cache=bypass_cache,
         )
@@ -87,7 +87,7 @@ async def list_users_v2(
 @router.put("/users/{cpf}", response_model=UserAccessRecord)
 async def upsert_user_v2(
     request: UpsertUserRequest,
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     cpf: str = Path(..., pattern=r"^\d{11}$"),
     use_case: UpsertUserUseCase = Depends(get_upsert_user_use_case),
 ):
@@ -96,7 +96,7 @@ async def upsert_user_v2(
 
 @router.delete("/users/{cpf}", status_code=204)
 async def delete_user_v2(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     cpf: str = Path(..., pattern=r"^\d{11}$"),
     use_case: DeleteUserUseCase = Depends(get_delete_user_use_case),
 ):
@@ -105,7 +105,7 @@ async def delete_user_v2(
 
 @router.post("/users-batch", response_model=BatchImportResult)
 async def batch_import_users_v2(
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     file: UploadFile = File(...),
     use_case: BatchImportUsersUseCase = Depends(get_batch_import_users_use_case),
 ):
@@ -115,7 +115,7 @@ async def batch_import_users_v2(
 @router.put("/users-batch/permissions", response_model=BatchPermissionsResult)
 async def batch_update_permissions_v2(
     request: BatchPermissionsRequest,
-    permissions: CurrentUserPermissions,
+    permissions: CurrentUserPermissionsV2,
     use_case: BatchUpdatePermissionsUseCase = Depends(get_batch_update_permissions_use_case),
 ):
     return await use_case.execute(permissions, request)

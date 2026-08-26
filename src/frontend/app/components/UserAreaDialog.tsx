@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -12,7 +11,7 @@ import {
 } from "@/app/components/ui/dialog";
 import { Button } from "@/app/components/ui/button";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
-import { User, Shield, LogOut, Mail, IdCard, Calendar, Key, Clock, RefreshCw, AlertTriangle } from "lucide-react";
+import { User, Shield, LogOut, Mail, IdCard, Clock, RefreshCw, AlertTriangle } from "lucide-react";
 
 import { IdWithName } from "@/app/types";
 
@@ -32,7 +31,7 @@ interface UserInfo {
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
-  secretaria_acesso?: string | null;
+  secretarias_acesso?: string[] | null;
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
@@ -53,7 +52,6 @@ interface UserAreaDialogProps {
 }
 
 export function UserAreaDialog({ children, userInfo, open, onOpenChange }: UserAreaDialogProps) {
-  const router = useRouter();
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 

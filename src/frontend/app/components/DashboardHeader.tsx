@@ -28,7 +28,7 @@ interface UserInfo {
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
-  secretaria_acesso?: string | null;
+  secretarias_acesso?: string[] | null;
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
@@ -61,7 +61,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
     queryFn: async () => {
       try {
         return await apiService.getCurrentUser();
-      } catch (error) {
+      } catch {
         return null;
       }
     },
