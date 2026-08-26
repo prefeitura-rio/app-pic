@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 
 interface LoginFormWithFallbackProps {
   children: ReactNode;
@@ -8,26 +8,26 @@ interface LoginFormWithFallbackProps {
 }
 
 /**
- * Wraps the login form with CSP error handling
- * If form submission fails due to CSP violation, silently redirects to authUrl
+ * Wraps the login form with CSP error handling and direct fallback
+ * If form submission is blocked by CSP, directly redirects to authUrl
  * 
- * This is a failsafe for intermittent CSP issues on first access after long periods
+ * This prevents users from getting stuck on CSP violations
  */
 export function LoginFormWithFallback({ children, authUrl }: LoginFormWithFallbackProps) {
   useEffect(() => {
-    // Handle CSP violations for form-action directive
+    // Setup CSP violation listener
     const handleSecurityPolicyViolation = (event: SecurityPolicyViolationEvent) => {
-      // Only handle form-action CSP violations
-      if (event.violatedDirective === 'form-action') {
+      // Check if this is a form-action violation
+      if (event.violatedDirective && event.violatedDirective.includes('form-action')) {
+        console.warn('CSP form-action blocked, redirecting to:', authUrl);
         // Silently redirect to auth URL
         window.location.href = authUrl;
       }
     };
 
-    // Listen for CSP violations on page
+    // Listen for any CSP violations
     document.addEventListener('securitypolicyviolation', handleSecurityPolicyViolation, true);
 
-    // Cleanup listener on unmount
     return () => {
       document.removeEventListener('securitypolicyviolation', handleSecurityPolicyViolation, true);
     };
