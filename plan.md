@@ -297,31 +297,40 @@ App-pic **não roda no mesmo projeto/VPC** do Postgres novo. Confirmado via `gcl
   nenhum dos dois lados (o túnel é autenticado via IAM/mTLS sobre HTTPS até a API do
   Google, não pela rede da instância).
 
-**Decisão final (confirmada com Pedro/Diego no Slack em 20/08)**: usar o **Cloud SQL
-connector via Workload Identity Federation (WIF)** — sem chave de service account
-estática. O cluster `application` (rj-superapp) já tem a federação de identidade
-liberada; falta só a Google Service Account (no projeto `rj-iplanrio-dia`) com a role
-`roles/cloudsql.client`, vinculada via WIF à KSA do app-pic — Pedro fica responsável
-por criar/configurar essa GSA e o binding.
+**Decisão original (confirmada com Pedro/Diego no Slack em 20/08)**: usar o **Cloud
+SQL connector via Workload Identity Federation (WIF)** — sem chave de service account
+estática. Essa decisão dependia de o Pedro criar/configurar uma GSA com
+`roles/cloudsql.client` e o binding WIF na KSA do app-pic. Isso nunca foi feito, e ao
+tentar subir em staging (26/08) a API recebeu `403 boss::NOT_AUTHORIZED` da API do
+Cloud SQL (`cloudsql.instances.get`) — o Connector caía no SA default do node, sem a
+permissão necessária.
+
+**Decisão revisada (confirmada com Pedro no Discord em 26/08)**: em vez de o app-pic
+abrir seu próprio túnel IAM/WIF, usar o Service `cloudsql-proxy` já existente e
+compartilhado no cluster (mesmo usado por outros consumidores do Postgres, ex. o
+próprio n8n/airflow) — um Postgres client comum (`asyncpg`) conectando via
+`postgres.cloudsql-proxy.svc.cluster.local:5432`. O proxy já resolve IAM/mTLS do lado
+dele; o app-pic só precisa de host/porta/usuário/senha, igual qualquer Postgres.
 
 Implicações pro código:
 
-- Usar a lib `cloud-sql-python-connector` (extra `[asyncpg]`), **não** um sidecar —
-  zero componente extra no deployment.
-- Autenticação do túnel usa Application Default Credentials (ADC) automaticamente via
-  o metadata server do GKE (WIF) — **nenhuma credencial em env var** para isso.
-- A autenticação no Postgres em si continua sendo usuário/senha nativos
-  (`APP_PIC_PG_USER`/`APP_PIC_PG_PW`), como já está no `.env` — o connector só troca a
-  forma de abrir a conexão TCP, não o login do Postgres.
-- Localmente (fora do cluster), precisa de `gcloud auth application-default login`
-  com uma conta que tenha `roles/cloudsql.client` em `rj-iplanrio-dia` (a conta
-  `diego.soliveira@prefeitura.rio` já tem acesso de leitura ao projeto — confirmar se
-  também tem/terá essa role).
+- **Sem** `cloud-sql-python-connector` — engine SQLAlchemy usa uma URL comum
+  (`postgresql+asyncpg://user:pw@host:port/db`), sem `async_creator` customizado.
+- Autenticação no Postgres continua usuário/senha nativos (`APP_PIC_PG_USER`/
+  `APP_PIC_PG_PW`), como já estava.
+- Em cluster, `APP_PIC_PG_HOST=postgres.cloudsql-proxy.svc.cluster.local` (DNS interno
+  do Service, resolve só dentro do mesmo cluster/projeto onde o proxy roda).
+- Localmente (fora do cluster), essa DNS não resolve — usar
+  `kubectl port-forward -n cloudsql-proxy svc/postgres 5432:5432` (contexto
+  `gke_rj-superapp_us-central1_application`) e apontar `APP_PIC_PG_HOST=localhost`,
+  `APP_PIC_PG_PORT=5432`. Não precisa mais de `gcloud auth application-default login`.
+- Não precisa mais de WIF/GSA nenhuma pro app-pic — a GSA fica só do lado do
+  `cloudsql-proxy`, mantida pela infra.
 
 ### 7.2 Demais pontos
 
-- **Driver/ORM**: SQLAlchemy (async) + Alembic para migrations, usando o connector
-  como `creator`/`async_creator` da engine (em vez de uma URL de host:porta comum).
+- **Driver/ORM**: SQLAlchemy (async) + Alembic para migrations, engine com URL comum
+  de host:porta (ver 7.1 — sem connector customizado).
 - **Cliente do data-proxy**: HTTP (via `httpx`, já é dependência) contra o PostgREST do
   data-proxy (`DATA_PROXY_API_URL`), autenticando via OAuth2 `client_credentials` no
   mesmo Keycloak do `RMI_ISSUER` (realm `idrio_cidadao`), usando
@@ -330,12 +339,15 @@ Implicações pro código:
 - Variáveis já presentes em `src/config/.env`: `APP_PIC_PG_DB`, `APP_PIC_PG_USER`,
   `APP_PIC_PG_PW`, `DATA_PROXY_API_URL`, `DATA_PROXY_CLIENT_ID`,
   `DATA_PROXY_CLIENT_SECRET`.
-- Variáveis a adicionar: `APP_PIC_PG_INSTANCE_CONNECTION_NAME`
-  (`rj-iplanrio-dia:us-central1:postgres`, já confirmado — não é segredo),
-  `DATA_PROXY_TOKEN_URL` (já temos o valor acima), `DATA_PROXY_SCHEMA`
-  (`app_pequenos_cariocas`). Nenhuma variável de credencial nova é necessária (WIF).
-- Dependências novas em `pyproject.toml` (via `uv add`): `sqlalchemy[asyncio]`,
-  `asyncpg`, `alembic`, `cloud-sql-python-connector[asyncpg]`.
+- Variáveis a adicionar/ajustar (**pendente atualizar no Infisical**, projeto
+  `app-pic-api-bw-do`, envs `staging`/`prod`): `APP_PIC_PG_HOST`
+  (`postgres.cloudsql-proxy.svc.cluster.local` em cluster; `localhost` local via
+  port-forward), `APP_PIC_PG_PORT` (`5432`), `DATA_PROXY_TOKEN_URL` (já temos o valor
+  acima), `DATA_PROXY_SCHEMA` (`app_pequenos_cariocas`). Remover
+  `APP_PIC_PG_INSTANCE_CONNECTION_NAME` (não é mais usada). Nenhuma variável de
+  credencial GCP nova é necessária.
+- Dependências em `pyproject.toml` (via `uv add`/`uv remove`): `sqlalchemy[asyncio]`,
+  `asyncpg`, `alembic` — **sem** `cloud-sql-python-connector` (removida em 26/08).
 - Ação pendente de deploy: confirmar/ajustar a `ServiceAccount` do Pod (anotação
   `iam.gke.io/gcp-service-account: <gsa>@rj-iplanrio-dia.iam.gserviceaccount.com`) nos
   charts de `k8s/api/{staging,prod}` assim que Pedro criar a GSA — hoje esses
