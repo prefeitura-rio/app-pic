@@ -304,6 +304,50 @@ cd src/frontend && npm install && cd ../..
 docker run -d -p 6379:6379 redis:7-alpine
 ```
 
+### Conectar ao Postgres (dev local)
+
+O backend usa um Postgres novo (identidade + espelho local do `access_policy` do
+data-proxy — ver `plan.md` secao 7) na instancia `rj-iplanrio-dia:us-central1:postgres`.
+Localmente, conecte via **Cloud SQL Auth Proxy** rodando no seu proprio laptop
+(autentica com seu login `gcloud`, sem depender de acesso ao cluster/Kubernetes).
+
+**Instalar** (escolha o comando do seu SO — veja mais opcoes/versoes em
+[releases](https://github.com/GoogleCloudPlatform/cloud-sql-proxy/releases)):
+
+```bash
+# macOS
+brew install cloud-sql-proxy
+```
+
+```bash
+# Linux (amd64)
+URL="https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.25.3"
+curl "$URL/cloud-sql-proxy.linux.amd64" -o cloud-sql-proxy
+chmod +x cloud-sql-proxy
+sudo mv cloud-sql-proxy /usr/local/bin/cloud-sql-proxy
+```
+
+```powershell
+# Windows (x64, PowerShell)
+curl.exe -o cloud-sql-proxy.exe https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.25.3/cloud-sql-proxy.x64.exe
+```
+
+**Rodar** (deixe em um terminal separado enquanto usa a API):
+
+```bash
+# macOS / Linux
+cloud-sql-proxy --gcloud-auth --port 5432 rj-iplanrio-dia:us-central1:postgres
+```
+
+```powershell
+# Windows
+.\cloud-sql-proxy.exe --gcloud-auth --port 5432 rj-iplanrio-dia:us-central1:postgres
+```
+
+Requer `roles/cloudsql.client` no projeto `rj-iplanrio-dia` pra sua conta `gcloud`.
+Com o proxy rodando, `src/config/.env` ja aponta pra ele
+(`APP_PIC_PG_HOST=localhost`, `APP_PIC_PG_PORT=5432`).
+
 ### Comandos
 
 ```bash
