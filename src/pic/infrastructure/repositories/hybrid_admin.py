@@ -10,8 +10,8 @@ domain is out of scope for this migration.
 
 Scale note: this whole table pair has at most ~60 rows total, so unlike the
 old BigQuery-backed repository there's no caching here at all - every read
-goes straight to Postgres (a single indexed query, a few ms via Cloud SQL
-Connector) and `fetch_governance_df`/`find_paginated_users` just load
+goes straight to Postgres (a single indexed query, a few ms via the
+cloudsql-proxy Service) and `fetch_governance_df`/`find_paginated_users` just load
 everything into memory and filter/paginate in Polars.
 
 Write order (plan.md section 5): Postgres local is always the write of

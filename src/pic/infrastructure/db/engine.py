@@ -1,18 +1,18 @@
 """Async SQLAlchemy engine for the app-pic Postgres (identity + local mirror of
 data-proxy's `rls.access_policy`).
 
-Connection goes through the Cloud SQL Python Connector instead of a plain
-host:port URL. The connector authenticates via IAM (Workload Identity
-Federation in-cluster; local `gcloud`/ADC credentials for local dev) and opens
-an authenticated mTLS tunnel directly to the instance — no Cloud SQL Auth Proxy
-sidecar, no public-IP allowlisting needed. See plan.md section 7 for details.
+Connection is a plain host:port Postgres connection through the cluster's
+shared `cloudsql-proxy` Service (already IAM/WIF-authenticated on the infra
+side) — no Cloud SQL Python Connector, no per-pod Workload Identity binding
+needed. Locally (outside the cluster), point `APP_PIC_PG_HOST`/
+`APP_PIC_PG_PORT` at a `kubectl port-forward` of that same Service. See
+plan.md section 7 for details.
 """
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from google.cloud.sql.connector import Connector, IPTypes, create_async_connector
+from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -22,43 +22,24 @@ from sqlalchemy.ext.asyncio import (
 
 from src.config import env
 
-_connector: Connector | None = None
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
-_init_lock = asyncio.Lock()
-
-
-async def _get_connector() -> Connector:
-    global _connector
-    if _connector is None:
-        async with _init_lock:
-            if _connector is None:
-                _connector = await create_async_connector(ip_type=IPTypes.PUBLIC)
-    return _connector
-
-
-async def _getconn():
-    connector = await _get_connector()
-    return await connector.connect_async(
-        env.APP_PIC_PG_INSTANCE_CONNECTION_NAME,
-        "asyncpg",
-        user=env.APP_PIC_PG_USER,
-        password=env.APP_PIC_PG_PW,
-        db=env.APP_PIC_PG_DB,
-    )
 
 
 def get_engine() -> AsyncEngine:
-    """Lazily create the (singleton) async engine.
-
-    The connector itself is created lazily inside the first connection attempt
-    (via `_getconn`), so this is safe to call before an event loop is running.
-    """
+    """Lazily create the (singleton) async engine."""
     global _engine
     if _engine is None:
+        url = URL.create(
+            "postgresql+asyncpg",
+            username=env.APP_PIC_PG_USER,
+            password=env.APP_PIC_PG_PW,
+            host=env.APP_PIC_PG_HOST,
+            port=env.APP_PIC_PG_PORT,
+            database=env.APP_PIC_PG_DB,
+        )
         _engine = create_async_engine(
-            "postgresql+asyncpg://",
-            async_creator=_getconn,
+            url,
             pool_pre_ping=True,
             # Environment isolation (staging vs prod) is done via Postgres
             # schema, not table name — models declare no schema (`schema=None`),
@@ -84,12 +65,9 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def close_engine() -> None:
-    """Dispose the engine and close the connector. Call on app shutdown."""
-    global _engine, _connector, _session_factory
+    """Dispose the engine. Call on app shutdown."""
+    global _engine, _session_factory
     if _engine is not None:
         await _engine.dispose()
         _engine = None
     _session_factory = None
-    if _connector is not None:
-        await _connector.close_async()
-        _connector = None
