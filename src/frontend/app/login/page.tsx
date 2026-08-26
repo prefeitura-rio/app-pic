@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -41,11 +40,6 @@ export default async function LoginPage({
   const resolvedParams = await searchParams;
   const error = resolvedParams.error;
   const authUrl = buildAuthUrl();
-
-  async function handleLogin() {
-    "use server";
-    redirect(authUrl);
-  }
 
   let errorMessage = null;
   if (error === "AccessDenied") {
@@ -144,16 +138,15 @@ export default async function LoginPage({
                 )}
 
                  <LoginFormWithFallback authUrl={authUrl}>
-                   <form action={handleLogin}>
+                   <a href={authUrl}>
                      <Button
                        className="w-full h-12 text-base font-semibold gap-2 shadow-lg hover:shadow-xl transition-all"
-                       type="submit"
                        size="lg"
                      >
                        <LogIn className="h-5 w-5" />
                        Entrar com gov.br
                      </Button>
-                   </form>
+                   </a>
                  </LoginFormWithFallback>
               </CardContent>
             </Card>
