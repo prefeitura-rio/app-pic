@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Users, Building2, LogIn, AlertCircle, Heart, GraduationCap, Stethoscope, Home } from "lucide-react";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { Footer } from "@/app/components/Footer";
+import { LoginFormWithFallback } from "@/app/components/LoginFormWithFallback";
 
 /**
  * Build Keycloak OAuth2 authorization URL (server-side)
@@ -39,10 +40,11 @@ export default async function LoginPage({
 }) {
   const resolvedParams = await searchParams;
   const error = resolvedParams.error;
+  const authUrl = buildAuthUrl();
 
   async function handleLogin() {
     "use server";
-    redirect(buildAuthUrl());
+    redirect(authUrl);
   }
 
   let errorMessage = null;
@@ -141,16 +143,18 @@ export default async function LoginPage({
                   </Alert>
                 )}
 
-                <form action={handleLogin}>
-                  <Button
-                    className="w-full h-12 text-base font-semibold gap-2 shadow-lg hover:shadow-xl transition-all"
-                    type="submit"
-                    size="lg"
-                  >
-                    <LogIn className="h-5 w-5" />
-                    Entrar com gov.br
-                  </Button>
-                </form>
+                 <LoginFormWithFallback authUrl={authUrl}>
+                   <form action={handleLogin}>
+                     <Button
+                       className="w-full h-12 text-base font-semibold gap-2 shadow-lg hover:shadow-xl transition-all"
+                       type="submit"
+                       size="lg"
+                     >
+                       <LogIn className="h-5 w-5" />
+                       Entrar com gov.br
+                     </Button>
+                   </form>
+                 </LoginFormWithFallback>
               </CardContent>
             </Card>
           </div>
