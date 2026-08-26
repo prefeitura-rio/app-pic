@@ -16,6 +16,7 @@ the cached token so the *next* call fetches a fresh one.
 
 import asyncio
 import time
+from contextvars import ContextVar
 
 import httpx
 
@@ -24,6 +25,18 @@ from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
 # Refresh this many seconds before the token's reported expiry, to absorb
 # request latency and clock drift between this process and Keycloak.
 _EXPIRY_LEEWAY_SECONDS = 10.0
+
+# Per-request bearer override: when set, `on_request` sends this token instead
+# of the Keycloak client_credentials one. Used by the participant read-path so
+# PostgREST applies row-level security for the *authenticated user* (their JWT
+# carries the `preferred_username`/`schemas` claims the data-proxy RLS reads).
+# ContextVar is isolated per asyncio task, so a user token set inside one
+# request can never leak into another concurrent request. Callers that never
+# set it (rls.access_policy sync, RPCs, tests) keep the default
+# client_credentials behavior unchanged.
+user_token_override: ContextVar[str | None] = ContextVar(
+    "postgrest_user_token_override", default=None
+)
 
 # Used only when a token response omits `expires_in` (should not happen with
 # Keycloak, but avoids caching a token forever if it ever does).
@@ -64,8 +77,16 @@ class ClientCredentialsAuth:
         self._lock = asyncio.Lock()
 
     async def on_request(self, request: httpx.Request) -> None:
-        """httpx request event hook: attach a valid bearer token."""
-        request.headers["Authorization"] = f"Bearer {await self._get_token()}"
+        """httpx request event hook: attach a valid bearer token.
+
+        Prefers the per-request user-token override (see
+        `user_token_override`) so PostgREST can apply row-level security for
+        the authenticated end user; falls back to the Keycloak
+        client_credentials token otherwise.
+        """
+        override = user_token_override.get()
+        token = override if override is not None else await self._get_token()
+        request.headers["Authorization"] = f"Bearer {token}"
 
     async def on_response(self, response: httpx.Response) -> None:
         """httpx response event hook: drop a token the server rejected.

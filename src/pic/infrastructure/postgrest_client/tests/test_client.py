@@ -148,6 +148,52 @@ async def test_for_schema_does_not_leak_into_the_original_schema():
     await client.aclose()
 
 
+async def test_with_user_token_overrides_bearer_and_resets_afterward():
+    tokens: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "keycloak.example":
+            return httpx.Response(
+                200, json={"access_token": "client-token", "expires_in": 3600}
+            )
+        tokens.append(request.headers.get("authorization", ""))
+        return httpx.Response(200, json=[{"id": 1}])
+
+    client = PostgrestClient(CONFIG, transport=httpx.MockTransport(handler))
+
+    async with client.with_user_token("user-jwt"):
+        await client.table("access_policy").select("*").execute()
+
+    assert tokens[0] == "Bearer user-jwt"
+
+    # Outside the block the client falls back to the client_credentials token.
+    await client.table("access_policy").select("*").execute()
+    assert tokens[1] == "Bearer client-token"
+
+    await client.aclose()
+
+
+async def test_with_user_token_none_keeps_client_credentials():
+    tokens: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "keycloak.example":
+            return httpx.Response(
+                200, json={"access_token": "client-token", "expires_in": 3600}
+            )
+        tokens.append(request.headers.get("authorization", ""))
+        return httpx.Response(200, json=[{"id": 1}])
+
+    client = PostgrestClient(CONFIG, transport=httpx.MockTransport(handler))
+
+    async with client.with_user_token(None):
+        await client.table("access_policy").select("*").execute()
+
+    assert tokens[0] == "Bearer client-token"
+
+    await client.aclose()
+
+
 async def test_get_postgrest_client_returns_singleton(monkeypatch):
     monkeypatch.setattr(client_module, "load_config", lambda: CONFIG)
     client_module._client = None
