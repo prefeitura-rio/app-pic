@@ -70,8 +70,18 @@ def get_participant_repo() -> IParticipantRepository:
 
 
 async def get_participant_read_repo() -> ParticipantRepository:
-    """PostgREST-backed repo for participant list/detail (data-proxy)."""
-    return PostgrestParticipantRepository(await get_postgrest_client())
+    """PostgREST-backed repo for participant list/detail (data-proxy).
+
+    Redis is used to cache the participant list per user (cpf); when Redis is
+    unavailable the repository still works without caching.
+    """
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return PostgrestParticipantRepository(
+        postgrest_client, redis_client=redis_client
+    )
 
 
 async def get_dashboard_repo() -> IDashboardRepository:

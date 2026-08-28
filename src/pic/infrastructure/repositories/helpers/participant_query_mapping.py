@@ -26,12 +26,13 @@ FILTER_COLUMN_MAP = {
     "raca": "raca",
 }
 
-# Protocolo filters match a field *inside* the `protocolo_listagem` array of
-# objects. Values are the inner-object field names.
+# Protocolo filters match a column of `endpoint_participante_protocolos_detalhe`
+# (joined by id_membro_familia). Values keep the v1 semantics where
+# `protocolo_descricao` carries the protocol *id* (label is UI-only).
 PROTOCOLO_FILTER_FIELDS = {
-    "protocolo_descricao": "id",
+    "protocolo_descricao": "protocolo_id",
     "protocolo_status": "protocolo_status_label",
-    "protocolo_secretaria": "secretaria",
+    "protocolo_secretaria": "protocolo_secretaria",
 }
 
 # Sort request key -> column used for ordering.

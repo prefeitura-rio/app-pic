@@ -33,6 +33,7 @@ interface FilterCardProps {
 	totalResults?: number;
 	onToggleMap?: () => void; // Callback para alternar visualização de mapa
 	viewMode?: "table" | "map"; // Modo de visualização atual
+	hideSituacao?: boolean; // Esconde o filtro de situação (acesso parcial)
 }
 
 const FilterCardComponent = ({
@@ -46,6 +47,7 @@ const FilterCardComponent = ({
 	totalResults,
 	onToggleMap,
 	viewMode = "table",
+	hideSituacao = false,
 }: FilterCardProps) => {
 	const [searchInput, setSearchInput] = useState("");
 
@@ -301,21 +303,23 @@ const FilterCardComponent = ({
 							options={filteredOptions.status_list}
 						/>
 
-						{/* Situação - Multi-select */}
-						<VirtualizedMultiSelect
-							value={
-								Array.isArray(filters.situacao)
-									? filters.situacao
-									: filters.situacao
-										? [filters.situacao]
-										: []
-							}
-							onSelect={(values) => handleMultiFilterUpdate("situacao", values)}
-							disabled={loading}
-							placeholder="Situações"
-							defaultLabel="Todas as Situações"
-							options={filteredOptions.situacoes}
-						/>
+						{/* Situação - Multi-select (escondido para acesso parcial) */}
+						{!hideSituacao && (
+							<VirtualizedMultiSelect
+								value={
+									Array.isArray(filters.situacao)
+										? filters.situacao
+										: filters.situacao
+											? [filters.situacao]
+											: []
+								}
+								onSelect={(values) => handleMultiFilterUpdate("situacao", values)}
+								disabled={loading}
+								placeholder="Situações"
+								defaultLabel="Todas as Situações"
+								options={filteredOptions.situacoes}
+							/>
+						)}
 
 						{/* Perfil Racial - Multi-select */}
 						<VirtualizedMultiSelect

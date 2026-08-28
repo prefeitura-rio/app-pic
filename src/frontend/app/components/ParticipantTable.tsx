@@ -8,13 +8,14 @@ import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 type BadgeVariant = "outline" | "default" | "secondary" | "destructive" | "warning" | "success";
 
 interface ParticipantTableProps {
-  data: ParticipanteListItem[];
-  onRowClick: (idMembroFamilia: string) => void;
-  getBadgeVariant: (situacao?: string) => BadgeVariant;
-  isLoading?: boolean;
-  sortBy?: string | null;
-  sortOrder?: SortOrder;
-  onSort?: (column: string) => void;
+	data: ParticipanteListItem[];
+	onRowClick: (idMembroFamilia: string) => void;
+	getBadgeVariant: (situacao?: string) => BadgeVariant;
+	isLoading?: boolean;
+	sortBy?: string | null;
+	sortOrder?: SortOrder;
+	onSort?: (column: string) => void;
+	visibleColumns?: string[];
 }
 
 const SORTABLE_COLUMNS = [
@@ -67,20 +68,24 @@ const getTotalColor = (fracao?: string) => {
 
 const MIN_TABLE_WIDTH = 1000;
 
-export const ParticipantTable = memo(({
-  data,
-  onRowClick,
-  getBadgeVariant,
-  isLoading,
-  sortBy,
-  sortOrder = "asc",
-  onSort,
-}: ParticipantTableProps) => {
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    return null;
-  }
+export const ParticipantTable = memo(
+	({
+		data,
+		onRowClick,
+		getBadgeVariant,
+		isLoading,
+		sortBy,
+		sortOrder = "asc",
+		onSort,
+		visibleColumns: visibleColumnKeys,
+	}: ParticipantTableProps) => {
+		if (!data || !Array.isArray(data) || data.length === 0) {
+			return null;
+		}
 
-	const visibleColumns = SORTABLE_COLUMNS;
+		const visibleColumns = visibleColumnKeys
+			? SORTABLE_COLUMNS.filter((col) => visibleColumnKeys.includes(col.key))
+			: SORTABLE_COLUMNS;
 
   const handleHeaderClick = (column: string) => {
     if (onSort) {

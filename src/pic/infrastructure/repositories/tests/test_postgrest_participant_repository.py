@@ -1,3 +1,6 @@
+import json
+from unittest.mock import AsyncMock, MagicMock
+
 import httpx
 import pytest
 
@@ -32,10 +35,16 @@ PARTIAL_SMS = UserPermissions(
     secretarias_acesso=["SMS"],
 )
 
+NO_ACCESS = UserPermissions(
+    cpf="33333333333",
+    is_admin=False,
+    is_super_admin=False,
+    secretarias_acesso=[],
+)
 
-def list_row(
-    membro_id: str, bairro: str = "Centro", situacao: str = "Atenção", **overrides
-):
+
+def resumo_row(membro_id: str, bairro: str = "Centro", situacao: str = "Atenção", **overrides):
+    """One `endpoint_participante_resumo` row (pre-aggregated counters)."""
     row = {
         "id_familia": f"FAM-{membro_id}",
         "id_membro_familia": membro_id,
@@ -46,40 +55,52 @@ def list_row(
         "idade": 3,
         "status": "Ativo",
         "situacao": situacao,
+        "raca": "branca",
         "total_fracao": "7/7",
         "assistencia_fracao": "3/3",
         "educacao_fracao": "0/0",
         "saude_fracao": "4/4",
         "total_protocolos_irregular": 0,
-        "raca": "branca",
-        "protocolo_listagem": [
-            {
-                "id": "sms_x",
-                "secretaria": "SMS",
-                "descricao": "x",
-                "status": "regular",
-                "irregular_indicador": "false",
-                "protocolo_status_label": "Regular",
-            },
-            {
-                "id": "sme_x",
-                "secretaria": "SME",
-                "descricao": "y",
-                "status": "regular",
-                "irregular_indicador": "false",
-                "protocolo_status_label": "Regular",
-            },
-        ],
+        "total_protocolos_regular": 7,
+        "assistencia_protocolos_total": 3,
+        "assistencia_protocolos_regular": 3,
+        "assistencia_protocolos_irregular": 0,
+        "educacao_protocolos_total": 0,
+        "educacao_protocolos_regular": 0,
+        "educacao_protocolos_irregular": 0,
+        "saude_protocolos_total": 4,
+        "saude_protocolos_regular": 4,
+        "saude_protocolos_irregular": 0,
     }
     row.update(overrides)
     return row
 
 
+def protocolo_row(
+    membro_id: str,
+    *,
+    protocolo_id: str = "sms_x",
+    secretaria: str = "SMS",
+    status_label: str = "Regular",
+):
+    return {
+        "id_membro_familia": membro_id,
+        "protocolo_id": protocolo_id,
+        "protocolo_secretaria": secretaria,
+        "protocolo_descricao": "descricao",
+        "protocolo_status": "regular",
+        "protocolo_irregular_indicador": False,
+        "protocolo_status_label": status_label,
+        "cpf_particao": 1,
+    }
+
+
 class FakeDataProxy:
     """Fakes the data-proxy PostgREST behind one MockTransport.
 
-    Honors limit/offset over the canned rows per table, and returns a
-    Content-Range header when the request carries `Prefer: count=exact`.
+    Honors limit/offset and simple column filters (`eq.`, `ilike.`, `in.`,
+    `is.`) over the canned rows per table, and returns a Content-Range header
+    when the request carries `Prefer: count=exact`.
     """
 
     def __init__(self, rows_by_table: dict[str, list[dict]]):
@@ -89,6 +110,37 @@ class FakeDataProxy:
         self.error_body: dict | None = None
         self.error_text: str | None = None
         self.transport_error: Exception | None = None
+
+    @staticmethod
+    def _matches(row: dict, params: httpx.QueryParams) -> bool:
+        for key, value in params.items():
+            if key in {"select", "order", "limit", "offset"}:
+                continue
+            if not isinstance(value, str) or "." not in value:
+                continue
+            op, _, operand = value.partition(".")
+            if op not in {"eq", "ilike", "in", "is"}:
+                continue
+            row_value = row.get(key)
+            if op == "eq":
+                if str(row_value) != operand:
+                    return False
+            elif op == "ilike":
+                pattern = (
+                    operand.replace("\\_", "_")
+                    .replace("\\%", "%")
+                    .replace("\\\\", "\\")
+                )
+                if str(row_value or "").lower() != pattern.lower():
+                    return False
+            elif op == "in":
+                allowed = [v.strip() for v in operand.strip("()").split(",")]
+                if str(row_value) not in allowed:
+                    return False
+            elif op == "is":
+                if bool(row_value) != (operand == "true"):
+                    return False
+        return True
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "keycloak.example":
@@ -113,7 +165,11 @@ class FakeDataProxy:
             )
 
         table = request.url.path.lstrip("/")
-        rows = self.rows_by_table.get(table, [])
+        rows = [
+            row
+            for row in self.rows_by_table.get(table, [])
+            if self._matches(row, request.url.params)
+        ]
         params = request.url.params
         limit = int(params["limit"]) if "limit" in params else None
         offset = int(params["offset"]) if "offset" in params else 0
@@ -129,17 +185,29 @@ class FakeDataProxy:
 def make_repo():
     def _make(
         rows_by_table: dict[str, list[dict]],
+        redis_client=None,
     ) -> tuple[PostgrestParticipantRepository, FakeDataProxy]:
         fake = FakeDataProxy(rows_by_table)
         client = PostgrestClient(CONFIG, transport=httpx.MockTransport(fake))
-        return PostgrestParticipantRepository(client), fake
+        return (
+            PostgrestParticipantRepository(client, redis_client=redis_client),
+            fake,
+        )
 
     return _make
 
 
+# ---------------------------------------------------------------------------
+# List — super admin (full access, pushdown)
+# ---------------------------------------------------------------------------
+
+
 async def test_list_pushes_filters_sort_pagination_and_user_token(make_repo):
-    rows = [list_row("1"), list_row("2")]
-    repo, fake = make_repo({"endpoint_participante_listagem": rows})
+    rows = [
+        resumo_row("1", bairro="Engenho da Rainha", id_cre="03"),
+        resumo_row("2", bairro="Engenho da Rainha", id_cre="03"),
+    ]
+    repo, fake = make_repo({"endpoint_participante_resumo": rows})
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(status="Ativo", bairro="Engenho da Rainha", cre="03"),
@@ -153,7 +221,11 @@ async def test_list_pushes_filters_sort_pagination_and_user_token(make_repo):
     assert sent.headers["authorization"] == f"Bearer {USER_TOKEN}"
     assert sent.headers["accept-profile"] == "app_pequenos_cariocas"
     params = sent.url.params
-    assert params["select"] == "*"
+    select = params["select"]
+    assert select.startswith("id_familia,id_membro_familia,nome,cpf,grupo,bairro,idade,status,raca")
+    assert "situacao" in select
+    assert "total_fracao" in select
+    assert "total_protocolos_irregular" in select
     assert params["status"] == "ilike.Ativo"
     assert params["bairro"] == "ilike.Engenho da Rainha"
     assert params["id_cre"] == "eq.03"
@@ -175,7 +247,7 @@ async def test_list_pushes_filters_sort_pagination_and_user_token(make_repo):
 
 
 async def test_list_multi_value_filter_uses_in(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     await repo.list_participants(
         filters=FilterCriteria(bairro="A|B"),
         pagination=PaginationParams(page=1, page_size=20),
@@ -186,7 +258,7 @@ async def test_list_multi_value_filter_uses_in(make_repo):
 
 
 async def test_list_boolean_filter_uses_is(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     await repo.list_participants(
         filters=FilterCriteria(has_bolsa_familia=True),
         pagination=PaginationParams(page=1, page_size=20),
@@ -197,7 +269,7 @@ async def test_list_boolean_filter_uses_is(make_repo):
 
 
 async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     await repo.list_participants(
         filters=FilterCriteria(search="maria"),
         pagination=PaginationParams(page=1, page_size=20),
@@ -214,8 +286,8 @@ async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
 async def test_list_page_size_minus_one_loops_pages_without_server_pagination(
     make_repo,
 ):
-    rows = [list_row(str(i)) for i in range(1500)]
-    repo, fake = make_repo({"endpoint_participante_listagem": rows})
+    rows = [resumo_row(str(i)) for i in range(1500)]
+    repo, fake = make_repo({"endpoint_participante_resumo": rows})
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(),
@@ -235,7 +307,7 @@ async def test_list_page_size_minus_one_loops_pages_without_server_pagination(
 
 
 async def test_list_sorts_by_default_column_when_sort_not_requested(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     await repo.list_participants(
         filters=FilterCriteria(),
         pagination=PaginationParams(page=1, page_size=20),
@@ -245,46 +317,38 @@ async def test_list_sorts_by_default_column_when_sort_not_requested(make_repo):
     assert fake.requests[0].url.params["order"].startswith("nome.asc")
 
 
-async def test_list_situacao_filter_is_applied_in_app(make_repo):
+async def test_list_situacao_filter_is_pushed_for_full_access(make_repo):
     rows = [
-        list_row("1", situacao="Atenção"),
-        list_row("2", situacao="Regular"),
+        resumo_row("1", situacao="Atenção"),
+        resumo_row("2", situacao="Regular"),
     ]
-    repo, fake = make_repo({"endpoint_participante_listagem": rows})
+    repo, fake = make_repo({"endpoint_participante_resumo": rows})
 
-    data, meta = await repo.list_participants(
+    await repo.list_participants(
         filters=FilterCriteria(situacao="ATENÇÃO"),
         pagination=PaginationParams(page=1, page_size=20),
         sort=SortParams(),
         permissions=SUPER_ADMIN,
     )
 
-    # Fetch-all (batch paging only, no server-side pagination) because the
-    # filter is applied in-app after governance.
-    assert fake.requests[0].url.params["limit"] == "1000"
-    assert fake.requests[0].url.params["offset"] == "0"
-    assert [item.id_membro_familia for item in data] == ["1"]
-    assert meta.total_rows == 1
+    assert fake.requests[0].url.params["situacao"] == "ilike.ATENÇÃO"
+    assert fake.requests[0].url.params["limit"] == "20"
 
 
-async def test_list_partial_secretaria_applies_governance_and_paginates_in_app(
+# ---------------------------------------------------------------------------
+# List — partial access (in-app view)
+# ---------------------------------------------------------------------------
+
+
+async def test_list_partial_secretaria_computes_view_and_drops_invisible_rows(
     make_repo,
 ):
     rows = [
-        list_row("1"),  # has SMS + SME protocols -> kept, counters recomputed
-        list_row(
-            "2",
-            protocolo_listagem=[
-                {
-                    "id": "sme_x",
-                    "secretaria": "SME",
-                    "irregular_indicador": "false",
-                    "protocolo_status_label": "Regular",
-                }
-            ],
-        ),  # only SME -> dropped
+        resumo_row("1", saude_protocolos_total=1, saude_protocolos_regular=1,
+                   saude_protocolos_irregular=0, saude_fracao="1/1"),
+        resumo_row("2", saude_protocolos_total=0),
     ]
-    repo, fake = make_repo({"endpoint_participante_listagem": rows})
+    repo, fake = make_repo({"endpoint_participante_resumo": rows})
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(),
@@ -294,21 +358,91 @@ async def test_list_partial_secretaria_applies_governance_and_paginates_in_app(
         user_token=USER_TOKEN,
     )
 
+    # Fetch-all (in-app pipeline).
     assert fake.requests[0].url.params["limit"] == "1000"
-    assert [item.id_membro_familia for item in data] == ["1"]
-    item = data[0]
-    # Recomputed from the single SMS protocol (1 regular, 0 irregular).
-    assert item.total_protocolos_irregular == 0
-    assert item.saude_fracao == "1/1"
-    assert meta.total_rows == 1
     assert fake.requests[0].headers["authorization"] == f"Bearer {USER_TOKEN}"
 
+    # Only row "1" has SMS protocols; row "2" is dropped.
+    assert [item.id_membro_familia for item in data] == ["1"]
+    item = data[0]
+    assert item.total_protocolos_irregular == 0
+    assert item.total_fracao == "1/1"
+    assert item.saude_fracao == "1/1"
+    assert item.assistencia_fracao is None
+    assert item.educacao_fracao is None
+    assert item.situacao is None
+    assert item.status == "Ativo"
+    assert meta.total_rows == 1
 
-async def test_list_protocolo_filter_translates_to_contains_and_filters_in_app(
-    make_repo,
-):
-    rows = [list_row("1")]
-    repo, fake = make_repo({"endpoint_participante_listagem": rows})
+
+async def test_list_partial_select_only_allowed_secretaria_columns(make_repo):
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    await repo.list_participants(
+        filters=FilterCriteria(),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=PARTIAL_SMS,
+    )
+    select = fake.requests[0].url.params["select"]
+    assert "saude_fracao" in select
+    assert "saude_protocolos_total" in select
+    assert "assistencia_fracao" not in select
+    assert "educacao_fracao" not in select
+    assert "situacao" not in select
+    assert "status" in select
+
+
+async def test_list_partial_ignores_situacao_filter(make_repo):
+    repo, fake = make_repo({"endpoint_participante_resumo": [resumo_row("1")]})
+    await repo.list_participants(
+        filters=FilterCriteria(situacao="ATENÇÃO"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=PARTIAL_SMS,
+    )
+    assert "situacao" not in fake.requests[0].url.params
+
+
+async def test_list_partial_sort_by_situacao_falls_back_to_nome(make_repo):
+    repo, fake = make_repo({"endpoint_participante_resumo": [resumo_row("1")]})
+    await repo.list_participants(
+        filters=FilterCriteria(),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(sort_by="situacao", sort_order="asc"),
+        permissions=PARTIAL_SMS,
+    )
+    assert fake.requests[0].url.params["order"].startswith("nome.asc")
+
+
+async def test_list_no_access_keeps_rows_with_null_protocol_fields(make_repo):
+    repo, _ = make_repo({"endpoint_participante_resumo": [resumo_row("1")]})
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=NO_ACCESS,
+    )
+    assert meta.total_rows == 1
+    item = data[0]
+    assert item.status == "Ativo"
+    assert item.total_fracao is None
+    assert item.total_protocolos_irregular is None
+    assert item.saude_fracao is None
+    assert item.situacao is None
+
+
+# ---------------------------------------------------------------------------
+# Protocolo filters (endpoint_participante_protocolos_detalhe)
+# ---------------------------------------------------------------------------
+
+
+async def test_list_protocolo_filter_resolves_ids_then_ins_on_resumo(make_repo):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_resumo": [resumo_row("1"), resumo_row("2")],
+            "endpoint_participante_protocolos_detalhe": [protocolo_row("1")],
+        }
+    )
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(protocolo_secretaria="SMS"),
@@ -317,10 +451,204 @@ async def test_list_protocolo_filter_translates_to_contains_and_filters_in_app(
         permissions=SUPER_ADMIN,
     )
 
-    assert fake.requests[0].url.params["protocolo_listagem"] == (
-        'cs.[{"secretaria":"SMS"}]'
-    )
+    detalhe_req = fake.requests[0]
+    assert detalhe_req.url.path == "/endpoint_participante_protocolos_detalhe"
+    assert detalhe_req.url.params["protocolo_secretaria"] == "ilike.SMS"
+    assert "protocolo_secretaria=in" not in str(detalhe_req.url.params)
+
+    resumo_req = fake.requests[1]
+    assert resumo_req.url.path == "/endpoint_participante_resumo"
+    assert resumo_req.url.params["id_membro_familia"] == "in.(1)"
     assert [item.id_membro_familia for item in data] == ["1"]
+    assert meta.total_rows == 1
+
+
+async def test_list_protocolo_filter_restricts_to_allowed_secretaria_for_partial(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_resumo": [resumo_row("1")],
+            "endpoint_participante_protocolos_detalhe": [
+                protocolo_row("1", secretaria="SMS"),
+                protocolo_row("1", protocolo_id="sme_x", secretaria="SME"),
+            ],
+        }
+    )
+
+    await repo.list_participants(
+        filters=FilterCriteria(protocolo_descricao="sms_x"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=PARTIAL_SMS,
+    )
+
+    detalhe_req = fake.requests[0]
+    assert detalhe_req.url.params["protocolo_id"] == "ilike.sms\\_x"
+    assert detalhe_req.url.params["protocolo_secretaria"] == "in.(SMS)"
+
+
+async def test_list_protocolo_multi_value_intersects_id_sets(make_repo):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_resumo": [resumo_row("1"), resumo_row("2")],
+            "endpoint_participante_protocolos_detalhe": [
+                protocolo_row("1", protocolo_id="sms_a", status_label="Regular"),
+                protocolo_row("1", protocolo_id="sms_b", status_label="Atenção"),
+                protocolo_row("2", protocolo_id="sms_a", status_label="Regular"),
+            ],
+        }
+    )
+
+    data, _ = await repo.list_participants(
+        filters=FilterCriteria(protocolo_status="Regular|Atenção"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    # Two detail queries (one per value), then the resumo query.
+    assert len(fake.requests) == 3
+    assert fake.requests[0].url.params["protocolo_status_label"] == "ilike.Regular"
+    assert fake.requests[1].url.params["protocolo_status_label"] == "ilike.Atenção"
+    assert fake.requests[2].url.params["id_membro_familia"] == "in.(1)"
+    assert [item.id_membro_familia for item in data] == ["1"]
+
+
+async def test_list_protocolo_filter_with_no_matches_returns_empty_without_resumo(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_resumo": [resumo_row("1")],
+            "endpoint_participante_protocolos_detalhe": [],
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(protocolo_secretaria="SMS"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert data == []
+    assert meta.total_rows == 0
+    assert meta.total_pages == 0
+    assert len(fake.requests) == 1  # only the detail query
+
+
+# ---------------------------------------------------------------------------
+# Cache (per-user, TTL 1800, skipped in download mode)
+# ---------------------------------------------------------------------------
+
+
+class TestRepositoryCache:
+    def _make_redis(self, cached_payload: dict | None = None):
+        redis = MagicMock()
+        if cached_payload is None:
+            redis.get = AsyncMock(return_value=None)
+        else:
+            redis.get = AsyncMock(
+                return_value=json.dumps(cached_payload).encode()
+            )
+        redis.set = AsyncMock()
+        return redis
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_writes_to_redis(self, make_repo):
+        redis = self._make_redis(None)
+        repo, _ = make_repo({"endpoint_participante_resumo": [resumo_row("1")]}, redis_client=redis)
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+        redis.set.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_fetches(self, make_repo):
+        payload = {
+            "data": [],
+            "meta": {
+                "page": 1,
+                "page_size": 20,
+                "total_rows": 0,
+                "total_pages": 0,
+                "cache_hit": False,
+                "profiling": None,
+                "can_view_dashboard": None,
+            },
+        }
+        redis = self._make_redis(payload)
+        repo, fake = make_repo({"endpoint_participante_resumo": []}, redis_client=redis)
+        data, meta = await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+        assert len(fake.requests) == 0
+        assert data == []
+        assert meta.cache_hit is True
+
+    @pytest.mark.asyncio
+    async def test_bypass_cache_still_fetches_and_writes(self, make_repo):
+        redis = self._make_redis(None)
+        repo, fake = make_repo({"endpoint_participante_resumo": [resumo_row("1")]}, redis_client=redis)
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+            bypass_cache=True,
+        )
+        assert len(fake.requests) == 1
+        redis.set.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_download_mode_skips_cache(self, make_repo):
+        redis = self._make_redis(None)
+        repo, _ = make_repo({"endpoint_participante_resumo": [resumo_row("1")]}, redis_client=redis)
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=-1),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+        redis.get.assert_not_awaited()
+        redis.set.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cache_key_isolates_users(self, make_repo):
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.set = AsyncMock()
+        repo, _ = make_repo({"endpoint_participante_resumo": []}, redis_client=redis)
+
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=PARTIAL_SMS,
+        )
+
+        keys = [call.args[0] for call in redis.set.await_args_list]
+        assert len(keys) == 2
+        assert keys[0] != keys[1]
+        assert keys[0].startswith("participants_v2:")
+
+
+# ---------------------------------------------------------------------------
+# Detail (endpoint_participante_listagem — unchanged)
+# ---------------------------------------------------------------------------
 
 
 async def test_get_participant_by_id_maps_row_and_attaches_motivos(make_repo):
@@ -429,8 +757,13 @@ async def test_get_participant_by_id_partial_secretaria_drops_invisible_row(make
     assert result is None
 
 
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+
 async def test_api_error_is_wrapped_in_postgrest_error(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     fake.error_status = 400
     fake.error_body = {
         "message": 'column "bairro" does not exist',
@@ -453,7 +786,7 @@ async def test_api_error_is_wrapped_in_postgrest_error(make_repo):
 
 
 async def test_transport_error_is_wrapped_in_postgrest_error(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     fake.transport_error = httpx.ConnectError("connection refused", request=None)
 
     with pytest.raises(PostgrestError) as exc_info:
@@ -467,7 +800,7 @@ async def test_transport_error_is_wrapped_in_postgrest_error(make_repo):
 
 
 async def test_api_error_with_plain_text_body_promotes_details_to_message(make_repo):
-    repo, fake = make_repo({"endpoint_participante_listagem": []})
+    repo, fake = make_repo({"endpoint_participante_resumo": []})
     fake.error_status = 401
     fake.error_text = (
         "Jwt is not in the form of Header.Payload.Signature with two dots "
@@ -498,14 +831,14 @@ def test_postgrest_error_from_api_error_promotes_details_when_message_is_generic
                 "message": "JSON could not be generated",
                 "code": "403",
                 "hint": None,
-                "details": "b'permission denied for table endpoint_participante_listagem'",
+                "details": "b'permission denied for table endpoint_participante_resumo'",
             }
         )
     )
-    assert error.message == "permission denied for table endpoint_participante_listagem"
+    assert error.message == "permission denied for table endpoint_participante_resumo"
     assert error.code == "403"
     assert (
-        error.details == "b'permission denied for table endpoint_participante_listagem'"
+        error.details == "b'permission denied for table endpoint_participante_resumo'"
     )
 
 
