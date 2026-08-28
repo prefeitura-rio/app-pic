@@ -18,6 +18,7 @@ class GetDashboardUseCase:
     async def execute(
         self,
         permissions: Any,
+        user_token: str | None = None,
         grupo: str | None = None,
         cohort: str | None = None,
         status: str | None = None,
@@ -60,8 +61,9 @@ class GetDashboardUseCase:
 
         dashboard = await self._repository.get_dashboard_metrics(
             filters=filters,
-            permissions=permissions,
+            user_token=user_token,
             secretaria=secretaria,
+            user_id=permissions.cpf if permissions else None,
             bypass_cache=bypass_cache,
         )
 
