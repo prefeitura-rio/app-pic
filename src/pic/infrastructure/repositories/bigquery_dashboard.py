@@ -14,6 +14,7 @@ class BigQueryDashboardRepository(IDashboardRepository):
         filters: dict[str, object],
         user_token: str | None = None,
         secretaria: str | None = None,
+        user_id: str | None = None,
         bypass_cache: bool = False,
     ) -> Dashboard:
         try:

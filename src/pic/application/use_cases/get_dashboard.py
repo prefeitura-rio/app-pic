@@ -63,6 +63,7 @@ class GetDashboardUseCase:
             filters=filters,
             user_token=user_token,
             secretaria=secretaria,
+            user_id=permissions.cpf if permissions else None,
             bypass_cache=bypass_cache,
         )
 
