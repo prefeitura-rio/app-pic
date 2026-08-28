@@ -28,12 +28,13 @@ from src.pic.infrastructure.dashboard.compute_postgrest import (
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
 from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
-    PostgrestDashboardRepository,
     _TABLE_CONSOLIDADO,
     _TABLE_PROTOCOLOS,
     _TABLE_RESOLUCAO,
     _TABLE_SERIES,
     _TABLE_TEMPO,
+    PostgrestDashboardRepository,
+    _make_cache_key,
 )
 
 # ---------------------------------------------------------------------------
@@ -818,3 +819,45 @@ class TestRepositoryCache:
         repo, _ = _make_repo(ALL_TABLES, redis_client=redis)
         await repo.get_dashboard_metrics(filters={}, bypass_cache=True)
         redis.set.assert_awaited_once()
+
+
+class TestCacheKey:
+    """Verify the cache key is deterministic and isolated per user."""
+
+    def test_key_deterministic_for_same_inputs(self):
+        key1 = _make_cache_key({"bairro": "Copacabana"}, "SMS", "111.111.111-11")
+        key2 = _make_cache_key({"bairro": "Copacabana"}, "SMS", "111.111.111-11")
+        assert key1 == key2
+
+    def test_key_isolates_by_user_id(self):
+        key_a = _make_cache_key({"bairro": "Copacabana"}, "SMS", "111.111.111-11")
+        key_b = _make_cache_key({"bairro": "Copacabana"}, "SMS", "222.222.222-22")
+        assert key_a != key_b
+
+    def test_key_isolates_by_filters(self):
+        key_a = _make_cache_key({"bairro": "Copacabana"}, "SMS", "111.111.111-11")
+        key_b = _make_cache_key({"bairro": "Leblon"}, "SMS", "111.111.111-11")
+        assert key_a != key_b
+
+    def test_key_isolates_by_secretaria(self):
+        key_a = _make_cache_key({"bairro": "Copacabana"}, "SMS", "111.111.111-11")
+        key_b = _make_cache_key({"bairro": "Copacabana"}, "SME", "111.111.111-11")
+        assert key_a != key_b
+
+    def test_key_isolates_none_user_id_from_empty_user_id(self):
+        key_a = _make_cache_key({}, None, None)
+        key_b = _make_cache_key({}, None, "")
+        assert key_a != key_b
+
+    @pytest.mark.asyncio
+    async def test_repo_uses_user_id_in_cache_key(self):
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.set = AsyncMock()
+        repo, _ = _make_repo(ALL_TABLES, redis_client=redis)
+        await repo.get_dashboard_metrics(
+            filters={"bairro": "Copacabana"},
+            user_id="111.111.111-11",
+        )
+        expected = _make_cache_key({"bairro": "Copacabana"}, None, "111.111.111-11")
+        redis.get.assert_awaited_once_with(expected)

@@ -13,7 +13,9 @@ Design notes:
   section 6 (tempo médio), exactly as V1 did.
 - All five fetches run concurrently with `asyncio.gather` to minimise latency.
 - Results are cached in Redis keyed by a deterministic hash of (filters,
-  secretaria). `bypass_cache=True` skips reading the cache but still writes.
+  secretaria, user_id). Entries are never shared across users; PostgREST RLS
+  scopes each user's data at query time. `bypass_cache=True` skips reading the
+  cache but still writes.
 - `PGRST_DB_MAX_ROWS` caps each response at 1 000 rows. Sections 1/4/5 use
   PostgREST aggregates (one row back); sections 2/3/6/7 may return up to
   ~hundreds of rows but never approach the cap for this dataset.  If that
@@ -66,7 +68,7 @@ _EXACT_COLUMNS: frozenset[str] = frozenset({
     "pic_cohort",
 })
 
-_CACHE_TTL_SECONDS = 3600  # 1 hour
+_CACHE_TTL_SECONDS = 1800  # 30 minutes (session lifetime)
 
 
 def _escape_ilike(value: str) -> str:
@@ -124,10 +126,18 @@ def _apply_filters(
     return query
 
 
-def _make_cache_key(filters: dict[str, object], secretaria: str | None) -> str:
-    """Deterministic cache key from filters + secretaria."""
+def _make_cache_key(
+    filters: dict[str, object],
+    secretaria: str | None,
+    user_id: str | None,
+) -> str:
+    """Deterministic cache key from filters + secretaria + user_id.
+
+    ``user_id`` isolates the cache per user (each user's permission scope is
+    enforced by PostgREST RLS at query time), so entries are never shared.
+    """
     payload = json.dumps(
-        {"filters": filters, "secretaria": secretaria},
+        {"filters": filters, "secretaria": secretaria, "user_id": user_id},
         sort_keys=True,
         default=str,
     )
@@ -159,6 +169,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
         filters: dict[str, object],
         user_token: str | None = None,
         secretaria: str | None = None,
+        user_id: str | None = None,
         bypass_cache: bool = False,
     ) -> Dashboard:
         """Fetch and compute all seven dashboard sections.
@@ -170,6 +181,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 corretamente. Segue o mesmo padrão de ``PostgrestParticipantRepository``.
             secretaria: Optional secretaria filter (SMS | SME | SMAS). Does
                 NOT filter rows — only controls which bands appear in section 6.
+            user_id: Identificador do usuário (CPF) usado para isolar o cache
+                por usuário. Sem ele, entradas de cache poderiam vazar entre
+                usuários com permissões diferentes.
             bypass_cache: Skip Redis read but still write on cache miss.
 
         Returns:
@@ -178,7 +192,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
         start = time.perf_counter()
 
         # 1. Try cache -------------------------------------------------------
-        cache_key = _make_cache_key(filters, secretaria)
+        cache_key = _make_cache_key(filters, secretaria, user_id)
         if not bypass_cache and self._redis is not None:
             cached = await self._get_from_cache(cache_key)
             if cached is not None:
