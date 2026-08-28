@@ -1,3 +1,5 @@
+import asyncio
+
 from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.application.ports.debug_repository import IDebugRepository
@@ -38,8 +40,12 @@ from src.pic.application.use_cases.get_participant_detail import (
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
 from src.pic.infrastructure.postgrest_client.client import get_postgrest_client
+from src.pic.infrastructure.redis_client import get_redis_client
 from src.pic.infrastructure.repositories.bigquery_dashboard import (
     BigQueryDashboardRepository,
+)
+from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
+    PostgrestDashboardRepository,
 )
 from src.pic.infrastructure.repositories.bigquery_debug import (
     BigQueryDebugRepository,
@@ -68,8 +74,19 @@ async def get_participant_read_repo() -> ParticipantRepository:
     return PostgrestParticipantRepository(await get_postgrest_client())
 
 
-def get_dashboard_repo() -> IDashboardRepository:
-    return BigQueryDashboardRepository()
+async def get_dashboard_repo() -> IDashboardRepository:
+    """PostgREST-backed dashboard repository (V2 hexagonal).
+
+    Both the PostgREST and Redis clients are lazy singletons; the first call
+    creates them, subsequent calls reuse the same instance.  If Redis is
+    unavailable (URL missing, connection error) ``get_redis_client`` returns
+    ``None`` and caching is silently disabled — the request still succeeds.
+    """
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return PostgrestDashboardRepository(postgrest_client, redis_client=redis_client)
 
 
 def get_admin_repo() -> IAdminRepository:
@@ -96,8 +113,8 @@ def get_filter_vocabulary_use_case() -> GetFilterVocabularyUseCase:
     return GetFilterVocabularyUseCase(repository=get_participant_repo())
 
 
-def get_dashboard_use_case() -> GetDashboardUseCase:
-    return GetDashboardUseCase(repository=get_dashboard_repo())
+async def get_dashboard_use_case() -> GetDashboardUseCase:
+    return GetDashboardUseCase(repository=await get_dashboard_repo())
 
 
 def get_export_participants_use_case() -> ExportParticipantsUseCase:
