@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from src.api import router as api_router
 from src.config import env
 from src.core.middlewares.logging import LoggingMiddleware
 from src.core.middlewares.static_cache import NoCacheStaticFilesMiddleware
+from src.pic.infrastructure.postgrest_client.client import close_postgrest_client
+from src.pic.infrastructure.redis_client import close_redis_client
 from src.pic.presentation.v2.admin import router as v2_admin_router
 from src.pic.presentation.v2.dashboard import router as v2_dashboard_router
 from src.pic.presentation.v2.debug import router as v2_debug_router
@@ -18,6 +21,15 @@ from src.pic.presentation.v2.filters import router as v2_filters_router
 from src.pic.presentation.v2.geospatial import router as v2_geospatial_router
 from src.pic.presentation.v2.participants import router as v2_participants_router
 from src.utils.log import logger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage shared async resources for the lifetime of the application."""
+    yield
+    # Shutdown: close singletons in reverse order of dependency
+    await close_redis_client()
+    await close_postgrest_client()
 
 
 class InterceptHandler(logging.Handler):
@@ -70,6 +82,7 @@ app = FastAPI(
     title="PIC API",
     description="API que gerencia fluxo de dados do PIC da Prefeitura do Rio de Janeiro",
     version="0.1.0",
+    lifespan=lifespan,
     servers=[
         {
             "url": (

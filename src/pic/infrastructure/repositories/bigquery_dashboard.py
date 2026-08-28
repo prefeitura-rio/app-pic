@@ -1,5 +1,3 @@
-from typing import Any
-
 from src.api.v1.queries import DASHBOARD_TABLE_QUERY
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.domain.models.dashboard import Dashboard
@@ -14,7 +12,7 @@ class BigQueryDashboardRepository(IDashboardRepository):
     async def get_dashboard_metrics(
         self,
         filters: dict[str, object],
-        permissions: Any = None,
+        user_token: str | None = None,
         secretaria: str | None = None,
         bypass_cache: bool = False,
     ) -> Dashboard:
@@ -25,7 +23,7 @@ class BigQueryDashboardRepository(IDashboardRepository):
                 page=1,
                 page_size=None,
                 filter_columns_config=DASHBOARD_FILTER_OPTIONS_CONFIG,
-                user_permissions=permissions,
+                user_permissions=None,
                 bypass_cache=bypass_cache,
             )
         except Exception as e:
