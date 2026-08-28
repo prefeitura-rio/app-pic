@@ -647,14 +647,19 @@ class TestRepositoryCache:
 
 
 # ---------------------------------------------------------------------------
-# Detail (endpoint_participante_listagem — unchanged)
+# Detail (endpoint_participante_resumo + _protocolos_detalhe + protocolo_detalhes)
 # ---------------------------------------------------------------------------
 
 
-async def test_get_participant_by_id_maps_row_and_attaches_motivos(make_repo):
-    visao = {
+def resumo_detail_row(membro_id: str = "00325420412", **overrides):
+    """One full-fidelity `endpoint_participante_resumo` row.
+
+    Pre-aggregated counters are intentionally wrong (9) so tests prove the
+    detail view recomputes them from the protocol rows.
+    """
+    row = {
         "id_familia": "02159929700",
-        "id_membro_familia": "00325420412",
+        "id_membro_familia": membro_id,
         "nome": "ANA JULIA DE SOUZA DA SILVA",
         "cpf": "23131727756",
         "grupo": "Criança",
@@ -669,43 +674,75 @@ async def test_get_participant_by_id_maps_row_and_attaches_motivos(make_repo):
             "complemento": None,
             "bairro": "ENGENHO DA RAINHA",
         },
+        "telefone_1_ddd": "21",
+        "telefone_1_numero": "968267587",
         "cohort": "2025-09-01",
         "status": "Ativo",
-        "situacao": "Atenção",
+        "situacao": "Regular",
         "latitude": -22.867801,
         "longitude": -43.2931916,
-        "total_protocolos": 7,
-        "total_fracao": "7/7",
-        "saude_fracao": "4/4",
-        "protocolo_listagem": [
-            {
-                "id": "sms_visitas_domiciliares_infantil",
-                "secretaria": "SMS",
-                "descricao": "Criança com 2 visitas domiciliares anuais",
-                "status": "regular",
-                "irregular_indicador": False,
-                "protocolo_status_label": "Regular",
-            },
-            {
-                "id": "smas_acesso_alimentacao",
-                "secretaria": "SMAS",
-                "descricao": "alimentacao",
-                "status": "atencao",
-                "irregular_indicador": True,
-                "protocolo_status_label": "Atenção",
-            },
-        ],
+        "total_protocolos": 9,
+        "total_protocolos_irregular": 9,
+        "total_protocolos_atencao": 9,
+        "total_protocolos_regular": 9,
+        "total_fracao": "0/9",
+        "assistencia_fracao": "0/9",
+        "educacao_fracao": "0/9",
+        "saude_fracao": "0/9",
+        "assistencia_protocolos_total": 9,
+        "educacao_protocolos_total": 9,
+        "saude_protocolos_total": 9,
     }
+    row.update(overrides)
+    return row
+
+
+def detail_protocolo_row(
+    membro_id: str,
+    protocolo_id: str,
+    secretaria: str,
+    *,
+    irregular: bool = False,
+    status_label: str = "Regular",
+):
+    return {
+        "id_membro_familia": membro_id,
+        "protocolo_id": protocolo_id,
+        "protocolo_secretaria": secretaria,
+        "protocolo_descricao": "descricao",
+        "protocolo_status": "atencao" if irregular else "regular",
+        "protocolo_irregular_indicador": irregular,
+        "protocolo_status_label": status_label,
+        "cpf_particao": 1,
+    }
+
+
+async def test_get_participant_by_id_maps_resumo_and_protocolos_and_attaches_motivos(
+    make_repo,
+):
+    protocolos = [
+        detail_protocolo_row(
+            "00325420412", "sms_visitas_domiciliares_infantil", "SMS"
+        ),
+        detail_protocolo_row(
+            "00325420412",
+            "smas_acesso_alimentacao",
+            "SMAS",
+            irregular=True,
+            status_label="Atenção",
+        ),
+    ]
     motivos = [
         {
-            "cpf": "23131727756",
+            "id_membro_familia": "00325420412",
             "protocolo_id": "smas_acesso_alimentacao",
             "protocolo_motivo": '{"motivos": ["falta de dados"], "detalhes": {}}',
         }
     ]
     repo, fake = make_repo(
         {
-            "endpoint_participante_listagem": [visao],
+            "endpoint_participante_resumo": [resumo_detail_row()],
+            "endpoint_participante_protocolos_detalhe": protocolos,
             "protocolo_detalhes": motivos,
         }
     )
@@ -719,42 +756,122 @@ async def test_get_participant_by_id_maps_row_and_attaches_motivos(make_repo):
     assert participante.nascimento_data.isoformat() == "2022-09-22"
     assert participante.endereco_sms.bairro == "ENGENHO DA RAINHA"
     assert participante.latitude == -22.867801
+    # Counters recomputed from the protocol rows, not the resumo aggregates.
+    assert participante.total_protocolos == 2
+    assert participante.total_protocolos_irregular == 1
+    assert participante.total_protocolos_atencao == 1
+    assert participante.total_protocolos_regular == 1
+    assert participante.situacao == "Atenção"
+    assert participante.total_fracao == "1/2"
+    assert [p.id for p in participante.protocolo_listagem] == [
+        "sms_visitas_domiciliares_infantil",
+        "smas_acesso_alimentacao",
+    ]
 
     irregular = [p for p in participante.protocolo_listagem if p.irregular_indicador]
     assert len(irregular) == 1
     assert irregular[0].protocolo_motivo.motivos == ["falta de dados"]
 
-    detail_req = fake.requests[0]
-    assert detail_req.url.path == "/endpoint_participante_listagem"
-    assert detail_req.url.params["id_membro_familia"] == "eq.00325420412"
-    assert detail_req.headers["authorization"] == f"Bearer {USER_TOKEN}"
-    motivos_req = fake.requests[1]
+    resumo_req = fake.requests[0]
+    assert resumo_req.url.path == "/endpoint_participante_resumo"
+    assert resumo_req.url.params["id_membro_familia"] == "eq.00325420412"
+    assert resumo_req.headers["authorization"] == f"Bearer {USER_TOKEN}"
+    protocolos_req = fake.requests[1]
+    assert protocolos_req.url.path == "/endpoint_participante_protocolos_detalhe"
+    assert protocolos_req.url.params["id_membro_familia"] == "eq.00325420412"
+    assert "protocolo_secretaria" not in protocolos_req.url.params
+    motivos_req = fake.requests[2]
     assert motivos_req.url.path == "/protocolo_detalhes"
-    assert motivos_req.url.params["cpf"] == "eq.23131727756"
+    assert motivos_req.url.params["id_membro_familia"] == "eq.00325420412"
 
 
 async def test_get_participant_by_id_returns_none_when_missing(make_repo):
-    repo, _ = make_repo({"endpoint_participante_listagem": []})
+    repo, _ = make_repo({"endpoint_participante_resumo": []})
     result = await repo.get_participant_by_id("nope", permissions=SUPER_ADMIN)
     assert result is None
 
 
+async def test_get_participant_by_id_partial_secretaria_filters_and_recalculates(
+    make_repo,
+):
+    protocolos = [
+        detail_protocolo_row(
+            "00325420412", "sms_visitas_domiciliares_infantil", "SMS"
+        ),
+        detail_protocolo_row(
+            "00325420412",
+            "smas_acesso_alimentacao",
+            "SMAS",
+            irregular=True,
+            status_label="Atenção",
+        ),
+    ]
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_resumo": [resumo_detail_row()],
+            "endpoint_participante_protocolos_detalhe": protocolos,
+        }
+    )
+
+    result = await repo.get_participant_by_id(
+        "00325420412", permissions=PARTIAL_SMS, user_token=USER_TOKEN
+    )
+
+    assert result is not None
+    assert [p.id for p in result.protocolo_listagem] == [
+        "sms_visitas_domiciliares_infantil"
+    ]
+    assert result.total_protocolos == 1
+    assert result.total_protocolos_irregular == 0
+    assert result.situacao == "Regular"
+    assert result.total_fracao == "1/1"
+    assert result.saude_protocolos_total == 1
+    assert result.saude_fracao == "1/1"
+    assert result.assistencia_protocolos_total is None
+    assert result.assistencia_fracao is None
+
+    protocolos_req = fake.requests[1]
+    assert protocolos_req.url.path == "/endpoint_participante_protocolos_detalhe"
+    assert protocolos_req.url.params["protocolo_secretaria"] == "in.(SMS)"
+    # No irregular protocols left -> no motives query.
+    assert [r.url.path for r in fake.requests[2:]] == []
+
+
 async def test_get_participant_by_id_partial_secretaria_drops_invisible_row(make_repo):
-    visao = {
-        "id_membro_familia": "1",
-        "cpf": "11111111111",
-        "protocolo_listagem": [
-            {
-                "id": "sme_x",
-                "secretaria": "SME",
-                "irregular_indicador": "false",
-                "protocolo_status_label": "Regular",
-            }
-        ],
-    }
-    repo, _ = make_repo({"endpoint_participante_listagem": [visao]})
-    result = await repo.get_participant_by_id("1", permissions=PARTIAL_SMS)
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_resumo": [resumo_detail_row()],
+            "endpoint_participante_protocolos_detalhe": [
+                detail_protocolo_row("00325420412", "sme_x", "SME")
+            ],
+        }
+    )
+    result = await repo.get_participant_by_id(
+        "00325420412", permissions=PARTIAL_SMS, user_token=USER_TOKEN
+    )
     assert result is None
+    assert [r.url.path for r in fake.requests] == [
+        "/endpoint_participante_resumo",
+        "/endpoint_participante_protocolos_detalhe",
+    ]
+
+
+async def test_get_participant_by_id_no_access_keeps_row_with_null_protocols(make_repo):
+    repo, fake = make_repo({"endpoint_participante_resumo": [resumo_detail_row()]})
+
+    result = await repo.get_participant_by_id(
+        "00325420412", permissions=NO_ACCESS, user_token=USER_TOKEN
+    )
+
+    assert result is not None
+    assert result.id_membro_familia == "00325420412"
+    assert result.protocolo_listagem == []
+    assert result.total_protocolos is None
+    assert result.total_protocolos_irregular is None
+    assert result.situacao is None
+    assert result.total_fracao is None
+    # Protocols query is skipped entirely for no-access users.
+    assert [r.url.path for r in fake.requests] == ["/endpoint_participante_resumo"]
 
 
 # ---------------------------------------------------------------------------

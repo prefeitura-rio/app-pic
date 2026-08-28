@@ -302,3 +302,45 @@ def compute_resumo_view(
     # Hidden key used only for in-app sorting by the combined fraction.
     row["_regular_sum"] = regular_sum
     return row
+
+
+def compute_detail_view(
+    resumo_row: dict[str, Any],
+    protocolo_items: list[dict[str, Any]],
+    secretarias_acesso: list[str],
+    full_access: bool,
+) -> dict[str, Any] | None:
+    """Build the detail view of one participant from `endpoint_participante_resumo`
+    + `endpoint_participante_protocolos_detalhe` rows.
+
+    Counters/fractions/situacao are always recomputed from the protocol items
+    (single source of truth, matching the list's in-app pipeline):
+
+    - Full access: every protocol kept; counters recomputed from all of them.
+    - Partial access: protocols filtered by secretaria; rows with no remaining
+      protocol are dropped (`None`); counters recomputed from the remaining.
+    - No access: row kept with an empty `protocolo_listagem` and every
+      protocol-derived column set to `None`.
+
+    Returns a new dict (never mutates the inputs) or `None` to drop the row.
+    """
+    items = [p for p in protocolo_items if isinstance(p, dict)]
+    row = dict(resumo_row)
+    row["protocolo_listagem"] = items
+
+    if full_access:
+        _recalculate(row, items, set(ALL_SECRETARIAS))
+        return row
+
+    if not secretarias_acesso:
+        _null_protocol_columns(row)
+        return row
+
+    allowed = set(secretarias_acesso)
+    filtered = [p for p in items if p.get("secretaria") in allowed]
+    if not filtered:
+        return None
+
+    row["protocolo_listagem"] = filtered
+    _recalculate(row, filtered, allowed)
+    return row
