@@ -9,9 +9,11 @@ Design notes:
 - The list operation reads `endpoint_participante_resumo` (pre-aggregated
   per-secretaria counters/fractions). Protocol filters resolve through
   `endpoint_participante_protocolos_detalhe` (joined by `id_membro_familia`)
-  into an `id_membro_familia=in.(...)` prefilter. The detail operation keeps
-  reading `endpoint_participante_listagem` (it needs the `protocolo_listagem`
-  jsonb and the irregularity motives).
+  into an `id_membro_familia=in.(...)` prefilter. The detail operation reads
+  the same pair: the participant row from `endpoint_participante_resumo`, the
+  `protocolo_listagem` items from `endpoint_participante_protocolos_detalhe`
+  (counters recomputed from them), and the irregularity motives from
+  `protocolo_detalhes` — all joined by `id_membro_familia`.
 - The data-proxy enforces unit RLS server-side when the request carries the
   end user's JWT (`with_user_token`). The *secretaria* dimension is not RLS;
   it is applied here, in pure Python: only columns of the accessible
@@ -52,6 +54,7 @@ from src.pic.domain.models.protocolo import ProtocoloMotivo
 from src.pic.infrastructure.mappers.participant_mapper import (
     row_to_list_item,
     row_to_participante,
+    row_to_protocolo_item,
 )
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
@@ -70,7 +73,6 @@ from src.utils.data_manager_config import ProfilingData
 from src.utils.log import logger
 
 TABLE_RESUMO = "endpoint_participante_resumo"
-TABLE_LISTAGEM = "endpoint_participante_listagem"
 TABLE_PROTOCOLOS = "endpoint_participante_protocolos_detalhe"
 TABLE_PROTOCOLO_DETALHES = "protocolo_detalhes"
 
@@ -660,43 +662,71 @@ class PostgrestParticipantRepository(ParticipantRepository):
             if permissions is not None
             else sorted(governance.ALL_SECRETARIAS)
         )
-        needs_governance = bool(
-            permissions is not None
-            and not permissions.has_full_access()
-            and not governance.has_full_protocol_access(secretarias_acesso)
+        full_access = (
+            permissions is None
+            or permissions.has_full_access()
+            or governance.has_full_protocol_access(secretarias_acesso)
         )
 
         async with self._client.with_user_token(user_token):
-            query = (
-                self._client.table(TABLE_LISTAGEM)
+            resumo_result = await self._execute(
+                self._client.table(TABLE_RESUMO)
                 .select("*")
                 .filter("id_membro_familia", "eq", str(id_membro_familia))
                 .limit(1)
             )
-            result = await self._execute(query)
-            if not result.data:
+            if not resumo_result.data:
                 return None
 
-            row = dict(result.data[0])
-            if needs_governance:
-                row = governance.apply_secretaria_governance(row, secretarias_acesso)
-                if row is None:
-                    return None
+            resumo_row = dict(resumo_result.data[0])
+
+            protocolos_rows: list[dict[str, Any]] = []
+            if full_access or secretarias_acesso:
+
+                def build_protocolos_query() -> AsyncSelectRequestBuilder:
+                    query = (
+                        self._client.table(TABLE_PROTOCOLOS)
+                        .select("*")
+                        .filter("id_membro_familia", "eq", str(id_membro_familia))
+                    )
+                    if not full_access:
+                        query = query.filter(
+                            "protocolo_secretaria",
+                            "in",
+                            f"({','.join(sorted(secretarias_acesso))})",
+                        )
+                    return query.order(
+                        "protocolo_secretaria", desc=False, nullsfirst=False
+                    ).order("protocolo_id", desc=False, nullsfirst=False)
+
+                protocolos_rows, _ = await self._fetch_pages(
+                    lambda count=None: build_protocolos_query(),
+                    limit=None,
+                    with_count=False,
+                )
+
+            row = governance.compute_detail_view(
+                resumo_row,
+                [row_to_protocolo_item(dict(protocolo)) for protocolo in protocolos_rows],
+                secretarias_acesso,
+                full_access=full_access,
+            )
+            if row is None:
+                return None
 
             participante = row_to_participante(row)
 
-            cpf = participante.cpf
             irregular_ids = [
                 protocolo.id
                 for protocolo in (participante.protocolo_listagem or [])
                 if protocolo.irregular_indicador and protocolo.id
             ]
-            if cpf and irregular_ids:
+            if irregular_ids:
                 motivos_rows, _ = await self._fetch_pages(
                     lambda count=None: (
                         self._client.table(TABLE_PROTOCOLO_DETALHES)
                         .select("*", count=count)
-                        .filter("cpf", "eq", str(cpf))
+                        .filter("id_membro_familia", "eq", str(id_membro_familia))
                     ),
                     limit=None,
                     with_count=False,

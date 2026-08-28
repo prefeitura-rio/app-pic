@@ -153,6 +153,145 @@ def test_situacao_variants():
     assert result["situacao"] == "Irregular"
 
 
+def detail_items():
+    return [
+        {
+            "id": "sms_a",
+            "secretaria": "SMS",
+            "descricao": "a",
+            "status": "regular",
+            "irregular_indicador": False,
+            "protocolo_status_label": "Regular",
+        },
+        {
+            "id": "sms_b",
+            "secretaria": "SMS",
+            "descricao": "b",
+            "status": "atencao",
+            "irregular_indicador": True,
+            "protocolo_status_label": "Atenção",
+        },
+        {
+            "id": "sme_a",
+            "secretaria": "SME",
+            "descricao": "c",
+            "status": "regular",
+            "irregular_indicador": False,
+            "protocolo_status_label": "Regular",
+        },
+    ]
+
+
+def resumo_detail_row(**overrides):
+    row = {
+        "id_membro_familia": "MEM1",
+        "nome": "Maria",
+        "total_protocolos": 9,
+        "total_protocolos_irregular": 9,
+        "total_protocolos_atencao": 9,
+        "total_protocolos_regular": 9,
+        "situacao": "Irregular",
+        "total_fracao": "0/9",
+        "assistencia_protocolos_total": 9,
+        "assistencia_fracao": "0/9",
+        "educacao_protocolos_total": 9,
+        "educacao_fracao": "0/9",
+        "saude_protocolos_total": 9,
+        "saude_fracao": "0/9",
+    }
+    row.update(overrides)
+    return row
+
+
+class TestComputeDetailView:
+    def test_full_access_recomputes_from_items(self):
+        resumo = resumo_detail_row()
+        result = governance.compute_detail_view(resumo, detail_items(), [], full_access=True)
+
+        assert result is not None
+        assert [p["id"] for p in result["protocolo_listagem"]] == [
+            "sms_a",
+            "sms_b",
+            "sme_a",
+        ]
+        assert result["total_protocolos"] == 3
+        assert result["total_protocolos_irregular"] == 1
+        assert result["total_protocolos_atencao"] == 1
+        assert result["total_protocolos_regular"] == 2
+        assert result["situacao"] == "Atenção"
+        assert result["total_fracao"] == "2/3"
+        assert result["saude_protocolos_total"] == 2
+        assert result["saude_protocolos_irregular"] == 1
+        assert result["saude_fracao"] == "1/2"
+        assert result["educacao_protocolos_total"] == 1
+        assert result["educacao_fracao"] == "1/1"
+        assert result["assistencia_protocolos_total"] == 0
+        assert result["assistencia_fracao"] == "0/0"
+        # Pre-aggregated resumo counters were overwritten, not trusted.
+        assert resumo["total_protocolos"] == 9
+
+    def test_partial_access_filters_and_recalculates(self):
+        resumo = resumo_detail_row()
+        result = governance.compute_detail_view(
+            resumo, detail_items(), ["SMS"], full_access=False
+        )
+
+        assert result is not None
+        assert [p["id"] for p in result["protocolo_listagem"]] == ["sms_a", "sms_b"]
+        assert result["total_protocolos"] == 2
+        assert result["total_protocolos_irregular"] == 1
+        assert result["total_protocolos_atencao"] == 1
+        assert result["total_protocolos_regular"] == 1
+        assert result["situacao"] == "Atenção"
+        assert result["total_fracao"] == "1/2"
+        assert result["saude_protocolos_total"] == 2
+        assert result["saude_fracao"] == "1/2"
+        assert result["educacao_protocolos_total"] is None
+        assert result["educacao_fracao"] is None
+        assert result["assistencia_protocolos_total"] is None
+        assert result["assistencia_fracao"] is None
+
+    def test_partial_access_drops_row_without_matching_protocols(self):
+        resumo = resumo_detail_row()
+        assert (
+            governance.compute_detail_view(
+                resumo, detail_items(), ["SMAS"], full_access=False
+            )
+            is None
+        )
+
+    def test_no_access_keeps_row_but_nulls_everything(self):
+        resumo = resumo_detail_row()
+        result = governance.compute_detail_view(
+            resumo, detail_items(), [], full_access=False
+        )
+
+        assert result is not None
+        assert result["protocolo_listagem"] == []
+        assert result["total_protocolos"] is None
+        assert result["total_protocolos_irregular"] is None
+        assert result["total_protocolos_atencao"] is None
+        assert result["total_protocolos_regular"] is None
+        assert result["situacao"] is None
+        assert result["total_fracao"] is None
+        assert result["saude_protocolos_total"] is None
+        assert result["saude_fracao"] is None
+        assert result["educacao_protocolos_total"] is None
+        assert result["assistencia_protocolos_total"] is None
+
+    def test_does_not_mutate_inputs(self):
+        resumo = resumo_detail_row()
+        items = detail_items()
+        result = governance.compute_detail_view(
+            resumo, items, ["SMS"], full_access=False
+        )
+
+        assert result is not None
+        assert [p["id"] for p in items] == ["sms_a", "sms_b", "sme_a"]
+        assert resumo["total_protocolos"] == 9
+        assert "protocolo_listagem" not in resumo
+
+
 class TestMatchProtocoloFilters:
     def _protocolos(self):
         return [
