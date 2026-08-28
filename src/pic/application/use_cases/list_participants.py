@@ -41,5 +41,6 @@ class ListParticipantsUseCase:
             sort=sort,
             permissions=permissions,
             user_token=user_token,
+            bypass_cache=bypass_cache,
         )
         return ParticipantListOutput(data=data, meta=meta)

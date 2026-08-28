@@ -242,3 +242,63 @@ def sort_rows(
     null_rows = [row for row in rows if row.get(column) is None]
     non_null.sort(key=key, reverse=descending)
     return non_null + null_rows
+
+
+# ---------------------------------------------------------------------------
+# Resumo-based view (endpoint_participante_resumo)
+# ---------------------------------------------------------------------------
+
+
+def compute_resumo_view(
+    row: dict[str, Any],
+    full_access: bool,
+    secretarias_acesso: list[str],
+) -> dict[str, Any] | None:
+    """Build the list view of one `endpoint_participante_resumo` row.
+
+    - Full access: row returned as-is (fractions/counters are pre-aggregated).
+    - No access: row kept, every protocol-derived field stays out (columns are
+      not even selected by the repository), matching the v1 nulled view.
+    - Partial access: `total_fracao` and `total_protocolos_irregular` are
+      recomputed from the accessible secretarias' counters; `situacao` is
+      hidden (`None`); rows with no accessible protocols are dropped (`None`).
+
+    Returns a new dict (never mutates the input) or `None` to drop the row.
+    """
+    if full_access:
+        return dict(row)
+
+    row = dict(row)
+    allowed = set(secretarias_acesso)
+    if not allowed:
+        for prefix in SECRETARIA_COLUMN_PREFIX.values():
+            row[f"{prefix}_fracao"] = None
+            for key in _counter_keys(prefix):
+                row[key] = None
+        row["total_fracao"] = None
+        row["total_protocolos_irregular"] = None
+        row["situacao"] = None
+        return row
+
+    regular_sum = 0
+    total_sum = 0
+    irregular_sum = 0
+    for secretaria, prefix in SECRETARIA_COLUMN_PREFIX.items():
+        if secretaria not in allowed:
+            row[f"{prefix}_fracao"] = None
+            for key in _counter_keys(prefix):
+                row[key] = None
+            continue
+        regular_sum += row.get(f"{prefix}_protocolos_regular") or 0
+        total_sum += row.get(f"{prefix}_protocolos_total") or 0
+        irregular_sum += row.get(f"{prefix}_protocolos_irregular") or 0
+
+    if total_sum == 0:
+        return None
+
+    row["total_protocolos_irregular"] = irregular_sum
+    row["total_fracao"] = f"{regular_sum}/{total_sum}"
+    row["situacao"] = None
+    # Hidden key used only for in-app sorting by the combined fraction.
+    row["_regular_sum"] = regular_sum
+    return row

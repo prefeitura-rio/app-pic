@@ -34,6 +34,7 @@ class ParticipantRepository(ABC):
         sort: SortParams,
         permissions: Any = None,
         user_token: str | None = None,
+        bypass_cache: bool = False,
     ) -> tuple[list[ParticipanteListItem], PaginationMeta]:
         """Return the paginated summary rows and the meta envelope."""
 

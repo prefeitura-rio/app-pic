@@ -720,6 +720,7 @@ export function DashboardClient({
                 sortOrder={sortOrder}
                 onSortChange={handleSortChange}
                 isSuperAdmin={currentUser?.is_super_admin || false}
+                secretariasAcesso={currentUser?.secretarias_acesso || []}
                 geospatialLayers={geospatialLayers}
                 geospatialLoading={geospatialFetching}
                 geospatialFilters={geospatialFilters}

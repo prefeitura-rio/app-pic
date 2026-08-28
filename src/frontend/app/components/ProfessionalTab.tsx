@@ -10,7 +10,7 @@ import {
 	Search,
 	Users,
 } from "lucide-react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -267,6 +267,7 @@ interface ProfessionalTabProps {
 	sortOrder?: SortOrder;
 	onSortChange?: (sortBy: string, sortOrder: SortOrder) => void;
 	isSuperAdmin?: boolean;
+	secretariasAcesso?: string[];
 	geospatialLayers?: GeospatialLayer[];
 	geospatialLoading?: boolean;
 	geospatialFilters?: GeospatialFilters;
@@ -295,12 +296,36 @@ const ProfessionalTabComponent = ({
 	sortOrder = "asc",
 	onSortChange,
 	isSuperAdmin = false,
+	secretariasAcesso = [],
 	geospatialLayers = [],
 	geospatialLoading = false,
 	geospatialFilters = {},
 	geospatialAvailableFilters,
 	onGeospatialFilterChange,
 }: ProfessionalTabProps) => {
+	// Acesso completo a protocolos: super admin ou as 3 secretarias.
+	const fullAccess =
+		isSuperAdmin || (secretariasAcesso || []).length === 3;
+
+	// Colunas visíveis na tabela conforme o acesso do usuário.
+	const visibleColumns = useMemo(() => {
+		if (fullAccess) return undefined;
+		const columns = [
+			"nome",
+			"cpf",
+			"grupo",
+			"bairro",
+			"idade",
+			"status",
+			"total_fracao",
+			"total_irregular",
+		];
+		if (secretariasAcesso?.includes("SMAS")) columns.push("assistencia_fracao");
+		if (secretariasAcesso?.includes("SME")) columns.push("educacao_fracao");
+		if (secretariasAcesso?.includes("SMS")) columns.push("saude_fracao");
+		return columns;
+	}, [fullAccess, secretariasAcesso]);
+
 	// Handler para clique no header de ordenação
 	const handleSort = useCallback(
 		(column: string) => {
@@ -353,6 +378,7 @@ const ProfessionalTabComponent = ({
 				loading={loading}
 				showSearch
 				totalResults={meta?.total_rows}
+				hideSituacao={!fullAccess}
 			/>
 
 			{/* Results - Table */}
@@ -386,6 +412,7 @@ const ProfessionalTabComponent = ({
 							sortBy={sortBy}
 							sortOrder={sortOrder}
 							onSort={handleSort}
+							visibleColumns={visibleColumns}
 						/>
 
 						{/* Pagination - Footer do Card */}
