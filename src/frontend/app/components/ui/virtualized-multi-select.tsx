@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { List } from "react-window";
 import { cn } from "@/app/utils/utils";
 import { Button } from "@/app/components/ui/button";
@@ -32,6 +32,10 @@ interface VirtualizedMultiSelectProps {
   style?: React.CSSProperties;
   /** Controla a visibilidade do componente. Se false, retorna null. Default: true */
   show?: boolean;
+  /** Mostra skeleton no dropdown (e no trigger com valor sem label) */
+  loading?: boolean;
+  /** Dispara quando o dropdown abre (para carregar opções sob demanda) */
+  onOpen?: () => void;
 }
 
 export function VirtualizedMultiSelect({
@@ -44,6 +48,8 @@ export function VirtualizedMultiSelect({
   className,
   style,
   show = true,
+  loading = false,
+  onOpen,
 }: VirtualizedMultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -56,6 +62,14 @@ export function VirtualizedMultiSelect({
       setTriggerWidth(triggerRef.current.offsetWidth);
     }
   }, [open]);
+
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen);
+      if (nextOpen) onOpen?.();
+    },
+    [onOpen]
+  );
 
   const filteredOptions = React.useMemo(() => {
     if (!searchTerm) return options;
@@ -130,7 +144,7 @@ export function VirtualizedMultiSelect({
 
   return (
     <div className={className} style={style}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
             ref={triggerRef}
@@ -141,16 +155,19 @@ export function VirtualizedMultiSelect({
             className="w-full justify-between font-normal px-3"
             disabled={disabled}
           >
-            <span className="truncate">
-              {displayText}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <span className="truncate">{displayText}</span>
+            {loading ? (
+              <Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin opacity-70" />
+            ) : (
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent
           className="p-0"
           align="start"
           style={{ width: triggerWidth > 0 ? Math.max(triggerWidth, 300) : 300 }}
+          aria-busy={loading}
         >
           <Command shouldFilter={false}>
             <CommandInput
@@ -160,7 +177,7 @@ export function VirtualizedMultiSelect({
             />
 
             {/* Header com ações */}
-            {value.length > 0 && (
+            {!loading && value.length > 0 && (
               <div className="flex items-center justify-between px-2 py-1.5 border-b">
                 <span className="text-xs text-muted-foreground">
                   {value.length} selecionado(s)
@@ -176,32 +193,43 @@ export function VirtualizedMultiSelect({
               </div>
             )}
 
-            {/* Opção "Todos" fixa no topo */}
-            <div
-              className={cn(
-                "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm mx-1 my-1",
-                value.length === 0 && "bg-accent text-accent-foreground"
-              )}
-              onClick={() => {
-                clearAll();
-                setOpen(false);
-              }}
-            >
-              <Check
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  value.length === 0 ? "opacity-100" : "opacity-0"
-                )}
-              />
-              {defaultLabel}
-            </div>
+            {loading && (
+              <div className="flex flex-col items-center justify-center gap-1.5 py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground">
+                  Calculando Opções Possíveis
+                </p>
+              </div>
+            )}
 
-            {filteredOptions.length === 0 && (
+            {/* Opção "Todos" fixa no topo */}
+            {!loading && (
+              <div
+                className={cn(
+                  "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm mx-1 my-1",
+                  value.length === 0 && "bg-accent text-accent-foreground"
+                )}
+                onClick={() => {
+                  clearAll();
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value.length === 0 ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                {defaultLabel}
+              </div>
+            )}
+
+            {!loading && filteredOptions.length === 0 && (
               <CommandEmpty>Nenhum resultado.</CommandEmpty>
             )}
 
             {/* Lista virtualizada */}
-            {filteredOptions.length > 0 && (
+            {!loading && filteredOptions.length > 0 && (
               <List
                 rowComponent={Row}
                 rowCount={filteredOptions.length}

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { List } from "react-window";
 import { cn } from "@/app/utils/utils";
 import { Button } from "@/app/components/ui/button";
@@ -35,6 +35,10 @@ interface VirtualizedSelectProps {
   show?: boolean;
   /** Mostra opção "Todos" no topo. Default: true */
   showAllOption?: boolean;
+  /** Mostra skeleton no dropdown (e no trigger com valor sem label) */
+  loading?: boolean;
+  /** Dispara quando o dropdown abre (para carregar opções sob demanda) */
+  onOpen?: () => void;
 }
 
 export function VirtualizedSelect({
@@ -48,6 +52,8 @@ export function VirtualizedSelect({
   style,
   show = true,
   showAllOption = true,
+  loading = false,
+  onOpen,
 }: VirtualizedSelectProps) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -59,6 +65,14 @@ export function VirtualizedSelect({
       setTriggerWidth(triggerRef.current.offsetWidth);
     }
   }, [open]);
+
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen);
+      if (nextOpen) onOpen?.();
+    },
+    [onOpen]
+  );
 
   // Filtragem local
   const [searchTerm, setSearchInput] = React.useState("");
@@ -118,7 +132,7 @@ export function VirtualizedSelect({
 
   return (
     <div className={className} style={style}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
             ref={triggerRef}
@@ -129,16 +143,19 @@ export function VirtualizedSelect({
             className="w-full justify-between font-normal px-3"
             disabled={disabled}
           >
-            <span className="truncate">
-              {displayText}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <span className="truncate">{displayText}</span>
+            {loading ? (
+              <Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin opacity-70" />
+            ) : (
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent
           className="p-0"
           align="start"
           style={{ width: triggerWidth > 0 ? triggerWidth : 300 }}
+          aria-busy={loading}
         >
           <Command shouldFilter={false}>
             <CommandInput
@@ -146,12 +163,20 @@ export function VirtualizedSelect({
               value={searchTerm}
               onValueChange={setSearchInput}
             />
-            {filteredOptions.length === 0 && (
+            {loading && (
+              <div className="flex flex-col items-center justify-center gap-1.5 py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground">
+                  Calculando Opções Possíveis
+                </p>
+              </div>
+            )}
+            {!loading && filteredOptions.length === 0 && (
               <CommandEmpty>Nenhum resultado.</CommandEmpty>
             )}
 
             {/* Opção "Todos" fixa no topo (opcional) */}
-            {showAllOption && (
+            {!loading && showAllOption && (
               <CommandItem
                 value="todos"
                 onSelect={() => {
@@ -171,7 +196,7 @@ export function VirtualizedSelect({
             )}
 
             {/* Lista virtualizada */}
-            {filteredOptions.length > 0 && (
+            {!loading && filteredOptions.length > 0 && (
               <List
                 rowComponent={Row}
                 rowCount={filteredOptions.length}

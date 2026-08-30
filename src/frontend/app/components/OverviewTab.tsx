@@ -2,11 +2,11 @@ import { memo, useCallback } from "react";
 import { Users, Loader2, AlertTriangle, CheckCircle, Home, BookOpen, Activity, Heart, Clock, TrendingUp, PieChart as PieChartIcon } from "lucide-react";
 import {
   Dashboard,
-  SmartFilterOptions,
+  DashboardFilterValues,
   ProtocoloIndicador,
 } from "../types";
 import { StatCard } from "./StatCard";
-import { DashboardFilterCard, DashboardFilterValues } from "./DashboardFilterCard";
+import { DashboardFilterCard } from "./DashboardFilterCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import {
   LineChart,
@@ -38,7 +38,6 @@ const PIE_COLORS = [
 
 interface OverviewTabProps {
   data: Dashboard | null;
-  filterOptions: SmartFilterOptions;
   filters: DashboardFilterValues;
   onFilterChange: (filters: DashboardFilterValues) => void;
   onRefresh?: () => void;
@@ -72,7 +71,6 @@ const ProtocoloCard = ({ protocolo, loading }: { protocolo: ProtocoloIndicador; 
 
 const OverviewTabComponent = ({
   data,
-  filterOptions,
   filters,
   onFilterChange,
   onRefresh,
@@ -140,7 +138,6 @@ const OverviewTabComponent = ({
     <div className="space-y-8">
       {/* Filtros do Dashboard */}
       <DashboardFilterCard
-        filterOptions={filterOptions}
         filters={filters}
         onFilterChange={onFilterChange}
         onRefresh={onRefresh}

@@ -204,6 +204,32 @@ export interface FilterOptionItem {
 	label: string;
 }
 
+export type FilterFieldKey =
+	| "bairros"
+	| "subprefeituras"
+	| "regioes_administrativas"
+	| "grupos"
+	| "cohorts"
+	| "status_list"
+	| "situacoes"
+	| "racas"
+	| "cres"
+	| "aps"
+	| "cas_list"
+	| "cras"
+	| "escolas"
+	| "clinicas"
+	| "equipes_familia"
+	| "protocolo_descricoes"
+	| "protocolo_status_list"
+	| "bolsa_familia"
+	| "protocolo_secretarias";
+
+export interface FilterFieldOptionsResponse {
+	field: string;
+	options: FilterOptionItem[];
+}
+
 export interface SmartFilterOptions {
 	// Filtros de participantes
 	bairros: FilterOptionItem[];
@@ -223,6 +249,8 @@ export interface SmartFilterOptions {
 	racas: FilterOptionItem[];
 	protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
 	protocolo_status_list: FilterOptionItem[]; // Status de protocolos
+	bolsa_familia: FilterOptionItem[]; // Opções de Bolsa Família (dinâmicas)
+	protocolo_secretarias: FilterOptionItem[]; // Secretarias de protocolo (dinâmicas)
 
 	// Filtros geoespaciais
 	tipos_camada: FilterOptionItem[];
@@ -451,6 +479,29 @@ export interface ParticipantFilters {
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
+}
+
+/**
+ * Filtros específicos do Dashboard (Visão Geral)
+ * Mapeados para as colunas da tabela de dashboard pré-agregada
+ * Todos os filtros suportam multi-select
+ */
+export interface DashboardFilterValues {
+	grupo?: string | string[]; // pic_grupo (multi-select)
+	cohort?: string | string[]; // pic_cohort (safra) (multi-select)
+	status?: string | string[]; // pic_status (multi-select)
+	secretaria?: string; // secretaria (SMAS, SME, SMS) (single-select apenas)
+	subprefeitura?: string | string[]; // subprefeitura (multi-select)
+	regiao_administrativa?: string | string[]; // regiao_administrativa (multi-select)
+	bairro?: string | string[]; // bairro (multi-select)
+	cre?: string | string[]; // id_cre (multi-select)
+	ap?: string | string[]; // id_ap (multi-select)
+	cas?: string | string[]; // id_cas (multi-select)
+	cras?: string | string[]; // id_cras (multi-select)
+	escola?: string | string[]; // id_escola (multi-select)
+	unidade_saude?: string | string[]; // id_clinica_familia (multi-select)
+	equipe_saude?: string | string[]; // id_equipe_familia (multi-select)
+	has_bolsa_familia?: boolean; // filtro booleano
 }
 
 /**

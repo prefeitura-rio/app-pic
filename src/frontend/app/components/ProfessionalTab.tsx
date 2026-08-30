@@ -47,7 +47,6 @@ import type {
 	Participante,
 	ParticipanteListItem,
 	ParticipantFilters,
-	SmartFilterOptions,
 	SortOrder,
 } from "../types";
 import { FilterCard } from "./FilterCard";
@@ -251,7 +250,6 @@ const calcularCompletude = (participant: Participante) => {
 interface ProfessionalTabProps {
 	data: ParticipanteListItem[];
 	meta: PaginationMeta | null;
-	filterOptions: SmartFilterOptions;
 	filters: ParticipantFilters;
 	onFilterChange: (filters: ParticipantFilters) => void;
 	onPageChange: (page: number) => void;
@@ -280,7 +278,6 @@ interface ProfessionalTabProps {
 const ProfessionalTabComponent = ({
 	data,
 	meta,
-	filterOptions,
 	filters,
 	onFilterChange,
 	onPageChange,
@@ -370,7 +367,6 @@ const ProfessionalTabComponent = ({
 			</div>
 
 			<FilterCard
-				filterOptions={filterOptions}
 				filters={filters}
 				onFilterChange={onFilterChange}
 				onRefresh={onRefresh}
