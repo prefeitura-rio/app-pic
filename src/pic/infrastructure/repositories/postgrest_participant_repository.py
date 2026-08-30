@@ -6,14 +6,31 @@ Polars anywhere in this module or its helpers.
 
 Design notes:
 
-- The list operation reads `endpoint_participante_resumo` (pre-aggregated
-  per-secretaria counters/fractions). Protocol filters resolve through
-  `endpoint_participante_protocolos_detalhe` (joined by `id_membro_familia`)
-  into an `id_membro_familia=in.(...)` prefilter. The detail operation reads
-  the same pair: the participant row from `endpoint_participante_resumo`, the
+- Every read (list, filter options, detail participant row) sources from
+  `endpoint_participante_protocolos_wide` (one row per participant, one
+  status column per protocol — NULL when the participant lacks it). Protocol
+  filters become plain column filters on that table: selected protocols are
+  ANDed (`col.not.is.null`, or `col.eq/in.<status>` when protocol statuses
+  are selected — every selected protocol must carry one of them); status
+  alone matches any protocol (`or=` across the protocol columns); secretaria
+  matches the pre-aggregated counters (`or=(<prefix>_protocolos_total.gt.0,
+  ...)`, union across selected secretarias). Filters (participant, free-text
+  search, protocol, situacao), sorting, pagination and `Prefer:
+  count=exact` are pushed to PostgREST in a single request (one row per
+  participant, so the Content-Range total counts people; `exact` because the
+  wide relation is a view without relation statistics — the estimated
+  planner fallback is unreliable there). Partial access restricts the query
+  to the accessible secretarias via `or=(<prefix>_protocolos_total.gt.0,...)`
+  and recomputes the per-secretaria view in-app over the fetched rows. The
+  detail operation reads the participant row from the wide table, the
   `protocolo_listagem` items from `endpoint_participante_protocolos_detalhe`
   (counters recomputed from them), and the irregularity motives from
   `protocolo_detalhes` — all joined by `id_membro_familia`.
+- Sorting by "Total" (`total_fracao`) uses the irregularidade count
+  (`total_protocolos_irregular`, fewer = better first), a single column that
+  PostgREST can order directly. For partial access the equivalent column is
+  `<secretaria>_protocolos_irregular` (one secretaria) or the global
+  `total_protocolos_irregular` (two or more).
 - The data-proxy enforces unit RLS server-side when the request carries the
   end user's JWT (`with_user_token`). The *secretaria* dimension is not RLS;
   it is applied here, in pure Python: only columns of the accessible
@@ -21,14 +38,24 @@ Design notes:
   recomputed from them, `situacao` is hidden for partial access and rows with
   no accessible protocols are dropped (v1 parity).
 - `PGRST_DB_MAX_ROWS` (1000 on the data-proxy) caps every response, so any
-  fetch of more than one page loops with limit/offset.
-- Full access (super admin or all three secretarias) pushes filters, search,
-  protocol ids, situacao, sorting and pagination to PostgREST. Partial access
-  fetches all matching rows and filters/sorts/paginates in-app, matching the
-  old pipeline's ordering.
+  fetch of more than one page loops with limit/offset (download mode and
+  GROUP BY pages).
 - Results are cached in Redis keyed by a deterministic hash of (filters,
   pagination, sort, user cpf), TTL 1800s. Download mode (page_size=-1) skips
   the cache. `bypass_cache=True` skips reading but still writes.
+- The filter options all read `endpoint_participante_protocolos_wide`:
+  participant fields use one aggregate query (`select=<cols>,count()` =
+  GROUP BY) per field; `protocolo_descricoes` uses a single-row
+  `select=<col>:<col>.count()` per protocol column; `protocolo_secretarias`
+  uses a single-row `select=<prefix>_protocolos_total:<prefix>_protocolos_total.max()`
+  (each aggregate aliased with its own column so PostgREST does not collapse
+  the duplicate function-name JSON keys); `protocolo_status_list`
+  is a fixed backend list (helpers/filter_vocabulary.py). RLS is enforced
+  server-side by the user token; the secretaria dimension is applied as
+  `or=(<prefix>_protocolos_total.gt.0,...)`; the cascade (all active filters
+  except the field's own) plus the free-text search are applied per query in
+  pure Python (see `helpers/filter_vocabulary.py`). Options are cached in
+  Redis keyed by (field, filters, user cpf).
 """
 
 import hashlib
@@ -43,7 +70,8 @@ from postgrest import APIResponse, AsyncSelectRequestBuilder
 from postgrest.exceptions import APIError
 
 from src.pic.application.ports.participant_read_repository import ParticipantRepository
-from src.pic.domain.models.filters import FilterCriteria
+from src.pic.domain.errors import ForbiddenError, ValidationError
+from src.pic.domain.models.filters import FilterCriteria, FilterOption
 from src.pic.domain.models.pagination import (
     PaginationMeta,
     PaginationParams,
@@ -61,9 +89,16 @@ from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.infrastructure.repositories.helpers import (
     participant_governance as governance,
 )
+from src.pic.infrastructure.repositories.helpers.filter_vocabulary import (
+    FILTER_OPTION_CONFIGS,
+    SECRETARIA_ORDER,
+    build_options,
+)
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
     FILTER_COLUMN_MAP,
     PROTOCOLO_FILTER_FIELDS,
+    PROTOCOLO_SECRETARIA,
+    PROTOCOLO_STATUS_COLUMNS,
     SEARCH_COLUMNS,
     SORTABLE_COLUMNS,
 )
@@ -72,9 +107,9 @@ from src.utils.data_manager_config import DataManagerConfig as config
 from src.utils.data_manager_config import ProfilingData
 from src.utils.log import logger
 
-TABLE_RESUMO = "endpoint_participante_resumo"
 TABLE_PROTOCOLOS = "endpoint_participante_protocolos_detalhe"
 TABLE_PROTOCOLO_DETALHES = "protocolo_detalhes"
+TABLE_PROTOCOLOS_WIDE = "endpoint_participante_protocolos_wide"
 
 # PGRST_DB_MAX_ROWS of the data-proxy: every response is capped at this many
 # rows, so "fetch everything" loops in pages of this size.
@@ -84,6 +119,8 @@ DB_MAX_ROWS = 1000
 _CACHE_TTL_SECONDS = 1800
 
 _CACHE_PREFIX = "participants_v2:"
+
+_VOCAB_CACHE_PREFIX = "filters_v2:"
 
 _DEFAULT_SORT_COLUMN = "nome"
 
@@ -183,10 +220,96 @@ def _apply_scalar_filter(
     return query.ilike(column, _escape_ilike(str(values[0])))
 
 
+def _apply_wide_protocolo_filters(
+    query: AsyncSelectRequestBuilder,
+    protocolo_filters: dict[str, list[str]],
+) -> AsyncSelectRequestBuilder:
+    """Protocol filters on `endpoint_participante_protocolos_wide`.
+
+    The wide table has one row per participant and one status column per
+    protocol (column name == protocolo_id, NULL without the protocol):
+
+    - `protocolo_id` (descricao) values select whole protocol columns; the
+      participant must have every selected protocol (AND, one filter per
+      column: `col.not.is.null`, or `col.eq/in.<status>` when protocol
+      statuses are also selected — each selected protocol must carry one of
+      them).
+    - `protocolo_status_label` alone matches any protocol with one of the
+      selected statuses (`or=` across every protocol column).
+    - `protocolo_secretaria` matches the pre-aggregated counters
+      (`or=(<prefix>_protocolos_total.gt.0,...)`, union across selected
+      secretarias).
+    """
+    descricao_ids = protocolo_filters.get("protocolo_id") or []
+    status_values = protocolo_filters.get("protocolo_status_label") or []
+    secretaria_values = protocolo_filters.get("protocolo_secretaria") or []
+
+    for protocolo_id in descricao_ids:
+        if status_values:
+            if len(status_values) == 1:
+                query = query.eq(protocolo_id, status_values[0])
+            else:
+                query = query.in_(protocolo_id, status_values)
+        else:
+            query = query.not_.is_(protocolo_id, "null")
+
+    if not descricao_ids and status_values:
+        terms = [
+            f"{column}.eq.{status}"
+            for status in status_values
+            for column in PROTOCOLO_STATUS_COLUMNS
+        ]
+        query = query.or_(",".join(terms))
+
+    if secretaria_values:
+        terms = [
+            f"{SECRETARIA_COLUMN_PREFIX[secretaria]}_protocolos_total.gt.0"
+            for secretaria in secretaria_values
+            if secretaria in SECRETARIA_COLUMN_PREFIX
+        ]
+        if terms:
+            query = query.or_(",".join(terms))
+    return query
+
+
 def _search_or_term(search_term: str) -> str:
     """PostgREST `or` filter for the free-text search (same 4 columns as before)."""
     pattern = f"%{_escape_ilike(search_term)}%"
     return ",".join(f"{column}.ilike.{pattern}" for column in SEARCH_COLUMNS)
+
+
+def _validate_protocol_filter_access(
+    protocolo_filters: dict[str, list[str]],
+    allowed_secretarias: set[str] | None,
+) -> None:
+    """Reject forced protocol filters outside the user's reach.
+
+    Unknown protocol ids / secretaria values are bad requests (422); known
+    values belonging to secretarias the user cannot access are forbidden
+    (403). `allowed_secretarias=None` means full access: only the unknown
+    value validation applies.
+    """
+    for protocolo_id in protocolo_filters.get("protocolo_id") or []:
+        secretaria = PROTOCOLO_SECRETARIA.get(protocolo_id)
+        if secretaria is None:
+            raise ValidationError(f"Protocolo desconhecido: {protocolo_id}")
+        if (
+            allowed_secretarias is not None
+            and secretaria not in allowed_secretarias
+        ):
+            raise ForbiddenError(
+                f"Sem acesso a protocolos da secretaria {secretaria}"
+            )
+    for secretaria in protocolo_filters.get("protocolo_secretaria") or []:
+        if secretaria not in SECRETARIA_COLUMN_PREFIX:
+            raise ValidationError(f"Secretaria desconhecida: {secretaria}")
+        if (
+            allowed_secretarias is not None
+            and secretaria not in allowed_secretarias
+        ):
+            raise ForbiddenError(
+                f"Sem acesso a protocolos da secretaria {secretaria}"
+            )
 
 
 def _list_select_columns(
@@ -194,7 +317,8 @@ def _list_select_columns(
     secretarias_acesso: list[str],
     sort_by: str | None,
 ) -> list[str]:
-    """Columns selected from `endpoint_participante_resumo` for this request."""
+    """Columns selected from `endpoint_participante_protocolos_wide`
+    (participant columns plus the per-secretaria counters)."""
     columns = list(_BASE_LIST_COLUMNS)
     if full_access:
         columns.extend(_FULL_ACCESS_COLUMNS)
@@ -239,6 +363,22 @@ def _make_cache_key(
     return _CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _make_vocab_cache_key(
+    field: str, filters: FilterCriteria, user_id: str | None
+) -> str:
+    """Deterministic cache key for one filter field's options (per user cpf)."""
+    payload = json.dumps(
+        {
+            "field": field,
+            "filters": filters.model_dump(exclude_none=True),
+            "user_id": user_id,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return _VOCAB_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+
+
 class PostgrestParticipantRepository(ParticipantRepository):
     """Participant list/detail reads straight from the data-proxy PostgREST."""
 
@@ -261,14 +401,23 @@ class PostgrestParticipantRepository(ParticipantRepository):
         limit: int | None,
         with_count: bool,
         start_offset: int = 0,
+        count_method: str = "estimated",
     ) -> tuple[list[dict[str, Any]], int | None]:
         """Fetch rows page by page, honoring PGRST_DB_MAX_ROWS.
 
         `limit=None` fetches everything (looping); otherwise stops once
         `limit` rows were collected, starting at `start_offset`. When
-        `with_count` is set, the first page carries `Prefer: count=exact` and
-        the returned total comes from the `Content-Range` header (count of
-        the *filtered* set, before limit/offset).
+        `with_count` is set, the first page carries `Prefer: count=<method>`
+        and the returned total comes from the `Content-Range` header (count
+        of the *filtered* set, before limit/offset). `count_method` picks
+        the PostgREST count mode: `exact` for views (no relation statistics
+        for the `estimated` planner fallback) and `estimated` for plain
+        tables.
+
+        Contract: `build_query` MUST return a fresh query builder on every
+        call. The postgrest-py builders are mutable (offset/limit/filters
+        accumulate on the same instance), so reusing a captured builder
+        across pages appends duplicate query params to each request.
         """
         batch_size = min(limit if limit and limit > 0 else DB_MAX_ROWS, DB_MAX_ROWS)
         offset = start_offset
@@ -276,7 +425,9 @@ class PostgrestParticipantRepository(ParticipantRepository):
         total: int | None = None
 
         while True:
-            query = build_query(count="exact" if with_count and total is None else None)
+            query = build_query(
+                count=count_method if with_count and total is None else None
+            )
             page_limit = (
                 min(batch_size, limit - len(rows))
                 if limit and limit > 0
@@ -297,89 +448,31 @@ class PostgrestParticipantRepository(ParticipantRepository):
 
         return rows, total
 
-    async def _fetch_protocolo_ids(
-        self,
-        protocolo_filters: dict[str, list[str]],
-        allowed_secretarias: set[str] | None,
-    ) -> list[str]:
-        """Resolve protocol filters into `id_membro_familia` ids.
-
-        Faithful port of the v1 `_filter_array_column_combined_polars`
-        semantics over the detail table: single-value fields AND together on
-        the same protocol row; the first multi-value field is expanded into
-        one query per value (each ANDed with the single fields and any later
-        multi-value fields via `in`) and the resulting id sets intersect.
-        `allowed_secretarias` restricts matches to the user's secretarias
-        (partial access), mirroring the governed-list matching of v1.
-        """
-        single: dict[str, str] = {}
-        multi: list[tuple[str, list[str]]] = []
-        for field, values in protocolo_filters.items():
-            if len(values) == 1:
-                single[field] = values[0]
-            else:
-                multi.append((field, values))
-
-        def build_query() -> AsyncSelectRequestBuilder:
-            query = self._client.table(TABLE_PROTOCOLOS).select("id_membro_familia")
-            for field, value in single.items():
-                query = query.ilike(field, _escape_ilike(value))
-            if allowed_secretarias is not None:
-                query = query.filter(
-                    "protocolo_secretaria",
-                    "in",
-                    f"({','.join(sorted(allowed_secretarias))})",
-                )
-            return query
-
-        async def fetch_ids(query: AsyncSelectRequestBuilder) -> set[str]:
-            rows, _ = await self._fetch_pages(
-                lambda count=None: query,
-                limit=None,
-                with_count=False,
-            )
-            return {
-                str(row["id_membro_familia"])
-                for row in rows
-                if row.get("id_membro_familia")
-            }
-
-        if not multi:
-            return sorted(await fetch_ids(build_query()))
-
-        first_field, first_values = multi[0]
-        id_sets: list[set[str]] = []
-        for value in first_values:
-            query = build_query()
-            query = query.ilike(first_field, _escape_ilike(value))
-            for field, values in multi[1:]:
-                query = query.filter(field, "in", f"({','.join(values)})")
-            id_sets.append(await fetch_ids(query))
-        return sorted(set.intersection(*id_sets))
-
     def _build_list_query(
         self,
         *,
         select_columns: list[str],
         column_filters: dict[str, list[Any]],
         search_term: str | None,
-        protocolo_ids: list[str] | None,
+        protocolo_filters: dict[str, list[str]],
+        secretaria_or_terms: str | None,
         situacao_values: list[Any] | None,
         sort_column: str,
         sort_descending: bool,
         count: str | None,
     ) -> AsyncSelectRequestBuilder:
-        query = self._client.table(TABLE_RESUMO).select(
+        # One row per participant on the wide table, so the Content-Range
+        # count reflects people (no GROUP BY anywhere).
+        query = self._client.table(TABLE_PROTOCOLOS_WIDE).select(
             ",".join(select_columns), count=count
         )
         for column, values in column_filters.items():
             query = _apply_scalar_filter(query, column, values)
         if search_term:
             query = query.or_(_search_or_term(search_term))
-        if protocolo_ids is not None:
-            query = query.filter(
-                "id_membro_familia", "in", f"({','.join(protocolo_ids)})"
-            )
+        query = _apply_wide_protocolo_filters(query, protocolo_filters)
+        if secretaria_or_terms:
+            query = query.or_(secretaria_or_terms)
         if situacao_values:
             query = _apply_scalar_filter(query, "situacao", situacao_values)
         query = query.order(sort_column, desc=sort_descending, nullsfirst=False)
@@ -427,6 +520,27 @@ class PostgrestParticipantRepository(ParticipantRepository):
             logger.info(f"[participants] cache SET ({len(data)} rows, TTL {_CACHE_TTL_SECONDS}s)")
         except Exception as exc:
             logger.warning(f"[participants] cache write error (ignoring): {exc}")
+
+    async def _get_vocab_from_cache(self, key: str) -> list[FilterOption] | None:
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+            logger.info("[filters] cache HIT")
+            return [FilterOption.model_validate(item) for item in json.loads(raw)]
+        except Exception as exc:
+            logger.warning(f"[filters] cache read error (ignoring): {exc}")
+            return None
+
+    async def _set_vocab_cache(
+        self, key: str, options: list[FilterOption]
+    ) -> None:
+        try:
+            payload = json.dumps([opt.model_dump(mode="json") for opt in options])
+            await self._redis.set(key, payload, ex=_CACHE_TTL_SECONDS)
+            logger.info(f"[filters] cache SET (TTL {_CACHE_TTL_SECONDS}s)")
+        except Exception as exc:
+            logger.warning(f"[filters] cache write error (ignoring): {exc}")
 
     # ------------------------------------------------------------------
     # Public interface (ParticipantRepository)
@@ -485,6 +599,11 @@ class PostgrestParticipantRepository(ParticipantRepository):
         )
         user_id = permissions.cpf if permissions is not None else None
 
+        allowed_secretarias = None if full_access else set(secretarias_acesso)
+
+        # Always validate forced protocol filters before any cache read.
+        _validate_protocol_filter_access(protocolo_filters, allowed_secretarias)
+
         sort_by = sort.sort_by
         sort_descending = sort.sort_order == "desc"
         sort_column = _DEFAULT_SORT_COLUMN
@@ -493,13 +612,36 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 sort_column = SORTABLE_COLUMNS[sort_by]
             elif sort_by == "situacao":
                 sort_column = _DEFAULT_SORT_COLUMN
-            elif sort_by == "total_fracao":
-                sort_column = "_regular_sum"
+            elif sort_by in ("total_fracao", "total_irregular"):
+                # "Total" sorts by irregularidade (fewer = better first).
+                if len(allowed_secretarias) == 1:
+                    prefix = SECRETARIA_COLUMN_PREFIX[next(iter(allowed_secretarias))]
+                    sort_column = f"{prefix}_protocolos_irregular"
+                elif allowed_secretarias:
+                    sort_column = "total_protocolos_irregular"
+                else:
+                    sort_column = _DEFAULT_SORT_COLUMN
             else:
                 sort_column = SORTABLE_COLUMNS[sort_by]
 
         page = pagination.page
         page_size = pagination.page_size  # -1 = download mode (no pagination)
+
+        # The wide table has one row per participant. Partial access is
+        # restricted to the accessible secretarias via
+        # `or=(<prefix>_protocolos_total.gt.0,...)` (ANDed with any
+        # user-selected protocol filters); a user with no secretaria can
+        # never match protocol filters.
+        no_protocolo_match = False
+        secretaria_or_terms: str | None = None
+        if allowed_secretarias is not None:
+            if allowed_secretarias:
+                secretaria_or_terms = ",".join(
+                    f"{SECRETARIA_COLUMN_PREFIX[secretaria]}_protocolos_total.gt.0"
+                    for secretaria in sorted(allowed_secretarias)
+                )
+            elif protocolo_filters:
+                no_protocolo_match = True
 
         # 1. Try cache (skip for download mode) ------------------------------
         use_cache = self._redis is not None and page_size != -1
@@ -511,55 +653,62 @@ class PostgrestParticipantRepository(ParticipantRepository):
             if cached is not None:
                 return cached
 
+        if no_protocolo_match:
+            meta = PaginationMeta(
+                page=page,
+                page_size=page_size if page_size != -1 else None,
+                total_rows=0,
+                total_pages=0,
+                cache_hit=False,
+                profiling=profiling.to_dict(),
+                can_view_dashboard=None,
+            )
+            if cache_key:
+                await self._set_cache(cache_key, [], meta)
+            return [], meta
+
         select_columns = _list_select_columns(
             full_access, secretarias_acesso, sort_by
         )
 
+        # Single query, filters/sort/pagination pushed to PostgREST on the
+        # wide table (one row per participant, so the Content-Range count
+        # equals people). Partial access recomputes the per-secretaria view
+        # in-app over the fetched rows (the secretaria restriction guarantees
+        # every participant has at least one accessible protocol).
         async with self._client.with_user_token(user_token):
-            protocolo_ids: list[str] | None = None
-            if protocolo_filters:
-                allowed = None if full_access else set(secretarias_acesso)
-                protocolo_ids = await self._fetch_protocolo_ids(
-                    protocolo_filters, allowed
-                )
-                if not protocolo_ids:
-                    # No participant matches the protocol filters.
-                    meta = PaginationMeta(
-                        page=page,
-                        page_size=page_size if page_size != -1 else None,
-                        total_rows=0,
-                        total_pages=0,
-                        cache_hit=False,
-                        profiling=profiling.to_dict(),
-                        can_view_dashboard=None,
-                    )
-                    if cache_key:
-                        await self._set_cache(cache_key, [], meta)
-                    return [], meta
+            fetch_start = time.perf_counter()
+            limit = None if page_size == -1 else page_size
+            rows, total_rows = await self._fetch_pages(
+                lambda count=None: self._build_list_query(
+                    select_columns=select_columns,
+                    column_filters=column_filters,
+                    search_term=search_term,
+                    protocolo_filters=protocolo_filters,
+                    secretaria_or_terms=secretaria_or_terms,
+                    situacao_values=situacao_values if full_access else None,
+                    sort_column=sort_column,
+                    sort_descending=sort_descending,
+                    count=count,
+                ),
+                limit=limit,
+                with_count=True,
+                start_offset=0 if page_size == -1 else (page - 1) * page_size,
+                # The wide relation is a view (no reltuples statistics), so
+                # the estimated count's planner fallback is unreliable there;
+                # exact counts rows with the same WHERE and returns the real
+                # number of participants.
+                count_method="exact",
+            )
+            profiling.get_dataset_s = round(
+                time.perf_counter() - fetch_start, config.PROFILING_DECIMAL_PLACES
+            )
+            if total_rows is None:
+                total_rows = len(rows)
+            profiling.rows_before_filter = total_rows
 
+            result_rows = rows
             if not full_access:
-                # In-app pipeline: fetch all matching rows, compute the view,
-                # drop rows without accessible protocols, sort, paginate.
-                fetch_start = time.perf_counter()
-                rows, _ = await self._fetch_pages(
-                    lambda count=None: self._build_list_query(
-                        select_columns=select_columns,
-                        column_filters=column_filters,
-                        search_term=search_term,
-                        protocolo_ids=protocolo_ids,
-                        situacao_values=None,
-                        sort_column=_DEFAULT_SORT_COLUMN,
-                        sort_descending=False,
-                        count=count,
-                    ),
-                    limit=None,
-                    with_count=False,
-                )
-                profiling.get_dataset_s = round(
-                    time.perf_counter() - fetch_start, config.PROFILING_DECIMAL_PLACES
-                )
-                profiling.rows_before_filter = len(rows)
-
                 in_app_start = time.perf_counter()
                 viewed = [
                     governance.compute_resumo_view(
@@ -567,52 +716,15 @@ class PostgrestParticipantRepository(ParticipantRepository):
                     )
                     for row in rows
                 ]
-                rows = [row for row in viewed if row is not None]
-                rows = governance.sort_rows(rows, sort_column, sort_descending)
+                result_rows = [row for row in viewed if row is not None]
                 profiling.apply_filters_s = round(
                     time.perf_counter() - in_app_start, config.PROFILING_DECIMAL_PLACES
                 )
-                profiling.rows_after_filter = len(rows)
-
-                total_rows = len(rows)
-                if page_size == -1:
-                    result_rows = rows
-                else:
-                    start_idx = (page - 1) * page_size
-                    result_rows = rows[start_idx : start_idx + page_size]
-                profiling.paginate_s = round(
-                    time.perf_counter() - in_app_start - profiling.apply_filters_s,
-                    config.PROFILING_DECIMAL_PLACES,
-                )
+                profiling.rows_after_filter = len(result_rows)
+                profiling.paginate_s = 0.0
             else:
-                # Pushdown pipeline: filters, search, protocol ids, situacao,
-                # sort and pagination all resolved by PostgREST.
-                fetch_start = time.perf_counter()
-                limit = None if page_size == -1 else page_size
-                rows, total_rows = await self._fetch_pages(
-                    lambda count=None: self._build_list_query(
-                        select_columns=select_columns,
-                        column_filters=column_filters,
-                        search_term=search_term,
-                        protocolo_ids=protocolo_ids,
-                        situacao_values=situacao_values,
-                        sort_column=sort_column,
-                        sort_descending=sort_descending,
-                        count=count,
-                    ),
-                    limit=limit,
-                    with_count=True,
-                    start_offset=0 if page_size == -1 else (page - 1) * page_size,
-                )
-                profiling.get_dataset_s = round(
-                    time.perf_counter() - fetch_start, config.PROFILING_DECIMAL_PLACES
-                )
-                if total_rows is None:
-                    total_rows = len(rows)
-                profiling.rows_before_filter = total_rows
                 profiling.rows_after_filter = total_rows
                 profiling.paginate_s = 0.0
-                result_rows = rows
 
         if search_term:
             profiling.rows_after_search = total_rows
@@ -646,7 +758,8 @@ class PostgrestParticipantRepository(ParticipantRepository):
             await self._set_cache(cache_key, data, meta)
 
         logger.info(
-            f"PostgREST participants list: {total_rows} rows "
+            f"PostgREST participants list ({TABLE_PROTOCOLOS_WIDE}): "
+            f"{total_rows} rows "
             f"(page={page}, page_size={page_size}, in_app={not full_access})"
         )
         return data, meta
@@ -669,16 +782,16 @@ class PostgrestParticipantRepository(ParticipantRepository):
         )
 
         async with self._client.with_user_token(user_token):
-            resumo_result = await self._execute(
-                self._client.table(TABLE_RESUMO)
+            wide_result = await self._execute(
+                self._client.table(TABLE_PROTOCOLOS_WIDE)
                 .select("*")
                 .filter("id_membro_familia", "eq", str(id_membro_familia))
                 .limit(1)
             )
-            if not resumo_result.data:
+            if not wide_result.data:
                 return None
 
-            resumo_row = dict(resumo_result.data[0])
+            participant_row = dict(wide_result.data[0])
 
             protocolos_rows: list[dict[str, Any]] = []
             if full_access or secretarias_acesso:
@@ -706,7 +819,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 )
 
             row = governance.compute_detail_view(
-                resumo_row,
+                participant_row,
                 [row_to_protocolo_item(dict(protocolo)) for protocolo in protocolos_rows],
                 secretarias_acesso,
                 full_access=full_access,
@@ -752,3 +865,233 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         )
 
         return participante
+
+    # ------------------------------------------------------------------
+    # Filter options (all sourced from the wide table)
+    # ------------------------------------------------------------------
+
+    def _build_vocab_query(
+        self,
+        columns: list[str],
+        *,
+        scalar_filters: dict[str, list[Any]],
+        protocolo_filters: dict[str, list[str]],
+        exclude_column: str | None,
+        exclude_protocolo_field: str | None,
+        search_term: str | None,
+        secretaria_or_terms: str | None,
+    ) -> AsyncSelectRequestBuilder:
+        """One aggregate (GROUP BY) query for a single option list.
+
+        Applies every active filter except the field's own (cascade), the
+        free-text search, and — for partial access — the secretaria
+        restriction (`or=(<prefix>_protocolos_total.gt.0,...)`).
+        """
+        query = self._client.table(TABLE_PROTOCOLOS_WIDE).select(
+            ",".join(columns) + ",count()"
+        )
+        for column, values in scalar_filters.items():
+            if column == exclude_column:
+                continue
+            query = _apply_scalar_filter(query, column, values)
+        protocolo_cascade = {
+            field: values
+            for field, values in protocolo_filters.items()
+            if field != exclude_protocolo_field
+        }
+        query = _apply_wide_protocolo_filters(query, protocolo_cascade)
+        if secretaria_or_terms:
+            query = query.or_(secretaria_or_terms)
+        if search_term:
+            query = query.or_(_search_or_term(search_term))
+        return query.order(columns[0], desc=False, nullsfirst=False)
+
+    def _build_wide_aggregate_query(
+        self,
+        select_columns: list[str],
+        *,
+        scalar_filters: dict[str, list[Any]],
+        protocolo_filters: dict[str, list[str]],
+        exclude_protocolo_field: str | None,
+        search_term: str | None,
+        secretaria_or_terms: str | None,
+    ) -> AsyncSelectRequestBuilder:
+        """Single-row pure-aggregate query over the wide table.
+
+        Used for `wide_counts` (one `col.count()` per protocol) and
+        `wide_secretarias` (per-secretaria counter maxima); no GROUP BY
+        columns, so no `count()`/`order` is added.
+
+        Each aggregate is aliased with its own column (`col:col.count()`):
+        PostgREST keys every aggregate result by the function name, so
+        several unaliased `count()`/`max()` would collapse into duplicate
+        JSON keys and lose all but the last value.
+        """
+        query = self._client.table(TABLE_PROTOCOLOS_WIDE).select(
+            ",".join(select_columns)
+        )
+        for column, values in scalar_filters.items():
+            query = _apply_scalar_filter(query, column, values)
+        protocolo_cascade = {
+            field: values
+            for field, values in protocolo_filters.items()
+            if field != exclude_protocolo_field
+        }
+        query = _apply_wide_protocolo_filters(query, protocolo_cascade)
+        if secretaria_or_terms:
+            query = query.or_(secretaria_or_terms)
+        if search_term:
+            query = query.or_(_search_or_term(search_term))
+        return query
+
+    async def get_filter_options(
+        self,
+        field: str,
+        filters: FilterCriteria,
+        permissions: Any = None,
+        user_token: str | None = None,
+        bypass_cache: bool = False,
+    ) -> list[FilterOption]:
+        cfg = FILTER_OPTION_CONFIGS[field]
+
+        secretarias_acesso = (
+            list(permissions.secretarias_acesso)
+            if permissions is not None
+            else sorted(governance.ALL_SECRETARIAS)
+        )
+        full_access = (
+            permissions is None
+            or permissions.has_full_access()
+            or governance.has_full_protocol_access(secretarias_acesso)
+        )
+        if cfg.get("full_access_only") and not full_access:
+            return []
+        if cfg.get("needs_access") and not full_access and not secretarias_acesso:
+            return []
+
+        user_id = permissions.cpf if permissions is not None else None
+        cache_key = (
+            _make_vocab_cache_key(field, filters, user_id)
+            if self._redis is not None
+            else None
+        )
+        if cache_key and not bypass_cache:
+            cached = await self._get_vocab_from_cache(cache_key)
+            if cached is not None:
+                return cached
+
+        filters_dict = filters.model_dump(exclude_none=True)
+        search_term = filters_dict.pop("search", None)
+
+        scalar_filters: dict[str, list[Any]] = {}
+        for key, value in filters_dict.items():
+            if key in FILTER_COLUMN_MAP:
+                values = _clean_values(_split_values(value))
+                if values:
+                    scalar_filters[FILTER_COLUMN_MAP[key]] = values
+
+        protocolo_filters: dict[str, list[str]] = {}
+        for key, proto_field in PROTOCOLO_FILTER_FIELDS.items():
+            if key in filters_dict:
+                values = _clean_values(
+                    [str(v) for v in _split_values(filters_dict.pop(key))]
+                )
+                if values:
+                    protocolo_filters[proto_field] = values
+
+        allowed_secretarias = (
+            None
+            if full_access or not secretarias_acesso
+            else set(secretarias_acesso)
+        )
+
+        secretaria_or_terms: str | None = None
+        if allowed_secretarias:
+            secretaria_or_terms = ",".join(
+                f"{SECRETARIA_COLUMN_PREFIX[secretaria]}_protocolos_total.gt.0"
+                for secretaria in sorted(allowed_secretarias)
+            )
+
+        kind = cfg["kind"]
+        exclude_protocolo_field = PROTOCOLO_FILTER_FIELDS.get(cfg.get("filter_key"))
+
+        allowed_for_options = allowed_secretarias
+        if kind == "wide_counts":
+            # Protocol options are columns, so a selected secretaria filter
+            # (which only restricts rows) must also restrict which protocol
+            # columns become options (intersected with partial access).
+            selected_secretarias = set(
+                protocolo_filters.get("protocolo_secretaria") or []
+            )
+            if selected_secretarias:
+                allowed_for_options = (
+                    selected_secretarias
+                    if allowed_for_options is None
+                    else allowed_for_options & selected_secretarias
+                )
+
+        async with self._client.with_user_token(user_token):
+            if kind == "static_status":
+                rows: list[dict[str, Any]] = []
+            elif kind == "wide_counts":
+                rows, _ = await self._fetch_pages(
+                    lambda count=None: self._build_wide_aggregate_query(
+                        [
+                            f"{column}:{column}.count()"
+                            for column in PROTOCOLO_STATUS_COLUMNS
+                        ],
+                        scalar_filters=scalar_filters,
+                        protocolo_filters=protocolo_filters,
+                        exclude_protocolo_field=exclude_protocolo_field,
+                        search_term=search_term,
+                        secretaria_or_terms=secretaria_or_terms,
+                    ),
+                    limit=None,
+                    with_count=False,
+                )
+            elif kind == "wide_secretarias":
+                rows, _ = await self._fetch_pages(
+                    lambda count=None: self._build_wide_aggregate_query(
+                        [
+                            f"{SECRETARIA_COLUMN_PREFIX[secretaria]}_protocolos_total:"
+                            f"{SECRETARIA_COLUMN_PREFIX[secretaria]}_protocolos_total.max()"
+                            for secretaria in SECRETARIA_ORDER
+                        ],
+                        scalar_filters=scalar_filters,
+                        protocolo_filters=protocolo_filters,
+                        exclude_protocolo_field=exclude_protocolo_field,
+                        search_term=search_term,
+                        secretaria_or_terms=secretaria_or_terms,
+                    ),
+                    limit=None,
+                    with_count=False,
+                )
+            else:
+                rows, _ = await self._fetch_pages(
+                    lambda count=None: self._build_vocab_query(
+                        cfg["columns"],
+                        scalar_filters=scalar_filters,
+                        protocolo_filters=protocolo_filters,
+                        exclude_column=FILTER_COLUMN_MAP.get(cfg.get("filter_key")),
+                        exclude_protocolo_field=exclude_protocolo_field,
+                        search_term=search_term,
+                        secretaria_or_terms=secretaria_or_terms,
+                    ),
+                    limit=None,
+                    with_count=False,
+                )
+
+        options = build_options(
+            cfg,
+            list(rows),
+            allowed_secretarias=allowed_for_options,
+        )
+
+        if cache_key:
+            await self._set_vocab_cache(cache_key, options)
+
+        logger.info(
+            f"PostgREST filter options: field={field} ({len(options)} options, "
+            f"full_access={full_access})"
+        )
+        return options

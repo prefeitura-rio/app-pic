@@ -12,7 +12,7 @@ from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
-from src.pic.domain.errors import NotFoundError
+from src.pic.domain.errors import ForbiddenError, NotFoundError
 from src.pic.domain.errors import ValidationError as DomainValidationError
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.domain.models.pagination import PaginationParams, SortParams
@@ -24,6 +24,11 @@ from src.pic.presentation.di import (
     get_list_participants_use_case,
     get_participant_detail_use_case,
 )
+from src.pic.presentation.v2._helpers import (
+    data_proxy_user_token,
+    log_postgrest_error,
+    self_heal_policy_sync,
+)
 from src.pic.presentation.v2.schemas import (
     ParticipantDetailResponse,
     ParticipantListResponse,
@@ -31,43 +36,6 @@ from src.pic.presentation.v2.schemas import (
 from src.utils.log import logger
 
 router = APIRouter(dependencies=[Depends(verify_jwt)], tags=["Participantes V2"])
-
-
-def _data_proxy_user_token(data_proxy_token: str | None, id_token: str) -> str:
-    """Pick the token forwarded to the data-proxy (PostgREST).
-
-    Prefers the `X-Access-Token` header (Keycloak access token, which carries
-    the `role`/`schemas` claims PostgREST needs); falls back to the id token
-    used for backend auth when the header is absent (older sessions).
-    """
-    if data_proxy_token:
-        token = data_proxy_token.strip()
-        if token.lower().startswith("bearer "):
-            token = token[7:].strip()
-        if token:
-            return token
-    return id_token
-
-
-def _log_postgrest_error(error: PostgrestError) -> None:
-    logger.error(
-        f"PostgREST (data-proxy) error: message={error.message} "
-        f"code={error.code} hint={error.hint} details={error.details}"
-    )
-
-
-async def _self_heal_policy_sync(admin_repo: IAdminRepository, cpf: str) -> None:
-    """Best-effort push of pending policy grants before the data-proxy read.
-
-    The frontend loads `/admin/me` (which runs the same self-heal) and
-    `/participants` in parallel; on a first login with pending grants, the
-    participant query could otherwise hit the data-proxy before the sync and
-    return an empty list. Never blocks the read on failure.
-    """
-    try:
-        await admin_repo.self_heal_policy_sync(cpf)
-    except Exception:
-        logger.exception(f"Self-heal de policy sync falhou para {cpf}")
 
 
 @router.get(
@@ -102,7 +70,7 @@ async def get_participants(
             f"Filters active: {len(filters.model_dump(exclude_none=True))}"
         )
 
-    await _self_heal_policy_sync(admin_repo, permissions.cpf)
+    await self_heal_policy_sync(admin_repo, permissions.cpf)
 
     try:
         result = await use_case.execute(
@@ -111,7 +79,7 @@ async def get_participants(
             sort=sort,
             permissions=permissions,
             bypass_cache=bypass_cache,
-            user_token=_data_proxy_user_token(
+            user_token=data_proxy_user_token(
                 data_proxy_token, credentials.credentials
             ),
         )
@@ -119,8 +87,10 @@ async def get_participants(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except DomainValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    except ForbiddenError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except PostgrestError as e:
-        _log_postgrest_error(e)
+        log_postgrest_error(e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
     elapsed = time.perf_counter() - endpoint_start
@@ -198,14 +168,14 @@ async def get_participant_detail(
     endpoint_start = time.perf_counter()
     logger.info(f"V2 participant detail endpoint started: {id_membro_familia}")
 
-    await _self_heal_policy_sync(admin_repo, permissions.cpf)
+    await self_heal_policy_sync(admin_repo, permissions.cpf)
 
     try:
         result = await use_case.execute(
             id_membro_familia=id_membro_familia,
             permissions=permissions,
             bypass_cache=bypass_cache,
-            user_token=_data_proxy_user_token(
+            user_token=data_proxy_user_token(
                 data_proxy_token, credentials.credentials
             ),
         )
@@ -214,7 +184,7 @@ async def get_participant_detail(
     except DomainValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except PostgrestError as e:
-        _log_postgrest_error(e)
+        log_postgrest_error(e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
     elapsed = time.perf_counter() - endpoint_start

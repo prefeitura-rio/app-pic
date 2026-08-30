@@ -5,11 +5,18 @@ import httpx
 import pytest
 
 from src.core.security.permissions_models import UserPermissions
+from src.pic.domain.errors import ForbiddenError, ValidationError
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.domain.models.pagination import PaginationParams, SortParams
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
+from src.pic.infrastructure.repositories.helpers.filter_vocabulary import (
+    PROTOCOLO_DESCRICOES,
+)
+from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
+    PROTOCOLO_STATUS_COLUMNS,
+)
 from src.pic.infrastructure.repositories.postgrest_participant_repository import (
     PostgrestParticipantRepository,
 )
@@ -33,6 +40,13 @@ PARTIAL_SMS = UserPermissions(
     is_admin=False,
     is_super_admin=False,
     secretarias_acesso=["SMS"],
+)
+
+PARTIAL_SMAS = UserPermissions(
+    cpf="44444444444",
+    is_admin=False,
+    is_super_admin=False,
+    secretarias_acesso=["SMAS"],
 )
 
 NO_ACCESS = UserPermissions(
@@ -95,12 +109,58 @@ def protocolo_row(
     }
 
 
+def produto_row(
+    membro_id: str,
+    *,
+    secretaria: str = "SMS",
+    protocolo_id: str = "sms_x",
+    status_label: str = "Regular",
+    **overrides,
+):
+    """One `endpoint_participante_protocolos` row (produto = participante x protocolo)."""
+    row = {
+        **resumo_row(membro_id),
+        **protocolo_row(
+            membro_id,
+            secretaria=secretaria,
+            protocolo_id=protocolo_id,
+            status_label=status_label,
+        ),
+    }
+    row.update(overrides)
+    return row
+
+
+def wide_row(
+    membro_id: str,
+    *,
+    protocolos: dict[str, str | None] | None = None,
+    **overrides,
+):
+    """One `endpoint_participante_protocolos_wide` row.
+
+    One row per participant: the resumo columns plus one status column per
+    protocol (NULL when the participant lacks the protocol).
+    """
+    row = {
+        **resumo_row(membro_id),
+        **dict.fromkeys(PROTOCOLO_STATUS_COLUMNS),
+    }
+    if protocolos:
+        row.update(protocolos)
+    row.update(overrides)
+    return row
+
+
 class FakeDataProxy:
     """Fakes the data-proxy PostgREST behind one MockTransport.
 
     Honors limit/offset and simple column filters (`eq.`, `ilike.`, `in.`,
     `is.`) over the canned rows per table, and returns a Content-Range header
-    when the request carries `Prefer: count=exact`.
+    when the request carries `Prefer: count=<method>`. `or` params are
+    partially emulated: only `gt`/`lt` terms (the secretaria restriction
+    `or=(<prefix>_protocolos_total.gt.0,...)`) are enforced; other terms
+    (e.g. free-text search) are ignored, mirroring the old fake.
     """
 
     def __init__(self, rows_by_table: dict[str, list[dict]]):
@@ -112,13 +172,57 @@ class FakeDataProxy:
         self.transport_error: Exception | None = None
 
     @staticmethod
+    def _matches_or_term(row: dict, term: str) -> bool:
+        """One `or` term: `column.op.operand` (eq/gt/lt/not.is.null)."""
+        column, _, rest = term.partition(".")
+        op, _, operand = rest.partition(".")
+        if op == "not":
+            return operand != "is.null" or row.get(column) is not None
+        if op == "eq":
+            return str(row.get(column)) == operand
+        if op == "gt":
+            row_value = row.get(column)
+            return row_value is not None and float(row_value) > float(operand)
+        if op == "lt":
+            row_value = row.get(column)
+            return row_value is not None and float(row_value) < float(operand)
+        return False
+
+    @staticmethod
+    def _or_term_supported(term: str) -> bool:
+        _, _, rest = term.partition(".")
+        op, _, _ = rest.partition(".")
+        return op in {"eq", "gt", "lt", "not"}
+
+    @staticmethod
     def _matches(row: dict, params: httpx.QueryParams) -> bool:
         for key, value in params.items():
             if key in {"select", "order", "limit", "offset"}:
                 continue
+            if key == "or":
+                # One or-group per `or` param (ANDed between params, ORed
+                # inside). Unsupported terms (e.g. the free-text search
+                # ilike) are ignored, mirroring the old fake.
+                terms = value.strip("()").split(",")
+                supported = [
+                    term
+                    for term in terms
+                    if FakeDataProxy._or_term_supported(term)
+                ]
+                if supported and not any(
+                    FakeDataProxy._matches_or_term(row, term)
+                    for term in supported
+                ):
+                    return False
+                continue
             if not isinstance(value, str) or "." not in value:
                 continue
             op, _, operand = value.partition(".")
+            if op == "not":
+                # `col=not.is.null` column filter (wide protocol columns).
+                if operand == "is.null" and row.get(key) is None:
+                    return False
+                continue
             if op not in {"eq", "ilike", "in", "is"}:
                 continue
             row_value = row.get(key)
@@ -171,12 +275,45 @@ class FakeDataProxy:
             if self._matches(row, request.url.params)
         ]
         params = request.url.params
+
+        # Aggregate queries: GROUP BY (`<cols>,count()`) or pure aggregates
+        # (`col:col.count()`/`col:col.max()` -> single row), like PostgREST
+        # where each aggregate is aliased with its own column.
+        select = params.get("select")
+        if select and select != "*":
+            items = list(select.split(","))
+            if all(
+                item.endswith(".count()") or item.endswith(".max()")
+                for item in items
+            ):
+                single: dict[str, int | None] = {}
+                for item in items:
+                    head = item.removesuffix(".count()").removesuffix(".max()")
+                    column = head.split(":", 1)[-1]
+                    values = [row.get(column) for row in rows]
+                    present = [v for v in values if v is not None]
+                    if item.endswith(".count()"):
+                        single[column] = len(present)
+                    else:
+                        single[column] = max(present) if present else None
+                rows = [single]
+            elif "count()" in select:
+                columns = [c for c in items if c != "count()"]
+                grouped: dict[tuple, int] = {}
+                for row in rows:
+                    key = tuple(row.get(column) for column in columns)
+                    grouped[key] = grouped.get(key, 0) + 1
+                rows = [
+                    {**dict(zip(columns, key, strict=True)), "count": count}
+                    for key, count in grouped.items()
+                ]
+
         limit = int(params["limit"]) if "limit" in params else None
         offset = int(params["offset"]) if "offset" in params else 0
         page = rows[offset : offset + limit] if limit is not None else rows[offset:]
 
         headers = {}
-        if "count=exact" in request.headers.get("prefer", ""):
+        if "count=" in request.headers.get("prefer", ""):
             headers["Content-Range"] = f"{offset}-{len(rows)}/{len(rows)}"
         return httpx.Response(200, json=page, headers=headers, request=request)
 
@@ -198,7 +335,7 @@ def make_repo():
 
 
 # ---------------------------------------------------------------------------
-# List — super admin (full access, pushdown)
+# List — super admin (full access, single wide query)
 # ---------------------------------------------------------------------------
 
 
@@ -207,7 +344,7 @@ async def test_list_pushes_filters_sort_pagination_and_user_token(make_repo):
         resumo_row("1", bairro="Engenho da Rainha", id_cre="03"),
         resumo_row("2", bairro="Engenho da Rainha", id_cre="03"),
     ]
-    repo, fake = make_repo({"endpoint_participante_resumo": rows})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(status="Ativo", bairro="Engenho da Rainha", cre="03"),
@@ -217,21 +354,25 @@ async def test_list_pushes_filters_sort_pagination_and_user_token(make_repo):
         user_token=USER_TOKEN,
     )
 
+    assert len(fake.requests) == 1
     sent = fake.requests[0]
     assert sent.headers["authorization"] == f"Bearer {USER_TOKEN}"
     assert sent.headers["accept-profile"] == "app_pequenos_cariocas"
+    assert sent.url.path == "/endpoint_participante_protocolos_wide"
     params = sent.url.params
     select = params["select"]
     assert select.startswith("id_familia,id_membro_familia,nome,cpf,grupo,bairro,idade,status,raca")
     assert "situacao" in select
     assert "total_fracao" in select
     assert "total_protocolos_irregular" in select
+    assert "count()" not in select  # wide: one row per participant
     assert params["status"] == "ilike.Ativo"
     assert params["bairro"] == "ilike.Engenho da Rainha"
     assert params["id_cre"] == "eq.03"
     assert params["order"] == ("bairro.desc.nullslast,id_membro_familia.asc.nullslast")
     assert params["limit"] == "50"
     assert params["offset"] == "50"
+    # The wide relation is a view: exact count (estimated hallucinates).
     assert "count=exact" in sent.headers["prefer"]
 
     # Page 2 of a 2-row set is empty (server-side offset applies); the count
@@ -246,8 +387,86 @@ async def test_list_pushes_filters_sort_pagination_and_user_token(make_repo):
     assert meta.profiling["filters_applied"] == 3
 
 
+# ---------------------------------------------------------------------------
+# List — forced protocol filters (access validation)
+# ---------------------------------------------------------------------------
+
+
+async def test_forced_descricao_outside_access_raises_forbidden(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+
+    with pytest.raises(ForbiddenError):
+        await repo.list_participants(
+            filters=FilterCriteria(
+                protocolo_descricao="sms_vacinacao_pentavalente"
+            ),
+            pagination=PaginationParams(),
+            sort=SortParams(),
+            permissions=PARTIAL_SMAS,
+        )
+    assert len(fake.requests) == 0
+
+
+async def test_forced_descricao_unknown_id_raises_validation_error(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(protocolo_descricao="protocolo_inventado"),
+            pagination=PaginationParams(),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
+async def test_forced_secretaria_outside_access_raises_forbidden(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+
+    with pytest.raises(ForbiddenError):
+        await repo.list_participants(
+            filters=FilterCriteria(protocolo_secretaria="SMS"),
+            pagination=PaginationParams(),
+            sort=SortParams(),
+            permissions=PARTIAL_SMAS,
+        )
+    assert len(fake.requests) == 0
+
+
+async def test_forced_secretaria_unknown_value_raises_validation_error(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(protocolo_secretaria="XYZ"),
+            pagination=PaginationParams(),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
+async def test_own_secretaria_protocol_filters_pass_validation(make_repo):
+    rows = [
+        wide_row("1", protocolos={"smas_acesso_alimentacao": "Atenção"})
+    ]
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    data, _ = await repo.list_participants(
+        filters=FilterCriteria(
+            protocolo_descricao="smas_acesso_alimentacao",
+            protocolo_secretaria="SMAS",
+        ),
+        pagination=PaginationParams(),
+        sort=SortParams(),
+        permissions=PARTIAL_SMAS,
+    )
+    assert len(fake.requests) == 1
+    assert len(data) == 1
+
+
 async def test_list_multi_value_filter_uses_in(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
         filters=FilterCriteria(bairro="A|B"),
         pagination=PaginationParams(page=1, page_size=20),
@@ -258,7 +477,7 @@ async def test_list_multi_value_filter_uses_in(make_repo):
 
 
 async def test_list_boolean_filter_uses_is(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
         filters=FilterCriteria(has_bolsa_familia=True),
         pagination=PaginationParams(page=1, page_size=20),
@@ -269,7 +488,7 @@ async def test_list_boolean_filter_uses_is(make_repo):
 
 
 async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
         filters=FilterCriteria(search="maria"),
         pagination=PaginationParams(page=1, page_size=20),
@@ -287,7 +506,7 @@ async def test_list_page_size_minus_one_loops_pages_without_server_pagination(
     make_repo,
 ):
     rows = [resumo_row(str(i)) for i in range(1500)]
-    repo, fake = make_repo({"endpoint_participante_resumo": rows})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(),
@@ -307,7 +526,7 @@ async def test_list_page_size_minus_one_loops_pages_without_server_pagination(
 
 
 async def test_list_sorts_by_default_column_when_sort_not_requested(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
         filters=FilterCriteria(),
         pagination=PaginationParams(page=1, page_size=20),
@@ -322,7 +541,7 @@ async def test_list_situacao_filter_is_pushed_for_full_access(make_repo):
         resumo_row("1", situacao="Atenção"),
         resumo_row("2", situacao="Regular"),
     ]
-    repo, fake = make_repo({"endpoint_participante_resumo": rows})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
 
     await repo.list_participants(
         filters=FilterCriteria(situacao="ATENÇÃO"),
@@ -335,8 +554,21 @@ async def test_list_situacao_filter_is_pushed_for_full_access(make_repo):
     assert fake.requests[0].url.params["limit"] == "20"
 
 
+async def test_list_sort_by_total_uses_irregularidade_column(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(sort_by="total_fracao", sort_order="asc"),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["order"].startswith(
+        "total_protocolos_irregular.asc"
+    )
+
+
 # ---------------------------------------------------------------------------
-# List — partial access (in-app view)
+# List — partial access (single wide query + in-app per-secretaria view)
 # ---------------------------------------------------------------------------
 
 
@@ -344,11 +576,16 @@ async def test_list_partial_secretaria_computes_view_and_drops_invisible_rows(
     make_repo,
 ):
     rows = [
-        resumo_row("1", saude_protocolos_total=1, saude_protocolos_regular=1,
-                   saude_protocolos_irregular=0, saude_fracao="1/1"),
+        resumo_row(
+            "1",
+            saude_protocolos_total=1,
+            saude_protocolos_regular=1,
+            saude_protocolos_irregular=0,
+            saude_fracao="1/1",
+        ),
         resumo_row("2", saude_protocolos_total=0),
     ]
-    repo, fake = make_repo({"endpoint_participante_resumo": rows})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
 
     data, meta = await repo.list_participants(
         filters=FilterCriteria(),
@@ -358,11 +595,18 @@ async def test_list_partial_secretaria_computes_view_and_drops_invisible_rows(
         user_token=USER_TOKEN,
     )
 
-    # Fetch-all (in-app pipeline).
-    assert fake.requests[0].url.params["limit"] == "1000"
-    assert fake.requests[0].headers["authorization"] == f"Bearer {USER_TOKEN}"
+    # Single wide request: secretaria restriction via or on the pre-
+    # aggregated counters, pushdown pagination, exact count.
+    assert len(fake.requests) == 1
+    req = fake.requests[0]
+    assert req.headers["authorization"] == f"Bearer {USER_TOKEN}"
+    assert req.url.path == "/endpoint_participante_protocolos_wide"
+    assert req.url.params["or"] == "(saude_protocolos_total.gt.0)"
+    assert "protocolo_secretaria" not in req.url.params
+    assert req.url.params["limit"] == "20"
+    assert "count=exact" in req.headers["prefer"]
 
-    # Only row "1" has SMS protocols; row "2" is dropped.
+    # Only row "1" has SMS protocols; row "2" is dropped by the restriction.
     assert [item.id_membro_familia for item in data] == ["1"]
     item = data[0]
     assert item.total_protocolos_irregular == 0
@@ -376,7 +620,7 @@ async def test_list_partial_secretaria_computes_view_and_drops_invisible_rows(
 
 
 async def test_list_partial_select_only_allowed_secretaria_columns(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
         filters=FilterCriteria(),
         pagination=PaginationParams(page=1, page_size=20),
@@ -390,10 +634,11 @@ async def test_list_partial_select_only_allowed_secretaria_columns(make_repo):
     assert "educacao_fracao" not in select
     assert "situacao" not in select
     assert "status" in select
+    assert "count()" not in select
 
 
 async def test_list_partial_ignores_situacao_filter(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": [resumo_row("1")]})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]})
     await repo.list_participants(
         filters=FilterCriteria(situacao="ATENÇÃO"),
         pagination=PaginationParams(page=1, page_size=20),
@@ -404,7 +649,7 @@ async def test_list_partial_ignores_situacao_filter(make_repo):
 
 
 async def test_list_partial_sort_by_situacao_falls_back_to_nome(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": [resumo_row("1")]})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]})
     await repo.list_participants(
         filters=FilterCriteria(),
         pagination=PaginationParams(page=1, page_size=20),
@@ -414,8 +659,40 @@ async def test_list_partial_sort_by_situacao_falls_back_to_nome(make_repo):
     assert fake.requests[0].url.params["order"].startswith("nome.asc")
 
 
+async def test_list_partial_sort_by_total_uses_secretaria_irregularidade(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]})
+    await repo.list_participants(
+        filters=FilterCriteria(),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(sort_by="total_fracao", sort_order="asc"),
+        permissions=PARTIAL_SMS,
+    )
+    assert fake.requests[0].url.params["order"].startswith(
+        "saude_protocolos_irregular.asc"
+    )
+
+
+async def test_list_partial_sort_by_total_with_two_secretarias_uses_global(make_repo):
+    permissions = UserPermissions(
+        cpf="44444444444",
+        is_admin=False,
+        is_super_admin=False,
+        secretarias_acesso=["SMS", "SMAS"],
+    )
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]})
+    await repo.list_participants(
+        filters=FilterCriteria(),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(sort_by="total_fracao", sort_order="asc"),
+        permissions=permissions,
+    )
+    assert fake.requests[0].url.params["order"].startswith(
+        "total_protocolos_irregular.asc"
+    )
+
+
 async def test_list_no_access_keeps_rows_with_null_protocol_fields(make_repo):
-    repo, _ = make_repo({"endpoint_participante_resumo": [resumo_row("1")]})
+    repo, _ = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]})
     data, meta = await repo.list_participants(
         filters=FilterCriteria(),
         pagination=PaginationParams(page=1, page_size=20),
@@ -432,15 +709,28 @@ async def test_list_no_access_keeps_rows_with_null_protocol_fields(make_repo):
 
 
 # ---------------------------------------------------------------------------
-# Protocolo filters (endpoint_participante_protocolos_detalhe)
+# Protocolo filters (wide table: one row per participant, one column per
+# protocol)
 # ---------------------------------------------------------------------------
 
 
-async def test_list_protocolo_filter_resolves_ids_then_ins_on_resumo(make_repo):
+async def test_list_protocolo_secretaria_filter_uses_wide_counters(make_repo):
     repo, fake = make_repo(
         {
-            "endpoint_participante_resumo": [resumo_row("1"), resumo_row("2")],
-            "endpoint_participante_protocolos_detalhe": [protocolo_row("1")],
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    saude_protocolos_total=1,
+                    educacao_protocolos_total=0,
+                    assistencia_protocolos_total=0,
+                ),
+                wide_row(
+                    "2",
+                    saude_protocolos_total=0,
+                    educacao_protocolos_total=1,
+                    assistencia_protocolos_total=0,
+                ),
+            ]
         }
     )
 
@@ -451,16 +741,250 @@ async def test_list_protocolo_filter_resolves_ids_then_ins_on_resumo(make_repo):
         permissions=SUPER_ADMIN,
     )
 
-    detalhe_req = fake.requests[0]
-    assert detalhe_req.url.path == "/endpoint_participante_protocolos_detalhe"
-    assert detalhe_req.url.params["protocolo_secretaria"] == "ilike.SMS"
-    assert "protocolo_secretaria=in" not in str(detalhe_req.url.params)
+    assert len(fake.requests) == 1
+    wide_req = fake.requests[0]
+    assert wide_req.url.path == "/endpoint_participante_protocolos_wide"
+    assert "count()" not in wide_req.url.params["select"]
+    assert wide_req.url.params["or"] == "(saude_protocolos_total.gt.0)"
+    assert "protocolo_secretaria" not in wide_req.url.params
+    # The wide relation is a view: exact count (estimated hallucinates over
+    # views without relation statistics).
+    assert "count=exact" in wide_req.headers["prefer"]
+    assert "count=estimated" not in wide_req.headers["prefer"]
 
-    resumo_req = fake.requests[1]
-    assert resumo_req.url.path == "/endpoint_participante_resumo"
-    assert resumo_req.url.params["id_membro_familia"] == "in.(1)"
+    # One row per participant: the Content-Range count equals people.
     assert [item.id_membro_familia for item in data] == ["1"]
     assert meta.total_rows == 1
+
+
+async def test_list_protocolo_multi_secretaria_union(make_repo):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    saude_protocolos_total=1,
+                    educacao_protocolos_total=0,
+                    assistencia_protocolos_total=0,
+                ),
+                wide_row(
+                    "2",
+                    saude_protocolos_total=0,
+                    educacao_protocolos_total=1,
+                    assistencia_protocolos_total=0,
+                ),
+                wide_row(
+                    "3",
+                    saude_protocolos_total=0,
+                    educacao_protocolos_total=0,
+                    assistencia_protocolos_total=0,
+                ),
+            ]
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(protocolo_secretaria="SMS|SME"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert fake.requests[0].url.params["or"] == (
+        "(saude_protocolos_total.gt.0,educacao_protocolos_total.gt.0)"
+    )
+    assert [item.id_membro_familia for item in data] == ["1", "2"]
+    assert meta.total_rows == 2
+
+
+async def test_list_protocolo_descricao_is_not_null_on_wide_column(make_repo):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_protocolos_wide": [
+                wide_row("1", protocolos={"sms_vacinacao_pentavalente": "Regular"}),
+                wide_row("2"),
+            ]
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(protocolo_descricao="sms_vacinacao_pentavalente"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert len(fake.requests) == 1
+    wide_req = fake.requests[0]
+    assert wide_req.url.path == "/endpoint_participante_protocolos_wide"
+    assert wide_req.url.params["sms_vacinacao_pentavalente"] == "not.is.null"
+    assert [item.id_membro_familia for item in data] == ["1"]
+    assert meta.total_rows == 1
+
+
+async def test_list_protocolo_multi_descricao_requires_all_protocols(make_repo):
+    """Multi-select descricao = intersection (AND) — regression for the
+    count bug: a participant matching two selected protocols counts once."""
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    protocolos={
+                        "sms_vacinacao_pentavalente": "Regular",
+                        "sme_frequencia_escolar": "Regular",
+                    },
+                ),
+                wide_row(
+                    "2",
+                    protocolos={"sms_vacinacao_pentavalente": "Regular"},
+                ),
+            ]
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(
+            protocolo_descricao="sms_vacinacao_pentavalente|sme_frequencia_escolar"
+        ),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert len(fake.requests) == 1
+    params = fake.requests[0].url.params
+    assert params["sms_vacinacao_pentavalente"] == "not.is.null"
+    assert params["sme_frequencia_escolar"] == "not.is.null"
+    assert "count=exact" in fake.requests[0].headers["prefer"]
+    assert [item.id_membro_familia for item in data] == ["1"]
+    assert meta.total_rows == 1
+
+
+async def test_list_protocolo_status_matches_any_protocol_column(make_repo):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_protocolos_wide": [
+                wide_row("1", protocolos={"sms_vacinacao_pentavalente": "Atenção"}),
+                wide_row("2", protocolos={"sme_frequencia_escolar": "Regular"}),
+                wide_row("3"),
+            ]
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(protocolo_status="Atenção"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    or_param = fake.requests[0].url.params["or"]
+    assert or_param.startswith("(") and or_param.endswith(")")
+    terms = or_param.strip("()").split(",")
+    assert len(terms) == len(PROTOCOLO_STATUS_COLUMNS)
+    assert all(term.endswith(".eq.Atenção") for term in terms)
+    assert [item.id_membro_familia for item in data] == ["1"]
+    assert meta.total_rows == 1
+
+
+async def test_list_protocolo_descricao_and_status_requires_status_per_protocol(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    protocolos={
+                        "sms_vacinacao_pentavalente": "Regular",
+                        "sme_frequencia_escolar": "Regular",
+                    },
+                ),
+                wide_row(
+                    "2",
+                    protocolos={
+                        "sms_vacinacao_pentavalente": "Regular",
+                        "sme_frequencia_escolar": "Atenção",
+                    },
+                ),
+                wide_row("3"),
+            ]
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(
+            protocolo_descricao="sms_vacinacao_pentavalente|sme_frequencia_escolar",
+            protocolo_status="Regular",
+        ),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    params = fake.requests[0].url.params
+    assert params["sms_vacinacao_pentavalente"] == "eq.Regular"
+    assert params["sme_frequencia_escolar"] == "eq.Regular"
+    assert [item.id_membro_familia for item in data] == ["1"]
+    assert meta.total_rows == 1
+
+
+async def test_list_protocolo_descricao_and_multi_status_uses_in_per_protocol(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    protocolos={
+                        "sms_vacinacao_pentavalente": "Regular",
+                        "sme_frequencia_escolar": "Atenção",
+                    },
+                ),
+            ]
+        }
+    )
+
+    await repo.list_participants(
+        filters=FilterCriteria(
+            protocolo_descricao="sms_vacinacao_pentavalente|sme_frequencia_escolar",
+            protocolo_status="Regular|Atenção",
+        ),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    params = fake.requests[0].url.params
+    assert params["sms_vacinacao_pentavalente"] == "in.(Regular,Atenção)"
+    assert params["sme_frequencia_escolar"] == "in.(Regular,Atenção)"
+
+
+async def test_list_protocolo_filter_pages_have_single_offset_and_limit(make_repo):
+    wide_rows = [wide_row(str(i), saude_protocolos_total=1) for i in range(1500)]
+    repo, fake = make_repo(
+        {"endpoint_participante_protocolos_wide": wide_rows}
+    )
+
+    data, _ = await repo.list_participants(
+        filters=FilterCriteria(protocolo_secretaria="SMS"),
+        pagination=PaginationParams(page=1, page_size=-1),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    # Download mode loops the pages. Each page must carry exactly one
+    # offset/limit pair (regression: the mutable postgrest-py builders used
+    # to accumulate params page after page).
+    assert len(fake.requests) == 2
+    for index, expected_offset in enumerate(["0", "1000"]):
+        params = fake.requests[index].url.params
+        assert params.get_list("offset") == [expected_offset]
+        assert params.get_list("limit") == ["1000"]
+
+    assert len(data) == 1500
 
 
 async def test_list_protocolo_filter_restricts_to_allowed_secretaria_for_partial(
@@ -468,60 +992,47 @@ async def test_list_protocolo_filter_restricts_to_allowed_secretaria_for_partial
 ):
     repo, fake = make_repo(
         {
-            "endpoint_participante_resumo": [resumo_row("1")],
-            "endpoint_participante_protocolos_detalhe": [
-                protocolo_row("1", secretaria="SMS"),
-                protocolo_row("1", protocolo_id="sme_x", secretaria="SME"),
-            ],
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    saude_protocolos_total=1,
+                    educacao_protocolos_total=1,
+                    protocolos={
+                        "sms_vacinacao_pentavalente": "Regular",
+                        "sme_frequencia_escolar": "Regular",
+                    },
+                ),
+            ]
         }
     )
 
     await repo.list_participants(
-        filters=FilterCriteria(protocolo_descricao="sms_x"),
+        filters=FilterCriteria(protocolo_descricao="sms_vacinacao_pentavalente"),
         pagination=PaginationParams(page=1, page_size=20),
         sort=SortParams(),
         permissions=PARTIAL_SMS,
     )
 
-    detalhe_req = fake.requests[0]
-    assert detalhe_req.url.params["protocolo_id"] == "ilike.sms\\_x"
-    assert detalhe_req.url.params["protocolo_secretaria"] == "in.(SMS)"
+    # Single request: protocol filter AND the accessible-secretaria
+    # restriction (`or` group) chained on the wide table.
+    assert len(fake.requests) == 1
+    wide_req = fake.requests[0]
+    assert wide_req.url.path == "/endpoint_participante_protocolos_wide"
+    assert wide_req.url.params["sms_vacinacao_pentavalente"] == "not.is.null"
+    assert wide_req.url.params["or"] == "(saude_protocolos_total.gt.0)"
 
 
-async def test_list_protocolo_multi_value_intersects_id_sets(make_repo):
+async def test_list_protocolo_filter_with_no_matches_returns_empty(make_repo):
     repo, fake = make_repo(
         {
-            "endpoint_participante_resumo": [resumo_row("1"), resumo_row("2")],
-            "endpoint_participante_protocolos_detalhe": [
-                protocolo_row("1", protocolo_id="sms_a", status_label="Regular"),
-                protocolo_row("1", protocolo_id="sms_b", status_label="Atenção"),
-                protocolo_row("2", protocolo_id="sms_a", status_label="Regular"),
-            ],
-        }
-    )
-
-    data, _ = await repo.list_participants(
-        filters=FilterCriteria(protocolo_status="Regular|Atenção"),
-        pagination=PaginationParams(page=1, page_size=20),
-        sort=SortParams(),
-        permissions=SUPER_ADMIN,
-    )
-
-    # Two detail queries (one per value), then the resumo query.
-    assert len(fake.requests) == 3
-    assert fake.requests[0].url.params["protocolo_status_label"] == "ilike.Regular"
-    assert fake.requests[1].url.params["protocolo_status_label"] == "ilike.Atenção"
-    assert fake.requests[2].url.params["id_membro_familia"] == "in.(1)"
-    assert [item.id_membro_familia for item in data] == ["1"]
-
-
-async def test_list_protocolo_filter_with_no_matches_returns_empty_without_resumo(
-    make_repo,
-):
-    repo, fake = make_repo(
-        {
-            "endpoint_participante_resumo": [resumo_row("1")],
-            "endpoint_participante_protocolos_detalhe": [],
+            "endpoint_participante_protocolos_wide": [
+                wide_row(
+                    "1",
+                    saude_protocolos_total=0,
+                    educacao_protocolos_total=1,
+                    assistencia_protocolos_total=0,
+                ),
+            ]
         }
     )
 
@@ -535,7 +1046,24 @@ async def test_list_protocolo_filter_with_no_matches_returns_empty_without_resum
     assert data == []
     assert meta.total_rows == 0
     assert meta.total_pages == 0
-    assert len(fake.requests) == 1  # only the detail query
+    assert len(fake.requests) == 1  # only the wide query
+
+
+async def test_list_protocolo_filter_with_no_secretaria_access_is_forbidden(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {"endpoint_participante_protocolos_wide": [wide_row("1")]}
+    )
+
+    with pytest.raises(ForbiddenError):
+        await repo.list_participants(
+            filters=FilterCriteria(protocolo_secretaria="SMS"),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=NO_ACCESS,
+        )
+    assert len(fake.requests) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +1086,7 @@ class TestRepositoryCache:
     @pytest.mark.asyncio
     async def test_cache_miss_writes_to_redis(self, make_repo):
         redis = self._make_redis(None)
-        repo, _ = make_repo({"endpoint_participante_resumo": [resumo_row("1")]}, redis_client=redis)
+        repo, _ = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]}, redis_client=redis)
         await repo.list_participants(
             filters=FilterCriteria(),
             pagination=PaginationParams(page=1, page_size=20),
@@ -582,7 +1110,7 @@ class TestRepositoryCache:
             },
         }
         redis = self._make_redis(payload)
-        repo, fake = make_repo({"endpoint_participante_resumo": []}, redis_client=redis)
+        repo, fake = make_repo({"endpoint_participante_protocolos_wide": []}, redis_client=redis)
         data, meta = await repo.list_participants(
             filters=FilterCriteria(),
             pagination=PaginationParams(page=1, page_size=20),
@@ -596,7 +1124,7 @@ class TestRepositoryCache:
     @pytest.mark.asyncio
     async def test_bypass_cache_still_fetches_and_writes(self, make_repo):
         redis = self._make_redis(None)
-        repo, fake = make_repo({"endpoint_participante_resumo": [resumo_row("1")]}, redis_client=redis)
+        repo, fake = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]}, redis_client=redis)
         await repo.list_participants(
             filters=FilterCriteria(),
             pagination=PaginationParams(page=1, page_size=20),
@@ -610,7 +1138,7 @@ class TestRepositoryCache:
     @pytest.mark.asyncio
     async def test_download_mode_skips_cache(self, make_repo):
         redis = self._make_redis(None)
-        repo, _ = make_repo({"endpoint_participante_resumo": [resumo_row("1")]}, redis_client=redis)
+        repo, _ = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]}, redis_client=redis)
         await repo.list_participants(
             filters=FilterCriteria(),
             pagination=PaginationParams(page=1, page_size=-1),
@@ -625,7 +1153,7 @@ class TestRepositoryCache:
         redis = MagicMock()
         redis.get = AsyncMock(return_value=None)
         redis.set = AsyncMock()
-        repo, _ = make_repo({"endpoint_participante_resumo": []}, redis_client=redis)
+        repo, _ = make_repo({"endpoint_participante_protocolos_wide": []}, redis_client=redis)
 
         await repo.list_participants(
             filters=FilterCriteria(),
@@ -647,12 +1175,12 @@ class TestRepositoryCache:
 
 
 # ---------------------------------------------------------------------------
-# Detail (endpoint_participante_resumo + _protocolos_detalhe + protocolo_detalhes)
+# Detail (wide + _protocolos_detalhe + protocolo_detalhes)
 # ---------------------------------------------------------------------------
 
 
 def resumo_detail_row(membro_id: str = "00325420412", **overrides):
-    """One full-fidelity `endpoint_participante_resumo` row.
+    """One full-fidelity wide-table row (resumo columns + protocol columns).
 
     Pre-aggregated counters are intentionally wrong (9) so tests prove the
     detail view recomputes them from the protocol rows.
@@ -741,7 +1269,7 @@ async def test_get_participant_by_id_maps_resumo_and_protocolos_and_attaches_mot
     ]
     repo, fake = make_repo(
         {
-            "endpoint_participante_resumo": [resumo_detail_row()],
+            "endpoint_participante_protocolos_wide": [resumo_detail_row()],
             "endpoint_participante_protocolos_detalhe": protocolos,
             "protocolo_detalhes": motivos,
         }
@@ -773,7 +1301,7 @@ async def test_get_participant_by_id_maps_resumo_and_protocolos_and_attaches_mot
     assert irregular[0].protocolo_motivo.motivos == ["falta de dados"]
 
     resumo_req = fake.requests[0]
-    assert resumo_req.url.path == "/endpoint_participante_resumo"
+    assert resumo_req.url.path == "/endpoint_participante_protocolos_wide"
     assert resumo_req.url.params["id_membro_familia"] == "eq.00325420412"
     assert resumo_req.headers["authorization"] == f"Bearer {USER_TOKEN}"
     protocolos_req = fake.requests[1]
@@ -786,7 +1314,7 @@ async def test_get_participant_by_id_maps_resumo_and_protocolos_and_attaches_mot
 
 
 async def test_get_participant_by_id_returns_none_when_missing(make_repo):
-    repo, _ = make_repo({"endpoint_participante_resumo": []})
+    repo, _ = make_repo({"endpoint_participante_protocolos_wide": []})
     result = await repo.get_participant_by_id("nope", permissions=SUPER_ADMIN)
     assert result is None
 
@@ -808,7 +1336,7 @@ async def test_get_participant_by_id_partial_secretaria_filters_and_recalculates
     ]
     repo, fake = make_repo(
         {
-            "endpoint_participante_resumo": [resumo_detail_row()],
+            "endpoint_participante_protocolos_wide": [resumo_detail_row()],
             "endpoint_participante_protocolos_detalhe": protocolos,
         }
     )
@@ -840,7 +1368,7 @@ async def test_get_participant_by_id_partial_secretaria_filters_and_recalculates
 async def test_get_participant_by_id_partial_secretaria_drops_invisible_row(make_repo):
     repo, fake = make_repo(
         {
-            "endpoint_participante_resumo": [resumo_detail_row()],
+            "endpoint_participante_protocolos_wide": [resumo_detail_row()],
             "endpoint_participante_protocolos_detalhe": [
                 detail_protocolo_row("00325420412", "sme_x", "SME")
             ],
@@ -851,13 +1379,13 @@ async def test_get_participant_by_id_partial_secretaria_drops_invisible_row(make
     )
     assert result is None
     assert [r.url.path for r in fake.requests] == [
-        "/endpoint_participante_resumo",
+        "/endpoint_participante_protocolos_wide",
         "/endpoint_participante_protocolos_detalhe",
     ]
 
 
 async def test_get_participant_by_id_no_access_keeps_row_with_null_protocols(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": [resumo_detail_row()]})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": [resumo_detail_row()]})
 
     result = await repo.get_participant_by_id(
         "00325420412", permissions=NO_ACCESS, user_token=USER_TOKEN
@@ -871,7 +1399,7 @@ async def test_get_participant_by_id_no_access_keeps_row_with_null_protocols(mak
     assert result.situacao is None
     assert result.total_fracao is None
     # Protocols query is skipped entirely for no-access users.
-    assert [r.url.path for r in fake.requests] == ["/endpoint_participante_resumo"]
+    assert [r.url.path for r in fake.requests] == ["/endpoint_participante_protocolos_wide"]
 
 
 # ---------------------------------------------------------------------------
@@ -880,7 +1408,7 @@ async def test_get_participant_by_id_no_access_keeps_row_with_null_protocols(mak
 
 
 async def test_api_error_is_wrapped_in_postgrest_error(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     fake.error_status = 400
     fake.error_body = {
         "message": 'column "bairro" does not exist',
@@ -903,7 +1431,7 @@ async def test_api_error_is_wrapped_in_postgrest_error(make_repo):
 
 
 async def test_transport_error_is_wrapped_in_postgrest_error(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     fake.transport_error = httpx.ConnectError("connection refused", request=None)
 
     with pytest.raises(PostgrestError) as exc_info:
@@ -917,7 +1445,7 @@ async def test_transport_error_is_wrapped_in_postgrest_error(make_repo):
 
 
 async def test_api_error_with_plain_text_body_promotes_details_to_message(make_repo):
-    repo, fake = make_repo({"endpoint_participante_resumo": []})
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     fake.error_status = 401
     fake.error_text = (
         "Jwt is not in the form of Header.Payload.Signature with two dots "
@@ -974,3 +1502,475 @@ def test_postgrest_error_from_api_error_keeps_structured_message():
     )
     assert error.message == 'column "bairro" does not exist'
     assert error.code == "42703"
+
+
+# ---------------------------------------------------------------------------
+# Filter options (endpoint_participante_protocolos_wide aggregates)
+# ---------------------------------------------------------------------------
+
+
+def filtro_row(
+    membro_id: str,
+    *,
+    bairro: str = "Centro",
+    subprefeitura: str = "Centro",
+    regiao_administrativa: str = "II",
+    grupo: str = "Criança",
+    cohort: str = "2025-09-01",
+    status: str = "Ativo",
+    situacao: str = "Regular",
+    raca: str = "branca",
+    id_cras: str = "1",
+    nome_cras: str = "CRAS Centro",
+    id_cre: str = "01",
+    nome_cre: str = "1ª CRE",
+    id_ap: str = "1.0",
+    nome_ap: str = "AP 1.0",
+    id_cas: str = "11",
+    nome_cas: str = "CAS X",
+    id_escola: str = "0101",
+    nome_escola: str = "Escola A",
+    id_clinica_familia: str = "010101",
+    nome_clinica_familia: str = "Clinica A",
+    id_equipe_familia: str = "01010101",
+    nome_equipe_familia: str = "Equipe A",
+    has_bolsa_familia: bool = True,
+    saude_protocolos_total: int = 1,
+    assistencia_protocolos_total: int = 0,
+    educacao_protocolos_total: int = 0,
+    **overrides,
+):
+    """One `endpoint_participante_protocolos_wide` row with filter columns."""
+    row = {
+        **wide_row(membro_id, bairro=bairro),
+        "subprefeitura": subprefeitura,
+        "regiao_administrativa": regiao_administrativa,
+        "grupo": grupo,
+        "cohort": cohort,
+        "status": status,
+        "situacao": situacao,
+        "raca": raca,
+        "id_cras": id_cras,
+        "nome_cras": nome_cras,
+        "id_cre": id_cre,
+        "nome_cre": nome_cre,
+        "id_ap": id_ap,
+        "nome_ap": nome_ap,
+        "id_cas": id_cas,
+        "nome_cas": nome_cas,
+        "id_escola": id_escola,
+        "nome_escola": nome_escola,
+        "id_clinica_familia": id_clinica_familia,
+        "nome_clinica_familia": nome_clinica_familia,
+        "id_equipe_familia": id_equipe_familia,
+        "nome_equipe_familia": nome_equipe_familia,
+        "has_bolsa_familia": has_bolsa_familia,
+        "saude_protocolos_total": saude_protocolos_total,
+        "assistencia_protocolos_total": assistencia_protocolos_total,
+        "educacao_protocolos_total": educacao_protocolos_total,
+    }
+    row.update(overrides)
+    return row
+
+
+def filtro_rows() -> list[dict]:
+    return [
+        filtro_row(
+            "1",
+            bairro="Centro",
+            sms_vacinacao_pentavalente="Regular",
+            saude_protocolos_total=2,
+        ),
+        filtro_row(
+            "2",
+            bairro="Centro",
+            sme_frequencia_escolar="Regular",
+            educacao_protocolos_total=1,
+            saude_protocolos_total=0,
+        ),
+        filtro_row(
+            "3",
+            bairro="Centro",
+            smas_acesso_alimentacao="Atenção",
+            assistencia_protocolos_total=1,
+            saude_protocolos_total=0,
+        ),
+        filtro_row("4", bairro="Bangu", has_bolsa_familia=False),
+    ]
+
+
+class TestFilterOptions:
+    WIDE = "endpoint_participante_protocolos_wide"
+
+    @staticmethod
+    def make_rows() -> dict[str, list[dict]]:
+        return {
+            TestFilterOptions.WIDE: filtro_rows(),
+        }
+
+    @pytest.mark.asyncio
+    async def test_super_admin_single_aggregate_query_per_field(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+        options = await repo.get_filter_options(
+            field="cras",
+            filters=FilterCriteria(),
+            permissions=SUPER_ADMIN,
+            user_token=USER_TOKEN,
+        )
+
+        assert len(fake.requests) == 1
+        request = fake.requests[0]
+        # Participant field: resolved on the wide table.
+        assert request.url.path == f"/{self.WIDE}"
+        assert request.url.params["select"] == "id_cras,nome_cras,count()"
+        assert "protocolo_secretaria" not in request.url.params
+        assert request.headers["authorization"] == f"Bearer {USER_TOKEN}"
+
+        assert [o.id for o in options] == ["1"]
+        assert options[0].label == "CRAS Centro"
+
+    @pytest.mark.asyncio
+    async def test_scalar_and_pair_fields(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+
+        bairros = await repo.get_filter_options(
+            field="bairros", filters=FilterCriteria(), permissions=SUPER_ADMIN
+        )
+        assert [o.id for o in bairros] == ["Bangu", "Centro"]
+        assert fake.requests[0].url.path == f"/{self.WIDE}"
+
+        # protocolo_descricoes: single-row 14-column count aggregate over the
+        # wide table; labels from the backend map.
+        descricoes = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(),
+            permissions=SUPER_ADMIN,
+        )
+        assert len(fake.requests) == 2
+        descricao_req = fake.requests[1]
+        assert descricao_req.url.path == f"/{self.WIDE}"
+        assert descricao_req.url.params["select"] == ",".join(
+            f"{column}:{column}.count()" for column in PROTOCOLO_STATUS_COLUMNS
+        )
+        assert [o.id for o in descricoes] == [
+            "sms_vacinacao_pentavalente",
+            "smas_acesso_alimentacao",
+            "sme_frequencia_escolar",
+        ]
+        assert all(o.label == PROTOCOLO_DESCRICOES[o.id] for o in descricoes)
+
+        # protocolo_status_list is static: no DB query.
+        status = await repo.get_filter_options(
+            field="protocolo_status_list",
+            filters=FilterCriteria(),
+            permissions=SUPER_ADMIN,
+        )
+        assert len(fake.requests) == 2  # no new request
+        assert [o.id for o in status] == ["Atenção", "Irregular", "Regular"]
+
+        bolsa = await repo.get_filter_options(
+            field="bolsa_familia", filters=FilterCriteria(), permissions=SUPER_ADMIN
+        )
+        assert [(o.id, o.label) for o in bolsa] == [
+            ("true", "Com Bolsa Família"),
+            ("false", "Sem Bolsa Família"),
+        ]
+
+        secretarias = await repo.get_filter_options(
+            field="protocolo_secretarias",
+            filters=FilterCriteria(),
+            permissions=SUPER_ADMIN,
+        )
+        # Single-row per-secretaria counter maxima over the wide table.
+        secretaria_req = fake.requests[-1]
+        assert secretaria_req.url.path == f"/{self.WIDE}"
+        assert secretaria_req.url.params["select"] == (
+            "educacao_protocolos_total:educacao_protocolos_total.max(),"
+            "assistencia_protocolos_total:assistencia_protocolos_total.max(),"
+            "saude_protocolos_total:saude_protocolos_total.max()"
+        )
+        assert [(o.id, o.label) for o in secretarias] == [
+            ("SME", "Educação (SME)"),
+            ("SMAS", "Assistência (SMAS)"),
+            ("SMS", "Saúde (SMS)"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_descricoes_filtered_by_secretaria_cascade(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+
+        sms_only = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(protocolo_secretaria="SMS"),
+            permissions=SUPER_ADMIN,
+        )
+        assert len(fake.requests) == 1
+        request = fake.requests[0]
+        assert request.url.path == f"/{self.WIDE}"
+        assert request.url.params["or"] == "(saude_protocolos_total.gt.0)"
+        assert [o.id for o in sms_only] == ["sms_vacinacao_pentavalente"]
+
+        multi = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(protocolo_secretaria="SMS|SME"),
+            permissions=SUPER_ADMIN,
+        )
+        assert fake.requests[1].url.params["or"] == (
+            "(saude_protocolos_total.gt.0,educacao_protocolos_total.gt.0)"
+        )
+        assert [o.id for o in multi] == [
+            "sms_vacinacao_pentavalente",
+            "sme_frequencia_escolar",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_descricoes_partial_access_drops_protocols_outside_secretaria(
+        self, make_repo
+    ):
+        # Production-like row: the participant carries protocols of several
+        # secretarias while the user can only access SMAS — the row-level or
+        # filter alone is not enough, the options must be restricted too.
+        rows = {
+            self.WIDE: [
+                filtro_row(
+                    "1",
+                    smas_acesso_alimentacao="Atenção",
+                    sms_vacinacao_pentavalente="Regular",
+                    assistencia_protocolos_total=1,
+                ),
+            ]
+        }
+        repo, fake = make_repo(rows)
+
+        descricoes = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMAS,
+        )
+        assert [o.id for o in descricoes] == ["smas_acesso_alimentacao"]
+
+    @pytest.mark.asyncio
+    async def test_descricoes_full_access_secretaria_filter_drops_others(
+        self, make_repo
+    ):
+        rows = {
+            self.WIDE: [
+                filtro_row(
+                    "1",
+                    smas_acesso_alimentacao="Atenção",
+                    sms_vacinacao_pentavalente="Regular",
+                    assistencia_protocolos_total=1,
+                ),
+            ]
+        }
+        repo, fake = make_repo(rows)
+
+        descricoes = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(protocolo_secretaria="SMAS"),
+            permissions=SUPER_ADMIN,
+        )
+        assert [o.id for o in descricoes] == ["smas_acesso_alimentacao"]
+
+    @pytest.mark.asyncio
+    async def test_descricoes_cascade_applies_status_and_scalar_filters(
+        self, make_repo
+    ):
+        repo, fake = make_repo(self.make_rows())
+
+        descricoes = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(protocolo_status="Atenção", bairro="Centro"),
+            permissions=SUPER_ADMIN,
+        )
+        request = fake.requests[0]
+        assert request.url.path == f"/{self.WIDE}"
+        # Cascade: only the field's own filter is excluded; the status (or
+        # over the 14 columns) and scalar filters narrow the view.
+        assert request.url.params["bairro"] == "ilike.Centro"
+        or_param = request.url.params["or"]
+        assert len(or_param.strip("()").split(",")) == len(PROTOCOLO_STATUS_COLUMNS)
+        assert all(term.endswith(".eq.Atenção") for term in or_param.strip("()").split(","))
+        assert [o.id for o in descricoes] == ["smas_acesso_alimentacao"]
+
+    @pytest.mark.asyncio
+    async def test_partial_secretaria_restricts_query_and_options(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+
+        bairros = await repo.get_filter_options(
+            field="bairros",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMS,
+            user_token=USER_TOKEN,
+        )
+        assert len(fake.requests) == 1
+        # Participant field: restriction via or on the pre-aggregated counters.
+        assert fake.requests[0].url.path == f"/{self.WIDE}"
+        assert fake.requests[0].url.params["or"] == "(saude_protocolos_total.gt.0)"
+        assert "protocolo_secretaria" not in fake.requests[0].url.params
+        assert [o.id for o in bairros] == ["Bangu", "Centro"]
+
+        descricoes = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMS,
+        )
+        descricao_req = fake.requests[1]
+        assert descricao_req.url.path == f"/{self.WIDE}"
+        assert descricao_req.url.params["or"] == "(saude_protocolos_total.gt.0)"
+        assert [o.id for o in descricoes] == ["sms_vacinacao_pentavalente"]
+
+        secretarias = await repo.get_filter_options(
+            field="protocolo_secretarias",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMS,
+        )
+        assert [o.id for o in secretarias] == ["SMS"]
+
+    @pytest.mark.asyncio
+    async def test_guards_skip_queries(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+
+        situacoes = await repo.get_filter_options(
+            field="situacoes",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMS,
+        )
+        assert situacoes == []
+        assert len(fake.requests) == 0
+
+        descricoes = await repo.get_filter_options(
+            field="protocolo_descricoes",
+            filters=FilterCriteria(),
+            permissions=NO_ACCESS,
+        )
+        assert descricoes == []
+        assert len(fake.requests) == 0
+
+    @pytest.mark.asyncio
+    async def test_no_access_participant_fields_without_secretaria_where(
+        self, make_repo
+    ):
+        repo, fake = make_repo(self.make_rows())
+        bairros = await repo.get_filter_options(
+            field="bairros",
+            filters=FilterCriteria(),
+            permissions=NO_ACCESS,
+        )
+        assert len(fake.requests) == 1
+        assert "protocolo_secretaria" not in fake.requests[0].url.params
+        assert "or" not in fake.requests[0].url.params
+        assert [o.id for o in bairros] == ["Bangu", "Centro"]
+
+    @pytest.mark.asyncio
+    async def test_cascade_excludes_own_filter_and_keeps_search(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+
+        bairros = await repo.get_filter_options(
+            field="bairros",
+            filters=FilterCriteria(bairro="Centro", search="ANA"),
+            permissions=SUPER_ADMIN,
+        )
+        request = fake.requests[0]
+        assert "bairro" not in request.url.params  # own filter excluded
+        assert "or" in request.url.params  # search still applied
+        assert [o.id for o in bairros] == ["Bangu", "Centro"]
+
+        cras = await repo.get_filter_options(
+            field="cras",
+            filters=FilterCriteria(bairro="Centro", search="ANA"),
+            permissions=SUPER_ADMIN,
+        )
+        request = fake.requests[1]
+        assert request.url.params["bairro"] == "ilike.Centro"
+        assert "or" in request.url.params
+        assert [o.id for o in cras] == ["1"]
+
+    @pytest.mark.asyncio
+    async def test_protocol_filter_cascade_excludes_own_field(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+
+        secretarias = await repo.get_filter_options(
+            field="protocolo_secretarias",
+            filters=FilterCriteria(protocolo_secretaria="SMS"),
+            permissions=SUPER_ADMIN,
+        )
+        # Own filter dropped: all present secretarias remain selectable.
+        assert [o.id for o in secretarias] == ["SME", "SMAS", "SMS"]
+
+        bairros = await repo.get_filter_options(
+            field="bairros",
+            filters=FilterCriteria(protocolo_secretaria="SMS"),
+            permissions=SUPER_ADMIN,
+        )
+        # Participant field with an active protocol filter: the wide query
+        # keeps the secretaria counter restriction.
+        request = fake.requests[1]
+        assert request.url.path == f"/{self.WIDE}"
+        assert request.url.params["or"] == "(saude_protocolos_total.gt.0)"
+        assert [o.id for o in bairros] == ["Bangu", "Centro"]
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_writes_and_hit_skips_fetches(self, make_repo):
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.set = AsyncMock()
+        repo, fake = make_repo(self.make_rows(), redis_client=redis)
+
+        options = await repo.get_filter_options(
+            field="bairros", filters=FilterCriteria(), permissions=SUPER_ADMIN
+        )
+        assert len(fake.requests) == 1
+        redis.set.assert_awaited_once()
+
+        redis.get = AsyncMock(
+            return_value=json.dumps(
+                [opt.model_dump(mode="json") for opt in options]
+            ).encode()
+        )
+        cached = await repo.get_filter_options(
+            field="bairros", filters=FilterCriteria(), permissions=SUPER_ADMIN
+        )
+        assert len(fake.requests) == 1  # no new requests on hit
+        assert [opt.model_dump() for opt in cached] == [
+            opt.model_dump() for opt in options
+        ]
+
+    @pytest.mark.asyncio
+    async def test_cache_key_isolates_users_and_fields(self, make_repo):
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.set = AsyncMock()
+        repo, _ = make_repo(self.make_rows(), redis_client=redis)
+
+        await repo.get_filter_options(
+            field="bairros", filters=FilterCriteria(), permissions=SUPER_ADMIN
+        )
+        await repo.get_filter_options(
+            field="bairros", filters=FilterCriteria(), permissions=PARTIAL_SMS
+        )
+        await repo.get_filter_options(
+            field="cras", filters=FilterCriteria(), permissions=SUPER_ADMIN
+        )
+
+        keys = [call.args[0] for call in redis.set.await_args_list]
+        assert len(keys) == 3
+        assert len(set(keys)) == 3
+        assert all(key.startswith("filters_v2:") for key in keys)
+
+    @pytest.mark.asyncio
+    async def test_bypass_cache_skips_read_still_writes(self, make_repo):
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.set = AsyncMock()
+        repo, fake = make_repo(self.make_rows(), redis_client=redis)
+
+        await repo.get_filter_options(
+            field="bairros",
+            filters=FilterCriteria(),
+            permissions=SUPER_ADMIN,
+            bypass_cache=True,
+        )
+        assert len(fake.requests) == 1
+        redis.get.assert_not_awaited()
+        redis.set.assert_awaited_once()
