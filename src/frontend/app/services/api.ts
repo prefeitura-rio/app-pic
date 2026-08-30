@@ -6,7 +6,6 @@ import {
   ParticipantDetailResponse,
   DashboardV2Response,
   ProtocoloDetalhes,
-  SmartFilterOptions,
   ParticipantFilters,
   AvailableIds,
   UserAccessRecord,
@@ -18,8 +17,10 @@ import {
   GeospatialFilterVocabularyResponse,
   GeospatialFilters,
   DebugParticipant,
+  DashboardFilterValues,
+  FilterFieldKey,
+  FilterFieldOptionsResponse,
 } from "../types";
-import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
 // Use server-side proxy to access backend API
 // This allows reading API_URL from runtime environment (Infisical)
@@ -230,22 +231,25 @@ export const apiService = {
   },
 
   /**
-   * V2 — Vocabulário completo de opções de filtro (16 arrays).
+   * V2 — Opções de um único campo de filtro (lazy por dropdown).
    * Aceita filtros ativos para cascateamento contextual.
    */
-  async getFilterVocabulary(activeFilters?: DashboardFilterValues | ParticipantFilters): Promise<SmartFilterOptions> {
-    let url = `${BASE_URL}/api/v2/filters`;
+  async getFilterFieldOptions(
+    field: FilterFieldKey,
+    activeFilters?: DashboardFilterValues | ParticipantFilters
+  ): Promise<FilterFieldOptionsResponse> {
+    let url = `${BASE_URL}/api/v2/filters?field=${encodeURIComponent(field)}`;
 
     if (activeFilters) {
       const params = buildFilterParams(activeFilters);
       const qs = params.toString();
-      if (qs) url += `?${qs}`;
+      if (qs) url += `&${qs}`;
     }
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<SmartFilterOptions>(res, fetchFn);
+    return handleResponse<FilterFieldOptionsResponse>(res, fetchFn);
   },
 
   /**

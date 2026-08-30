@@ -3,7 +3,6 @@
 import {
   useState,
   useCallback,
-  useMemo,
   useTransition,
   useEffect,
 } from "react";
@@ -23,13 +22,12 @@ import { OverviewTab } from "@/app/components/OverviewTab";
 import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { apiService } from "@/app/services/api";
 import {
-  SmartFilterOptions,
   ParticipantFilters,
   GeospatialFilters,
   SortOrder,
   Participante,
+  DashboardFilterValues,
 } from "@/app/types";
-import { DashboardFilterValues } from "@/app/components/DashboardFilterCard";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
 interface UserInfo {
@@ -65,27 +63,44 @@ export function DashboardClient({
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  // Chave do sessionStorage com o estado da página (filtros, aba, paginação,
+  // ordenação). Declarada antes do bloco de fresh login, que pode limpar.
+  const STORAGE_KEY = "dashboard-state";
+
   // Termo de responsabilidade
   // Novo login → callback seta cookie fresh_login=1 → sessionStorage vai pra "0"
   // Aceite → sessionStorage vai pra "1" e fica assim até novo login
   const TERMS_KEY = "terms-accepted";
+  const [isFreshLogin] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return document.cookie
+      .split(";")
+      .some((c) => c.trim() === "fresh_login=1");
+  });
   const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
-    const isFreshLogin = document.cookie.split(";").some((c) => c.trim() === "fresh_login=1");
     if (isFreshLogin) {
+      // Consome o cookie de fresh login e zera o estado da página: filtros,
+      // aba, paginação e ordenação voltam aos defaults (ordenação por nome).
       document.cookie = "fresh_login=; path=/; max-age=0";
       sessionStorage.setItem(TERMS_KEY, "0");
+      sessionStorage.removeItem(STORAGE_KEY);
     }
     return sessionStorage.getItem(TERMS_KEY) === "1";
   });
+
+  // Fresh login: descarta TODO o cache do TanStack Query do usuário anterior
+  // (lista, dashboard, opções de filtro, detalhe) para a página nascer limpa.
+  useEffect(() => {
+    if (isFreshLogin) {
+      queryClient.clear();
+    }
+  }, [isFreshLogin, queryClient]);
 
   const handleTermsAccept = () => {
     sessionStorage.setItem(TERMS_KEY, "1");
     setTermsAccepted(true);
   };
-
-  // Chave para sessionStorage
-  const STORAGE_KEY = "dashboard-state";
 
   // State para filtros e paginação (com restauração do sessionStorage)
   const [overviewFilters, setOverviewFilters] =
@@ -307,19 +322,6 @@ export function DashboardClient({
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
   });
 
-  // Deriva os filtros da aba ativa para o vocabulário contextual
-  const activeFiltersForVocabulary = useMemo(() => {
-    return activeTab === "overview" ? overviewFilters : professionalFilters;
-  }, [activeTab, overviewFilters, professionalFilters]);
-
-  // V2 — Vocabulário de filtros contextual (refetch quando filtros ou aba mudam)
-  const { data: filterVocabulary } = useQuery({
-    queryKey: ["filterVocabulary", activeTab, activeFiltersForVocabulary],
-    queryFn: () => apiService.getFilterVocabulary(activeFiltersForVocabulary),
-    staleTime: 5 * 60 * 1000, // 5 minutos
-    placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
-  });
-
   // V2 — Participants (Busca Individual)
   // Substitui getParticipants V1 pelo endpoint enxuto (13 campos)
   const {
@@ -474,6 +476,7 @@ export function DashboardClient({
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
     queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
+    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -483,6 +486,7 @@ export function DashboardClient({
   const handleProfessionalRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["participantsV2"] });
     queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
+    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheParticipantsTimestamp(Date.now());
     setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
@@ -590,44 +594,6 @@ export function DashboardClient({
   }, [professionalFilters, sortBy, sortOrder]);
 
   /**
-   * Memoizar filter options vazias para evitar re-criação
-   */
-  const emptyFilterOptions = useMemo<SmartFilterOptions>(
-    () => ({
-      // Filtros de participantes
-      bairros: [],
-      grupos: [],
-      cohorts: [],
-      status_list: [],
-      situacoes: [],
-      subprefeituras: [],
-      regioes_administrativas: [],
-      cres: [],
-      aps: [],
-      cas_list: [],
-      cras: [],
-      escolas: [],
-      clinicas: [],
-      equipes_familia: [],
-      racas: [],
-      protocolo_descricoes: [],
-      protocolo_status_list: [],
-      // Filtros geoespaciais
-      tipos_camada: [],
-      categorias: [],
-      regionais: [],
-      nomes: [],
-      // Filtros de usuários (admin)
-      ocupacoes: [],
-      secretarias: [],
-      status_ativo: [],
-      permissions: [],
-      secretarias_acesso_list: [],
-    }),
-    [],
-  );
-
-  /**
    * Show loading screen while all data is loading
    * OTIMIZAÇÃO: Todas as queries rodam em paralelo, mostra loading até a primeira completar
    */
@@ -686,9 +652,6 @@ export function DashboardClient({
             <TabsContent value="overview" className="mt-6">
               <OverviewTab
                 data={dashboardResponse?.data || null}
-                filterOptions={
-                  filterVocabulary || emptyFilterOptions
-                }
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
                 onRefresh={handleOverviewRefresh}
@@ -702,9 +665,6 @@ export function DashboardClient({
               <ProfessionalTab
                 data={participantsResponse?.data || []}
                 meta={participantsResponse?.meta || null}
-                filterOptions={
-                  filterVocabulary || emptyFilterOptions
-                }
                 filters={professionalFilters}
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
