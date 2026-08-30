@@ -7,7 +7,6 @@ from src.pic.application.ports.geospatial_repository import IGeospatialRepositor
 from src.pic.application.ports.participant_read_repository import (
     ParticipantRepository,
 )
-from src.pic.application.ports.participant_repository import IParticipantRepository
 from src.pic.application.use_cases.admin_batch import (
     BatchImportUsersUseCase,
     BatchUpdatePermissionsUseCase,
@@ -47,9 +46,6 @@ from src.pic.infrastructure.repositories.bigquery_debug import (
 from src.pic.infrastructure.repositories.bigquery_geospatial import (
     BigQueryGeospatialRepository,
 )
-from src.pic.infrastructure.repositories.bigquery_participant import (
-    BigQueryParticipantRepository,
-)
 from src.pic.infrastructure.repositories.hybrid_admin import (
     HybridAdminRepository,
 )
@@ -61,13 +57,8 @@ from src.pic.infrastructure.repositories.postgrest_participant_repository import
 )
 
 
-def get_participant_repo() -> IParticipantRepository:
-    """BigQuery-backed repo, still used by the CSV export only."""
-    return BigQueryParticipantRepository()
-
-
 async def get_participant_read_repo() -> ParticipantRepository:
-    """PostgREST-backed repo for participant list/detail (data-proxy).
+    """PostgREST-backed repo for participant reads (list/detail/options/CSV export).
 
     Redis is used to cache the participant list per user (cpf); when Redis is
     unavailable the repository still works without caching.
@@ -124,8 +115,8 @@ async def get_dashboard_use_case() -> GetDashboardUseCase:
     return GetDashboardUseCase(repository=await get_dashboard_repo())
 
 
-def get_export_participants_use_case() -> ExportParticipantsUseCase:
-    return ExportParticipantsUseCase(repository=get_participant_repo())
+async def get_export_participants_use_case() -> ExportParticipantsUseCase:
+    return ExportParticipantsUseCase(repository=await get_participant_read_repo())
 
 
 def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:
