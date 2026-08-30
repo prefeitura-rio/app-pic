@@ -5,7 +5,7 @@ from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import UserPermissions
 from src.main import app
 from src.pic.application.use_cases.list_participants import ParticipantListOutput
-from src.pic.domain.errors import NotFoundError
+from src.pic.domain.errors import ForbiddenError, NotFoundError, ValidationError
 from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
@@ -331,6 +331,42 @@ async def test_list_participants_maps_postgrest_error_to_502(
 
     assert response.status_code == 502
     assert response.json()["detail"] == "data-proxy exploded"
+
+
+@pytest.mark.asyncio
+async def test_list_participants_maps_forbidden_error_to_403(override_auth):
+    app.dependency_overrides[get_list_participants_use_case] = lambda: FakeListUseCase(
+        error=ForbiddenError("Sem acesso a protocolos da secretaria SMS")
+    )
+    app.dependency_overrides[get_admin_repo] = lambda: FakeAdminRepo()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/participants")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Sem acesso a protocolos da secretaria SMS"
+
+
+@pytest.mark.asyncio
+async def test_list_participants_maps_validation_error_to_422(override_auth):
+    app.dependency_overrides[get_list_participants_use_case] = lambda: FakeListUseCase(
+        error=ValidationError("Protocolo desconhecido: protocolo_inventado")
+    )
+    app.dependency_overrides[get_admin_repo] = lambda: FakeAdminRepo()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/participants")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Protocolo desconhecido: protocolo_inventado"
 
 
 @pytest.mark.asyncio

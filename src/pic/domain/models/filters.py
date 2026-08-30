@@ -1,10 +1,35 @@
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
 class FilterOption(BaseModel):
     id: str
     label: str
+
+
+FilterField = Literal[
+    "bairros",
+    "subprefeituras",
+    "regioes_administrativas",
+    "grupos",
+    "cohorts",
+    "status_list",
+    "situacoes",
+    "racas",
+    "cres",
+    "aps",
+    "cas_list",
+    "cras",
+    "escolas",
+    "clinicas",
+    "equipes_familia",
+    "protocolo_descricoes",
+    "protocolo_status_list",
+    "bolsa_familia",
+    "protocolo_secretarias",
+]
 
 
 class _FilterFields(BaseModel):
@@ -27,6 +52,8 @@ class _FilterFields(BaseModel):
     equipes_familia: list[FilterOption] = []
     protocolo_descricoes: list[FilterOption] = []
     protocolo_status_list: list[FilterOption] = []
+    bolsa_familia: list[FilterOption] = []
+    protocolo_secretarias: list[FilterOption] = []
 
 
 class FilterCascade(_FilterFields):

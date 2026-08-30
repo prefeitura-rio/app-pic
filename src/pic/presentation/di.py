@@ -26,8 +26,8 @@ from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
 from src.pic.application.use_cases.get_debug_participant import (
     GetDebugParticipantUseCase,
 )
-from src.pic.application.use_cases.get_filter_vocabulary import (
-    GetFilterVocabularyUseCase,
+from src.pic.application.use_cases.get_filter_options import (
+    GetFilterOptionsUseCase,
 )
 from src.pic.application.use_cases.get_geospatial_filter_vocabulary import (
     GetGeospatialFilterVocabularyUseCase,
@@ -41,12 +41,6 @@ from src.pic.application.use_cases.get_participant_detail import (
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
 from src.pic.infrastructure.postgrest_client.client import get_postgrest_client
 from src.pic.infrastructure.redis_client import get_redis_client
-from src.pic.infrastructure.repositories.bigquery_dashboard import (
-    BigQueryDashboardRepository,
-)
-from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
-    PostgrestDashboardRepository,
-)
 from src.pic.infrastructure.repositories.bigquery_debug import (
     BigQueryDebugRepository,
 )
@@ -59,13 +53,16 @@ from src.pic.infrastructure.repositories.bigquery_participant import (
 from src.pic.infrastructure.repositories.hybrid_admin import (
     HybridAdminRepository,
 )
+from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
+    PostgrestDashboardRepository,
+)
 from src.pic.infrastructure.repositories.postgrest_participant_repository import (
     PostgrestParticipantRepository,
 )
 
 
 def get_participant_repo() -> IParticipantRepository:
-    """BigQuery-backed repo, still used by filter vocabulary and CSV export."""
+    """BigQuery-backed repo, still used by the CSV export only."""
     return BigQueryParticipantRepository()
 
 
@@ -119,8 +116,8 @@ async def get_participant_detail_use_case() -> GetParticipantDetailUseCase:
     return GetParticipantDetailUseCase(repository=await get_participant_read_repo())
 
 
-def get_filter_vocabulary_use_case() -> GetFilterVocabularyUseCase:
-    return GetFilterVocabularyUseCase(repository=get_participant_repo())
+async def get_filter_options_use_case() -> GetFilterOptionsUseCase:
+    return GetFilterOptionsUseCase(repository=await get_participant_read_repo())
 
 
 async def get_dashboard_use_case() -> GetDashboardUseCase:
