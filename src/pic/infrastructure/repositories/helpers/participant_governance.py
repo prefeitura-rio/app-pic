@@ -299,8 +299,6 @@ def compute_resumo_view(
     row["total_protocolos_irregular"] = irregular_sum
     row["total_fracao"] = f"{regular_sum}/{total_sum}"
     row["situacao"] = None
-    # Hidden key used only for in-app sorting by the combined fraction.
-    row["_regular_sum"] = regular_sum
     return row
 
 
