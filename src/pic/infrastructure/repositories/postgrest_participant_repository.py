@@ -58,10 +58,11 @@ Design notes:
   Redis keyed by (field, filters, user cpf).
 """
 
+import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from math import ceil
 from typing import Any
 
@@ -159,6 +160,188 @@ _FULL_ACCESS_COLUMNS = [
     "saude_fracao",
     "total_protocolos_irregular",
 ]
+
+# CSV export column policy: every export fetches `select("*")` and the
+# disallowed columns are stripped per row in-app. The exact wide schema is
+# owned by the data-proxy (materialized table); an explicit `select` built
+# from a guessed column list would fail with 400 if any column name drifts.
+# Columns outside the user's reach are the protocol-derived aggregates below
+# (partial access) plus `latitude`/`longitude` (super-admin only).
+_EXPORT_GLOBAL_COLUMNS = [
+    "situacao",
+    "total_fracao",
+    "total_protocolos",
+    "total_protocolos_regular",
+    "total_protocolos_irregular",
+    "total_protocolos_atencao",
+]
+
+# Export prefetch window: how many pages are fetched concurrently
+# (`asyncio.gather`), re-emitted in offset order.
+_EXPORT_PREFETCH_WINDOW = 3
+
+# Header used when the export has zero rows (no data row to derive the
+# column names from). Best-effort mirror of the wide table columns.
+EXPORT_FALLBACK_COLUMNS = [
+    "id_familia",
+    "id_membro_familia",
+    "nome",
+    "cpf",
+    "grupo",
+    "bairro",
+    "idade",
+    "status",
+    "situacao",
+    "raca",
+    "nascimento_data",
+    "endereco",
+    "complemento",
+    "endereco_sms",
+    "telefone_1_ddd",
+    "telefone_1_numero",
+    "telefone_2_ddd",
+    "telefone_2_numero",
+    "subprefeitura",
+    "regiao_administrativa",
+    "cohort",
+    "has_bolsa_familia",
+    "has_cartao_pic",
+    "latitude",
+    "longitude",
+    "total_fracao",
+    "total_protocolos",
+    "total_protocolos_regular",
+    "total_protocolos_irregular",
+    "total_protocolos_atencao",
+    "assistencia_fracao",
+    "assistencia_protocolos_total",
+    "assistencia_protocolos_regular",
+    "assistencia_protocolos_irregular",
+    "assistencia_protocolos_atencao",
+    "educacao_fracao",
+    "educacao_protocolos_total",
+    "educacao_protocolos_regular",
+    "educacao_protocolos_irregular",
+    "educacao_protocolos_atencao",
+    "saude_fracao",
+    "saude_protocolos_total",
+    "saude_protocolos_regular",
+    "saude_protocolos_irregular",
+    "saude_protocolos_atencao",
+    "id_cre",
+    "nome_cre",
+    "id_escola",
+    "nome_escola",
+    "source_escola",
+    "id_cas",
+    "nome_cas",
+    "id_cras",
+    "nome_cras",
+    "source_cras",
+    "id_ap",
+    "nome_ap",
+    "id_clinica_familia",
+    "nome_clinica_familia",
+    "source_clinica_familia",
+    "has_cobertura_clinica_familia",
+    "id_equipe_familia",
+    "nome_equipe_familia",
+    "source_equipe_familia",
+    "has_cobertura_equipe_familia",
+    "equipe_familia",
+    *PROTOCOLO_STATUS_COLUMNS,
+]
+
+
+def _export_hidden_columns(
+    full_access: bool,
+    secretarias_acesso: list[str],
+    include_coordinates: bool,
+) -> set[str]:
+    """Columns the CSV export must not emit for this user.
+
+    Partial access hides every protocol-derived aggregate (global totals,
+    `situacao`, other secretarias' counters/fractions) and the protocol
+    columns of secretarias outside the user's reach. `latitude`/`longitude`
+    are super-admin only. Base participant columns are always kept.
+    """
+    hidden: set[str] = set()
+    if not full_access:
+        hidden.update(_EXPORT_GLOBAL_COLUMNS)
+        allowed = set(secretarias_acesso)
+        for secretaria, prefix in SECRETARIA_COLUMN_PREFIX.items():
+            if secretaria in allowed:
+                continue
+            hidden.add(f"{prefix}_fracao")
+            hidden.update(
+                f"{prefix}_protocolos{'_total' if not suffix else suffix}"
+                for suffix in ("", "_regular", "_irregular", "_atencao")
+            )
+        for protocolo_id, secretaria in PROTOCOLO_SECRETARIA.items():
+            if secretaria not in allowed:
+                hidden.add(protocolo_id)
+    if not include_coordinates:
+        hidden.update({"latitude", "longitude"})
+    return hidden
+
+
+def _split_filters(
+    filters: FilterCriteria,
+) -> tuple[str | None, list[Any] | None, dict[str, list[str]], dict[str, list[Any]]]:
+    """Split one `FilterCriteria` into (search, situacao, protocolo, column)
+    filters with the exact v1 semantics used by the list pipeline."""
+    filters_dict = filters.model_dump(exclude_none=True)
+    search_term = filters_dict.pop("search", None)
+
+    situacao_values: list[Any] | None = None
+    if "situacao" in filters_dict:
+        situacao_values = _clean_values(_split_values(filters_dict.pop("situacao")))
+        if not situacao_values:
+            situacao_values = None
+
+    protocolo_filters: dict[str, list[str]] = {}
+    for key, field in PROTOCOLO_FILTER_FIELDS.items():
+        if key in filters_dict:
+            values = _clean_values(
+                [str(v) for v in _split_values(filters_dict.pop(key))]
+            )
+            if values:
+                protocolo_filters[field] = values
+
+    column_filters: dict[str, list[Any]] = {}
+    for key, value in filters_dict.items():
+        if key in FILTER_COLUMN_MAP:
+            values = _clean_values(_split_values(value))
+            if values:
+                column_filters[FILTER_COLUMN_MAP[key]] = values
+
+    return search_term, situacao_values, protocolo_filters, column_filters
+
+
+def _resolve_sort_column(
+    sort_by: str | None,
+    full_access: bool,
+    allowed_secretarias: set[str] | None,
+) -> str:
+    """Request sort key -> wide column (same fallbacks as the list pipeline)."""
+    sort_column = _DEFAULT_SORT_COLUMN
+    if sort_by and sort_by in SORTABLE_COLUMNS:
+        if full_access:
+            sort_column = SORTABLE_COLUMNS[sort_by]
+        elif sort_by == "situacao":
+            sort_column = _DEFAULT_SORT_COLUMN
+        elif sort_by in ("total_fracao", "total_irregular"):
+            # "Total" sorts by irregularidade (fewer = better first).
+            if allowed_secretarias and len(allowed_secretarias) == 1:
+                prefix = SECRETARIA_COLUMN_PREFIX[next(iter(allowed_secretarias))]
+                sort_column = f"{prefix}_protocolos_irregular"
+            elif allowed_secretarias:
+                sort_column = "total_protocolos_irregular"
+            else:
+                sort_column = _DEFAULT_SORT_COLUMN
+        else:
+            sort_column = SORTABLE_COLUMNS[sort_by]
+    return sort_column
 
 
 def _escape_ilike(value: str) -> str:
@@ -448,6 +631,40 @@ class PostgrestParticipantRepository(ParticipantRepository):
 
         return rows, total
 
+    async def _fetch_next_window(
+        self,
+        build_query: Callable[[], AsyncSelectRequestBuilder],
+        offset: int,
+        *,
+        page_size: int = DB_MAX_ROWS,
+        window: int = _EXPORT_PREFETCH_WINDOW,
+    ) -> tuple[list[list[dict[str, Any]]], int, bool]:
+        """Fetch the next window of pages (up to `window`, concurrently) and
+        return `(pages, next_offset, done)`.
+
+        Pages are fetched with `offset`/`limit` and re-emitted in offset
+        order; the first short page (< `page_size` rows) ends the stream
+        (`done=True`), so the shared order (sort column + `id_membro_familia`)
+        is stable across windows. A plain coroutine (not a generator) so the
+        caller can scope `with_user_token` to the fetch itself and keep the
+        ContextVar set/reset inside a single task.
+        """
+        offsets = range(offset, offset + window * page_size, page_size)
+        results = await asyncio.gather(
+            *(
+                self._execute(build_query().offset(off).limit(page_size))
+                for off in offsets
+            )
+        )
+        first_short = next(
+            (i for i, result in enumerate(results) if len(result.data) < page_size),
+            None,
+        )
+        last_index = len(results) - 1 if first_short is None else first_short
+        pages = [list(results[i].data) for i in range(last_index + 1)]
+        next_offset = offset + (last_index + 1) * page_size
+        return pages, next_offset, first_short is not None
+
     def _build_list_query(
         self,
         *,
@@ -558,30 +775,9 @@ class PostgrestParticipantRepository(ParticipantRepository):
         pipeline_start = time.perf_counter()
         profiling = ProfilingData()
 
-        filters_dict = filters.model_dump(exclude_none=True)
-        search_term = filters_dict.pop("search", None)
-
-        situacao_values: list[Any] | None = None
-        if "situacao" in filters_dict:
-            situacao_values = _clean_values(_split_values(filters_dict.pop("situacao")))
-            if not situacao_values:
-                situacao_values = None
-
-        protocolo_filters: dict[str, list[str]] = {}
-        for key, field in PROTOCOLO_FILTER_FIELDS.items():
-            if key in filters_dict:
-                values = _clean_values(
-                    [str(v) for v in _split_values(filters_dict.pop(key))]
-                )
-                if values:
-                    protocolo_filters[field] = values
-
-        column_filters: dict[str, list[Any]] = {}
-        for key, value in filters_dict.items():
-            if key in FILTER_COLUMN_MAP:
-                values = _clean_values(_split_values(value))
-                if values:
-                    column_filters[FILTER_COLUMN_MAP[key]] = values
+        search_term, situacao_values, protocolo_filters, column_filters = (
+            _split_filters(filters)
+        )
 
         profiling.filters_applied = (
             len(column_filters) + (1 if situacao_values else 0) + len(protocolo_filters)
@@ -606,23 +802,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
 
         sort_by = sort.sort_by
         sort_descending = sort.sort_order == "desc"
-        sort_column = _DEFAULT_SORT_COLUMN
-        if sort_by and sort_by in SORTABLE_COLUMNS:
-            if full_access:
-                sort_column = SORTABLE_COLUMNS[sort_by]
-            elif sort_by == "situacao":
-                sort_column = _DEFAULT_SORT_COLUMN
-            elif sort_by in ("total_fracao", "total_irregular"):
-                # "Total" sorts by irregularidade (fewer = better first).
-                if len(allowed_secretarias) == 1:
-                    prefix = SECRETARIA_COLUMN_PREFIX[next(iter(allowed_secretarias))]
-                    sort_column = f"{prefix}_protocolos_irregular"
-                elif allowed_secretarias:
-                    sort_column = "total_protocolos_irregular"
-                else:
-                    sort_column = _DEFAULT_SORT_COLUMN
-            else:
-                sort_column = SORTABLE_COLUMNS[sort_by]
+        sort_column = _resolve_sort_column(sort_by, full_access, allowed_secretarias)
 
         page = pagination.page
         page_size = pagination.page_size  # -1 = download mode (no pagination)
@@ -865,6 +1045,107 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         )
 
         return participante
+
+    # ------------------------------------------------------------------
+    # CSV export (wide rows, one page per iteration)
+    # ------------------------------------------------------------------
+
+    async def export_wide_rows(
+        self,
+        filters: FilterCriteria,
+        sort: SortParams,
+        permissions: Any = None,
+        user_token: str | None = None,
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Yield pages of `endpoint_participante_protocolos_wide` rows for the
+        CSV export (download mode: `select("*")`, no cache).
+
+        Same query semantics as `list_participants` — filters/sort pushed to
+        PostgREST, forced protocol filters validated (403/422), partial
+        access restricted to the accessible secretarias via
+        `or=(<prefix>_protocolos_total.gt.0,...)`. Columns outside the
+        user's reach are stripped before each page is yielded
+        (`_export_hidden_columns`): the CSV never contains data the user
+        cannot see, and the row set/order match the list pipeline.
+        """
+        search_term, situacao_values, protocolo_filters, column_filters = (
+            _split_filters(filters)
+        )
+
+        secretarias_acesso = (
+            list(permissions.secretarias_acesso)
+            if permissions is not None
+            else sorted(governance.ALL_SECRETARIAS)
+        )
+        full_access = (
+            permissions is None
+            or permissions.has_full_access()
+            or governance.has_full_protocol_access(secretarias_acesso)
+        )
+        allowed_secretarias = None if full_access else set(secretarias_acesso)
+
+        _validate_protocol_filter_access(protocolo_filters, allowed_secretarias)
+
+        sort_column = _resolve_sort_column(sort.sort_by, full_access, allowed_secretarias)
+        sort_descending = sort.sort_order == "desc"
+
+        no_protocolo_match = False
+        secretaria_or_terms: str | None = None
+        if allowed_secretarias is not None:
+            if allowed_secretarias:
+                secretaria_or_terms = ",".join(
+                    f"{SECRETARIA_COLUMN_PREFIX[secretaria]}_protocolos_total.gt.0"
+                    for secretaria in sorted(allowed_secretarias)
+                )
+            elif protocolo_filters:
+                no_protocolo_match = True
+
+        if no_protocolo_match:
+            return
+
+        hidden = _export_hidden_columns(
+            full_access,
+            secretarias_acesso,
+            include_coordinates=(
+                permissions is not None and permissions.is_super_admin
+            ),
+        )
+
+        def build_query() -> AsyncSelectRequestBuilder:
+            query = self._client.table(TABLE_PROTOCOLOS_WIDE).select("*")
+            for column, values in column_filters.items():
+                query = _apply_scalar_filter(query, column, values)
+            if search_term:
+                query = query.or_(_search_or_term(search_term))
+            query = _apply_wide_protocolo_filters(query, protocolo_filters)
+            if secretaria_or_terms:
+                query = query.or_(secretaria_or_terms)
+            if situacao_values:
+                query = _apply_scalar_filter(query, "situacao", situacao_values)
+            query = query.order(sort_column, desc=sort_descending, nullsfirst=False)
+            query = query.order("id_membro_familia", desc=False, nullsfirst=False)
+            return query
+
+        # The user token context is scoped to each prefetch window (enter and
+        # exit inside the same task). Holding `with_user_token` across the
+        # `yield` would break when the StreamingResponse drains the generator
+        # from a different asyncio task (ContextVar reset error), and a
+        # client disconnect would leave the override set.
+        offset = 0
+        while True:
+            async with self._client.with_user_token(user_token):
+                pages, offset, done = await self._fetch_next_window(
+                    build_query, offset
+                )
+            for page in pages:
+                if hidden:
+                    page = [
+                        {key: value for key, value in row.items() if key not in hidden}
+                        for row in page
+                    ]
+                yield page
+            if done:
+                break
 
     # ------------------------------------------------------------------
     # Filter options (all sourced from the wide table)

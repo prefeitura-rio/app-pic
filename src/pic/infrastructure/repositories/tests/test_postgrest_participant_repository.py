@@ -1,3 +1,4 @@
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1974,3 +1975,221 @@ class TestFilterOptions:
         assert len(fake.requests) == 1
         redis.get.assert_not_awaited()
         redis.set.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Export (CSV) - wide rows, access-scoped columns, parallel prefetch
+# ---------------------------------------------------------------------------
+
+
+FULL_NON_SUPER = UserPermissions(
+    cpf="55555555555",
+    is_admin=True,
+    is_super_admin=False,
+    secretarias_acesso=["SME", "SMS", "SMAS"],
+)
+
+
+async def _export_pages(
+    repo,
+    filters: FilterCriteria | None = None,
+    sort: SortParams | None = None,
+    permissions=SUPER_ADMIN,
+) -> list[list[dict]]:
+    return [
+        page
+        async for page in repo.export_wide_rows(
+            filters=filters or FilterCriteria(),
+            sort=sort or SortParams(),
+            permissions=permissions,
+            user_token=USER_TOKEN,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_export_super_admin_selects_all_and_keeps_every_column(make_repo):
+    rows = [
+        wide_row(
+            "1",
+            latitude=-22.867801,
+            longitude=-43.2931916,
+            protocolos={"sms_vacinacao_pentavalente": "Regular"},
+        ),
+        wide_row("2", latitude=-22.9, longitude=-43.3),
+    ]
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    pages = await _export_pages(repo)
+
+    assert [row["id_membro_familia"] for row in pages[0]] == ["1", "2"]
+    assert pages[0][0]["latitude"] == -22.867801
+    assert pages[0][0]["longitude"] == -43.2931916
+    assert pages[0][0]["sms_vacinacao_pentavalente"] == "Regular"
+    assert pages[0][0]["situacao"] == "Atenção"
+    assert all(req.url.params.get("select") == "*" for req in fake.requests)
+
+
+@pytest.mark.asyncio
+async def test_export_non_super_admin_full_access_hides_coordinates(make_repo):
+    rows = [
+        wide_row("1", latitude=-22.867801, longitude=-43.2931916),
+    ]
+    repo, _ = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    pages = await _export_pages(repo, permissions=FULL_NON_SUPER)
+
+    row = pages[0][0]
+    assert "latitude" not in row
+    assert "longitude" not in row
+    # Everything else stays (full protocol access).
+    assert row["situacao"] == "Atenção"
+    assert row["saude_protocolos_total"] == 4
+
+
+@pytest.mark.asyncio
+async def test_export_partial_access_strips_other_secretarias_and_globals(make_repo):
+    rows = [
+        wide_row(
+            "1",
+            latitude=-22.867801,
+            longitude=-43.2931916,
+            protocolos={
+                "sms_vacinacao_pentavalente": "Regular",
+                "smas_acesso_alimentacao": "Regular",
+            },
+        ),
+    ]
+    repo, _ = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    pages = await _export_pages(repo, permissions=PARTIAL_SMS)
+
+    row = pages[0][0]
+    # Allowed secretaria columns are kept.
+    assert row["saude_protocolos_total"] == 4
+    assert row["saude_fracao"] == "4/4"
+    assert row["sms_vacinacao_pentavalente"] == "Regular"
+    # Disallowed secretaria counters/fractions and protocol columns are gone.
+    for column in (
+        "assistencia_protocolos_total",
+        "assistencia_fracao",
+        "educacao_protocolos_total",
+        "educacao_fracao",
+        "smas_acesso_alimentacao",
+    ):
+        assert column not in row
+    # Global protocol-derived columns are omitted for partial access.
+    for column in ("situacao", "total_fracao", "total_protocolos"):
+        assert column not in row
+    # Coordinates are super-admin only.
+    assert "latitude" not in row
+    assert "longitude" not in row
+    # Base participant columns stay.
+    assert row["nome"] == "NOME 1"
+
+
+@pytest.mark.asyncio
+async def test_export_partial_access_restricts_rows_to_accessible_secretaria(
+    make_repo,
+):
+    rows = [
+        wide_row("1", saude_protocolos_total=4),
+        wide_row("2", saude_protocolos_total=0),
+    ]
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    pages = await _export_pages(repo, permissions=PARTIAL_SMS)
+
+    assert [row["id_membro_familia"] for row in pages[0]] == ["1"]
+    assert any(
+        "saude_protocolos_total.gt.0" in req.url.params.get("or", "")
+        for req in fake.requests
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_no_access_with_protocol_filter_is_empty(make_repo):
+    repo, fake = make_repo(
+        {"endpoint_participante_protocolos_wide": [wide_row("1")]}
+    )
+
+    pages = await _export_pages(
+        repo,
+        filters=FilterCriteria(protocolo_status="Regular"),
+        permissions=NO_ACCESS,
+    )
+
+    assert pages == []
+    assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_export_forced_protocol_outside_access_raises_forbidden(make_repo):
+    repo, _ = make_repo(
+        {"endpoint_participante_protocolos_wide": [wide_row("1")]}
+    )
+
+    with pytest.raises(ForbiddenError):
+        await _export_pages(
+            repo,
+            filters=FilterCriteria(protocolo_descricao="smas_acesso_alimentacao"),
+            permissions=PARTIAL_SMS,
+        )
+
+
+@pytest.mark.asyncio
+async def test_export_unknown_protocol_raises_validation_error(make_repo):
+    repo, _ = make_repo(
+        {"endpoint_participante_protocolos_wide": [wide_row("1")]}
+    )
+
+    with pytest.raises(ValidationError):
+        await _export_pages(
+            repo,
+            filters=FilterCriteria(protocolo_descricao="protocolo_inventado"),
+            permissions=SUPER_ADMIN,
+        )
+
+
+@pytest.mark.asyncio
+async def test_export_multipage_prefetch_preserves_order(make_repo):
+    rows = [wide_row(str(i)) for i in range(1005)]
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    pages = await _export_pages(repo)
+
+    ids = [row["id_membro_familia"] for page in pages for row in page]
+    assert ids == [str(i) for i in range(1005)]
+    assert [len(page) for page in pages] == [1000, 5]
+    # One prefetch window of 3 pages (the third is empty and ends the loop).
+    assert len(fake.requests) == 3
+
+
+@pytest.mark.asyncio
+async def test_export_generator_can_cross_task_boundaries(make_repo):
+    rows = [wide_row(str(i)) for i in range(1005)]
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    generator = repo.export_wide_rows(
+        filters=FilterCriteria(),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+        user_token=USER_TOKEN,
+    )
+
+    # First page is consumed in this task (like the use case prefetch)...
+    first_page = await anext(generator)
+    assert len(first_page) == 1000
+
+    # ...the rest is drained from a different task (like the
+    # StreamingResponse), which used to blow up the ContextVar reset.
+    async def _drain() -> list[dict]:
+        drained: list[dict] = []
+        async for page in generator:
+            drained.extend(page)
+        return drained
+
+    remaining = await asyncio.gather(_drain())
+
+    assert len(remaining[0]) == 5
+    assert len(fake.requests) == 3

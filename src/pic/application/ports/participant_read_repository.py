@@ -1,12 +1,13 @@
-"""Read-side participant repository port (list + detail + filter options).
+"""Read-side participant repository port (list + detail + options + export).
 
-Split from `IParticipantRepository` (which keeps the BigQuery-backed CSV
-export) so the PostgREST-migrated operations have a narrow port they fully
-own. Implemented by
+All participant reads, including the CSV export, are PostgREST-backed.
+Implemented by
 `src.pic.infrastructure.repositories.postgrest_participant_repository`.
+The legacy `IParticipantRepository` (BigQuery) is no longer wired in DI.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from typing import Any
 
 from src.pic.domain.models.filters import FilterCriteria, FilterOption
@@ -57,3 +58,20 @@ class ParticipantRepository(ABC):
         bypass_cache: bool = False,
     ) -> list[FilterOption]:
         """Return the distinct options of one filter field for the active filters."""
+
+    @abstractmethod
+    def export_wide_rows(
+        self,
+        filters: FilterCriteria,
+        sort: SortParams,
+        permissions: Any = None,
+        user_token: str | None = None,
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Yield pages of wide rows for the CSV export.
+
+        One page per iteration (at most `PGRST_DB_MAX_ROWS` rows), in CSV
+        order (sort column + `id_membro_familia`). Rows are already
+        restricted to the user's access: unit RLS server-side, secretaria
+        restriction pushdown, and columns outside the user's reach stripped
+        before yielding (see `_export_hidden_columns`).
+        """

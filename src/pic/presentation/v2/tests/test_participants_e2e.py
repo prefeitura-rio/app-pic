@@ -4,6 +4,7 @@ from httpx import ASGITransport, AsyncClient
 from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import UserPermissions
 from src.main import app
+from src.pic.application.use_cases.export_participants import ExportOutput
 from src.pic.application.use_cases.list_participants import ParticipantListOutput
 from src.pic.domain.errors import ForbiddenError, NotFoundError, ValidationError
 from src.pic.domain.models.pagination import PaginationMeta
@@ -11,6 +12,7 @@ from src.pic.domain.models.participante import Participante, ParticipanteListIte
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.presentation.di import (
     get_admin_repo,
+    get_export_participants_use_case,
     get_list_participants_use_case,
     get_participant_detail_use_case,
 )
@@ -198,6 +200,41 @@ class FakeAdminRepo:
     async def self_heal_policy_sync(self, cpf: str) -> None:
         self.self_heal_cpfs.append(cpf)
         self.events.append("self_heal")
+
+
+class FakeExportUseCase:
+    def __init__(self, error: Exception | None = None, events: list[str] | None = None):
+        self.error = error
+        self.events = events if events is not None else []
+        self.received: dict = {}
+
+    async def execute(
+        self,
+        filters,
+        sort,
+        permissions=None,
+        bypass_cache=False,
+        user_token=None,
+    ):
+        self.received = {
+            "filters": filters,
+            "sort": sort,
+            "user_token": user_token,
+        }
+        self.events.append("export_use_case")
+        if self.error:
+            raise self.error
+
+        async def pages():
+            yield [
+                {"id_membro_familia": "00325420412", "nome": "ANA JULIA"},
+                {"id_membro_familia": "00325420413", "nome": "PEDRO"},
+            ]
+
+        return ExportOutput(
+            columns=["id_membro_familia", "nome"],
+            pages=pages(),
+        )
 
 
 @pytest.fixture
@@ -443,3 +480,60 @@ async def test_participants_require_authentication(override_use_cases):
         response = await ac.get("/api/v2/participants")
 
     assert response.status_code == 401
+
+
+@pytest.fixture
+def override_export_use_case():
+    events: list[str] = []
+    export_use_case = FakeExportUseCase(events=events)
+    app.dependency_overrides[get_export_participants_use_case] = lambda: export_use_case
+    yield export_use_case, events
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_export_streams_csv_with_bom_semicolon_and_header(
+    client, override_export_use_case
+):
+    response = await client.get("/api/v2/participants/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+
+    body = response.text
+    assert body.startswith("\ufeff")
+    assert body.startswith("\ufeffid_membro_familia;nome")
+    assert '"00325420412";"ANA JULIA"' in body
+    assert '"00325420413";"PEDRO"' in body
+
+    export_use_case, events = override_export_use_case
+    assert events == ["export_use_case"]
+    assert export_use_case.received["user_token"] == "fake-access-token"
+
+
+@pytest.mark.asyncio
+async def test_export_maps_forbidden_error_to_403(client, override_export_use_case):
+    override_export_use_case[0].error = ForbiddenError(
+        "Sem acesso a protocolos da secretaria SMS"
+    )
+
+    response = await client.get("/api/v2/participants/export")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Sem acesso a protocolos da secretaria SMS"
+
+
+@pytest.mark.asyncio
+async def test_export_maps_validation_error_to_422(client, override_export_use_case):
+    override_export_use_case[0].error = ValidationError(
+        "Protocolo desconhecido: protocolo_inventado"
+    )
+
+    response = await client.get("/api/v2/participants/export")
+
+    assert response.status_code == 422
+    assert (
+        response.json()["detail"]
+        == "Protocolo desconhecido: protocolo_inventado"
+    )
