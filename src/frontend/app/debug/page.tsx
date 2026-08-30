@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiService } from "@/app/services/api";
 import { DebugProtocolo, DebugProtocoloMetadata } from "@/app/types";
+import { DEBUG_PAGE_ENABLED } from "./config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,6 +102,7 @@ export default function DebugPage() {
     queryKey: ["currentUser"],
     queryFn: apiService.getCurrentUser,
     retry: false,
+    enabled: DEBUG_PAGE_ENABLED,
   });
 
   // Fetch debug data (only when searchTerm is set)
@@ -111,9 +113,16 @@ export default function DebugPage() {
   } = useQuery({
     queryKey: ["debug", searchTerm],
     queryFn: () => apiService.getDebugParticipants(searchTerm!, false),
-    enabled: !!searchTerm && searchTerm.length > 0,
+    enabled: DEBUG_PAGE_ENABLED && !!searchTerm && searchTerm.length > 0,
     retry: false,
   });
+
+  // Página de debug temporariamente desativada: redireciona para a home
+  useEffect(() => {
+    if (!DEBUG_PAGE_ENABLED) {
+      router.replace("/");
+    }
+  }, [router]);
 
   // Show toast and redirect if not super admin
   useEffect(() => {
@@ -201,7 +210,7 @@ export default function DebugPage() {
   }, [debugData]);
 
   // Show loading or nothing while checking/redirecting
-  if (isLoadingUser || !currentUser?.is_super_admin) {
+  if (!DEBUG_PAGE_ENABLED || isLoadingUser || !currentUser?.is_super_admin) {
     return null;
   }
 

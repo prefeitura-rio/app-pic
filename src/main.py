@@ -134,10 +134,13 @@ async def custom_swagger_ui_html():
     )
 
 
+DEBUG_ENDPOINT_ENABLED = False  # Debug temporariamente desativado; reativar com True
+
 app.include_router(api_router)
 app.include_router(v2_participants_router, prefix="/api/v2")
 app.include_router(v2_filters_router, prefix="/api/v2")
 app.include_router(v2_dashboard_router, prefix="/api/v2")
 app.include_router(v2_admin_router, prefix="/api/v2")
 app.include_router(v2_geospatial_router, prefix="/api/v2")
-app.include_router(v2_debug_router, prefix="/api/v2")
+if DEBUG_ENDPOINT_ENABLED:
+    app.include_router(v2_debug_router, prefix="/api/v2")
