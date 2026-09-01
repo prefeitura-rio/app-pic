@@ -789,6 +789,15 @@ export interface GeospatialLayersResponse {
 export type GeospatialFilterVocabularyResponse = GeospatialFilterOptions;
 
 /**
+ * Resposta do endpoint de opções de filtro geoespacial por campo (lazy, per-field)
+ * Espelha FilterFieldOptionsResponse dos participantes.
+ */
+export interface GeospatialFilterFieldOptionsResponse {
+	field: string;
+	options: FilterOptionItem[];
+}
+
+/**
  * Error for a specific CPF during batch permissions update
  */
 export interface BatchPermissionsError {

@@ -133,19 +133,24 @@ export function DashboardClient({
       return {};
     });
 
+  // O tipo de camada padrão ao abrir a visualização geoespacial é "BAIRRO":
+  // a primeira query de camadas já nasce filtrada, evitando baixar as 4470+
+  // camadas inteiras no primeiro fetch do mapa.
   const [geospatialFilters, setGeospatialFilters] =
     useState<GeospatialFilters>(() => {
-      if (typeof window === "undefined") return {};
+      const DEFAULT: GeospatialFilters = { tipo_camada: "BAIRRO" };
+      if (typeof window === "undefined") return DEFAULT;
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          return parsed.geospatialFilters || {};
+          const restored = parsed.geospatialFilters;
+          if (restored && Object.keys(restored).length > 0) return restored;
         }
       } catch (e) {
         console.error("Error restoring geospatial filters:", e);
       }
-      return {};
+      return DEFAULT;
     });
 
   const [professionalPage, setProfessionalPage] = useState(() => {
@@ -189,6 +194,9 @@ export function DashboardClient({
     bypassCacheGeospatialTimestamp,
     setBypassCacheGeospatialTimestamp,
   ] = useState<number | null>(null);
+
+  // Lazy load: mapa geoespacial só carrega quando o usuário abre o collapsible
+  const [geospatialMapOpen, setGeospatialMapOpen] = useState(false);
 
   // State para ordenação (com restauração do sessionStorage)
   const [sortBy, setSortBy] = useState<string | null>(() => {
@@ -298,7 +306,6 @@ export function DashboardClient({
   // O backend já valida auth e retorna 401/403 se não autorizado
   const {
     data: dashboardResponse,
-    isLoading: dashboardLoading,
     isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
@@ -320,6 +327,7 @@ export function DashboardClient({
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
+    enabled: activeTab === "overview", // Lazy load: só busca quando a aba é acessada
   });
 
   // V2 — Participants (Busca Individual)
@@ -362,9 +370,12 @@ export function DashboardClient({
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
 
-  // TanStack Query para Geospatial Layers (Mapa)
-  // Carrega em paralelo quando a página carrega
-  // Filtros incluídos no queryKey para refetch automático
+  // TanStack Query para Geospatial Layers (Mapa) — LAZY
+  // Só carrega quando a aba "professional" está ativa E o mapa foi aberto.
+  // Filtros e bypassCacheTimestamp incluídos no queryKey para refetch automático.
+  const geospatialEnabled =
+    activeTab === "professional" && geospatialMapOpen;
+
   const {
     data: geospatialLayersResponse,
     isFetching: geospatialFetching,
@@ -383,31 +394,30 @@ export function DashboardClient({
 
       return result;
     },
+    enabled: geospatialEnabled,
     staleTime: 30 * 60 * 1000, // 30 minutos (dados geográficos mudam raramente)
     placeholderData: (prev) => prev,
   });
 
-  // TanStack Query para vocabulário de filtros geoespaciais
-  const { data: geospatialFilterVocabulary } = useQuery({
-    queryKey: ["geospatialFilterVocabulary"],
-    queryFn: () => apiService.getGeospatialFilterVocabulary(),
-    staleTime: 30 * 60 * 1000,
-  });
-
-  // Extrair dados e filtros disponíveis
   const geospatialLayers = geospatialLayersResponse?.data || [];
-  const geospatialAvailableFilters = geospatialFilterVocabulary ?? undefined;
 
-  // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
-  // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
+  // Determina se usuário pode ver dashboard baseado em currentUser (já carregado
+  // em paralelo com participants). A regra espelha o backend: secretarias_acesso
+  // com as 3 secretarias ou is_super_admin equivale a "TODOS".
+  // Isso elimina a dependência de dashboardResponse para mostrar/esconder a aba,
+  // permitindo que o dashboard carregue lazily apenas quando a aba é acessada.
+  const _ALL_SECRETARIAS = new Set(["SMAS", "SME", "SMS"]);
   const canViewDashboard =
-    dashboardResponse?.can_view_dashboard !== false;
+    !currentUser ||
+    currentUser.is_super_admin ||
+    (currentUser.secretarias_acesso?.length === 3 &&
+      currentUser.secretarias_acesso.every((s) => _ALL_SECRETARIAS.has(s)));
 
   // Force professional tab if user cannot view dashboard.
   // Ajuste feito durante a renderização (não em um efeito): a própria condição
   // (`activeTab === "overview"`) deixa de ser verdadeira após o ajuste, então
   // não há loop, e evita o "flash" da aba Visão Geral antes do commit.
-  if (dashboardResponse && !canViewDashboard && activeTab === "overview") {
+  if (!canViewDashboard && activeTab === "overview") {
     setActiveTab("professional");
   }
 
@@ -594,18 +604,27 @@ export function DashboardClient({
   }, [professionalFilters, sortBy, sortOrder]);
 
   /**
-   * Show loading screen while all data is loading
-   * OTIMIZAÇÃO: Todas as queries rodam em paralelo, mostra loading até a primeira completar
+   * Show loading screen while critical data is loading.
+   * Dashboard é lazy (carrega apenas quando a aba é acessada), então não
+   * bloqueia o load inicial.
    */
-  const isInitialLoading =
-    currentUserLoading && dashboardLoading && participantsLoading;
+  const isInitialLoading = currentUserLoading || participantsLoading;
 
   if (isInitialLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md px-6">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-lg text-muted-foreground">Carregando dados...</p>
+          <p className="text-lg font-semibold">
+            {participantsLoading
+              ? "Carregando participantes..."
+              : "Verificando suas permissões..."}
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            {participantsLoading
+              ? "Buscando a listagem de participantes na base de dados."
+              : "Confirmando seu acesso às secretarias antes de abrir o painel."}
+          </p>
         </div>
       </div>
     );
@@ -684,7 +703,7 @@ export function DashboardClient({
                 geospatialLayers={geospatialLayers}
                 geospatialLoading={geospatialFetching}
                 geospatialFilters={geospatialFilters}
-                geospatialAvailableFilters={geospatialAvailableFilters}
+                onGeospatialMapOpen={setGeospatialMapOpen}
                 onGeospatialFilterChange={setGeospatialFilters}
               />
             </TabsContent>

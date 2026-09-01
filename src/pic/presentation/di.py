@@ -28,6 +28,9 @@ from src.pic.application.use_cases.get_debug_participant import (
 from src.pic.application.use_cases.get_filter_options import (
     GetFilterOptionsUseCase,
 )
+from src.pic.application.use_cases.get_geospatial_filter_options import (
+    GetGeospatialFilterOptionsUseCase,
+)
 from src.pic.application.use_cases.get_geospatial_filter_vocabulary import (
     GetGeospatialFilterVocabularyUseCase,
 )
@@ -43,14 +46,14 @@ from src.pic.infrastructure.redis_client import get_redis_client
 from src.pic.infrastructure.repositories.bigquery_debug import (
     BigQueryDebugRepository,
 )
-from src.pic.infrastructure.repositories.bigquery_geospatial import (
-    BigQueryGeospatialRepository,
-)
 from src.pic.infrastructure.repositories.hybrid_admin import (
     HybridAdminRepository,
 )
 from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
     PostgrestDashboardRepository,
+)
+from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
+    PostgrestGeospatialRepository,
 )
 from src.pic.infrastructure.repositories.postgrest_participant_repository import (
     PostgrestParticipantRepository,
@@ -91,8 +94,18 @@ def get_admin_repo() -> IAdminRepository:
     return HybridAdminRepository()
 
 
-def get_geospatial_repo() -> IGeospatialRepository:
-    return BigQueryGeospatialRepository()
+async def get_geospatial_repo() -> IGeospatialRepository:
+    """PostgREST-backed geospatial repository.
+
+    Uses rolling-window concurrent fetches to overcome the 1000-row
+    PostgREST cap (the table has 4470+ rows).  Redis caches the compiled
+    result keyed by active filters only (no user dimension — no RLS).
+    """
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return PostgrestGeospatialRepository(postgrest_client, redis_client=redis_client)
 
 
 def get_debug_repo() -> IDebugRepository:
@@ -119,12 +132,16 @@ async def get_export_participants_use_case() -> ExportParticipantsUseCase:
     return ExportParticipantsUseCase(repository=await get_participant_read_repo())
 
 
-def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:
-    return GetGeospatialLayersUseCase(repository=get_geospatial_repo())
+async def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:
+    return GetGeospatialLayersUseCase(repository=await get_geospatial_repo())
 
 
-def get_geospatial_filter_vocabulary_use_case() -> GetGeospatialFilterVocabularyUseCase:
-    return GetGeospatialFilterVocabularyUseCase(repository=get_geospatial_repo())
+async def get_geospatial_filter_vocabulary_use_case() -> GetGeospatialFilterVocabularyUseCase:
+    return GetGeospatialFilterVocabularyUseCase(repository=await get_geospatial_repo())
+
+
+async def get_geospatial_filter_options_use_case() -> GetGeospatialFilterOptionsUseCase:
+    return GetGeospatialFilterOptionsUseCase(repository=await get_geospatial_repo())
 
 
 def get_debug_participant_use_case() -> GetDebugParticipantUseCase:

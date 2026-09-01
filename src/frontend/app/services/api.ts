@@ -15,6 +15,7 @@ import {
   BatchPermissionsResult,
   GeospatialLayersResponse,
   GeospatialFilterVocabularyResponse,
+  GeospatialFilterFieldOptionsResponse,
   GeospatialFilters,
   DebugParticipant,
   DashboardFilterValues,
@@ -596,7 +597,7 @@ export const apiService = {
   },
 
   /**
-   * V2 — Vocabulario de filtros geoespaciais
+   * V2 — Vocabulario de filtros geoespaciais (bulk, deprecated)
    * Chamado 1 vez, staleTime 30min.
    */
   async getGeospatialFilterVocabulary(): Promise<GeospatialFilterVocabularyResponse> {
@@ -606,6 +607,33 @@ export const apiService = {
     const res = await fetchFn();
 
     return handleResponse<GeospatialFilterVocabularyResponse>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Opcoes de filtro geoespacial por campo (lazy, per-field).
+   * Espelha getFilterFieldOptions dos participantes.
+   *
+   * @param field - Campo a consultar: tipos_camada, categorias, regionais, bairros,
+   *   regioes_administrativas, subprefeituras, nomes
+   * @param filters - Filtros ativos (cascade: o campo do próprio field é excluído no backend)
+   * @param bypassCache - Forçar refresh
+   */
+  async getGeospatialFilterOptions(
+    field: string,
+    filters: GeospatialFilters = {},
+    bypassCache: boolean = false
+  ): Promise<GeospatialFilterFieldOptionsResponse> {
+    const params = buildFilterParams(filters);
+    params.append("field", field);
+    if (bypassCache) {
+      params.append("bypass_cache", "true");
+    }
+
+    const url = `${BASE_URL}/api/v2/geospatial/filter-options?${params.toString()}`;
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<GeospatialFilterFieldOptionsResponse>(res, fetchFn);
   },
 
 };

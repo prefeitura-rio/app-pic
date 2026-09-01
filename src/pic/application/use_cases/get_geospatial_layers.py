@@ -15,6 +15,7 @@ class GetGeospatialLayersUseCase:
     async def execute(
         self,
         filters: GeospatialFilters,
+        user_token: str | None = None,
         bypass_cache: bool = False,
     ) -> GeospatialLayerOutput:
         filters_dict = filters.model_dump(exclude_none=True)
@@ -31,6 +32,7 @@ class GetGeospatialLayersUseCase:
 
         data = await self._repository.fetch_layers(
             column_filters=column_filters,
+            user_token=user_token,
             bypass_cache=bypass_cache,
         )
 
