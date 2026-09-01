@@ -107,8 +107,13 @@ const OverviewTabComponent = ({
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-base font-semibold">Carregando indicadores...</p>
+        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+          Agregando métricas por secretaria, safra e protocolo. Isso pode
+          levar alguns segundos na primeira abertura.
+        </p>
       </div>
     );
   }

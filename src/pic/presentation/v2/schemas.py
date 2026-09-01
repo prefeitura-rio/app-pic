@@ -32,3 +32,8 @@ class GeospatialLayersResponse(BaseModel):
 
 class GeospatialFilterVocabularyResponse(GeospatialFilterOptions):
     pass
+
+
+class GeospatialFilterFieldOptionsResponse(BaseModel):
+    field: str
+    options: list[FilterOption]
