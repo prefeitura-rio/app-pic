@@ -137,6 +137,7 @@ export function VirtualizedIdMultiSelect({
           <div className="flex gap-2">
             {selected.length < options.length && (
               <Button
+                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={selectAll}
@@ -148,6 +149,7 @@ export function VirtualizedIdMultiSelect({
             )}
             {selected.length > 0 && (
               <Button
+                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={clearAll}

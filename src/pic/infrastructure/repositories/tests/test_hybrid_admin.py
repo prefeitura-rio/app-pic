@@ -186,6 +186,76 @@ async def test_replace_policy_grants_leaves_untouched_unit_types_alone(session):
     assert len(rows) == 2
 
 
+async def test_replace_policy_grants_expands_comma_joined_ids(session):
+    """`id="1,2"` (options grouped by name, v1 parity) must create one
+    policy row per real unit id — a joined string would never match a real
+    unit on the data-proxy RLS."""
+    changed = await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {"id_escola_list": [IdWithName(id="1,2", nome="Escola A")]},
+        is_enabled=True,
+    )
+    await session.commit()
+
+    assert {row.unit_id for row in changed} == {"1", "2"}
+    rows = await _all_policy_rows(session)
+    assert {row.unit_id for row in rows} == {"1", "2"}
+    assert all(row.unit_type == "escola" for row in rows)
+
+
+async def test_replace_policy_grants_expanded_ids_dedupe_against_existing(session):
+    """Comma-joined ids must not violate `uq_policy_grant` when one of the
+    expanded ids already exists, and re-enabled rows must not duplicate."""
+    await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {"id_escola_list": [IdWithName(id="1", nome="Escola A")]},
+        is_enabled=True,
+    )
+    await session.commit()
+
+    changed = await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {"id_escola_list": [IdWithName(id="1,2", nome="Escola A")]},
+        is_enabled=True,
+    )
+    await session.commit()
+
+    assert {row.unit_id for row in changed} == {"2"}
+    rows = await _all_policy_rows(session)
+    assert {row.unit_id for row in rows} == {"1", "2"}
+    assert all(row.is_enabled for row in rows)
+
+
+async def test_replace_policy_grants_expanded_ids_disable_dropped_units(session):
+    """Removing part of a joined selection soft-disables only the dropped
+    units and self-heals rows previously written with a joined unit_id."""
+    await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {
+            "id_escola_list": [
+                IdWithName(id="1,2", nome="Escola A"),
+                IdWithName(id="3", nome="Escola B"),
+            ]
+        },
+        is_enabled=True,
+    )
+    await session.commit()
+
+    changed = await HybridAdminRepository._replace_policy_grants(
+        session, CPF, {"id_escola_list": [IdWithName(id="1", nome="Escola A")]}, is_enabled=True
+    )
+    await session.commit()
+
+    assert {row.unit_id for row in changed} == {"2", "3"}
+    rows = await _all_policy_rows(session)
+    enabled = {row.unit_id for row in rows if row.is_enabled}
+    assert enabled == {"1"}
+
+
 # ----------------------------------------------------------------------
 # _set_all_policy_enabled
 # ----------------------------------------------------------------------
@@ -335,6 +405,11 @@ def _make_catalog_repo(
             ),
             [],
         )
+        # Emulate the data-proxy page slicing (offset/limit)
+        limit = request.url.params.get("limit")
+        if limit is not None:
+            offset = int(request.url.params.get("offset", "0"))
+            rows = rows[offset : offset + int(limit)]
         return httpx.Response(200, json=rows, request=request)
 
     client = PostgrestClient(config, transport=httpx.MockTransport(handler))
@@ -385,6 +460,46 @@ async def test_fetch_unit_options_unknown_type_raises():
 
     with pytest.raises(ValueError):
         await repo.fetch_unit_options("nao_existe", user_token="jwt")
+
+
+def _make_many_rows(id_col: str, nome_col: str, count: int) -> list[dict]:
+    return [
+        {id_col: f"{id_col}-{i:05d}", nome_col: f"{nome_col} {i:05d}", "count": 1}
+        for i in range(count)
+    ]
+
+
+async def test_fetch_unit_options_paginates_beyond_1000_rows():
+    """1500 distinct schools -> two data pages (last one short)."""
+    rows = _make_many_rows("id_escola", "nome_escola", 1500)
+    repo, requests = _make_catalog_repo({"id_escola,nome_escola,count()": rows})
+    options = await repo.fetch_unit_options("escola", user_token="jwt")
+
+    assert len(options) == 1500
+    assert [r.url.params.get("offset") for r in requests] == ["0", "1000"]
+    for req in requests:
+        assert req.url.params.get("limit") == "1000"
+
+
+async def test_fetch_unit_options_short_first_page_single_request():
+    rows = _make_many_rows("id_cras", "nome_cras", 7)
+    repo, requests = _make_catalog_repo({"id_cras,nome_cras,count()": rows})
+    options = await repo.fetch_unit_options("cras", user_token="jwt")
+
+    assert len(options) == 7
+    assert len(requests) == 1
+
+
+async def test_fetch_unit_options_paginates_beyond_2000_rows():
+    """2500 equipes -> three pages (1000/1000/500), no tail waste."""
+    rows = _make_many_rows("id_equipe_familia", "nome_equipe_familia", 2500)
+    repo, requests = _make_catalog_repo(
+        {"id_equipe_familia,nome_equipe_familia,count()": rows}
+    )
+    options = await repo.fetch_unit_options("equipe_familia", user_token="jwt")
+
+    assert len(options) == 2500
+    assert [r.url.params.get("offset") for r in requests] == ["0", "1000", "2000"]
 
 
 async def test_fetch_unit_options_uses_redis_cache():

@@ -90,6 +90,10 @@ _TABLE_WIDE = "endpoint_participante_protocolos_wide"
 _CATALOG_CACHE_TTL_SECONDS = 1800
 _CATALOG_CACHE_PREFIX = "admin_unit_catalog:"
 
+# PostgREST caps every response at PGRST_DB_MAX_ROWS rows; grouped option
+# queries paginate with offset/limit over the same ordered aggregate.
+_OPTION_PAGE_SIZE = 1000
+
 
 class HybridAdminRepository(IAdminRepository):
     def __init__(
@@ -175,6 +179,39 @@ class HybridAdminRepository(IAdminRepository):
             raise PostgrestError.from_transport_error(error) from error
         return list(result.data)
 
+    async def _fetch_all_option_pages(
+        self,
+        client: PostgrestClient,
+        id_col: str,
+        nome_col: str,
+    ) -> list[dict[str, Any]]:
+        """Every page of one grouped option query.
+
+        PostgREST caps responses at `_OPTION_PAGE_SIZE` rows; schools/teams
+        exceed it, so pages are fetched sequentially with `offset`/`limit`
+        over the same ordered grouped aggregate until a short page ends the
+        stream (no wasted requests). Caller must wrap this in
+        ``with_user_token``.
+        """
+        select_cols = f"{id_col},{nome_col},count()"
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            query = (
+                client.table(_TABLE_WIDE)
+                .select(select_cols)
+                .not_.is_(id_col, "null")
+                .order(id_col, desc=False, nullsfirst=False)
+                .offset(offset)
+                .limit(_OPTION_PAGE_SIZE)
+            )
+            page = await self._execute_catalog(query)
+            rows.extend(page)
+            offset += len(page)
+            if len(page) < _OPTION_PAGE_SIZE:
+                break
+        return rows
+
     @staticmethod
     def _make_unit_options_cache_key(
         unit_type: str,
@@ -198,7 +235,8 @@ class HybridAdminRepository(IAdminRepository):
         One grouped aggregate (`select=id,nome,count()`) returning distinct
         pairs only — the only PostgREST read of this repository. RLS (user
         token) scopes the rows, so segmented admins see only their own units.
-        Cached per user+type.
+        Types with more than 1000 distinct pairs (escolas, equipes) are
+        paginated (`offset`/`limit`, windowed concurrency). Cached per user+type.
         """
         if unit_type not in _UNIT_TYPE_TO_COLUMNS:
             raise ValueError(f"Tipo de unidade desconhecido: {unit_type}")
@@ -212,12 +250,8 @@ class HybridAdminRepository(IAdminRepository):
                 return cached
 
         client = self._require_client()
-        select_cols = f"{id_col},{nome_col},count()"
-        query = client.table(_TABLE_WIDE).select(select_cols)
-        query = query.not_.is_(id_col, "null")
-        query = query.order(id_col, desc=False, nullsfirst=False)
         async with client.with_user_token(user_token):
-            rows = await self._execute_catalog(query)
+            rows = await self._fetch_all_option_pages(client, id_col, nome_col)
 
         seen: set[str] = set()
         options: list[IdWithName] = []
@@ -504,21 +538,33 @@ class HybridAdminRepository(IAdminRepository):
             existing_by_unit_id = {
                 row.unit_id: row for row in existing_result.scalars().all()
             }
-            # Dedupe by id (keeps the last occurrence) — the incoming list
-            # may contain repeated ids (e.g. frontend multi-select quirks),
-            # and inserting the same brand-new (schema, subject, unit_type,
+            # Dedupe by unit id (keeps uniqueness): the incoming list may
+            # contain repeated ids (e.g. frontend multi-select quirks), and
+            # inserting the same brand-new (schema, subject, unit_type,
             # unit_id) twice in one flush violates `uq_policy_grant` before
             # the loop below ever gets a chance to see the first insert.
-            wanted_items = {item.id: item for item in id_list}
+            #
+            # Each item's id may be comma-joined ("id1,id2" — options that
+            # share a display name, v1 parity) and must expand into one grant
+            # per REAL unit id; a joined string would never match a real
+            # unit on the data-proxy RLS. This also self-heals rows written
+            # with joined ids before this fix (they drop out of `wanted_ids`
+            # and are soft-disabled).
+            wanted_ids: set[str] = set()
+            for item in id_list:
+                for single_id in item.id.split(","):
+                    single_id = single_id.strip()
+                    if single_id:
+                        wanted_ids.add(single_id)
 
             for unit_id, row in existing_by_unit_id.items():
-                if unit_id not in wanted_items and row.is_enabled:
+                if unit_id not in wanted_ids and row.is_enabled:
                     row.is_enabled = False
                     row.synced_at = None
                     changed.append(row)
 
-            for item in wanted_items.values():
-                row = existing_by_unit_id.get(item.id)
+            for unit_id in sorted(wanted_ids):
+                row = existing_by_unit_id.get(unit_id)
                 if row is None:
                     row = PolicyRow(
                         schema=SCHEMA,
@@ -526,7 +572,7 @@ class HybridAdminRepository(IAdminRepository):
                         is_admin=False,
                         is_enabled=is_enabled,
                         unit_type=unit_type,
-                        unit_id=item.id,
+                        unit_id=unit_id,
                         synced_at=None,
                     )
                     session.add(row)

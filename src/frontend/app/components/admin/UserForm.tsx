@@ -92,7 +92,13 @@ export function UserForm({
     e.preventDefault();
 
     if (isEditMode) {
-      // Update mode
+      // Update mode.
+      //
+      // IMPORTANTE: listas de equipamentos são SEMPRE enviadas (mesmo
+      // vazias). O backend trata `null` como "não fornecido → não mexer
+      // nos grants deste tipo" (`_replace_policy_grants`), então enviar
+      // null ao limpar um tipo deixaria as permissões antigas intactas;
+      // uma lista vazia é o que efetivamente remove os grants.
       const updateData: UpdateUserRequest = {
         email: email || null,
         nome: nome || null,
@@ -100,13 +106,13 @@ export function UserForm({
         secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
-        id_cras_list: selectedCras.length > 0 ? selectedCras : null,
-        id_escola_list: selectedEscolas.length > 0 ? selectedEscolas : null,
-        id_cre_list: selectedCres.length > 0 ? selectedCres : null,
-        id_ap_list: selectedAps.length > 0 ? selectedAps : null,
-        id_cas_list: selectedCas.length > 0 ? selectedCas : null,
-        id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
-        id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
+        id_cras_list: selectedCras,
+        id_escola_list: selectedEscolas,
+        id_cre_list: selectedCres,
+        id_ap_list: selectedAps,
+        id_cas_list: selectedCas,
+        id_clinica_familia_list: selectedClinicas,
+        id_equipe_familia_list: selectedEquipesFamilia,
         secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
@@ -121,13 +127,13 @@ export function UserForm({
         secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
-        id_cras_list: selectedCras.length > 0 ? selectedCras : null,
-        id_escola_list: selectedEscolas.length > 0 ? selectedEscolas : null,
-        id_cre_list: selectedCres.length > 0 ? selectedCres : null,
-        id_ap_list: selectedAps.length > 0 ? selectedAps : null,
-        id_cas_list: selectedCas.length > 0 ? selectedCas : null,
-        id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
-        id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
+        id_cras_list: selectedCras,
+        id_escola_list: selectedEscolas,
+        id_cre_list: selectedCres,
+        id_ap_list: selectedAps,
+        id_cas_list: selectedCas,
+        id_clinica_familia_list: selectedClinicas,
+        id_equipe_familia_list: selectedEquipesFamilia,
         secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
