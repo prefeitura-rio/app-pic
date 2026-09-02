@@ -67,11 +67,13 @@ class FakeFilterOptionsUseCase:
         self.received: dict = {}
 
     async def execute(
-        self, field, column_filters=None, user_token=None, bypass_cache=False
+        self, field, filters=None, user_token=None, bypass_cache=False
     ):
         self.received = {
             "field": field,
-            "column_filters": column_filters,
+            "filters": filters.model_dump(exclude_none=True)
+            if filters is not None
+            else {},
             "user_token": user_token,
         }
         if self.error:
@@ -236,9 +238,8 @@ class TestGetGeospatialFilterOptions:
         await client.get(
             "/api/v2/geospatial/filter-options?field=bairros&tipo_camada=BAIRRO"
         )
-        # column_filters must include tipo_camada → tipo_camada (direct mapping)
-        col_filters = filter_options_use_case.received.get("column_filters", {})
-        assert col_filters.get("tipo_camada") == "BAIRRO"
+        filters = filter_options_use_case.received.get("filters", {})
+        assert filters.get("tipo_camada") == "BAIRRO"
 
     @pytest.mark.asyncio
     async def test_500_on_use_case_error(self, override_auth, override_use_cases):
