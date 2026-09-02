@@ -4,18 +4,18 @@ from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.application.ports.debug_repository import IDebugRepository
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
-from src.pic.application.ports.participant_read_repository import (
+from src.pic.application.ports.participant_repository import (
     ParticipantRepository,
 )
-from src.pic.application.use_cases.admin_batch import (
+from src.pic.application.use_cases.admin.batch import (
     BatchImportUsersUseCase,
     BatchUpdatePermissionsUseCase,
 )
-from src.pic.application.use_cases.admin_read import (
-    GetAvailableIdsUseCase,
+from src.pic.application.use_cases.admin.read import (
+    GetAvailableUnitIdsUseCase,
     GetCurrentUserUseCase,
 )
-from src.pic.application.use_cases.admin_write import (
+from src.pic.application.use_cases.admin.write import (
     DeleteUserUseCase,
     ListUsersUseCase,
     UpsertUserUseCase,
@@ -41,6 +41,7 @@ from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
+from src.pic.infrastructure.export.file_parser import UserImportFileParser
 from src.pic.infrastructure.postgrest_client.client import get_postgrest_client
 from src.pic.infrastructure.redis_client import get_redis_client
 from src.pic.infrastructure.repositories.bigquery_debug import (
@@ -90,8 +91,18 @@ async def get_dashboard_repo() -> IDashboardRepository:
     return PostgrestDashboardRepository(postgrest_client, redis_client=redis_client)
 
 
-def get_admin_repo() -> IAdminRepository:
-    return HybridAdminRepository()
+async def get_admin_repo() -> IAdminRepository:
+    """Postgres-backed admin repository, hybridized with the data-proxy.
+
+    The PostgREST/Redis clients feed the unit catalog (id -> nome) used to
+    resolve display names; user writes still go to the local Postgres pair
+    (`users`/`policy`). Redis caches the catalog per user+unit type.
+    """
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return HybridAdminRepository(postgrest_client, redis_client=redis_client)
 
 
 async def get_geospatial_repo() -> IGeospatialRepository:
@@ -148,29 +159,32 @@ def get_debug_participant_use_case() -> GetDebugParticipantUseCase:
     return GetDebugParticipantUseCase(repository=get_debug_repo())
 
 
-def get_current_user_use_case() -> GetCurrentUserUseCase:
-    return GetCurrentUserUseCase(repository=get_admin_repo())
+async def get_current_user_use_case() -> GetCurrentUserUseCase:
+    return GetCurrentUserUseCase(repository=await get_admin_repo())
 
 
-def get_available_ids_use_case() -> GetAvailableIdsUseCase:
-    return GetAvailableIdsUseCase(repository=get_admin_repo())
+async def get_available_unit_ids_use_case() -> GetAvailableUnitIdsUseCase:
+    return GetAvailableUnitIdsUseCase(repository=await get_admin_repo())
 
 
-def get_list_users_use_case() -> ListUsersUseCase:
-    return ListUsersUseCase(repository=get_admin_repo())
+async def get_list_users_use_case() -> ListUsersUseCase:
+    return ListUsersUseCase(repository=await get_admin_repo())
 
 
-def get_upsert_user_use_case() -> UpsertUserUseCase:
-    return UpsertUserUseCase(repository=get_admin_repo())
+async def get_upsert_user_use_case() -> UpsertUserUseCase:
+    return UpsertUserUseCase(repository=await get_admin_repo())
 
 
-def get_delete_user_use_case() -> DeleteUserUseCase:
-    return DeleteUserUseCase(repository=get_admin_repo())
+async def get_delete_user_use_case() -> DeleteUserUseCase:
+    return DeleteUserUseCase(repository=await get_admin_repo())
 
 
-def get_batch_import_users_use_case() -> BatchImportUsersUseCase:
-    return BatchImportUsersUseCase(repository=get_admin_repo())
+async def get_batch_import_users_use_case() -> BatchImportUsersUseCase:
+    return BatchImportUsersUseCase(
+        repository=await get_admin_repo(),
+        parser=UserImportFileParser(),
+    )
 
 
-def get_batch_update_permissions_use_case() -> BatchUpdatePermissionsUseCase:
-    return BatchUpdatePermissionsUseCase(repository=get_admin_repo())
+async def get_batch_update_permissions_use_case() -> BatchUpdatePermissionsUseCase:
+    return BatchUpdatePermissionsUseCase(repository=await get_admin_repo())

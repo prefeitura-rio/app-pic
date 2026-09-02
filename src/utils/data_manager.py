@@ -1,15 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import time
 from math import ceil
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from src.api.v1.schemas import (
-    FilterOptionItem,
-    PaginationMeta,
-    SmartFilterOptions,
-)
 from src.utils.bigquery import execute_query
 from src.utils.cache_manager import query_cache
 from src.utils.data_manager_config import (
@@ -22,6 +19,13 @@ from src.utils.data_manager_config import (
 from src.utils.log import logger
 from src.utils.secretaria_access import filter_and_recalculate_by_secretaria
 from src.utils.text_utils import TextNormalizer
+
+if TYPE_CHECKING:
+    from src.api.v1.schemas import (
+        FilterOptionItem,
+        PaginationMeta,
+        SmartFilterOptions,
+    )
 
 # Limit concurrent BQ fetches to 1 to prevent OOM on cold start / pod restart.
 # When multiple endpoints hit BQ simultaneously (cache miss), they serialise here.
@@ -210,6 +214,12 @@ class DataManager:
             >>> print(response.meta.total_rows)
             1234
         """
+        from src.api.v1.schemas import (
+            FilterOptionItem,
+            PaginationMeta,
+            SmartFilterOptions,
+        )
+
         # VALIDAÇÕES
         if not query or not query.strip():
             raise ValidationError("query cannot be empty")
@@ -1173,6 +1183,8 @@ class DataManager:
         OTIMIZAÇÃO PRINCIPAL: Usa df_already_filtered para colunas sem filtro ativo,
         evitando recálculos desnecessários. Só recalcula quando precisa excluir um filtro.
         """
+        from src.api.v1.schemas import FilterOptionItem, SmartFilterOptions
+
         start_time = time.perf_counter()
 
         if df_original.is_empty():

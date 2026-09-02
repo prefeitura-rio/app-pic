@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from src.pic.domain.models.admin import UserAccessRecord
 from src.pic.domain.models.dashboard import Dashboard
 from src.pic.domain.models.filters import FilterOption
 from src.pic.domain.models.geospatial import GeospatialFilterOptions, GeospatialLayer
@@ -14,6 +15,12 @@ class ParticipantListResponse(BaseModel):
 
 class ParticipantDetailResponse(BaseModel):
     data: Participante
+
+
+class AdminUsersResponse(BaseModel):
+    meta: PaginationMeta
+    data: list[UserAccessRecord]
+    filters: object | None = None
 
 
 class FilterFieldOptionsResponse(BaseModel):
