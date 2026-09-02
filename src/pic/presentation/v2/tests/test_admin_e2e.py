@@ -7,27 +7,27 @@ from httpx import ASGITransport, AsyncClient
 from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import IdWithName, UserPermissions
 from src.main import app
-from src.pic.application.use_cases.admin_batch import (
+from src.pic.application.use_cases.admin.batch import (
     BatchImportUsersUseCase,
     BatchUpdatePermissionsUseCase,
 )
-from src.pic.application.use_cases.admin_read import (
-    GetAvailableIdsUseCase,
+from src.pic.application.use_cases.admin.read import (
+    GetAvailableUnitIdsUseCase,
     GetCurrentUserUseCase,
 )
-from src.pic.application.use_cases.admin_write import (
+from src.pic.application.use_cases.admin.write import (
     DeleteUserUseCase,
     ListUsersUseCase,
     UpsertUserUseCase,
 )
 from src.pic.domain.models.admin import (
-    AvailableIds,
     BatchImportResult,
     BatchPermissionsResult,
     UserAccessRecord,
 )
+from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.presentation.di import (
-    get_available_ids_use_case,
+    get_available_unit_ids_use_case,
     get_batch_import_users_use_case,
     get_batch_update_permissions_use_case,
     get_current_user_use_case,
@@ -54,7 +54,14 @@ def override_auth():
 @pytest.fixture
 async def client(override_auth):
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={
+            "Authorization": "Bearer fake-jwt-token",
+            "X-Access-Token": "fake-access-token",
+        },
+    ) as ac:
         yield ac
 
 
@@ -102,30 +109,32 @@ class TestAdminMe:
 class TestAdminAvailableIds:
     @pytest.mark.asyncio
     async def test_get_available_ids_200(self, client):
-        mock_ids = AvailableIds(
-            cras=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
-            escolas=[IdWithName(id="ESC_001", nome="Escola A")],
-        )
+        mock_ids = [IdWithName(id="CRAS_001", nome="CRAS Centro")]
 
         def _override_use_case():
-            uc = MagicMock(spec=GetAvailableIdsUseCase)
+            uc = MagicMock(spec=GetAvailableUnitIdsUseCase)
             uc.execute = AsyncMock(return_value=mock_ids)
             return uc
 
-        app.dependency_overrides[get_available_ids_use_case] = _override_use_case
+        app.dependency_overrides[get_available_unit_ids_use_case] = _override_use_case
 
-        response = await client.get("/api/v2/admin/available-ids")
+        response = await client.get("/api/v2/admin/available-ids/cras")
         assert response.status_code == 200
         body = response.json()
-        assert len(body["cras"]) == 1
-        assert body["cras"][0]["id"] == "CRAS_001"
+        assert len(body) == 1
+        assert body[0]["id"] == "CRAS_001"
+        assert body[0]["nome"] == "CRAS Centro"
+
+    @pytest.mark.asyncio
+    async def test_get_available_ids_invalid_unit_type_422(self, client):
+        response = await client.get("/api/v2/admin/available-ids/invalido")
+        assert response.status_code == 422
 
 
 class TestAdminListUsers:
     @pytest.mark.asyncio
     async def test_list_users_200(self, client):
         mock_users = [_make_user_record()]
-        from src.api.v1.schemas import PaginationMeta
         mock_meta = PaginationMeta(
             page=1, page_size=20, total_rows=1, total_pages=1, cache_hit=True
         )

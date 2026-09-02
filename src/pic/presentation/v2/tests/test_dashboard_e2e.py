@@ -23,7 +23,6 @@ from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import UserPermissions
 from src.main import app
 from src.pic.application.use_cases.get_dashboard import (
-    DashboardOutput,
     GetDashboardUseCase,
 )
 from src.pic.domain.models.dashboard import (
