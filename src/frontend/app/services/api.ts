@@ -7,7 +7,6 @@ import {
   DashboardV2Response,
   ProtocoloDetalhes,
   ParticipantFilters,
-  AvailableIds,
   UserAccessRecord,
   CreateUserRequest,
   BatchImportResult,
@@ -21,6 +20,8 @@ import {
   DashboardFilterValues,
   FilterFieldKey,
   FilterFieldOptionsResponse,
+  IdWithName,
+  UnitType,
 } from "../types";
 
 // Use server-side proxy to access backend API
@@ -358,13 +359,17 @@ export const apiService = {
     return handleResponse<UserAccessRecord>(res, fetchFn);
   },
 
-  async getAvailableIds(): Promise<AvailableIds> {
-    const url = `${BASE_URL}/api/v2/admin/available-ids`;
+  /**
+   * Get available assignable IDs for one unit type (lazy, per dropdown).
+   * Requires admin permission.
+   */
+  async getAvailableUnitIds(unitType: UnitType): Promise<IdWithName[]> {
+    const url = `${BASE_URL}/api/v2/admin/available-ids/${unitType}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<AvailableIds>(res, fetchFn);
+    return handleResponse<IdWithName[]>(res, fetchFn);
   },
 
   /**

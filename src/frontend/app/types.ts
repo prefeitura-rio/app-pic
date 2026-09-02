@@ -554,17 +554,17 @@ export interface IdWithName {
 }
 
 /**
- * Available IDs for assignment (from /admin/available-ids endpoint)
+ * Unidade (tipo de equipamento) atribuível a um usuário.
+ * Chaves do endpoint lazy GET /admin/available-ids/{unit_type}.
  */
-export interface AvailableIds {
-	cras: IdWithName[];
-	escolas: IdWithName[];
-	cres: IdWithName[];
-	aps: IdWithName[];
-	cas: IdWithName[];
-	clinicas: IdWithName[];
-	equipes_familia: IdWithName[];
-}
+export type UnitType =
+	| "cras"
+	| "escolas"
+	| "cres"
+	| "aps"
+	| "cas"
+	| "clinicas"
+	| "equipes_familia";
 
 /**
  * User access record (from /admin/users endpoint)
