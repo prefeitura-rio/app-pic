@@ -1,16 +1,8 @@
 """
-compute_postgrest.py — Cálculos V2 com dados pré-agregados do PostgREST.
+compute_postgrest.py — Cálculo das métricas do dashboard com dados do PostgREST.
 
-Diferenças vs. compute.py (V1):
-- Sem loops de aggregação (dados já agregados em SQL pelo PostgREST)
-- Direto para construção de objetos de domínio
-- ~90% menos linhas de código
-- Muito mais rápido (10-20ms de computação)
-
-Compartilha helpers com compute.py:
-- _percentual()
-- _MAPA_SECRETARIA_LABEL, _FAIXAS_TEMPO
-- _format_mes_label() (importado de formatting.py)
+Dados já vêm agregados em SQL pelo PostgREST; Python apenas acumula quando
+houver mais de uma linha por chave e constrói os objetos de domínio.
 """
 
 from collections import defaultdict
@@ -30,7 +22,7 @@ from src.pic.infrastructure.dashboard.formatting import _format_mes_label
 from src.utils.log import logger
 
 # ---------------------------------------------------------------------------
-# Helpers (compartilhados com compute.py V1)
+# Helpers
 # ---------------------------------------------------------------------------
 
 _MAPA_SECRETARIA_LABEL: dict[str, str] = {
@@ -67,7 +59,7 @@ def _percentual_raw(num: int | float, den: int | float) -> float:
 # ---------------------------------------------------------------------------
 
 
-def _calculate_dashboard_metrics_postgrest_v2(
+def _calculate_dashboard_metrics(
     consolidado: dict[str, Any],
     protocolos: list[dict[str, Any]],
     series: list[dict[str, Any]],
@@ -75,19 +67,20 @@ def _calculate_dashboard_metrics_postgrest_v2(
     resolucao: list[dict[str, Any]],
     filtro_secretaria: str | None = None,
 ) -> Dashboard:
-    """Compute all seven dashboard sections from pré-aggregated PostgREST data.
+    """Compute all seven dashboard sections from PostgREST data.
 
-    Todos os dados já vêm agregados do banco — sem loops de aggregação em Python.
+    Os dados já vêm agregados do banco; quando houver mais de uma linha por
+    chave (ex.: protocolos repetidos entre dimensões), as linhas são somadas.
 
     Args:
         consolidado: Output of ``_fetch_consolidado``:
             {"totals": {regular_num, regular_den, irregular_num},
              "safras": [{cohort, status, qtd}],
              "motivos": [{motivo, qtd}]}
-        protocolos: ~50 linhas pré-agregadas por protocolo_id
-        series: ~24 linhas pré-agregadas por (mes, serie_tipo)
+        protocolos: linhas por protocolo_id
+        series: linhas por (mes, serie_tipo)
         tempo: {smas, sme, sms} com somas ponderadas pré-calculadas
-        resolucao: ~24 linhas pré-agregadas por (mes, secretaria)
+        resolucao: linhas por (mes, secretaria)
         filtro_secretaria: Optional secretaria param (SMS|SME|SMAS)
 
     Returns:
@@ -109,26 +102,47 @@ def _calculate_dashboard_metrics_postgrest_v2(
     logger.info(f"⚡ [postgrest_v2] Seção 1: {perf_time.perf_counter() - t0:.3f}s")
 
     # =========================================================================
-    # SECTION 2 — Protocolos (dados já agregados, sem loop extra)
+    # SECTION 2 — Protocolos (agrega linhas repetidas por protocolo_id)
     # =========================================================================
     t1 = perf_time.perf_counter()
 
-    protocolos_lista: list[ProtocoloIndicador] = []
+    proto_agg: dict[str, dict[str, Any]] = {}
     for row in protocolos:
-        num, den = row.get("numerador", 0), row.get("denominador", 0)
+        pid = row.get("protocolo_id")
+        if not pid:
+            continue
+        if pid not in proto_agg:
+            proto_agg[pid] = {
+                "descricao": row.get("protocolo_descricao") or "",
+                "secretaria": row.get("protocolo_secretaria") or "",
+                "num": 0,
+                "den": 0,
+            }
+        else:
+            # First non-null wins for labels
+            if not proto_agg[pid]["descricao"] and row.get("protocolo_descricao"):
+                proto_agg[pid]["descricao"] = row["protocolo_descricao"]
+            if not proto_agg[pid]["secretaria"] and row.get("protocolo_secretaria"):
+                proto_agg[pid]["secretaria"] = row["protocolo_secretaria"]
+        proto_agg[pid]["num"] += row.get("numerador") or 0
+        proto_agg[pid]["den"] += row.get("denominador") or 0
+
+    protocolos_lista: list[ProtocoloIndicador] = []
+    for pid, dados in proto_agg.items():
+        num, den = dados["num"], dados["den"]
         perc_reg_raw = _percentual_raw(num, den)
         protocolos_lista.append(
             ProtocoloIndicador(
-                protocolo_id=row["protocolo_id"],
-                protocolo_descricao=row.get("protocolo_descricao", ""),
-                protocolo_secretaria=row.get("protocolo_secretaria", ""),
+                protocolo_id=pid,
+                protocolo_descricao=dados["descricao"],
+                protocolo_secretaria=dados["secretaria"],
                 numerador=num,
                 denominador=den,
                 percentual_regular=round(perc_reg_raw, 1),
                 percentual_irregular=round(100 - perc_reg_raw, 1) if den > 0 else 0.0,
             )
         )
-    
+
     protocolos_lista.sort(key=lambda p: (p.protocolo_secretaria, p.protocolo_descricao))
 
     logger.info(f"⚡ [postgrest_v2] Seção 2: {perf_time.perf_counter() - t1:.3f}s")
@@ -154,9 +168,8 @@ def _calculate_dashboard_metrics_postgrest_v2(
         mes = row.get("mes")
         if not nome_sec or not mes:
             continue
-        # Dados já agregados — apenas somar
-        evolucao[mes][nome_sec]["num"] = row.get("numerador", 0)
-        evolucao[mes][nome_sec]["den"] = row.get("denominador", 0)
+        evolucao[mes][nome_sec]["num"] += row.get("numerador") or 0
+        evolucao[mes][nome_sec]["den"] += row.get("denominador") or 0
 
     resultado_programa: list[ResultadoProgramaPoint] = []
     for mes in sorted(evolucao.keys()):
@@ -323,11 +336,11 @@ def _calculate_dashboard_metrics_postgrest_v2(
         if not sec_raw or not mes:
             continue
         nome_sec = _MAPA_RESOLUCAO.get(sec_raw, sec_raw.upper())
-        num = row.get("numerador", 0)
-        den = row.get("denominador", 0)
-        # Dados já agregados — apenas adicionar
-        resolucao_agg[mes][nome_sec]["num"] = num
-        resolucao_agg[mes][nome_sec]["den"] = den
+        num = row.get("numerador") or 0
+        den = row.get("denominador") or 0
+        # Dados já agregados — acumular caso haja linhas repetidas
+        resolucao_agg[mes][nome_sec]["num"] += num
+        resolucao_agg[mes][nome_sec]["den"] += den
         # QUIRK 7: TODOS accumulates every secretaria
         resolucao_agg[mes]["TODOS"]["num"] += num
         resolucao_agg[mes]["TODOS"]["den"] += den
