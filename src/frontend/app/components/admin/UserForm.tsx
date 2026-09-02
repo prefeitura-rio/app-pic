@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
+import { UserAccessRecord, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
 import { SecretariasAcessoField } from "@/app/components/admin/SecretariasAcessoField";
+import { useUnitOptions } from "@/app/components/admin/useUnitOptions";
 
 interface UserFormProps {
-  availableIds: AvailableIds;
   currentUser: UserAccessRecord; // Current logged-in user
   user?: UserAccessRecord; // If provided, edit mode
   onSubmit: (data: CreateUserRequest | UpdateUserRequest) => void;
@@ -23,7 +23,6 @@ interface UserFormProps {
 }
 
 export function UserForm({
-  availableIds,
   currentUser,
   user,
   onSubmit,
@@ -33,24 +32,13 @@ export function UserForm({
 }: UserFormProps) {
   const isEditMode = !!user;
 
-  // Filter available IDs based on current user permissions
-  // Super admin sees all, segmented admin only sees their own IDs
-  const filteredAvailableIds = useMemo(() => {
-    if (currentUser.is_super_admin) {
-      return availableIds;
-    }
-
-    // Segmented admin: only show IDs they can assign (their own IDs)
-    return {
-      cras: currentUser.id_cras_list || [],
-      escolas: currentUser.id_escola_list || [],
-      cres: currentUser.id_cre_list || [],
-      aps: currentUser.id_ap_list || [],
-      cas: currentUser.id_cas_list || [],
-      clinicas: currentUser.id_clinica_familia_list || [],
-      equipes_familia: currentUser.id_equipe_familia_list || [],
-    };
-  }, [availableIds, currentUser]);
+  const casOptions = useUnitOptions("cas");
+  const crasOptions = useUnitOptions("cras");
+  const cresOptions = useUnitOptions("cres");
+  const escolasOptions = useUnitOptions("escolas");
+  const apsOptions = useUnitOptions("aps");
+  const clinicasOptions = useUnitOptions("clinicas");
+  const equipesOptions = useUnitOptions("equipes_familia");
 
   // Secretarias que o admin logado pode atribuir (subset da própria secretarias_acesso)
   const allowedSecretariasAcesso = useMemo(() => {
@@ -314,20 +302,24 @@ export function UserForm({
             {/* CAS */}
             <VirtualizedIdMultiSelect
               label="CAS (Centros de Assistência Social)"
-              options={filteredAvailableIds.cas}
+              options={casOptions.options}
               selected={selectedCas}
               onChange={setSelectedCas}
               disabled={isLoading}
+              onOpen={casOptions.onOpen}
+              loading={casOptions.isLoading}
               tooltip="Coordenadorias de Assistência Social - selecione para dar acesso a todos os CRAS da região"
             />
 
             {/* CRAS */}
             <VirtualizedIdMultiSelect
               label="CRAS"
-              options={filteredAvailableIds.cras}
+              options={crasOptions.options}
               selected={selectedCras}
               onChange={setSelectedCras}
               disabled={isLoading}
+              onOpen={crasOptions.onOpen}
+              loading={crasOptions.isLoading}
               tooltip="Centros de Referência de Assistência Social que o usuário poderá acessar"
             />
 
@@ -335,20 +327,24 @@ export function UserForm({
             {/* CRE (Coordenadoria Regional de Educação) */}
             <VirtualizedIdMultiSelect
               label="CRE (Coordenadoria Regional de Educação)"
-              options={filteredAvailableIds.cres}
+              options={cresOptions.options}
               selected={selectedCres}
               onChange={setSelectedCres}
               disabled={isLoading}
+              onOpen={cresOptions.onOpen}
+              loading={cresOptions.isLoading}
               tooltip="Coordenadorias Regionais de Educação - selecione para dar acesso a todas as escolas da região"
             />
 
             {/* Escolas */}
             <VirtualizedIdMultiSelect
               label="Escolas"
-              options={filteredAvailableIds.escolas}
+              options={escolasOptions.options}
               selected={selectedEscolas}
               onChange={setSelectedEscolas}
               disabled={isLoading}
+              onOpen={escolasOptions.onOpen}
+              loading={escolasOptions.isLoading}
               tooltip="Unidades escolares que o usuário poderá visualizar no sistema"
             />
 
@@ -356,30 +352,36 @@ export function UserForm({
             {/* CAP (Coordenadoria de Área Programática) */}
             <VirtualizedIdMultiSelect
               label="CAP (Coordenadoria de Área Programática)"
-              options={filteredAvailableIds.aps}
+              options={apsOptions.options}
               selected={selectedAps}
               onChange={setSelectedAps}
               disabled={isLoading}
+              onOpen={apsOptions.onOpen}
+              loading={apsOptions.isLoading}
               tooltip="Coordenadorias de Área Programática de Saúde - divisão territorial do município"
             />
 
             {/* Clínicas da Família */}
             <VirtualizedIdMultiSelect
               label="Clínicas da Família"
-              options={filteredAvailableIds.clinicas}
+              options={clinicasOptions.options}
               selected={selectedClinicas}
               onChange={setSelectedClinicas}
               disabled={isLoading}
+              onOpen={clinicasOptions.onOpen}
+              loading={clinicasOptions.isLoading}
               tooltip="Clínicas da Família e unidades de saúde que o usuário poderá acessar"
             />
 
             {/* Equipes de Saúde da Família */}
             <VirtualizedIdMultiSelect
               label="Equipes de Saúde da Família"
-              options={filteredAvailableIds.equipes_familia}
+              options={equipesOptions.options}
               selected={selectedEquipesFamilia}
               onChange={setSelectedEquipesFamilia}
               disabled={isLoading}
+              onOpen={equipesOptions.onOpen}
+              loading={equipesOptions.isLoading}
               tooltip="Equipes de Saúde da Família (ESF) que o usuário poderá acessar"
             />
           </div>

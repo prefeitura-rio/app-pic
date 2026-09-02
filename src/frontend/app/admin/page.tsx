@@ -157,16 +157,6 @@ export default function AdminPage() {
     return editable;
   }, [selectedCpfs, users, currentUser?.cpf, currentUser?.is_super_admin]);
 
-  // Fetch available IDs
-  const {
-    data: availableIds,
-    isLoading: idsLoading,
-  } = useQuery({
-    queryKey: ["admin", "available-ids"],
-    queryFn: () => apiService.getAvailableIds(),
-    retry: false,
-  });
-
   // Upsert user mutation (create or update)
   const upsertUserMutation = useMutation({
     mutationFn: ({ cpf, data }: { cpf: string; data: Omit<CreateUserRequest, "cpf"> }) =>
@@ -399,7 +389,7 @@ export default function AdminPage() {
 
   // Loading state with skeletons - só mostrar na carga inicial, não em refetch
   // Isso evita desmontar o ImportTab e perder os dados importados
-  const isInitialLoading = usersLoading || idsLoading || currentUserLoading;
+  const isInitialLoading = usersLoading || currentUserLoading;
   if (isInitialLoading && !usersResponse) {
     return (
       <div className="space-y-6">
@@ -447,7 +437,7 @@ export default function AdminPage() {
   }
 
   // No data state
-  if (!availableIds || !currentUser || !meta) {
+  if (!currentUser || !meta) {
     return null;
   }
 
@@ -776,7 +766,6 @@ export default function AdminPage() {
         {/* Form Tab */}
         <TabsContent value="form" className="space-y-6">
           <UserForm
-            availableIds={availableIds}
             currentUser={currentUser}
             user={editingUser ?? undefined}
             onSubmit={handleSubmit}
@@ -789,7 +778,6 @@ export default function AdminPage() {
         {/* Import Tab */}
         <TabsContent value="import" className="space-y-6">
           <ImportTab
-            availableIds={availableIds}
             currentUser={currentUser}
             onPermissionsApplied={handleRefreshWithBypass}
             prePopulatedUsers={usersForImport}

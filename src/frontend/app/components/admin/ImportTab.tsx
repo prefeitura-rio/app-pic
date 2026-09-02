@@ -9,7 +9,6 @@ import ExcelJS from "exceljs";
 import { apiService } from "@/app/services/api";
 import {
   IdWithName,
-  AvailableIds,
   ImportedUserWithEdits,
   BatchImportResult,
   UserAccessRecord,
@@ -30,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { VirtualizedIdMultiSelect } from "./VirtualizedIdMultiSelect";
 import { SecretariasAcessoField } from "./SecretariasAcessoField";
+import { useUnitOptions } from "./useUnitOptions";
 import {
   Download,
   Upload,
@@ -72,7 +72,6 @@ const STATUS_ICONS = {
 };
 
 interface ImportTabProps {
-  availableIds: AvailableIds;
   currentUser: UserAccessRecord;
   onPermissionsApplied?: () => void; // Callback para atualizar tabela de usuários
   prePopulatedUsers?: UserAccessRecord[]; // Usuários pré-selecionados da tabela de usuários
@@ -114,9 +113,17 @@ function buildImportedUsersFromPrePopulated(users?: UserAccessRecord[]): Importe
   }));
 }
 
-export function ImportTab({ availableIds, currentUser, onPermissionsApplied, prePopulatedUsers }: ImportTabProps) {
+export function ImportTab({ currentUser, onPermissionsApplied, prePopulatedUsers }: ImportTabProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const crasOptions = useUnitOptions("cras");
+  const escolasOptions = useUnitOptions("escolas");
+  const cresOptions = useUnitOptions("cres");
+  const apsOptions = useUnitOptions("aps");
+  const casOptions = useUnitOptions("cas");
+  const clinicasOptions = useUnitOptions("clinicas");
+  const equipesOptions = useUnitOptions("equipes_familia");
 
   // Upload state
   const [file, setFile] = useState<File | null>(null);
@@ -163,25 +170,6 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
     }
     return [];
   }, [currentUser]);
-
-  // Filter available IDs based on current user permissions
-  // Super admin sees all, segmented admin only sees their own IDs
-  const filteredAvailableIds = useMemo(() => {
-    if (currentUser.is_super_admin) {
-      return availableIds;
-    }
-
-    // Segmented admin: only show IDs they can assign (their own IDs)
-    return {
-      cras: currentUser.id_cras_list || [],
-      escolas: currentUser.id_escola_list || [],
-      cres: currentUser.id_cre_list || [],
-      aps: currentUser.id_ap_list || [],
-      cas: currentUser.id_cas_list || [],
-      clinicas: currentUser.id_clinica_familia_list || [],
-      equipes_familia: currentUser.id_equipe_familia_list || [],
-    };
-  }, [availableIds, currentUser]);
 
   // Editing state
   const [editingCell, setEditingCell] = useState<{
@@ -1047,57 +1035,71 @@ export function ImportTab({ availableIds, currentUser, onPermissionsApplied, pre
               {/* ID selectors */}
               <VirtualizedIdMultiSelect
                 label="CRAS"
-                options={filteredAvailableIds.cras}
+                options={crasOptions.options}
                 selected={selectedCras}
                 onChange={setSelectedCras}
+                onOpen={crasOptions.onOpen}
+                loading={crasOptions.isLoading}
                 placeholder="Selecionar CRAS..."
               />
 
               <VirtualizedIdMultiSelect
                 label="Escolas"
-                options={filteredAvailableIds.escolas}
+                options={escolasOptions.options}
                 selected={selectedEscolas}
                 onChange={setSelectedEscolas}
+                onOpen={escolasOptions.onOpen}
+                loading={escolasOptions.isLoading}
                 placeholder="Selecionar Escolas..."
               />
 
               <VirtualizedIdMultiSelect
                 label="CRE"
-                options={filteredAvailableIds.cres}
+                options={cresOptions.options}
                 selected={selectedCres}
                 onChange={setSelectedCres}
+                onOpen={cresOptions.onOpen}
+                loading={cresOptions.isLoading}
                 placeholder="Selecionar CREs..."
               />
 
               <VirtualizedIdMultiSelect
                 label="CAP"
-                options={filteredAvailableIds.aps}
+                options={apsOptions.options}
                 selected={selectedAps}
                 onChange={setSelectedAps}
+                onOpen={apsOptions.onOpen}
+                loading={apsOptions.isLoading}
                 placeholder="Selecionar CAPs..."
               />
 
               <VirtualizedIdMultiSelect
                 label="CAS"
-                options={filteredAvailableIds.cas}
+                options={casOptions.options}
                 selected={selectedCas}
                 onChange={setSelectedCas}
+                onOpen={casOptions.onOpen}
+                loading={casOptions.isLoading}
                 placeholder="Selecionar CAS..."
               />
 
               <VirtualizedIdMultiSelect
                 label="Clinicas"
-                options={filteredAvailableIds.clinicas}
+                options={clinicasOptions.options}
                 selected={selectedClinicas}
                 onChange={setSelectedClinicas}
+                onOpen={clinicasOptions.onOpen}
+                loading={clinicasOptions.isLoading}
                 placeholder="Selecionar Clinicas..."
               />
 
               <VirtualizedIdMultiSelect
                 label="Equipes de Saúde da Família"
-                options={filteredAvailableIds.equipes_familia}
+                options={equipesOptions.options}
                 selected={selectedEquipesFamilia}
                 onChange={setSelectedEquipesFamilia}
+                onOpen={equipesOptions.onOpen}
+                loading={equipesOptions.isLoading}
                 placeholder="Selecionar Equipes..."
               />
 
