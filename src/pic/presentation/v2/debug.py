@@ -4,6 +4,7 @@ from src.core.security.jwt import CurrentUserPermissionsV2, verify_jwt
 from src.pic.application.use_cases.get_debug_participant import (
     GetDebugParticipantUseCase,
 )
+from src.pic.domain.errors import ForbiddenError
 from src.pic.domain.models.debug import DebugParticipantResponse
 from src.pic.presentation.di import get_debug_participant_use_case
 from src.utils.log import logger
@@ -32,6 +33,8 @@ async def get_debug_participants(
             search=search,
             bypass_cache=bypass_cache,
         )
+    except ForbiddenError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Error in debug endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
