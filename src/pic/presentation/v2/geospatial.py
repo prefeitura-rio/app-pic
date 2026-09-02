@@ -12,7 +12,6 @@ from src.pic.application.use_cases.get_geospatial_layers import (
     GetGeospatialLayersUseCase,
 )
 from src.pic.domain.models.geospatial import GeospatialFilters
-from src.pic.infrastructure.geospatial.config import GEOSPATIAL_FILTER_COLUMN_MAP
 from src.pic.presentation.di import (
     get_geospatial_filter_options_use_case,
     get_geospatial_filter_vocabulary_use_case,
@@ -97,19 +96,10 @@ async def get_geospatial_filter_options(
     as opções reflitam o estado atual dos filtros — mesmo comportamento
     da listagem de participantes.
     """
-    filters_dict = filters.model_dump(exclude_none=True)
-    column_filters: dict[str, object] = {}
-    for filter_key, filter_value in filters_dict.items():
-        if filter_key in GEOSPATIAL_FILTER_COLUMN_MAP:
-            col = GEOSPATIAL_FILTER_COLUMN_MAP[filter_key]
-            if isinstance(filter_value, str) and "," in filter_value:
-                filter_value = [v.strip() for v in filter_value.split(",") if v.strip()]
-            column_filters[col] = filter_value
-
     try:
         options = await use_case.execute(
             field=field,
-            column_filters=column_filters,
+            filters=filters,
             user_token=data_proxy_user_token(data_proxy_token, credentials.credentials),
             bypass_cache=bypass_cache,
         )

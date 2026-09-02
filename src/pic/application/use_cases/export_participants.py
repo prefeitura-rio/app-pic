@@ -1,12 +1,9 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
-from src.pic.application.ports.participant_read_repository import ParticipantRepository
+from src.pic.application.ports.participant_repository import ParticipantRepository
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.domain.models.pagination import SortParams
-from src.pic.infrastructure.repositories.postgrest_participant_repository import (
-    EXPORT_FALLBACK_COLUMNS,
-)
 
 
 class ExportOutput:
@@ -53,9 +50,9 @@ class ExportParticipantsUseCase:
         try:
             first_page = await anext(pages)
         except StopAsyncIteration:
-            return ExportOutput(columns=EXPORT_FALLBACK_COLUMNS, pages=_empty_pages())
+            return ExportOutput(columns=self._repository.export_fallback_columns, pages=_empty_pages())
 
-        columns = list(first_page[0].keys()) if first_page else EXPORT_FALLBACK_COLUMNS
+        columns = list(first_page[0].keys()) if first_page else self._repository.export_fallback_columns
 
         async def _all_pages() -> AsyncIterator[list[dict[str, Any]]]:
             if first_page:

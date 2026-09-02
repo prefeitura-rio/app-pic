@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.pic.application.ports.participant_read_repository import (
+from src.pic.application.ports.participant_repository import (
     ParticipantRepository,
 )
 from src.pic.domain.models.filters import FilterCriteria, FilterOption
