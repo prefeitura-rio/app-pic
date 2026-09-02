@@ -70,7 +70,7 @@ import httpx
 from postgrest import APIResponse, AsyncSelectRequestBuilder
 from postgrest.exceptions import APIError
 
-from src.pic.application.ports.participant_read_repository import ParticipantRepository
+from src.pic.application.ports.participant_repository import ParticipantRepository
 from src.pic.domain.errors import ForbiddenError, ValidationError
 from src.pic.domain.models.filters import FilterCriteria, FilterOption
 from src.pic.domain.models.pagination import (

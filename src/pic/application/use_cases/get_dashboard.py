@@ -2,7 +2,6 @@ from typing import Any
 
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.domain.models.dashboard import Dashboard
-from src.pic.infrastructure.dashboard.factory import _create_empty_dashboard
 
 
 class DashboardOutput:
@@ -38,7 +37,7 @@ class GetDashboardUseCase:
     ) -> DashboardOutput:
         if permissions and permissions.secretaria_acesso != "TODOS":
             return DashboardOutput(
-                data=_create_empty_dashboard(),
+                data=Dashboard.empty(),
                 can_view_dashboard=False,
             )
 

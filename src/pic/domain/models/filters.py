@@ -9,6 +9,19 @@ class FilterOption(BaseModel):
     label: str
 
 
+# Admin users-table filter options: filter key -> column on the governance
+# dataframe (used by DataManager.calculate_filter_options_fast).
+# NOTE: secretarias_acesso_list is NOT auto-computed here since
+# `secretarias_acesso` is a list[str] column (not scalar) - its options are
+# a fixed, known set (SME/SMS/SMAS) built directly in ListUsersUseCase.
+USER_FILTER_OPTIONS_CONFIG: dict[str, dict[str, str]] = {
+    "ocupacoes": {"column": "ocupacao"},
+    "secretarias": {"column": "secretaria"},
+    "status_ativo": {"column": "active"},
+    "permissions": {"column": "permission"},
+}
+
+
 FilterField = Literal[
     "bairros",
     "subprefeituras",

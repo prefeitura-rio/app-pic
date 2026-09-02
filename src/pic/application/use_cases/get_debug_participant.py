@@ -1,15 +1,13 @@
-from fastapi import HTTPException
-
 from src.core.security.jwt import CurrentUserPermissionsV2
 from src.pic.application.ports.debug_repository import IDebugRepository
+from src.pic.domain.errors import ForbiddenError
 from src.pic.domain.models.debug import DebugParticipantResponse
 
 
 def _require_super_admin(permissions: CurrentUserPermissionsV2) -> None:
     if not permissions.is_super_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Acesso negado: apenas super admins podem acessar dados de debug",
+        raise ForbiddenError(
+            "Acesso negado: apenas super admins podem acessar dados de debug",
         )
 
 

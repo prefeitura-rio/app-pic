@@ -12,6 +12,8 @@ from src.pic.infrastructure.repositories.postgrest_participant_repository import
 
 
 class FakeExportRepository:
+    export_fallback_columns = EXPORT_FALLBACK_COLUMNS
+
     def __init__(self, pages: list[list[dict]]):
         self.pages = pages
         self.received: dict = {}

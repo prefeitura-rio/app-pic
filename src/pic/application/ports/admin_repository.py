@@ -18,11 +18,29 @@ class IAdminRepository(ABC):
         ...
 
     @abstractmethod
-    async def fetch_governance_df(self, bypass_cache: bool = False) -> tuple[pl.DataFrame, bool, Any]:
+    async def fetch_governance_df(self) -> tuple[pl.DataFrame, bool, Any]:
+        """All users + enabled policy rows (RAW unit ids — no PostgREST).
+
+        Unit ids double as display-name fallback; the UI resolves real names
+        lazily from the per-type dropdown options.
+        """
         ...
 
     @abstractmethod
-    async def fetch_participants_df(self, bypass_cache: bool = False) -> tuple[pl.DataFrame, bool, Any]:
+    async def fetch_user_record(
+        self, cpf: str, user_token: str | None = None
+    ) -> dict[str, Any] | None:
+        """One user's row from Postgres (RAW unit ids, no PostgREST)."""
+        ...
+
+    @abstractmethod
+    async def fetch_unit_options(
+        self,
+        unit_type: str,
+        user_token: str | None = None,
+        bypass_cache: bool = False,
+    ) -> list[IdWithName]:
+        """Distinct id/nome pairs for one unit type (RLS-filtered per user)."""
         ...
 
     @abstractmethod
@@ -33,7 +51,6 @@ class IAdminRepository(ABC):
         page_size: int,
         search: str | None,
         filter_columns_config: dict[str, Any],
-        bypass_cache: bool,
     ) -> tuple[pl.DataFrame, Any, Any]:
         ...
 
@@ -75,10 +92,6 @@ class IAdminRepository(ABC):
         secretarias_acesso: list[str] | None,
         updated_by: str,
     ) -> None:
-        ...
-
-    @abstractmethod
-    async def refresh_cache(self) -> None:
         ...
 
     @abstractmethod
