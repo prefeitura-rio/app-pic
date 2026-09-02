@@ -4,7 +4,7 @@ Uses the same FakeDataProxy pattern from test_postgrest_participant_repository
 to mock the data-proxy without any real network or Redis.
 
 Coverage:
-    - _calculate_dashboard_metrics_postgrest (all 7 sections + 7 quirks)
+    - _calculate_dashboard_metrics (all 7 sections + 7 quirks)
     - PostgrestDashboardRepository._fetch_* (filters forwarded to PostgREST)
     - Cache hit / cache miss / bypass_cache
     - Empty result set → all-zeros Dashboard
@@ -19,11 +19,8 @@ import httpx
 import pytest
 
 from src.pic.domain.models.dashboard import Dashboard
-from src.pic.infrastructure.dashboard.compute import (
-    _calculate_dashboard_metrics_postgrest,
-)
 from src.pic.infrastructure.dashboard.compute_postgrest import (
-    _calculate_dashboard_metrics_postgrest_v2,
+    _calculate_dashboard_metrics,
 )
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
@@ -55,8 +52,8 @@ class FakeDataProxy:
 
     Returns pre-canned rows keyed by table name. For consolidado,
     selects the correct sub-dataset based on select parameter.
-    
-    Keycloak token requests are answered with a dummy credential response 
+
+    Keycloak token requests are answered with a dummy credential response
     so the auth flow does not block.
     """
 
@@ -71,11 +68,11 @@ class FakeDataProxy:
                 json={"access_token": "test-token", "expires_in": 3600},
             )
         self.requests.append(request)
-        
+
         # Extract table name from path
         path = request.url.path.lstrip("/")
         table = path.split(".")[-1]  # Handle schema.table format
-        
+
         # Special handling for consolidado (has 3 different responses)
         if table == _TABLE_CONSOLIDADO:
             # Only return default data if consolidado is in rows_by_table
@@ -97,7 +94,7 @@ class FakeDataProxy:
         else:
             # Other tables
             rows = self.rows_by_table.get(table, [])
-        
+
         return httpx.Response(200, json=rows, request=request)
 
 
@@ -210,7 +207,7 @@ ALL_TABLES: dict[str, list[dict]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Tests: _calculate_dashboard_metrics_postgrest
+# Tests: _calculate_dashboard_metrics
 # ---------------------------------------------------------------------------
 
 
@@ -218,15 +215,15 @@ class TestSection1Indicadores:
     """Section 1 — totals and percentages."""
 
     def _compute(self, **kwargs) -> Dashboard:
-        defaults: dict = dict(
-            consolidado={"totals": {}, "safras": [], "motivos": []},
-            protocolos=[],
-            series=[],
-            tempo={},
-            resolucao=[],
-        )
+        defaults = {
+            "consolidado": {"totals": {}, "safras": [], "motivos": []},
+            "protocolos": [],
+            "series": [],
+            "tempo": {},
+            "resolucao": [],
+        }
         defaults.update(kwargs)
-        return _calculate_dashboard_metrics_postgrest(**defaults)
+        return _calculate_dashboard_metrics(**defaults)
 
     def test_basic_totals(self):
         result = self._compute(
@@ -271,7 +268,7 @@ class TestSection2Protocolos:
     """Section 2 — protocols with QUIRK 2 (unrounded complement)."""
 
     def _compute(self, protocolos: list[dict]) -> Dashboard:
-        return _calculate_dashboard_metrics_postgrest(
+        return _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": [], "motivos": []},
             protocolos=protocolos,
             series=[],
@@ -311,7 +308,7 @@ class TestSection2Protocolos:
     def test_aggregates_same_protocolo_id(self):
         """Rows with the same protocolo_id must be summed.
 
-        Note: _calculate_dashboard_metrics_postgrest expects the already-mapped
+        Note: _calculate_dashboard_metrics expects the already-mapped
         field names (numerador/denominador), not the raw PostgREST column names
         (protocolo_regular_numerador/protocolo_regular_denominador).  Those are
         mapped by _fetch_protocolos before reaching the compute layer.
@@ -363,7 +360,7 @@ class TestSection3Serie:
     """Section 3 — monthly result programme."""
 
     def _compute(self, series: list[dict]) -> Dashboard:
-        return _calculate_dashboard_metrics_postgrest(
+        return _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": [], "motivos": []},
             protocolos=[],
             series=series,
@@ -409,7 +406,7 @@ class TestSection4Safras:
     """Section 4 — distribution by cohort (safra)."""
 
     def _compute(self, safras: list[dict]) -> Dashboard:
-        return _calculate_dashboard_metrics_postgrest(
+        return _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": safras, "motivos": []},
             protocolos=[],
             series=[],
@@ -477,7 +474,7 @@ class TestSection5Motivos:
     """Section 5 — distribution by exit reason (only inativo rows)."""
 
     def _compute(self, motivos: list[dict]) -> Dashboard:
-        return _calculate_dashboard_metrics_postgrest(
+        return _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": [], "motivos": motivos},
             protocolos=[],
             series=[],
@@ -528,11 +525,11 @@ class TestSection6Tempo:
     Nova estrutura: faixas pré-agregadas no banco (faixa_0_30/31_60/61_90/91_mais)
     e médias via AVG() do PostgREST. Python apenas soma e monta objetos.
 
-    Usa _calculate_dashboard_metrics_postgrest_v2 (compute_postgrest.py).
+    Usa _calculate_dashboard_metrics (compute_postgrest.py).
     """
 
     def _compute(self, tempo: dict, filtro_secretaria=None) -> Dashboard:
-        return _calculate_dashboard_metrics_postgrest_v2(
+        return _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": [], "motivos": []},
             protocolos=[],
             series=[],
@@ -638,7 +635,7 @@ class TestSection7Resolucao:
     """Section 7 — monthly resolution rate."""
 
     def _compute(self, resolucao: list[dict]) -> Dashboard:
-        return _calculate_dashboard_metrics_postgrest(
+        return _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": [], "motivos": []},
             protocolos=[],
             series=[],
@@ -685,7 +682,7 @@ class TestEmptyDashboard:
     """All-empty inputs must yield a fully zeroed Dashboard."""
 
     def test_all_zeros(self):
-        result = _calculate_dashboard_metrics_postgrest(
+        result = _calculate_dashboard_metrics(
             consolidado={"totals": {}, "safras": [], "motivos": []},
             protocolos=[],
             series=[],

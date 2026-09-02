@@ -35,9 +35,8 @@ from postgrest.exceptions import APIError
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.domain.models.dashboard import Dashboard
 from src.pic.infrastructure.dashboard.compute_postgrest import (
-    _calculate_dashboard_metrics_postgrest_v2,
+    _calculate_dashboard_metrics,
 )
-from src.pic.infrastructure.dashboard.factory import _create_empty_dashboard
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.utils.log import logger
@@ -153,7 +152,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
     """Dashboard metrics read from the data-proxy via PostgREST.
 
     All five table fetches run concurrently; results are aggregated in pure
-    Python (no Polars) by `_calculate_dashboard_metrics_postgrest`.
+    Python (no Polars) by `_calculate_dashboard_metrics`.
     """
 
     def __init__(self, client: PostgrestClient, redis_client: Any = None) -> None:
@@ -223,7 +222,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
 
         # 3. Compute metrics (agregações já feitas em SQL) --------------------
         calc_start = time.perf_counter()
-        dashboard = _calculate_dashboard_metrics_postgrest_v2(
+        dashboard = _calculate_dashboard_metrics(
             consolidado=consolidado,
             protocolos=protocolos,
             series=series,
@@ -248,7 +247,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
 
     async def _fetch_consolidado_totals(self, filters: dict[str, object]) -> dict[str, int]:
         """Aggregate totals: SUM(numerador/denominador/irregular).
-        
+
         Returns 1 row with sums aggregated by PostgREST.
         """
         _t0 = time.perf_counter()
@@ -279,7 +278,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
 
     async def _fetch_consolidado_safras(self, filters: dict[str, object]) -> list[dict[str, Any]]:
         """Aggregate safras: GROUP BY pic_cohort, pic_status.
-        
+
         Returns ~30 rows with SUM(participante_quantidade).
         """
         _t0 = time.perf_counter()
@@ -313,7 +312,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
 
     async def _fetch_consolidado_motivos(self, filters: dict[str, object]) -> list[dict[str, Any]]:
         """Aggregate motivos: GROUP BY pic_status_inativo_motivo (filtered to inativo).
-        
+
         Returns ~50 rows with SUM(participante_quantidade).
         """
         _t0 = time.perf_counter()
@@ -343,7 +342,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
 
     async def _fetch_consolidado(self, filters: dict[str, object]) -> dict[str, Any]:
         """Orquestra 3 fetches paralelas com agregações SQL.
-        
+
         Returns a dict with three top-level keys:
             totals:  {regular_num, regular_den, irregular_num}
             safras:  [{"cohort": str, "status": str, "qtd": int}]
