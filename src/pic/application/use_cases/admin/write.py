@@ -1,25 +1,30 @@
 from typing import Any
 
 import polars as pl
-from fastapi import HTTPException
 
-from src.api.v1.schemas import PaginationMeta, PaginationParams
 from src.core.security.jwt import CurrentUserPermissionsV2
-from src.core.security.permissions_models import IdWithName
 from src.pic.application.ports.admin_repository import IAdminRepository
-from src.pic.domain.models.admin import UpsertUserRequest, UserAccessRecord
-from src.pic.infrastructure.admin.config import USER_FILTER_OPTIONS_CONFIG
-from src.pic.infrastructure.admin.id_utils import build_user_access_record
-from src.pic.infrastructure.admin.validation import (
+from src.pic.application.use_cases.admin.id_utils import (
+    build_user_access_record,
+    df_to_json,
+)
+from src.pic.application.use_cases.admin.validation import (
     _filter_manageable_users,
-    calculate_permission,
     require_admin,
     validate_equipment_secretaria_consistency,
     validate_secretarias_acesso_permission,
     validate_segmented_admin_can_manage,
 )
+from src.pic.domain.errors import ForbiddenError, NotFoundError, ValidationError
+from src.pic.domain.models.admin import (
+    IdWithName,
+    UpsertUserRequest,
+    UserAccessRecord,
+    calculate_permission,
+)
+from src.pic.domain.models.filters import USER_FILTER_OPTIONS_CONFIG, FilterOption
+from src.pic.domain.models.pagination import PaginationMeta, PaginationParams
 from src.utils.constants import SECRETARIA_LABELS
-from src.utils.data_manager import DataManager
 from src.utils.log import logger
 
 
@@ -38,6 +43,7 @@ class ListUsersUseCase:
         secretarias_acesso: list[str] | None = None,
         search: str | None = None,
         bypass_cache: bool = False,
+        user_token: str | None = None,
     ):
         require_admin(permissions)
 
@@ -59,7 +65,6 @@ class ListUsersUseCase:
             page_size=pagination.page_size,
             search=search,
             filter_columns_config=USER_FILTER_OPTIONS_CONFIG,
-            bypass_cache=bypass_cache,
         )
 
         if not permissions.is_super_admin:
@@ -77,7 +82,7 @@ class ListUsersUseCase:
                 profiling=meta.profiling,
             )
 
-        users_json = DataManager.df_to_json(df_data)
+        users_json = df_to_json(df_data)
 
         users = []
         for user_dict in users_json:
@@ -88,14 +93,13 @@ class ListUsersUseCase:
                 raise
 
         if filter_options is not None:
-            from src.api.v1.schemas import FilterOptionItem
             from src.utils.secretaria_access import get_allowed_secretaria_options
 
             allowed_values = get_allowed_secretaria_options(
                 permissions.is_super_admin, permissions.secretarias_acesso
             )
             filter_options.secretarias_acesso_list = [
-                FilterOptionItem(id=value, label=SECRETARIA_LABELS.get(value, value))
+                FilterOption(id=value, label=SECRETARIA_LABELS.get(value, value))
                 for value in allowed_values
             ]
 
@@ -111,11 +115,12 @@ class UpsertUserUseCase:
         permissions: CurrentUserPermissionsV2,
         cpf: str,
         request: UpsertUserRequest,
+        user_token: str | None = None,
     ) -> UserAccessRecord:
         require_admin(permissions)
 
         if len(cpf) != 11 or not cpf.isdigit():
-            raise HTTPException(status_code=400, detail="CPF deve conter exatamente 11 digitos")
+            raise ValidationError("CPF deve conter exatamente 11 digitos")
 
         governance_df, _, _ = await self._repo.fetch_governance_df()
         existing_user = governance_df.filter(pl.col("cpf") == cpf)
@@ -127,29 +132,28 @@ class UpsertUserUseCase:
             is_target_admin = bool(existing_row.get("is_admin", False))
 
             if is_target_super_admin:
-                raise HTTPException(status_code=403, detail="Super admins nao podem ser editados")
+                raise ForbiddenError("Super admins nao podem ser editados")
 
             if is_target_admin and not permissions.is_super_admin:
-                raise HTTPException(status_code=403, detail="Admins nao podem editar outros admins")
+                raise ForbiddenError("Admins nao podem editar outros admins")
 
             if not permissions.is_super_admin:
                 admin_secretarias = set(permissions.secretarias_acesso or [])
                 target_secretarias = set(existing_row.get("secretarias_acesso") or [])
 
                 if not target_secretarias.issubset(admin_secretarias):
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"Voce nao pode editar usuarios de outras secretarias. Voce tem acesso apenas a {sorted(admin_secretarias)}.",
+                    raise ForbiddenError(
+                        f"Voce nao pode editar usuarios de outras secretarias. Voce tem acesso apenas a {sorted(admin_secretarias)}.",
                     )
 
         if cpf == permissions.cpf:
-            raise HTTPException(status_code=403, detail="Voce nao pode editar suas proprias permissoes")
+            raise ForbiddenError("Voce nao pode editar suas proprias permissoes")
 
         if request.is_super_admin and not permissions.is_super_admin:
-            raise HTTPException(status_code=403, detail="Apenas super admins podem criar ou promover outros super admins")
+            raise ForbiddenError("Apenas super admins podem criar ou promover outros super admins")
 
         if request.is_super_admin:
-            raise HTTPException(status_code=403, detail="Criacao de super admins nao e permitida via interface")
+            raise ForbiddenError("Criacao de super admins nao e permitida via interface")
 
         target_ids_dict: dict[str, Any] = {
             "id_cras_list": request.id_cras_list,
@@ -214,15 +218,13 @@ class UpsertUserUseCase:
         else:
             await self._repo.update_user(cpf=cpf, fields=fields, id_lists=id_lists, updated_by=permissions.cpf)
 
-        await self._repo.refresh_cache()
+        row_dict = await self._repo.fetch_user_record(cpf, user_token=user_token)
 
-        governance_df, _, _ = await self._repo.fetch_governance_df(bypass_cache=True)
-        user_row = governance_df.filter(pl.col("cpf") == cpf)
+        if row_dict is None:
+            raise RuntimeError(
+                f"Usuario {cpf} salvo, mas nao encontrado no cache renovado"
+            )
 
-        if user_row.is_empty():
-            raise HTTPException(status_code=500, detail=f"Usuario {cpf} salvo, mas nao encontrado no cache renovado")
-
-        row_dict = DataManager.df_to_json(user_row)[0]
         return build_user_access_record(row_dict)
 
 
@@ -230,37 +232,40 @@ class DeleteUserUseCase:
     def __init__(self, repository: IAdminRepository):
         self._repo = repository
 
-    async def execute(self, permissions: CurrentUserPermissionsV2, cpf: str) -> None:
+    async def execute(
+        self,
+        permissions: CurrentUserPermissionsV2,
+        cpf: str,
+        user_token: str | None = None,
+    ) -> None:
         require_admin(permissions)
 
         governance_df, _, _ = await self._repo.fetch_governance_df()
         existing_user = governance_df.filter(pl.col("cpf") == cpf)
 
         if existing_user.is_empty():
-            raise HTTPException(status_code=404, detail=f"Usuario {cpf} nao encontrado")
+            raise NotFoundError(f"Usuario {cpf} nao encontrado")
 
         existing_row = existing_user.row(0, named=True)
         is_target_super_admin = bool(existing_row.get("is_super_admin", False))
         is_target_admin = bool(existing_row.get("is_admin", False))
 
         if is_target_super_admin:
-            raise HTTPException(status_code=403, detail="Super admins nao podem ser deletados")
+            raise ForbiddenError("Super admins nao podem ser deletados")
 
         if is_target_admin and not permissions.is_super_admin:
-            raise HTTPException(status_code=403, detail="Admins nao podem deletar outros admins")
+            raise ForbiddenError("Admins nao podem deletar outros admins")
 
         if not permissions.is_super_admin:
             admin_secretarias = set(permissions.secretarias_acesso or [])
             target_secretarias = set(existing_row.get("secretarias_acesso") or [])
 
             if not target_secretarias.issubset(admin_secretarias):
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Voce nao pode deletar usuarios de outras secretarias. Voce tem acesso apenas a {sorted(admin_secretarias)}.",
+                raise ForbiddenError(
+                    f"Voce nao pode deletar usuarios de outras secretarias. Voce tem acesso apenas a {sorted(admin_secretarias)}.",
                 )
 
         if cpf == permissions.cpf:
-            raise HTTPException(status_code=403, detail="Voce nao pode deletar a si mesmo")
+            raise ForbiddenError("Voce nao pode deletar a si mesmo")
 
         await self._repo.soft_delete_user(cpf=cpf, updated_by=permissions.cpf)
-        await self._repo.refresh_cache()

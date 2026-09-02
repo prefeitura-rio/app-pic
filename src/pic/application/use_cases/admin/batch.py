@@ -1,11 +1,19 @@
-import io
 from typing import Any
 
 import polars as pl
-from fastapi import HTTPException, UploadFile
 
 from src.core.security.jwt import CurrentUserPermissionsV2
 from src.pic.application.ports.admin_repository import IAdminRepository
+from src.pic.application.ports.user_import_parser import IUserImportFileParser
+from src.pic.application.use_cases.admin.validation import (
+    _sanitize_cpf,
+    _validate_cpf,
+    require_admin,
+    validate_equipment_secretaria_consistency,
+    validate_secretarias_acesso_permission,
+    validate_segmented_admin_can_manage,
+)
+from src.pic.domain.errors import ValidationError
 from src.pic.domain.models.admin import (
     BatchImportError,
     BatchImportResult,
@@ -13,59 +21,34 @@ from src.pic.domain.models.admin import (
     BatchPermissionsRequest,
     BatchPermissionsResult,
     ImportedUser,
-)
-from src.pic.infrastructure.admin.validation import (
-    _sanitize_cpf,
-    _validate_cpf,
     calculate_permission,
-    require_admin,
-    validate_equipment_secretaria_consistency,
-    validate_secretarias_acesso_permission,
-    validate_segmented_admin_can_manage,
 )
 from src.utils.log import logger
 
 
 class BatchImportUsersUseCase:
-    def __init__(self, repository: IAdminRepository):
+    def __init__(
+        self,
+        repository: IAdminRepository,
+        parser: IUserImportFileParser,
+    ):
         self._repo = repository
+        self._parser = parser
 
     async def execute(
         self,
         permissions: CurrentUserPermissionsV2,
-        file: UploadFile,
+        filename: str | None,
+        content: bytes,
+        user_token: str | None = None,
     ) -> BatchImportResult:
         require_admin(permissions)
 
-        logger.info(f"Iniciando importacao em batch - arquivo: {file.filename}")
+        logger.info(f"Iniciando importacao em batch - arquivo: {filename}")
 
-        if not file.filename:
-            raise HTTPException(status_code=400, detail="Nome do arquivo nao informado")
-
-        filename_lower = file.filename.lower()
-        if not (filename_lower.endswith(".csv") or filename_lower.endswith(".xlsx")):
-            raise HTTPException(status_code=400, detail="Formato de arquivo invalido. Use CSV ou XLSX.")
-
-        content = await file.read()
-
-        if filename_lower.endswith(".csv"):
-            try:
-                df = pl.read_csv(io.BytesIO(content))
-            except Exception:
-                df = pl.read_csv(io.BytesIO(content), encoding="latin1")
-        else:
-            import openpyxl  # noqa: F401
-            import pandas as pd
-            pd_df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
-            df = pl.from_pandas(pd_df)
+        df = self._parser.parse(filename or "", content)
 
         logger.info(f"Arquivo lido: {len(df)} linhas, colunas: {df.columns}")
-
-        if "cpf" not in df.columns:
-            raise HTTPException(status_code=400, detail="Coluna 'cpf' nao encontrada no arquivo")
-
-        if len(df) > 1000:
-            raise HTTPException(status_code=400, detail=f"Arquivo contem {len(df)} linhas. Maximo permitido: 1000")
 
         governance_df, _, _ = await self._repo.fetch_governance_df()
         existing_cpfs = set(governance_df["cpf"].to_list())
@@ -146,7 +129,7 @@ class BatchUpdatePermissionsUseCase:
         require_admin(permissions)
 
         if not request.users:
-            raise HTTPException(status_code=400, detail="Lista de usuarios vazia")
+            raise ValidationError("Lista de usuarios vazia")
 
         logger.info(f"Atualizando permissoes em batch para {len(request.users)} usuarios")
 
@@ -232,8 +215,6 @@ class BatchUpdatePermissionsUseCase:
             secretarias_acesso=request.secretarias_acesso,
             updated_by=permissions.cpf,
         )
-
-        await self._repo.refresh_cache()
 
         return BatchPermissionsResult(
             total=len(request.users),
