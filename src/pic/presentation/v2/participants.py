@@ -77,7 +77,7 @@ async def get_participants(
             f"Filters active: {len(filters.model_dump(exclude_none=True))}"
         )
 
-    #await self_heal_policy_sync(admin_repo, permissions.cpf)
+    await self_heal_policy_sync(admin_repo, permissions.cpf)
 
     try:
         result = await use_case.execute(
