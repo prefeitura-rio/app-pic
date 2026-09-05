@@ -1,10 +1,48 @@
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
 class FilterOption(BaseModel):
     id: str
     label: str
+
+
+# Admin users-table filter options: filter key -> column on the governance
+# dataframe (used by DataManager.calculate_filter_options_fast).
+# NOTE: secretarias_acesso_list is NOT auto-computed here since
+# `secretarias_acesso` is a list[str] column (not scalar) - its options are
+# a fixed, known set (SME/SMS/SMAS) built directly in ListUsersUseCase.
+USER_FILTER_OPTIONS_CONFIG: dict[str, dict[str, str]] = {
+    "ocupacoes": {"column": "ocupacao"},
+    "secretarias": {"column": "secretaria"},
+    "status_ativo": {"column": "active"},
+    "permissions": {"column": "permission"},
+}
+
+
+FilterField = Literal[
+    "bairros",
+    "subprefeituras",
+    "regioes_administrativas",
+    "grupos",
+    "cohorts",
+    "status_list",
+    "situacoes",
+    "racas",
+    "cres",
+    "aps",
+    "cas_list",
+    "cras",
+    "escolas",
+    "clinicas",
+    "equipes_familia",
+    "protocolo_descricoes",
+    "protocolo_status_list",
+    "bolsa_familia",
+    "protocolo_secretarias",
+]
 
 
 class _FilterFields(BaseModel):
@@ -27,6 +65,8 @@ class _FilterFields(BaseModel):
     equipes_familia: list[FilterOption] = []
     protocolo_descricoes: list[FilterOption] = []
     protocolo_status_list: list[FilterOption] = []
+    bolsa_familia: list[FilterOption] = []
+    protocolo_secretarias: list[FilterOption] = []
 
 
 class FilterCascade(_FilterFields):

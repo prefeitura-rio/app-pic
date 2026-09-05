@@ -10,7 +10,7 @@ import {
 	Search,
 	Users,
 } from "lucide-react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -40,14 +40,12 @@ import {
 	TooltipTrigger,
 } from "@/app/components/ui/tooltip";
 import type {
-	GeospatialFilterOptions,
 	GeospatialFilters,
 	GeospatialLayer,
 	PaginationMeta,
 	Participante,
 	ParticipanteListItem,
 	ParticipantFilters,
-	SmartFilterOptions,
 	SortOrder,
 } from "../types";
 import { FilterCard } from "./FilterCard";
@@ -251,7 +249,6 @@ const calcularCompletude = (participant: Participante) => {
 interface ProfessionalTabProps {
 	data: ParticipanteListItem[];
 	meta: PaginationMeta | null;
-	filterOptions: SmartFilterOptions;
 	filters: ParticipantFilters;
 	onFilterChange: (filters: ParticipantFilters) => void;
 	onPageChange: (page: number) => void;
@@ -267,10 +264,11 @@ interface ProfessionalTabProps {
 	sortOrder?: SortOrder;
 	onSortChange?: (sortBy: string, sortOrder: SortOrder) => void;
 	isSuperAdmin?: boolean;
+	secretariasAcesso?: string[];
 	geospatialLayers?: GeospatialLayer[];
 	geospatialLoading?: boolean;
 	geospatialFilters?: GeospatialFilters;
-	geospatialAvailableFilters?: GeospatialFilterOptions;
+	onGeospatialMapOpen?: (open: boolean) => void;
 	onGeospatialFilterChange?: (filters: GeospatialFilters) => void;
 }
 
@@ -279,7 +277,6 @@ interface ProfessionalTabProps {
 const ProfessionalTabComponent = ({
 	data,
 	meta,
-	filterOptions,
 	filters,
 	onFilterChange,
 	onPageChange,
@@ -295,12 +292,36 @@ const ProfessionalTabComponent = ({
 	sortOrder = "asc",
 	onSortChange,
 	isSuperAdmin = false,
+	secretariasAcesso = [],
 	geospatialLayers = [],
 	geospatialLoading = false,
 	geospatialFilters = {},
-	geospatialAvailableFilters,
+	onGeospatialMapOpen,
 	onGeospatialFilterChange,
 }: ProfessionalTabProps) => {
+	// Acesso completo a protocolos: super admin ou as 3 secretarias.
+	const fullAccess =
+		isSuperAdmin || (secretariasAcesso || []).length === 3;
+
+	// Colunas visíveis na tabela conforme o acesso do usuário.
+	const visibleColumns = useMemo(() => {
+		if (fullAccess) return undefined;
+		const columns = [
+			"nome",
+			"cpf",
+			"grupo",
+			"bairro",
+			"idade",
+			"status",
+			"total_fracao",
+			"total_irregular",
+		];
+		if (secretariasAcesso?.includes("SMAS")) columns.push("assistencia_fracao");
+		if (secretariasAcesso?.includes("SME")) columns.push("educacao_fracao");
+		if (secretariasAcesso?.includes("SMS")) columns.push("saude_fracao");
+		return columns;
+	}, [fullAccess, secretariasAcesso]);
+
 	// Handler para clique no header de ordenação
 	const handleSort = useCallback(
 		(column: string) => {
@@ -345,7 +366,6 @@ const ProfessionalTabComponent = ({
 			</div>
 
 			<FilterCard
-				filterOptions={filterOptions}
 				filters={filters}
 				onFilterChange={onFilterChange}
 				onRefresh={onRefresh}
@@ -353,6 +373,7 @@ const ProfessionalTabComponent = ({
 				loading={loading}
 				showSearch
 				totalResults={meta?.total_rows}
+				hideSituacao={!fullAccess}
 			/>
 
 			{/* Results - Table */}
@@ -386,6 +407,7 @@ const ProfessionalTabComponent = ({
 							sortBy={sortBy}
 							sortOrder={sortOrder}
 							onSort={handleSort}
+							visibleColumns={visibleColumns}
 						/>
 
 						{/* Pagination - Footer do Card */}
@@ -1053,30 +1075,33 @@ const ProfessionalTabComponent = ({
 								selectedParticipant.longitude && (
 									<>
 										<Separator />
-										<Collapsible defaultOpen={false} className="w-full">
-											<CollapsibleTrigger asChild>
-												<Button
-													variant="ghost"
-													className="w-full justify-start p-0 hover:bg-transparent"
-												>
-													<div className="flex items-center gap-2 py-2">
-														<h3 className="text-lg font-semibold text-foreground">
-															Visualização Geoespacial
-														</h3>
-														<ChevronDown className="h-4 w-4 text-muted-foreground ml-auto transition-transform duration-200 ui-expanded:rotate-180" />
-													</div>
-												</Button>
-											</CollapsibleTrigger>
-											<CollapsibleContent>
-												<div className="pt-4">
-													<GeospatialMapView
-														loading={geospatialLoading}
-														layers={geospatialLayers}
-														filters={geospatialFilters}
-														availableFilters={geospatialAvailableFilters}
-														onFilterChange={onGeospatialFilterChange}
-														hideHeader={true}
-														participantLocation={{
+									<Collapsible
+										defaultOpen={false}
+										className="w-full"
+										onOpenChange={(open) => onGeospatialMapOpen?.(open)}
+									>
+										<CollapsibleTrigger asChild>
+											<Button
+												variant="ghost"
+												className="w-full justify-start p-0 hover:bg-transparent"
+											>
+												<div className="flex items-center gap-2 py-2">
+													<h3 className="text-lg font-semibold text-foreground">
+														Visualização Geoespacial
+													</h3>
+													<ChevronDown className="h-4 w-4 text-muted-foreground ml-auto transition-transform duration-200 ui-expanded:rotate-180" />
+												</div>
+											</Button>
+										</CollapsibleTrigger>
+										<CollapsibleContent>
+											<div className="pt-4">
+												<GeospatialMapView
+													loading={geospatialLoading}
+													layers={geospatialLayers}
+													filters={geospatialFilters}
+													onFilterChange={onGeospatialFilterChange}
+													hideHeader={true}
+													participantLocation={{
 															latitude: selectedParticipant.latitude,
 															longitude: selectedParticipant.longitude,
 															nome: selectedParticipant.nome || "Participante",

@@ -4,14 +4,18 @@ best-effort mirror push to the data-proxy.
 
 Replaces the old BigQuery `endpoint_data_access` table with two small
 Postgres tables (`users`/`policy`, see `src.pic.infrastructure.db.models`).
-Participants (used only to resolve real display names for unit IDs, and for
-the super-admin "available ids" catalog) still come from BigQuery - that
-domain is out of scope for this migration.
+Unit display names (id -> nome) are resolved through the data-proxy
+PostgREST wide table with TARGETED `id.in.(...)` lookups (chunked) — only
+the ids actually being shown; the super-admin dropdown still uses one
+grouped aggregate (`col,count()`) per unit type. No more full-table
+BigQuery downloads.
 
 Scale note: this whole table pair has at most ~60 rows total, so unlike the
 old BigQuery-backed repository there's no caching here at all - every read
 goes straight to Postgres (a single indexed query, a few ms via the
 cloudsql-proxy Service) and `fetch_governance_df`/`find_paginated_users` just load
+everything into memory and filter/paginate in Polars. The unit name
+queries are cached per user in Redis (TTL `_CATALOG_CACHE_TTL_SECONDS`).
 everything into memory and filter/paginate in Polars.
 
 Write order (plan.md section 5): Postgres local is always the write of
@@ -25,12 +29,16 @@ the login-time self-heal (`GET /admin/me`, see
 `src.pic.infrastructure.data_proxy.access_policy_sync.push_and_mark_synced`).
 """
 
+import hashlib
+import json
 from typing import Any
 
+import httpx
 import polars as pl
+from postgrest import AsyncSelectRequestBuilder
+from postgrest.exceptions import APIError
 from sqlalchemy import or_, select, update
 
-from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY
 from src.config import env
 from src.core.security.permissions_models import (
     IdWithName,
@@ -38,8 +46,8 @@ from src.core.security.permissions_models import (
     UserPermissions,
 )
 from src.pic.application.ports.admin_repository import IAdminRepository
-from src.pic.infrastructure.admin.id_utils import build_name_catalog
-from src.pic.infrastructure.admin.validation import calculate_permission
+from src.pic.domain.models.admin import calculate_permission
+from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.infrastructure.data_proxy.access_policy_sync import push_and_mark_synced
 from src.pic.infrastructure.db.engine import get_session
 from src.pic.infrastructure.db.models import (
@@ -48,7 +56,8 @@ from src.pic.infrastructure.db.models import (
     PolicyRow,
     User,
 )
-from src.utils.data_manager import DataManager
+from src.pic.infrastructure.postgrest_client.client import PostgrestClient
+from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.utils.log import logger
 
 SCHEMA = env.DATA_PROXY_SCHEMA
@@ -65,8 +74,40 @@ UNIT_TYPE_TO_LIST_KEY: dict[str, str] = {
 }
 LIST_KEY_TO_UNIT_TYPE: dict[str, str] = {v: k for k, v in UNIT_TYPE_TO_LIST_KEY.items()}
 
+# policy unit_type -> (id column, nome column) on the data-proxy wide table.
+# CRE names come from `nome_cre` (real names, can change over time).
+_UNIT_TYPE_TO_COLUMNS: dict[str, tuple[str, str]] = {
+    "cras": ("id_cras", "nome_cras"),
+    "escola": ("id_escola", "nome_escola"),
+    "cre": ("id_cre", "nome_cre"),
+    "ap": ("id_ap", "nome_ap"),
+    "cas": ("id_cas", "nome_cas"),
+    "clinica_familia": ("id_clinica_familia", "nome_clinica_familia"),
+    "equipe_familia": ("id_equipe_familia", "nome_equipe_familia"),
+}
+
+_TABLE_WIDE = "endpoint_participante_protocolos_wide"
+
+_CATALOG_CACHE_TTL_SECONDS = 1800
+_CATALOG_CACHE_PREFIX = "admin_unit_catalog:"
+
+# PostgREST caps every response at PGRST_DB_MAX_ROWS rows; grouped option
+# queries paginate with offset/limit over the same ordered aggregate.
+_OPTION_PAGE_SIZE = 1000
+
 
 class HybridAdminRepository(IAdminRepository):
+    def __init__(
+        self,
+        client: PostgrestClient | None = None,
+        redis_client: Any = None,
+    ) -> None:
+        # `client` is optional so the JWT hot path can instantiate this repo
+        # with no I/O (it only touches Postgres via `fetch_user_permissions`).
+        # Catalog methods require a configured client.
+        self._client = client
+        self._redis = redis_client
+
     # ------------------------------------------------------------------
     # Reads
     # ------------------------------------------------------------------
@@ -116,16 +157,152 @@ class HybridAdminRepository(IAdminRepository):
             **id_lists,
         )
 
-    async def fetch_participants_df(
-        self, bypass_cache: bool = False
-    ) -> tuple[pl.DataFrame, bool, Any]:
-        return await DataManager.get_dataset(
-            PARTICIPANTS_TABLE_QUERY, bypass_cache=bypass_cache
-        )
+    # ------------------------------------------------------------------
+    # Unit catalog (id -> nome) via PostgREST grouped aggregates
+    # ------------------------------------------------------------------
 
-    async def fetch_governance_df(
-        self, bypass_cache: bool = False
-    ) -> tuple[pl.DataFrame, bool, Any]:
+    def _require_client(self) -> PostgrestClient:
+        if self._client is None:
+            raise RuntimeError(
+                "HybridAdminRepository sem PostgrestClient configurado "
+                "(catálogo de unidades indisponível)"
+            )
+        return self._client
+
+    async def _execute_catalog(
+        self, query: AsyncSelectRequestBuilder
+    ) -> list[dict[str, Any]]:
+        try:
+            result = await query.execute()
+        except APIError as error:
+            raise PostgrestError.from_api_error(error) from error
+        except httpx.HTTPError as error:
+            raise PostgrestError.from_transport_error(error) from error
+        return list(result.data)
+
+    async def _fetch_all_option_pages(
+        self,
+        client: PostgrestClient,
+        id_col: str,
+        nome_col: str,
+    ) -> list[dict[str, Any]]:
+        """Every page of one grouped option query.
+
+        PostgREST caps responses at `_OPTION_PAGE_SIZE` rows; schools/teams
+        exceed it, so pages are fetched sequentially with `offset`/`limit`
+        over the same ordered grouped aggregate until a short page ends the
+        stream (no wasted requests). Caller must wrap this in
+        ``with_user_token``.
+        """
+        select_cols = f"{id_col},{nome_col},count()"
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            query = (
+                client.table(_TABLE_WIDE)
+                .select(select_cols)
+                .not_.is_(id_col, "null")
+                .order(id_col, desc=False, nullsfirst=False)
+                .offset(offset)
+                .limit(_OPTION_PAGE_SIZE)
+            )
+            page = await self._execute_catalog(query)
+            rows.extend(page)
+            offset += len(page)
+            if len(page) < _OPTION_PAGE_SIZE:
+                break
+        return rows
+
+    @staticmethod
+    def _make_unit_options_cache_key(
+        unit_type: str,
+        user_token: str | None,
+    ) -> str:
+        payload = json.dumps(
+            {"unit_type": unit_type, "user_token": user_token},
+            sort_keys=True,
+            default=str,
+        )
+        return _CATALOG_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+
+    async def fetch_unit_options(
+        self,
+        unit_type: str,
+        user_token: str | None = None,
+        bypass_cache: bool = False,
+    ) -> list[IdWithName]:
+        """Distinct id/nome pairs for one unit type (RLS-filtered per user).
+
+        One grouped aggregate (`select=id,nome,count()`) returning distinct
+        pairs only — the only PostgREST read of this repository. RLS (user
+        token) scopes the rows, so segmented admins see only their own units.
+        Types with more than 1000 distinct pairs (escolas, equipes) are
+        paginated (`offset`/`limit`, windowed concurrency). Cached per user+type.
+        """
+        if unit_type not in _UNIT_TYPE_TO_COLUMNS:
+            raise ValueError(f"Tipo de unidade desconhecido: {unit_type}")
+
+        id_col, nome_col = _UNIT_TYPE_TO_COLUMNS[unit_type]
+        key = self._make_unit_options_cache_key(unit_type, user_token)
+
+        if self._redis is not None and not bypass_cache:
+            cached = await self._get_unit_options_from_cache(key)
+            if cached is not None:
+                return cached
+
+        client = self._require_client()
+        async with client.with_user_token(user_token):
+            rows = await self._fetch_all_option_pages(client, id_col, nome_col)
+
+        seen: set[str] = set()
+        options: list[IdWithName] = []
+        for row in rows:
+            id_value = row.get(id_col)
+            if id_value is None:
+                continue
+            id_str = str(id_value)
+            if id_str in seen:
+                continue
+            seen.add(id_str)
+            nome_value = row.get(nome_col)
+            nome_str = str(nome_value) if nome_value not in (None, "") else id_str
+            options.append(IdWithName(id=id_str, nome=nome_str))
+
+        if self._redis is not None:
+            await self._set_unit_options_cache(key, options)
+        return options
+
+    async def _get_unit_options_from_cache(self, key: str) -> list[IdWithName] | None:
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+            logger.info("[admin] unit catalog cache HIT")
+            return [IdWithName.model_validate(item) for item in json.loads(raw)]
+        except Exception as exc:
+            logger.warning(f"[admin] unit catalog cache read error (ignoring): {exc}")
+            return None
+
+    async def _set_unit_options_cache(
+        self, key: str, options: list[IdWithName]
+    ) -> None:
+        try:
+            payload = json.dumps([opt.model_dump(mode="json") for opt in options])
+            await self._redis.set(key, payload, ex=_CATALOG_CACHE_TTL_SECONDS)
+            logger.info(
+                f"[admin] unit catalog cache SET ({len(options)} itens, "
+                f"TTL {_CATALOG_CACHE_TTL_SECONDS}s)"
+            )
+        except Exception as exc:
+            logger.warning(f"[admin] unit catalog cache write error (ignoring): {exc}")
+
+    async def fetch_governance_df(self) -> tuple[pl.DataFrame, bool, Any]:
+        """All users + enabled policy rows from local Postgres.
+
+        Rows carry RAW unit ids (id doubles as the display name fallback) —
+        no PostgREST call. Real names are resolved lazily by the UI from the
+        per-type dropdown options (`fetch_unit_options`).
+        """
         async with get_session() as session:
             users_result = await session.execute(select(User))
             users = users_result.scalars().all()
@@ -142,11 +319,6 @@ class HybridAdminRepository(IAdminRepository):
                 ids_by_subject.setdefault(subject, {}).setdefault(unit_type, []).append(
                     unit_id
                 )
-
-        participants_df, _, _ = await self.fetch_participants_df(
-            bypass_cache=bypass_cache
-        )
-        name_catalog = build_name_catalog(participants_df)
 
         rows: list[dict[str, Any]] = []
         for user in users:
@@ -170,14 +342,64 @@ class HybridAdminRepository(IAdminRepository):
             }
             for unit_type, list_key in UNIT_TYPE_TO_LIST_KEY.items():
                 ids = user_ids.get(unit_type, [])
-                # build_name_catalog keys by the participants-df id column
-                # name (e.g. "id_cras"), not the bare policy unit_type.
-                catalog = name_catalog.get(f"id_{unit_type}", {})
-                row[list_key] = [{"id": i, "nome": catalog.get(i, i)} for i in ids]
+                row[list_key] = [{"id": i, "nome": i} for i in ids]
             rows.append(row)
 
         df = pl.DataFrame(rows) if rows else pl.DataFrame()
         return df, False, None
+
+    async def fetch_user_record(
+        self,
+        cpf: str,
+        user_token: str | None = None,
+    ) -> dict[str, Any] | None:
+        """One user's row from Postgres (RAW unit ids, no PostgREST).
+
+        Unit ids double as display-name fallback; the UI resolves real names
+        lazily from the per-type dropdown options. `user_token` is accepted
+        for port compatibility but unused. Returns `None` when the CPF is not
+        in the users table.
+        """
+        async with get_session() as session:
+            user_result = await session.execute(select(User).where(User.cpf == cpf))
+            user = user_result.scalar_one_or_none()
+            if user is None:
+                return None
+
+            policy_result = await session.execute(
+                select(PolicyRow.unit_type, PolicyRow.unit_id).where(
+                    PolicyRow.schema == SCHEMA,
+                    PolicyRow.subject == cpf,
+                    PolicyRow.is_enabled.is_(True),
+                    PolicyRow.unit_type != BASE_UNIT_TYPE,
+                )
+            )
+            ids_by_unit_type: dict[str, list[str]] = {}
+            for unit_type, unit_id in policy_result.all():
+                ids_by_unit_type.setdefault(unit_type, []).append(unit_id)
+
+            row: dict[str, Any] = {
+                "cpf": user.cpf,
+                "email": user.email,
+                "nome": user.nome,
+                "ocupacao": user.ocupacao,
+                "secretaria": user.secretaria,
+                "is_admin": user.is_admin,
+                "is_super_admin": user.is_super_admin,
+                "permission": calculate_permission(user.is_admin, user.is_super_admin),
+                "secretarias_acesso": list(user.secretarias_acesso or []),
+                "active": user.active,
+                "notes": user.notes,
+                "created_by": user.created_by,
+                "created_at": user.created_at,
+                "updated_by": user.updated_by,
+                "updated_at": user.updated_at,
+            }
+            for unit_type, list_key in UNIT_TYPE_TO_LIST_KEY.items():
+                ids = ids_by_unit_type.get(unit_type, [])
+                row[list_key] = [{"id": i, "nome": i} for i in ids]
+
+        return row
 
     async def find_paginated_users(
         self,
@@ -186,13 +408,12 @@ class HybridAdminRepository(IAdminRepository):
         page_size: int,
         search: str | None,
         filter_columns_config: dict[str, Any],
-        bypass_cache: bool,
     ) -> tuple[pl.DataFrame, Any, Any]:
         from math import ceil
 
-        from src.api.v1.schemas import PaginationMeta
+        from src.utils.data_manager import DataManager
 
-        df, _, _ = await self.fetch_governance_df(bypass_cache=bypass_cache)
+        df, _, _ = await self.fetch_governance_df()
 
         # secretarias_acesso is a list[str] column - filter separately
         # ("contains any of the requested secretarias").
@@ -318,21 +539,33 @@ class HybridAdminRepository(IAdminRepository):
             existing_by_unit_id = {
                 row.unit_id: row for row in existing_result.scalars().all()
             }
-            # Dedupe by id (keeps the last occurrence) — the incoming list
-            # may contain repeated ids (e.g. frontend multi-select quirks),
-            # and inserting the same brand-new (schema, subject, unit_type,
+            # Dedupe by unit id (keeps uniqueness): the incoming list may
+            # contain repeated ids (e.g. frontend multi-select quirks), and
+            # inserting the same brand-new (schema, subject, unit_type,
             # unit_id) twice in one flush violates `uq_policy_grant` before
             # the loop below ever gets a chance to see the first insert.
-            wanted_items = {item.id: item for item in id_list}
+            #
+            # Each item's id may be comma-joined ("id1,id2" — options that
+            # share a display name, v1 parity) and must expand into one grant
+            # per REAL unit id; a joined string would never match a real
+            # unit on the data-proxy RLS. This also self-heals rows written
+            # with joined ids before this fix (they drop out of `wanted_ids`
+            # and are soft-disabled).
+            wanted_ids: set[str] = set()
+            for item in id_list:
+                for single_id in item.id.split(","):
+                    single_id = single_id.strip()
+                    if single_id:
+                        wanted_ids.add(single_id)
 
             for unit_id, row in existing_by_unit_id.items():
-                if unit_id not in wanted_items and row.is_enabled:
+                if unit_id not in wanted_ids and row.is_enabled:
                     row.is_enabled = False
                     row.synced_at = None
                     changed.append(row)
 
-            for item in wanted_items.values():
-                row = existing_by_unit_id.get(item.id)
+            for unit_id in sorted(wanted_ids):
+                row = existing_by_unit_id.get(unit_id)
                 if row is None:
                     row = PolicyRow(
                         schema=SCHEMA,
@@ -340,7 +573,7 @@ class HybridAdminRepository(IAdminRepository):
                         is_admin=False,
                         is_enabled=is_enabled,
                         unit_type=unit_type,
-                        unit_id=item.id,
+                        unit_id=unit_id,
                         synced_at=None,
                     )
                     session.add(row)
@@ -456,7 +689,7 @@ class HybridAdminRepository(IAdminRepository):
             # Only mass-toggle every grant when `active` is genuinely
             # transitioning (e.g. suspend/reactivate the whole account) —
             # `fields["active"]` is unconditionally sent on every edit (see
-            # `admin_write.py`), so comparing against the value already in
+            # `write.py`), so comparing against the value already in
             # `users.active` avoids running this on every unrelated edit,
             # which would otherwise immediately re-enable units that
             # `_replace_policy_grants` just soft-disabled above (same
@@ -587,22 +820,21 @@ class HybridAdminRepository(IAdminRepository):
         logger.info(f"Batch de {len(valid_users)} usuarios mesclado (Postgres)")
         await self._push_eager(changed)
 
-    async def refresh_cache(self) -> None:
-        # No cache in this repository - Postgres reads are already cheap
-        # given the small table sizes (~60 users).
-        pass
-
-    async def self_heal_policy_sync(self, cpf: str) -> None:
+    async def self_heal_policy_sync(self, cpf: str, force: bool = False) -> None:
         async with get_session() as session:
-            result = await session.execute(
-                select(PolicyRow).where(
-                    PolicyRow.schema == SCHEMA,
-                    PolicyRow.subject == cpf,
+            where_clauses = [
+                PolicyRow.schema == SCHEMA,
+                PolicyRow.subject == cpf,
+            ]
+            # If not forced, filter only stale/pending policies.
+            # If forced (fresh login), sync ALL policies regardless of synced_at.
+            if not force:
+                where_clauses.append(
                     or_(
                         PolicyRow.synced_at.is_(None),
                         PolicyRow.synced_at < PolicyRow.updated_at,
-                    ),
+                    )
                 )
-            )
+            result = await session.execute(select(PolicyRow).where(*where_clauses))
             pending = list(result.scalars().all())
         await self._push_eager(pending)

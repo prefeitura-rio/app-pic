@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.pic.application.ports.participant_read_repository import (
+from src.pic.application.ports.participant_repository import (
     ParticipantRepository,
 )
 from src.pic.domain.models.filters import FilterCriteria
@@ -41,5 +41,6 @@ class ListParticipantsUseCase:
             sort=sort,
             permissions=permissions,
             user_token=user_token,
+            bypass_cache=bypass_cache,
         )
         return ParticipantListOutput(data=data, meta=meta)

@@ -1,7 +1,8 @@
 from pydantic import BaseModel
 
+from src.pic.domain.models.admin import UserAccessRecord
 from src.pic.domain.models.dashboard import Dashboard
-from src.pic.domain.models.filters import FilterVocabulary
+from src.pic.domain.models.filters import FilterOption
 from src.pic.domain.models.geospatial import GeospatialFilterOptions, GeospatialLayer
 from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
@@ -16,8 +17,15 @@ class ParticipantDetailResponse(BaseModel):
     data: Participante
 
 
-class FilterVocabularyResponse(FilterVocabulary):
-    pass
+class AdminUsersResponse(BaseModel):
+    meta: PaginationMeta
+    data: list[UserAccessRecord]
+    filters: object | None = None
+
+
+class FilterFieldOptionsResponse(BaseModel):
+    field: str
+    options: list[FilterOption]
 
 
 class DashboardV2Response(BaseModel):
@@ -31,3 +39,8 @@ class GeospatialLayersResponse(BaseModel):
 
 class GeospatialFilterVocabularyResponse(GeospatialFilterOptions):
     pass
+
+
+class GeospatialFilterFieldOptionsResponse(BaseModel):
+    field: str
+    options: list[FilterOption]

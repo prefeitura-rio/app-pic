@@ -1,26 +1,15 @@
-
 import polars as pl
-from fastapi import HTTPException
 
 from src.core.security.permissions_models import IdWithName, UserPermissions
+from src.pic.domain.errors import ForbiddenError, ValidationError
 from src.utils.log import logger
 
 
 def require_admin(permissions: UserPermissions):
     if not permissions.is_admin and not permissions.is_super_admin:
-        raise HTTPException(
-            status_code=403,
-            detail="Acesso negado: apenas admins podem gerenciar usuarios",
+        raise ForbiddenError(
+            "Acesso negado: apenas admins podem gerenciar usuarios"
         )
-
-
-def calculate_permission(is_admin: bool, is_super_admin: bool) -> str:
-    if is_super_admin:
-        return "super_admin"
-    elif is_admin:
-        return "admin"
-    else:
-        return "user"
 
 
 def _sanitize_cpf(cpf_raw: str) -> str:
@@ -158,9 +147,8 @@ def validate_equipment_secretaria_consistency(
                     SECRETARIA_EQUIPMENT_LABELS.get(s, s) for s in sorted(secretarias)
                 )
                 secretarias_label = ", ".join(sorted(secretarias))
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Inconsistencia: Nao e permitido atribuir {equipment_name} "
+                raise ValidationError(
+                    f"Inconsistencia: Nao e permitido atribuir {equipment_name} "
                     f"para usuario com acesso a {secretarias_label}. "
                     f"Usuarios com este acesso so podem ter: {allowed_names}.",
                 )
@@ -182,15 +170,13 @@ def validate_secretarias_acesso_permission(
     admin_set = set(admin_permissions.secretarias_acesso or [])
 
     if not admin_set:
-        raise HTTPException(
-            status_code=403,
-            detail="Voce nao possui acesso a protocolos e nao pode atribuir acesso a outros usuarios",
+        raise ForbiddenError(
+            "Voce nao possui acesso a protocolos e nao pode atribuir acesso a outros usuarios",
         )
 
     if not target_set.issubset(admin_set):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Voce so pode atribuir secretarias que voce mesmo possui: {sorted(admin_set)}",
+        raise ForbiddenError(
+            f"Voce so pode atribuir secretarias que voce mesmo possui: {sorted(admin_set)}",
         )
 
 
@@ -211,9 +197,8 @@ def validate_segmented_admin_can_manage(
     ])
 
     if not has_any_ids and target_ids:
-        raise HTTPException(
-            status_code=403,
-            detail="Voce nao possui IDs para distribuir.",
+        raise ForbiddenError(
+            "Voce nao possui IDs para distribuir.",
         )
 
     for id_type in [
@@ -229,9 +214,8 @@ def validate_segmented_admin_can_manage(
         admin_ids = set(admin_permissions.get_filter_ids(id_type))
 
         if not admin_ids:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Voce nao tem permissao para atribuir {id_type}",
+            raise ForbiddenError(
+                f"Voce nao tem permissao para atribuir {id_type}",
             )
 
         target_ids_set = set()
@@ -252,7 +236,6 @@ def validate_segmented_admin_can_manage(
 
         unauthorized_ids = target_ids_set - admin_ids
         if unauthorized_ids:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Voce nao pode atribuir estes {id_type}: {unauthorized_ids}",
+            raise ForbiddenError(
+                f"Voce nao pode atribuir estes {id_type}: {unauthorized_ids}",
             )

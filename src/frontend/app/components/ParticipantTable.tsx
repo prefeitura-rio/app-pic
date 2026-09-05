@@ -21,6 +21,7 @@ interface ParticipantTableProps {
 	sortBy?: string | null;
 	sortOrder?: SortOrder;
 	onSort?: (column: string) => void;
+	visibleColumns?: string[];
 }
 
 // Configuração base das colunas (key corresponde ao sort_by do backend)
@@ -97,12 +98,15 @@ export const ParticipantTable = memo(
 		sortBy,
 		sortOrder = "asc",
 		onSort,
+		visibleColumns: visibleColumnKeys,
 	}: ParticipantTableProps) => {
 		if (!data || !Array.isArray(data) || data.length === 0) {
 			return null;
 		}
 
-		const visibleColumns = SORTABLE_COLUMNS;
+		const visibleColumns = visibleColumnKeys
+			? SORTABLE_COLUMNS.filter((col) => visibleColumnKeys.includes(col.key))
+			: SORTABLE_COLUMNS;
 
 		const handleHeaderClick = (column: string) => {
 			if (onSort) {
