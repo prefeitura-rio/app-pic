@@ -8,6 +8,20 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
 
+// Extract Keycloak domain from RMI_ISSUER environment variable
+function getKeycloakDomain(): string {
+  const rmiIssuer = process.env.RMI_ISSUER || "https://auth-idriohom.apps.rio.gov.br/auth/realms/idrio_cidadao";
+  try {
+    const url = new URL(rmiIssuer);
+    return url.hostname;
+  } catch {
+    // Fallback to staging if parsing fails
+    return "auth-idriohom.apps.rio.gov.br";
+  }
+}
+
+const keycloakDomain = getKeycloakDomain();
+
 const nextConfig: NextConfig = {
   output: "standalone",
   images: {
@@ -33,10 +47,10 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'", // Tailwind requires unsafe-inline
               "img-src 'self' data: blob: https: https://*.cartocdn.com https://*.basemaps.cartocdn.com", // Map tiles
               "font-src 'self' data:",
-              "connect-src 'self' https://auth-idriohom.apps.rio.gov.br https://*.cartocdn.com https://*.basemaps.cartocdn.com", // Keycloak + Map styles/tiles
+              `connect-src 'self' https://${keycloakDomain} https://*.cartocdn.com https://*.basemaps.cartocdn.com`, // Keycloak + Map styles/tiles (dynamic domain)
               "frame-ancestors 'none'",
               "base-uri 'self'",
-              "form-action 'self'",
+              `form-action 'self' https://${keycloakDomain}`, // Allow form submissions to Keycloak domain for OAuth flow
               "worker-src 'self' blob:", // MapLibre workers
             ].join("; "),
           },

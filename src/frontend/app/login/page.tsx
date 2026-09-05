@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -11,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LogIn, AlertCircle, GraduationCap, Stethoscope, Home } from "lucide-react";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { Footer } from "@/app/components/Footer";
+import { LoginFormWithFallback } from "@/app/components/LoginFormWithFallback";
 
 /**
  * Build Keycloak OAuth2 authorization URL (server-side)
@@ -39,11 +39,7 @@ export default async function LoginPage({
 }) {
   const resolvedParams = await searchParams;
   const error = resolvedParams.error;
-
-  async function handleLogin() {
-    "use server";
-    redirect(buildAuthUrl());
-  }
+  const authUrl = buildAuthUrl();
 
   let errorMessage = null;
   if (error === "AccessDenied") {
@@ -141,16 +137,17 @@ export default async function LoginPage({
                   </Alert>
                 )}
 
-                <form action={handleLogin}>
-                  <Button
-                    className="w-full h-12 text-base font-semibold gap-2 shadow-lg hover:shadow-xl transition-all"
-                    type="submit"
-                    size="lg"
-                  >
-                    <LogIn className="h-5 w-5" />
-                    Entrar com gov.br
-                  </Button>
-                </form>
+                 <LoginFormWithFallback authUrl={authUrl}>
+                   <a href={authUrl}>
+                     <Button
+                       className="w-full h-12 text-base font-semibold gap-2 shadow-lg hover:shadow-xl transition-all"
+                       size="lg"
+                     >
+                       <LogIn className="h-5 w-5" />
+                       Entrar com gov.br
+                     </Button>
+                   </a>
+                 </LoginFormWithFallback>
               </CardContent>
             </Card>
           </div>
