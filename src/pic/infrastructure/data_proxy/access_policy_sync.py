@@ -1,7 +1,7 @@
-"""Sync of local `policy` rows into the data-proxy's `rls.access_policy`.
+"""Sync of local `policy` rows into the data-proxy's `access_policy`.
 
 Domain-specific on top of `postgrest_client` (which knows nothing about
-`access_policy`'s columns or the `rls` schema). See plan.md sections 3.3, 5.
+`access_policy`'s columns). See plan.md sections 3.3, 5.
 
 Write order: Postgres local is always the write of record (see
 `HybridAdminRepository`); this module is only ever called *after* a local
@@ -28,35 +28,36 @@ from src.pic.infrastructure.postgrest_client.client import (
 )
 from src.utils.log import logger
 
-# `access_policy` lives in a schema of its own, shared by every data-proxy
-# tenant — distinct from the app's data schema (`app_pequenos_cariocas`,
-# config.PostgrestClientConfig.schema). Requires `Content-Profile: rls`.
-RLS_SCHEMA = "rls"
+# `access_policy` table in the data-proxy. The schema routing is determined
+# by the Content-Profile header, which matches the configured data schema
+# (config.PostgrestClientConfig.schema, e.g. `app_pequenos_cariocas`).
 ACCESS_POLICY_TABLE = "access_policy"
 
-# Unique constraint on `rls.access_policy` (and on the local mirror `policy`)
+# Unique constraint on `access_policy` (and on the local mirror `policy`)
 # — see plan.md section 3.3.
-ON_CONFLICT_COLUMNS = "schema,subject,unit_type,unit_id"
+ON_CONFLICT_COLUMNS = "subject,unit_type,unit_id"
 
 
 def _group_by_revoke_key(
     rows: list[PolicyRow],
 ) -> list[list[PolicyRow]]:
-    """Group rows sharing (schema, subject, unit_type) so `_revoke` can
+    """Group rows sharing (subject, unit_type) so `_revoke` can
     disable all their `unit_id`s in a single `PATCH ...&unit_id=in.(...)`
     request instead of one `PATCH` per row. Preserves first-seen group
     order for deterministic test assertions."""
-    groups: dict[tuple[str, str, str], list[PolicyRow]] = {}
+    groups: dict[tuple[str, str], list[PolicyRow]] = {}
     for row in rows:
-        groups.setdefault((row.schema, row.subject, row.unit_type), []).append(row)
+        groups.setdefault((row.subject, row.unit_type), []).append(row)
     return list(groups.values())
 
 
 class AccessPolicySync:
-    """Best-effort push of local `policy` rows into `rls.access_policy`."""
+    """Best-effort push of local `policy` rows into `access_policy`."""
 
     def __init__(self, generic_client: PostgrestClient) -> None:
-        self._client: AsyncPostgrestClient = generic_client.for_schema(RLS_SCHEMA)
+        self._client: AsyncPostgrestClient = generic_client.for_schema(
+            generic_client._config.schema
+        )
 
     async def push(self, rows: list[PolicyRow]) -> list[PolicyRow]:
         """Push every row's current state to the data-proxy, best-effort.
@@ -98,7 +99,6 @@ class AccessPolicySync:
     async def _grant(self, rows: list[PolicyRow]) -> bool:
         payload = [
             {
-                "schema": row.schema,
                 "subject": row.subject,
                 "is_admin": row.is_admin,
                 "is_enabled": True,
@@ -115,26 +115,26 @@ class AccessPolicySync:
             )
         except Exception:
             logger.exception(
-                f"Falha ao sincronizar {len(rows)} grant(s) com rls.access_policy"
+                f"Falha ao sincronizar {len(rows)} grant(s) com access_policy"
             )
             return False
         return True
 
     async def _revoke(self, rows: list[PolicyRow]) -> bool:
         """Soft-revoke every row in `rows` with a single `PATCH`. All rows
-        must share (schema, subject, unit_type) — see `_group_by_revoke_key`
+        must share (subject, unit_type) — see `_group_by_revoke_key`
         — so a single `unit_id=in.(...)` filter matches exactly this group.
         `policy_writer_<schema>` has `UPDATE` (not just `INSERT`) on
-        `rls.access_policy` (see `access_policy_writer.sql` in the
+        `access_policy` (see `access_policy_writer.sql` in the
         data-proxy repo), and PostgREST applies a `PATCH` to every row
         matching the filter — see docs/security.md in that repo.
+        The schema scoping is handled by the Content-Profile header.
         """
         first = rows[0]
         try:
             await (
                 self._client.from_(ACCESS_POLICY_TABLE)
                 .update({"is_enabled": False})
-                .eq("schema", first.schema)
                 .eq("subject", first.subject)
                 .eq("unit_type", first.unit_type)
                 .in_("unit_id", [row.unit_id for row in rows])
@@ -142,7 +142,7 @@ class AccessPolicySync:
             )
         except Exception:
             logger.exception(
-                f"Falha ao revogar {len(rows)} grant(s) em rls.access_policy "
+                f"Falha ao revogar {len(rows)} grant(s) em access_policy "
                 f"(subject={first.subject}, unit_type={first.unit_type})"
             )
             return False
@@ -166,7 +166,7 @@ async def push_and_mark_synced(rows: list[PolicyRow]) -> None:
         client = await get_postgrest_client()
         pushed = await AccessPolicySync(client).push(rows)
     except Exception:
-        logger.exception("Falha ao inicializar sync com rls.access_policy")
+        logger.exception("Falha ao inicializar sync com access_policy")
         return
 
     if not pushed:
