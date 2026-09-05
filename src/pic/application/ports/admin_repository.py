@@ -95,9 +95,15 @@ class IAdminRepository(ABC):
         ...
 
     @abstractmethod
-    async def self_heal_policy_sync(self, cpf: str) -> None:
+    async def self_heal_policy_sync(self, cpf: str, force: bool = False) -> None:
         """Retry pushing this subject's `policy` rows that are still pending
         sync to the data-proxy (eager push failed or was never attempted).
+
+        Args:
+            cpf: Subject CPF to sync policies for.
+            force: If True, sync ALL policies regardless of synced_at status.
+                   If False (default), only sync stale/pending policies.
+                   Set to True on fresh login via ?force_sync=true query param.
 
         Best-effort and non-blocking: implementations must never raise.
         Called once per login from `GET /admin/me` as a safety net — see

@@ -26,14 +26,16 @@ class GetCurrentUserUseCase:
         self,
         permissions: CurrentUserPermissionsV2,
         user_token: str | None = None,
+        force_sync: bool = False,
     ) -> UserAccessRecord:
         from datetime import UTC, datetime
 
         # Self-heal safety net: retry any policy grant that failed to push
         # eagerly to the data-proxy at write time. Best-effort, never blocks
-        # this request. See plan.md section 5.
+        # this request. When force_sync=True (fresh OAuth login), syncs ALL
+        # policies regardless of synced_at status. See plan.md section 5.
         try:
-            await self._repo.self_heal_policy_sync(permissions.cpf)
+            await self._repo.self_heal_policy_sync(permissions.cpf, force=force_sync)
         except Exception:
             logger.exception(f"Self-heal de policy sync falhou para {permissions.cpf}")
 

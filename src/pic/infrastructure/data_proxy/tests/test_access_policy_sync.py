@@ -40,7 +40,7 @@ def revoke_row(**overrides) -> PolicyRow:
 
 
 def fake_data_proxy(*, grant_status: int = 201, revoke_status: int = 200):
-    """Fakes Keycloak + the data-proxy's rls.access_policy endpoint. Records
+    """Fakes Keycloak + the data-proxy's access_policy endpoint. Records
     every non-token request."""
     requests: list[httpx.Request] = []
 
@@ -64,7 +64,7 @@ def make_sync(handler) -> AccessPolicySync:
     return AccessPolicySync(client)
 
 
-async def test_grant_upserts_with_merge_duplicates_and_rls_profile():
+async def test_grant_upserts_with_merge_duplicates_and_app_schema_profile():
     handler = fake_data_proxy()
     sync = make_sync(handler)
     row = grant_row()
@@ -75,9 +75,11 @@ async def test_grant_upserts_with_merge_duplicates_and_rls_profile():
     sent = handler.requests[0]
     assert sent.method == "POST"
     assert sent.url.path == "/access_policy"
-    assert sent.headers["content-profile"] == "rls"
+    assert sent.headers["content-profile"] == "app_pequenos_cariocas"
     assert "resolution=merge-duplicates" in sent.headers["prefer"]
-    assert sent.url.params["on_conflict"] == "schema,subject,unit_type,unit_id"
+    assert sent.url.params["on_conflict"] == "subject,unit_type,unit_id"
+    payload = json.loads(sent.content)
+    assert "schema" not in payload[0]
 
 
 async def test_revoke_patches_is_enabled_false_filtered_by_row():
@@ -90,13 +92,14 @@ async def test_revoke_patches_is_enabled_false_filtered_by_row():
     assert pushed == [row]
     sent = handler.requests[0]
     assert sent.method == "PATCH"
-    assert sent.headers["content-profile"] == "rls"
+    assert sent.headers["content-profile"] == "app_pequenos_cariocas"
     assert sent.url.params["unit_id"] == "in.(42)"
     assert sent.url.params["subject"] == "eq.12345678900"
+    assert "schema" not in sent.url.params
 
 
 async def test_revoke_batches_same_unit_type_into_a_single_patch():
-    """Revoking many units of the same (schema, subject, unit_type) should
+    """Revoking many units of the same (subject, unit_type) should
     cost one PATCH request, not one per unit_id."""
     handler = fake_data_proxy()
     sync = make_sync(handler)

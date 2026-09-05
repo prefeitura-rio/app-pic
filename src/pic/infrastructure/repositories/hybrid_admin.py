@@ -819,17 +819,21 @@ class HybridAdminRepository(IAdminRepository):
         logger.info(f"Batch de {len(valid_users)} usuarios mesclado (Postgres)")
         await self._push_eager(changed)
 
-    async def self_heal_policy_sync(self, cpf: str) -> None:
+    async def self_heal_policy_sync(self, cpf: str, force: bool = False) -> None:
         async with get_session() as session:
-            result = await session.execute(
-                select(PolicyRow).where(
-                    PolicyRow.schema == SCHEMA,
-                    PolicyRow.subject == cpf,
+            where_clauses = [
+                PolicyRow.schema == SCHEMA,
+                PolicyRow.subject == cpf,
+            ]
+            # If not forced, filter only stale/pending policies.
+            # If forced (fresh login), sync ALL policies regardless of synced_at.
+            if not force:
+                where_clauses.append(
                     or_(
                         PolicyRow.synced_at.is_(None),
                         PolicyRow.synced_at < PolicyRow.updated_at,
-                    ),
+                    )
                 )
-            )
+            result = await session.execute(select(PolicyRow).where(*where_clauses))
             pending = list(result.scalars().all())
         await self._push_eager(pending)

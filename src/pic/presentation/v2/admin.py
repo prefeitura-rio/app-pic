@@ -100,6 +100,7 @@ async def get_current_user_v2(
     permissions: CurrentUserPermissionsV2,
     credentials: HTTPAuthorizationCredentials = Security(security),
     data_proxy_token: str | None = Header(None, alias="X-Access-Token"),
+    force_sync: bool = Query(False, description="Force sync of ALL policies (set on fresh OAuth login via policy_force_sync cookie)."),
     use_case: GetCurrentUserUseCase = Depends(get_current_user_use_case),
 ):
     try:
@@ -108,6 +109,7 @@ async def get_current_user_v2(
             user_token=data_proxy_user_token(
                 data_proxy_token, credentials.credentials
             ),
+            force_sync=force_sync,
         )
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

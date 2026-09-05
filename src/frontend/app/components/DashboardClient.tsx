@@ -9,6 +9,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useForcePolicySyncOnLogin } from "@/app/hooks/useForcePolicySyncOnLogin";
 import {
   Tabs,
   TabsContent,
@@ -275,6 +276,9 @@ export function DashboardClient({
     sortOrder,
   ]);
 
+  // Força sincronização completa de policies no primeiro acesso pós-login OAuth.
+  const forceSync = useForcePolicySyncOnLogin();
+
   // Verificação prévia de permissões (evita chamadas desnecessárias)
   const {
     data: currentUser,
@@ -282,7 +286,7 @@ export function DashboardClient({
     error: currentUserError,
   } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: () => apiService.getCurrentUser(),
+    queryFn: () => apiService.getCurrentUser(forceSync ? { force_sync: true } : {}),
     staleTime: 10 * 60 * 1000, // 10 minutos
     retry: false, // Não retry em caso de 403/401
   });

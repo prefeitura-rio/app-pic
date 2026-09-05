@@ -350,8 +350,9 @@ export const apiService = {
    *
    * @returns Available IDs grouped by type
    */
-  async getCurrentUser(): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v2/admin/me`;
+  async getCurrentUser(params?: { force_sync?: boolean }): Promise<UserAccessRecord> {
+    const qs = params?.force_sync ? "?force_sync=true" : "";
+    const url = `${BASE_URL}/api/v2/admin/me${qs}`;
 
     const fetchFn = () => fetch(url);
     const res = await fetchFn();
