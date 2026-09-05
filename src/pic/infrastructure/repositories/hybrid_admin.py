@@ -16,6 +16,7 @@ goes straight to Postgres (a single indexed query, a few ms via the
 cloudsql-proxy Service) and `fetch_governance_df`/`find_paginated_users` just load
 everything into memory and filter/paginate in Polars. The unit name
 queries are cached per user in Redis (TTL `_CATALOG_CACHE_TTL_SECONDS`).
+everything into memory and filter/paginate in Polars.
 
 Write order (plan.md section 5): Postgres local is always the write of
 record — every write method below commits locally first, and only then
