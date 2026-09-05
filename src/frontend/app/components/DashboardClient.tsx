@@ -3,13 +3,13 @@
 import {
   useState,
   useCallback,
-  useMemo,
   useTransition,
   useEffect,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useForcePolicySyncOnLogin } from "@/app/hooks/useForcePolicySyncOnLogin";
 import {
   Tabs,
   TabsContent,
@@ -23,13 +23,12 @@ import { OverviewTab } from "@/app/components/OverviewTab";
 import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { apiService } from "@/app/services/api";
 import {
-  SmartFilterOptions,
   ParticipantFilters,
   GeospatialFilters,
   SortOrder,
   Participante,
+  DashboardFilterValues,
 } from "@/app/types";
-import { DashboardFilterValues } from "@/app/components/DashboardFilterCard";
 import { Loader2, BarChart3, Search } from "lucide-react";
 
 interface UserInfo {
@@ -65,27 +64,44 @@ export function DashboardClient({
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  // Chave do sessionStorage com o estado da página (filtros, aba, paginação,
+  // ordenação). Declarada antes do bloco de fresh login, que pode limpar.
+  const STORAGE_KEY = "dashboard-state";
+
   // Termo de responsabilidade
   // Novo login → callback seta cookie fresh_login=1 → sessionStorage vai pra "0"
   // Aceite → sessionStorage vai pra "1" e fica assim até novo login
   const TERMS_KEY = "terms-accepted";
+  const [isFreshLogin] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return document.cookie
+      .split(";")
+      .some((c) => c.trim() === "fresh_login=1");
+  });
   const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
-    const isFreshLogin = document.cookie.split(";").some((c) => c.trim() === "fresh_login=1");
     if (isFreshLogin) {
+      // Consome o cookie de fresh login e zera o estado da página: filtros,
+      // aba, paginação e ordenação voltam aos defaults (ordenação por nome).
       document.cookie = "fresh_login=; path=/; max-age=0";
       sessionStorage.setItem(TERMS_KEY, "0");
+      sessionStorage.removeItem(STORAGE_KEY);
     }
     return sessionStorage.getItem(TERMS_KEY) === "1";
   });
+
+  // Fresh login: descarta TODO o cache do TanStack Query do usuário anterior
+  // (lista, dashboard, opções de filtro, detalhe) para a página nascer limpa.
+  useEffect(() => {
+    if (isFreshLogin) {
+      queryClient.clear();
+    }
+  }, [isFreshLogin, queryClient]);
 
   const handleTermsAccept = () => {
     sessionStorage.setItem(TERMS_KEY, "1");
     setTermsAccepted(true);
   };
-
-  // Chave para sessionStorage
-  const STORAGE_KEY = "dashboard-state";
 
   // State para filtros e paginação (com restauração do sessionStorage)
   const [overviewFilters, setOverviewFilters] =
@@ -118,19 +134,24 @@ export function DashboardClient({
       return {};
     });
 
+  // O tipo de camada padrão ao abrir a visualização geoespacial é "BAIRRO":
+  // a primeira query de camadas já nasce filtrada, evitando baixar as 4470+
+  // camadas inteiras no primeiro fetch do mapa.
   const [geospatialFilters, setGeospatialFilters] =
     useState<GeospatialFilters>(() => {
-      if (typeof window === "undefined") return {};
+      const DEFAULT: GeospatialFilters = { tipo_camada: "BAIRRO" };
+      if (typeof window === "undefined") return DEFAULT;
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          return parsed.geospatialFilters || {};
+          const restored = parsed.geospatialFilters;
+          if (restored && Object.keys(restored).length > 0) return restored;
         }
       } catch (e) {
         console.error("Error restoring geospatial filters:", e);
       }
-      return {};
+      return DEFAULT;
     });
 
   const [professionalPage, setProfessionalPage] = useState(() => {
@@ -174,6 +195,9 @@ export function DashboardClient({
     bypassCacheGeospatialTimestamp,
     setBypassCacheGeospatialTimestamp,
   ] = useState<number | null>(null);
+
+  // Lazy load: mapa geoespacial só carrega quando o usuário abre o collapsible
+  const [geospatialMapOpen, setGeospatialMapOpen] = useState(false);
 
   // State para ordenação (com restauração do sessionStorage)
   const [sortBy, setSortBy] = useState<string | null>(() => {
@@ -252,6 +276,9 @@ export function DashboardClient({
     sortOrder,
   ]);
 
+  // Força sincronização completa de policies no primeiro acesso pós-login OAuth.
+  const forceSync = useForcePolicySyncOnLogin();
+
   // Verificação prévia de permissões (evita chamadas desnecessárias)
   const {
     data: currentUser,
@@ -259,7 +286,7 @@ export function DashboardClient({
     error: currentUserError,
   } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: () => apiService.getCurrentUser(),
+    queryFn: () => apiService.getCurrentUser(forceSync ? { force_sync: true } : {}),
     staleTime: 10 * 60 * 1000, // 10 minutos
     retry: false, // Não retry em caso de 403/401
   });
@@ -283,7 +310,6 @@ export function DashboardClient({
   // O backend já valida auth e retorna 401/403 se não autorizado
   const {
     data: dashboardResponse,
-    isLoading: dashboardLoading,
     isFetching: dashboardFetching,
     error: dashboardError,
   } = useQuery({
@@ -305,19 +331,7 @@ export function DashboardClient({
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos (sem piscar)
-  });
-
-  // Deriva os filtros da aba ativa para o vocabulário contextual
-  const activeFiltersForVocabulary = useMemo(() => {
-    return activeTab === "overview" ? overviewFilters : professionalFilters;
-  }, [activeTab, overviewFilters, professionalFilters]);
-
-  // V2 — Vocabulário de filtros contextual (refetch quando filtros ou aba mudam)
-  const { data: filterVocabulary } = useQuery({
-    queryKey: ["filterVocabulary", activeTab, activeFiltersForVocabulary],
-    queryFn: () => apiService.getFilterVocabulary(activeFiltersForVocabulary),
-    staleTime: 5 * 60 * 1000, // 5 minutos
-    placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
+    enabled: activeTab === "overview", // Lazy load: só busca quando a aba é acessada
   });
 
   // V2 — Participants (Busca Individual)
@@ -360,9 +374,12 @@ export function DashboardClient({
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
   });
 
-  // TanStack Query para Geospatial Layers (Mapa)
-  // Carrega em paralelo quando a página carrega
-  // Filtros incluídos no queryKey para refetch automático
+  // TanStack Query para Geospatial Layers (Mapa) — LAZY
+  // Só carrega quando a aba "professional" está ativa E o mapa foi aberto.
+  // Filtros e bypassCacheTimestamp incluídos no queryKey para refetch automático.
+  const geospatialEnabled =
+    activeTab === "professional" && geospatialMapOpen;
+
   const {
     data: geospatialLayersResponse,
     isFetching: geospatialFetching,
@@ -381,31 +398,30 @@ export function DashboardClient({
 
       return result;
     },
+    enabled: geospatialEnabled,
     staleTime: 30 * 60 * 1000, // 30 minutos (dados geográficos mudam raramente)
     placeholderData: (prev) => prev,
   });
 
-  // TanStack Query para vocabulário de filtros geoespaciais
-  const { data: geospatialFilterVocabulary } = useQuery({
-    queryKey: ["geospatialFilterVocabulary"],
-    queryFn: () => apiService.getGeospatialFilterVocabulary(),
-    staleTime: 30 * 60 * 1000,
-  });
-
-  // Extrair dados e filtros disponíveis
   const geospatialLayers = geospatialLayersResponse?.data || [];
-  const geospatialAvailableFilters = geospatialFilterVocabulary ?? undefined;
 
-  // Backend controla se usuário pode ver dashboard via meta.can_view_dashboard
-  // Se false, esconder a aba "Visão Geral" e forçar "Busca Individual"
+  // Determina se usuário pode ver dashboard baseado em currentUser (já carregado
+  // em paralelo com participants). A regra espelha o backend: secretarias_acesso
+  // com as 3 secretarias ou is_super_admin equivale a "TODOS".
+  // Isso elimina a dependência de dashboardResponse para mostrar/esconder a aba,
+  // permitindo que o dashboard carregue lazily apenas quando a aba é acessada.
+  const _ALL_SECRETARIAS = new Set(["SMAS", "SME", "SMS"]);
   const canViewDashboard =
-    dashboardResponse?.can_view_dashboard !== false;
+    !currentUser ||
+    currentUser.is_super_admin ||
+    (currentUser.secretarias_acesso?.length === 3 &&
+      currentUser.secretarias_acesso.every((s) => _ALL_SECRETARIAS.has(s)));
 
   // Force professional tab if user cannot view dashboard.
   // Ajuste feito durante a renderização (não em um efeito): a própria condição
   // (`activeTab === "overview"`) deixa de ser verdadeira após o ajuste, então
   // não há loop, e evita o "flash" da aba Visão Geral antes do commit.
-  if (dashboardResponse && !canViewDashboard && activeTab === "overview") {
+  if (!canViewDashboard && activeTab === "overview") {
     setActiveTab("professional");
   }
 
@@ -474,6 +490,7 @@ export function DashboardClient({
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
     queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
+    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -483,6 +500,7 @@ export function DashboardClient({
   const handleProfessionalRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["participantsV2"] });
     queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
+    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheParticipantsTimestamp(Date.now());
     setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
@@ -590,56 +608,27 @@ export function DashboardClient({
   }, [professionalFilters, sortBy, sortOrder]);
 
   /**
-   * Memoizar filter options vazias para evitar re-criação
+   * Show loading screen while critical data is loading.
+   * Dashboard é lazy (carrega apenas quando a aba é acessada), então não
+   * bloqueia o load inicial.
    */
-  const emptyFilterOptions = useMemo<SmartFilterOptions>(
-    () => ({
-      // Filtros de participantes
-      bairros: [],
-      grupos: [],
-      cohorts: [],
-      status_list: [],
-      situacoes: [],
-      subprefeituras: [],
-      regioes_administrativas: [],
-      cres: [],
-      aps: [],
-      cas_list: [],
-      cras: [],
-      escolas: [],
-      clinicas: [],
-      equipes_familia: [],
-      racas: [],
-      protocolo_descricoes: [],
-      protocolo_status_list: [],
-      // Filtros geoespaciais
-      tipos_camada: [],
-      categorias: [],
-      regionais: [],
-      nomes: [],
-      // Filtros de usuários (admin)
-      ocupacoes: [],
-      secretarias: [],
-      status_ativo: [],
-      permissions: [],
-      secretarias_acesso_list: [],
-    }),
-    [],
-  );
-
-  /**
-   * Show loading screen while all data is loading
-   * OTIMIZAÇÃO: Todas as queries rodam em paralelo, mostra loading até a primeira completar
-   */
-  const isInitialLoading =
-    currentUserLoading && dashboardLoading && participantsLoading;
+  const isInitialLoading = currentUserLoading || participantsLoading;
 
   if (isInitialLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md px-6">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-lg text-muted-foreground">Carregando dados...</p>
+          <p className="text-lg font-semibold">
+            {participantsLoading
+              ? "Carregando participantes..."
+              : "Verificando suas permissões..."}
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            {participantsLoading
+              ? "Buscando a listagem de participantes na base de dados."
+              : "Confirmando seu acesso às secretarias antes de abrir o painel."}
+          </p>
         </div>
       </div>
     );
@@ -686,9 +675,6 @@ export function DashboardClient({
             <TabsContent value="overview" className="mt-6">
               <OverviewTab
                 data={dashboardResponse?.data || null}
-                filterOptions={
-                  filterVocabulary || emptyFilterOptions
-                }
                 filters={overviewFilters}
                 onFilterChange={handleOverviewFilterChange}
                 onRefresh={handleOverviewRefresh}
@@ -702,9 +688,6 @@ export function DashboardClient({
               <ProfessionalTab
                 data={participantsResponse?.data || []}
                 meta={participantsResponse?.meta || null}
-                filterOptions={
-                  filterVocabulary || emptyFilterOptions
-                }
                 filters={professionalFilters}
                 onFilterChange={handleProfessionalFilterChange}
                 onPageChange={handleProfessionalPageChange}
@@ -720,10 +703,11 @@ export function DashboardClient({
                 sortOrder={sortOrder}
                 onSortChange={handleSortChange}
                 isSuperAdmin={currentUser?.is_super_admin || false}
+                secretariasAcesso={currentUser?.secretarias_acesso || []}
                 geospatialLayers={geospatialLayers}
                 geospatialLoading={geospatialFetching}
                 geospatialFilters={geospatialFilters}
-                geospatialAvailableFilters={geospatialAvailableFilters}
+                onGeospatialMapOpen={setGeospatialMapOpen}
                 onGeospatialFilterChange={setGeospatialFilters}
               />
             </TabsContent>

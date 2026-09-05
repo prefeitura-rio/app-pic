@@ -8,15 +8,13 @@ import logging
 
 from pydantic import BaseModel
 
+from src.pic.domain.models.admin import IdWithName
+
 logger = logging.getLogger(__name__)
 
 _ALL_SECRETARIAS = {"SME", "SMS", "SMAS"}
 
-
-class IdWithName(BaseModel):
-    """ID with name for UI display"""
-    id: str
-    nome: str
+__all__ = ["IdWithName", "PermissionDeniedError", "UserPermissions"]
 
 
 class PermissionDeniedError(Exception):

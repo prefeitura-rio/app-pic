@@ -6,9 +6,7 @@ import {
   ParticipantDetailResponse,
   DashboardV2Response,
   ProtocoloDetalhes,
-  SmartFilterOptions,
   ParticipantFilters,
-  AvailableIds,
   UserAccessRecord,
   CreateUserRequest,
   BatchImportResult,
@@ -16,10 +14,15 @@ import {
   BatchPermissionsResult,
   GeospatialLayersResponse,
   GeospatialFilterVocabularyResponse,
+  GeospatialFilterFieldOptionsResponse,
   GeospatialFilters,
   DebugParticipant,
+  DashboardFilterValues,
+  FilterFieldKey,
+  FilterFieldOptionsResponse,
+  IdWithName,
+  UnitType,
 } from "../types";
-import { DashboardFilterValues } from "../components/DashboardFilterCard";
 
 // Use server-side proxy to access backend API
 // This allows reading API_URL from runtime environment (Infisical)
@@ -230,22 +233,25 @@ export const apiService = {
   },
 
   /**
-   * V2 — Vocabulário completo de opções de filtro (16 arrays).
+   * V2 — Opções de um único campo de filtro (lazy por dropdown).
    * Aceita filtros ativos para cascateamento contextual.
    */
-  async getFilterVocabulary(activeFilters?: DashboardFilterValues | ParticipantFilters): Promise<SmartFilterOptions> {
-    let url = `${BASE_URL}/api/v2/filters`;
+  async getFilterFieldOptions(
+    field: FilterFieldKey,
+    activeFilters?: DashboardFilterValues | ParticipantFilters
+  ): Promise<FilterFieldOptionsResponse> {
+    let url = `${BASE_URL}/api/v2/filters?field=${encodeURIComponent(field)}`;
 
     if (activeFilters) {
       const params = buildFilterParams(activeFilters);
       const qs = params.toString();
-      if (qs) url += `?${qs}`;
+      if (qs) url += `&${qs}`;
     }
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<SmartFilterOptions>(res, fetchFn);
+    return handleResponse<FilterFieldOptionsResponse>(res, fetchFn);
   },
 
   /**
@@ -344,8 +350,9 @@ export const apiService = {
    *
    * @returns Available IDs grouped by type
    */
-  async getCurrentUser(): Promise<UserAccessRecord> {
-    const url = `${BASE_URL}/api/v2/admin/me`;
+  async getCurrentUser(params?: { force_sync?: boolean }): Promise<UserAccessRecord> {
+    const qs = params?.force_sync ? "?force_sync=true" : "";
+    const url = `${BASE_URL}/api/v2/admin/me${qs}`;
 
     const fetchFn = () => fetch(url);
     const res = await fetchFn();
@@ -353,13 +360,17 @@ export const apiService = {
     return handleResponse<UserAccessRecord>(res, fetchFn);
   },
 
-  async getAvailableIds(): Promise<AvailableIds> {
-    const url = `${BASE_URL}/api/v2/admin/available-ids`;
+  /**
+   * Get available assignable IDs for one unit type (lazy, per dropdown).
+   * Requires admin permission.
+   */
+  async getAvailableUnitIds(unitType: UnitType): Promise<IdWithName[]> {
+    const url = `${BASE_URL}/api/v2/admin/available-ids/${unitType}`;
 
     const fetchFn = () => fetch(url, { cache: "no-store" });
     const res = await fetchFn();
 
-    return handleResponse<AvailableIds>(res, fetchFn);
+    return handleResponse<IdWithName[]>(res, fetchFn);
   },
 
   /**
@@ -592,7 +603,7 @@ export const apiService = {
   },
 
   /**
-   * V2 — Vocabulario de filtros geoespaciais
+   * V2 — Vocabulario de filtros geoespaciais (bulk, deprecated)
    * Chamado 1 vez, staleTime 30min.
    */
   async getGeospatialFilterVocabulary(): Promise<GeospatialFilterVocabularyResponse> {
@@ -602,6 +613,33 @@ export const apiService = {
     const res = await fetchFn();
 
     return handleResponse<GeospatialFilterVocabularyResponse>(res, fetchFn);
+  },
+
+  /**
+   * V2 — Opcoes de filtro geoespacial por campo (lazy, per-field).
+   * Espelha getFilterFieldOptions dos participantes.
+   *
+   * @param field - Campo a consultar: tipos_camada, categorias, regionais, bairros,
+   *   regioes_administrativas, subprefeituras, nomes
+   * @param filters - Filtros ativos (cascade: o campo do próprio field é excluído no backend)
+   * @param bypassCache - Forçar refresh
+   */
+  async getGeospatialFilterOptions(
+    field: string,
+    filters: GeospatialFilters = {},
+    bypassCache: boolean = false
+  ): Promise<GeospatialFilterFieldOptionsResponse> {
+    const params = buildFilterParams(filters);
+    params.append("field", field);
+    if (bypassCache) {
+      params.append("bypass_cache", "true");
+    }
+
+    const url = `${BASE_URL}/api/v2/geospatial/filter-options?${params.toString()}`;
+    const fetchFn = () => fetch(url, { cache: "no-store" });
+    const res = await fetchFn();
+
+    return handleResponse<GeospatialFilterFieldOptionsResponse>(res, fetchFn);
   },
 
 };

@@ -1,11 +1,16 @@
-"""Tests for HybridAdminRepository's `policy` write helpers.
+"""Tests for HybridAdminRepository.
 
 Runs against a real (in-memory) SQLite engine rather than mocking the ORM,
-so the tests exercise actual SQL semantics (SELECT/INSERT/UPDATE) - not just
-that the right Python calls were made. Only the `policy` table is created
-(no `users`): SQLite doesn't enforce FKs unless `PRAGMA foreign_keys=ON` is
-set, which we don't need for these tests. See `PolicyRow.id`'s
-`.with_variant(Integer, "sqlite")` in `db/models.py` for why this works.
+so the write-helper tests exercise actual SQL semantics (SELECT/INSERT/
+UPDATE) - not just that the right Python calls were made. Only the `policy`
+table is created (no `users`): SQLite doesn't enforce FKs unless
+`PRAGMA foreign_keys=ON` is set, which we don't need for these tests. See
+`PolicyRow.id`'s `.with_variant(Integer, "sqlite")` in `db/models.py` for
+why this works.
+
+Read-path tests (unit catalog / governance df / fetch_user_record /
+find_paginated_users) use a fake PostgREST transport and a fake session
+(no real Postgres/BigQuery).
 
 Data-proxy push (`AccessPolicySync`/`push_and_mark_synced`) is out of scope
 here - it's already covered by
@@ -181,6 +186,76 @@ async def test_replace_policy_grants_leaves_untouched_unit_types_alone(session):
     assert len(rows) == 2
 
 
+async def test_replace_policy_grants_expands_comma_joined_ids(session):
+    """`id="1,2"` (options grouped by name, v1 parity) must create one
+    policy row per real unit id — a joined string would never match a real
+    unit on the data-proxy RLS."""
+    changed = await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {"id_escola_list": [IdWithName(id="1,2", nome="Escola A")]},
+        is_enabled=True,
+    )
+    await session.commit()
+
+    assert {row.unit_id for row in changed} == {"1", "2"}
+    rows = await _all_policy_rows(session)
+    assert {row.unit_id for row in rows} == {"1", "2"}
+    assert all(row.unit_type == "escola" for row in rows)
+
+
+async def test_replace_policy_grants_expanded_ids_dedupe_against_existing(session):
+    """Comma-joined ids must not violate `uq_policy_grant` when one of the
+    expanded ids already exists, and re-enabled rows must not duplicate."""
+    await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {"id_escola_list": [IdWithName(id="1", nome="Escola A")]},
+        is_enabled=True,
+    )
+    await session.commit()
+
+    changed = await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {"id_escola_list": [IdWithName(id="1,2", nome="Escola A")]},
+        is_enabled=True,
+    )
+    await session.commit()
+
+    assert {row.unit_id for row in changed} == {"2"}
+    rows = await _all_policy_rows(session)
+    assert {row.unit_id for row in rows} == {"1", "2"}
+    assert all(row.is_enabled for row in rows)
+
+
+async def test_replace_policy_grants_expanded_ids_disable_dropped_units(session):
+    """Removing part of a joined selection soft-disables only the dropped
+    units and self-heals rows previously written with a joined unit_id."""
+    await HybridAdminRepository._replace_policy_grants(
+        session,
+        CPF,
+        {
+            "id_escola_list": [
+                IdWithName(id="1,2", nome="Escola A"),
+                IdWithName(id="3", nome="Escola B"),
+            ]
+        },
+        is_enabled=True,
+    )
+    await session.commit()
+
+    changed = await HybridAdminRepository._replace_policy_grants(
+        session, CPF, {"id_escola_list": [IdWithName(id="1", nome="Escola A")]}, is_enabled=True
+    )
+    await session.commit()
+
+    assert {row.unit_id for row in changed} == {"2", "3"}
+    rows = await _all_policy_rows(session)
+    enabled = {row.unit_id for row in rows if row.is_enabled}
+    assert enabled == {"1"}
+
+
 # ----------------------------------------------------------------------
 # _set_all_policy_enabled
 # ----------------------------------------------------------------------
@@ -289,3 +364,320 @@ async def test_sync_super_admin_base_row_stays_disabled_when_inactive(session):
 
     assert row is not None
     assert row.is_enabled is False
+
+
+# ----------------------------------------------------------------------
+# fetch_unit_options (unit catalog via PostgREST grouped aggregates)
+# ----------------------------------------------------------------------
+
+
+def _make_catalog_repo(
+    rows_by_select: dict[str, list[dict]],
+    redis_client=None,
+) -> tuple[HybridAdminRepository, list]:
+    """Repo with a fake PostgREST transport answering catalog queries."""
+    import httpx
+
+    from src.pic.infrastructure.postgrest_client.client import PostgrestClient
+    from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
+
+    config = PostgrestClientConfig(
+        base_url="https://data-proxy.example/",
+        schema="app_pequenos_cariocas",
+        token_url="https://keycloak.example/token",
+        client_id="pic-client",
+        client_secret="pic-secret",
+    )
+    requests: list = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "keycloak.example":
+            return httpx.Response(
+                200, json={"access_token": "test-token", "expires_in": 3600}
+            )
+        requests.append(request)
+        select = request.url.params.get("select", "")
+        rows = next(
+            (
+                r
+                for key, r in rows_by_select.items()
+                if select.startswith(key)
+            ),
+            [],
+        )
+        # Emulate the data-proxy page slicing (offset/limit)
+        limit = request.url.params.get("limit")
+        if limit is not None:
+            offset = int(request.url.params.get("offset", "0"))
+            rows = rows[offset : offset + int(limit)]
+        return httpx.Response(200, json=rows, request=request)
+
+    client = PostgrestClient(config, transport=httpx.MockTransport(handler))
+    return HybridAdminRepository(client, redis_client=redis_client), requests
+
+
+async def test_fetch_unit_options_groups_and_filters_nulls():
+    repo, requests = _make_catalog_repo(
+        {
+            "id_cras,nome_cras,count()": [
+                {"id_cras": "1", "nome_cras": "CRAS Centro", "count": 3},
+                {"id_cras": "2", "nome_cras": "CRAS Sul", "count": 1},
+                {"id_cras": None, "nome_cras": "ignored", "count": 5},
+            ],
+        }
+    )
+    options = await repo.fetch_unit_options("cras", user_token="jwt")
+
+    assert [(o.id, o.nome) for o in options] == [
+        ("1", "CRAS Centro"),
+        ("2", "CRAS Sul"),
+    ]
+    # Query shape: grouped aggregate + not.is.null on the wide table
+    req = requests[0]
+    assert req.url.path.endswith("/endpoint_participante_protocolos_wide")
+    assert "count()" in req.url.params["select"]
+    assert req.url.params["id_cras"] == "not.is.null"
+
+
+async def test_fetch_unit_options_cre_uses_nome_cre():
+    repo, _ = _make_catalog_repo(
+        {
+            "id_cre,nome_cre,count()": [
+                {"id_cre": "10", "nome_cre": "1a CRE", "count": 1},
+                {"id_cre": "2", "nome_cre": None, "count": 2},
+            ]
+        }
+    )
+    options = await repo.fetch_unit_options("cre", user_token="jwt")
+
+    # Real nome_cre wins; NULL falls back to the id itself.
+    assert [(o.id, o.nome) for o in options] == [("10", "1a CRE"), ("2", "2")]
+
+
+async def test_fetch_unit_options_unknown_type_raises():
+    repo, _ = _make_catalog_repo({})
+    import pytest
+
+    with pytest.raises(ValueError):
+        await repo.fetch_unit_options("nao_existe", user_token="jwt")
+
+
+def _make_many_rows(id_col: str, nome_col: str, count: int) -> list[dict]:
+    return [
+        {id_col: f"{id_col}-{i:05d}", nome_col: f"{nome_col} {i:05d}", "count": 1}
+        for i in range(count)
+    ]
+
+
+async def test_fetch_unit_options_paginates_beyond_1000_rows():
+    """1500 distinct schools -> two data pages (last one short)."""
+    rows = _make_many_rows("id_escola", "nome_escola", 1500)
+    repo, requests = _make_catalog_repo({"id_escola,nome_escola,count()": rows})
+    options = await repo.fetch_unit_options("escola", user_token="jwt")
+
+    assert len(options) == 1500
+    assert [r.url.params.get("offset") for r in requests] == ["0", "1000"]
+    for req in requests:
+        assert req.url.params.get("limit") == "1000"
+
+
+async def test_fetch_unit_options_short_first_page_single_request():
+    rows = _make_many_rows("id_cras", "nome_cras", 7)
+    repo, requests = _make_catalog_repo({"id_cras,nome_cras,count()": rows})
+    options = await repo.fetch_unit_options("cras", user_token="jwt")
+
+    assert len(options) == 7
+    assert len(requests) == 1
+
+
+async def test_fetch_unit_options_paginates_beyond_2000_rows():
+    """2500 equipes -> three pages (1000/1000/500), no tail waste."""
+    rows = _make_many_rows("id_equipe_familia", "nome_equipe_familia", 2500)
+    repo, requests = _make_catalog_repo(
+        {"id_equipe_familia,nome_equipe_familia,count()": rows}
+    )
+    options = await repo.fetch_unit_options("equipe_familia", user_token="jwt")
+
+    assert len(options) == 2500
+    assert [r.url.params.get("offset") for r in requests] == ["0", "1000", "2000"]
+
+
+async def test_fetch_unit_options_uses_redis_cache():
+    import json as json_lib
+    from unittest.mock import AsyncMock, MagicMock
+
+    repo, requests = _make_catalog_repo(
+        {"id_cras,nome_cras,count()": [{"id_cras": "1", "nome_cras": "CRAS Centro", "count": 3}]}
+    )
+
+    # Cache MISS
+    redis = MagicMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock()
+    repo._redis = redis
+    options = await repo.fetch_unit_options("cras", user_token="jwt")
+    assert len(options) == 1
+    assert len(requests) == 1
+    redis.set.assert_awaited_once()
+
+    # Cache HIT (second call skips PostgREST)
+    redis.get = AsyncMock(
+        return_value=json_lib.dumps([{"id": "9", "nome": "Cached"}])
+    )
+    options = await repo.fetch_unit_options("cras", user_token="jwt")
+    assert [(o.id, o.nome) for o in options] == [("9", "Cached")]
+    assert len(requests) == 1  # no new HTTP request
+
+
+# ----------------------------------------------------------------------
+# fetch_governance_df (raw) / fetch_user_record (raw, zero PostgREST)
+# ----------------------------------------------------------------------
+
+
+def _make_user(**overrides) -> object:
+    from datetime import UTC, datetime
+
+    from src.pic.infrastructure.db.models import User
+
+    defaults = {
+        "cpf": "11111111111",
+        "email": None,
+        "nome": "Joao",
+        "ocupacao": None,
+        "secretaria": None,
+        "secretarias_acesso": [],
+        "is_admin": False,
+        "is_super_admin": False,
+        "active": True,
+        "notes": None,
+        "created_by": "system",
+        "updated_by": None,
+        "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
+    }
+    defaults.update(overrides)
+    return User(**defaults)
+
+
+class _FakeUsersResult:
+    def __init__(self, users: list[object]):
+        self._users = users
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._users
+
+    def scalar_one_or_none(self):
+        return self._users[0] if self._users else None
+
+
+class _FakePolicyResult:
+    def __init__(self, rows: list[tuple]):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class _FakeSession:
+    def __init__(self, users: list[object], policy_rows: list[tuple]):
+        self._users = users
+        self._policy_rows = policy_rows
+
+    async def execute(self, stmt):
+        compiled = str(stmt)
+        if "FROM users" in compiled:
+            return _FakeUsersResult(self._users)
+        if "FROM policy" in compiled:
+            return _FakePolicyResult(self._policy_rows)
+        raise AssertionError(f"Unexpected statement: {compiled}")
+
+
+@pytest.fixture
+def patch_get_session(monkeypatch):
+    """Patch the module-level `get_session` with a fake returning `session`."""
+
+    def _patch(session):
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def _fake_get_session():
+            yield session
+
+        monkeypatch.setattr(
+            "src.pic.infrastructure.repositories.hybrid_admin.get_session",
+            _fake_get_session,
+        )
+
+    return _patch
+
+
+async def test_fetch_governance_df_is_raw_and_zero_postgrest(patch_get_session):
+    patch_get_session(
+        _FakeSession(
+            users=[_make_user(cpf=CPF)],
+            policy_rows=[(CPF, "cras", "1")],
+        )
+    )
+    repo, requests = _make_catalog_repo({})
+
+    df, _, _ = await repo.fetch_governance_df()
+
+    assert requests == []
+    row = df.to_dicts()[0]
+    assert row["id_cras_list"] == [{"id": "1", "nome": "1"}]  # raw id-as-name
+
+
+async def test_find_paginated_users_keeps_raw_ids_and_zero_postgrest(
+    patch_get_session,
+):
+    patch_get_session(
+        _FakeSession(
+            users=[_make_user(cpf=CPF)],
+            policy_rows=[(CPF, "cras", "1")],
+        )
+    )
+    repo, requests = _make_catalog_repo({})
+
+    df_result, _, _ = await repo.find_paginated_users(
+        filters_dict={},
+        page=1,
+        page_size=10,
+        search=None,
+        filter_columns_config=None,
+    )
+
+    row = df_result.to_dicts()[0]
+    # Raw id-as-name (names are resolved lazily by the dropdown options UI-side)
+    assert row["id_cras_list"] == [{"id": "1", "nome": "1"}]
+    assert requests == []
+
+
+async def test_fetch_user_record_returns_raw_ids_without_postgrest(
+    patch_get_session,
+):
+    patch_get_session(
+        _FakeSession(
+            users=[_make_user(cpf=CPF)],
+            policy_rows=[("cras", "1"), ("cre", "10")],
+        )
+    )
+    repo, requests = _make_catalog_repo({})
+
+    row = await repo.fetch_user_record(CPF, user_token="jwt")
+
+    assert row is not None
+    assert row["id_cras_list"] == [{"id": "1", "nome": "1"}]
+    assert row["id_cre_list"] == [{"id": "10", "nome": "10"}]
+    assert requests == []  # zero PostgREST calls, regardless of grant count
+
+
+async def test_fetch_user_record_returns_none_for_unknown_cpf(patch_get_session):
+    patch_get_session(_FakeSession(users=[], policy_rows=[]))
+    repo, _ = _make_catalog_repo({})
+
+    row = await repo.fetch_user_record("00000000000", user_token="jwt")
+
+    assert row is None

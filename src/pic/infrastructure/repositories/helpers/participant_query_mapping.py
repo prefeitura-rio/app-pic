@@ -26,12 +26,53 @@ FILTER_COLUMN_MAP = {
     "raca": "raca",
 }
 
-# Protocolo filters match a field *inside* the `protocolo_listagem` array of
-# objects. Values are the inner-object field names.
+# Protocolo filters match a column of `endpoint_participante_protocolos`
+# (produto table, joined by id_membro_familia). Values keep the v1 semantics
+# where `protocolo_descricao` carries the protocol *id* (label is UI-only).
 PROTOCOLO_FILTER_FIELDS = {
-    "protocolo_descricao": "id",
+    "protocolo_descricao": "protocolo_id",
     "protocolo_status": "protocolo_status_label",
-    "protocolo_secretaria": "secretaria",
+    "protocolo_secretaria": "protocolo_secretaria",
+}
+
+# One status column per protocol on `endpoint_participante_protocolos_wide`
+# (column name == protocolo_id; NULL when the participant lacks the
+# protocol). Kept in sync with `filter_vocabulary.PROTOCOLO_DESCRICOES`.
+PROTOCOLO_STATUS_COLUMNS = [
+    "smas_acesso_alimentacao",
+    "smas_acesso_cpf_certidao_nascimento",
+    "smas_cadunico_atualizado",
+    "sme_frequencia_escolar",
+    "sme_matriculado_creche",
+    "sme_matriculado_pre_escola",
+    "sms_consulta_puerperal",
+    "sms_consultas_minimas_infantil",
+    "sms_consultas_pre_natal",
+    "sms_gestantes_testes_rapidos",
+    "sms_possui_equipe_familia",
+    "sms_vacinacao_pentavalente",
+    "sms_visitas_domiciliares_infantil",
+    "sms_visitas_domiciliares_puerperio",
+]
+
+# protocolo_id -> secretaria (SMAS/SME/SMS). Used to restrict the protocol
+# options to the user's secretaria access and to reject forced filters
+# outside it. Kept in sync with PROTOCOLO_STATUS_COLUMNS.
+PROTOCOLO_SECRETARIA = {
+    "smas_acesso_alimentacao": "SMAS",
+    "smas_acesso_cpf_certidao_nascimento": "SMAS",
+    "smas_cadunico_atualizado": "SMAS",
+    "sme_frequencia_escolar": "SME",
+    "sme_matriculado_creche": "SME",
+    "sme_matriculado_pre_escola": "SME",
+    "sms_consulta_puerperal": "SMS",
+    "sms_consultas_minimas_infantil": "SMS",
+    "sms_consultas_pre_natal": "SMS",
+    "sms_gestantes_testes_rapidos": "SMS",
+    "sms_possui_equipe_familia": "SMS",
+    "sms_vacinacao_pentavalente": "SMS",
+    "sms_visitas_domiciliares_infantil": "SMS",
+    "sms_visitas_domiciliares_puerperio": "SMS",
 }
 
 # Sort request key -> column used for ordering.
@@ -42,7 +83,9 @@ SORTABLE_COLUMNS = {
     "bairro": "bairro",
     "idade": "idade",
     "status": "status",
-    "total_fracao": "total_protocolos_regular",
+    # "Total" sorts by the irregularidade count (fewer = better first),
+    # a single column PostgREST can order directly.
+    "total_fracao": "total_protocolos_irregular",
     "total_irregular": "total_protocolos_irregular",
     "assistencia_fracao": "assistencia_protocolos_regular",
     "educacao_fracao": "educacao_protocolos_regular",

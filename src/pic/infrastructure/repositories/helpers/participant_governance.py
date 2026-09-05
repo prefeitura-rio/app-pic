@@ -242,3 +242,103 @@ def sort_rows(
     null_rows = [row for row in rows if row.get(column) is None]
     non_null.sort(key=key, reverse=descending)
     return non_null + null_rows
+
+
+# ---------------------------------------------------------------------------
+# Resumo-based view (endpoint_participante_resumo)
+# ---------------------------------------------------------------------------
+
+
+def compute_resumo_view(
+    row: dict[str, Any],
+    full_access: bool,
+    secretarias_acesso: list[str],
+) -> dict[str, Any] | None:
+    """Build the list view of one `endpoint_participante_resumo` row.
+
+    - Full access: row returned as-is (fractions/counters are pre-aggregated).
+    - No access: row kept, every protocol-derived field stays out (columns are
+      not even selected by the repository), matching the v1 nulled view.
+    - Partial access: `total_fracao` and `total_protocolos_irregular` are
+      recomputed from the accessible secretarias' counters; `situacao` is
+      hidden (`None`); rows with no accessible protocols are dropped (`None`).
+
+    Returns a new dict (never mutates the input) or `None` to drop the row.
+    """
+    if full_access:
+        return dict(row)
+
+    row = dict(row)
+    allowed = set(secretarias_acesso)
+    if not allowed:
+        for prefix in SECRETARIA_COLUMN_PREFIX.values():
+            row[f"{prefix}_fracao"] = None
+            for key in _counter_keys(prefix):
+                row[key] = None
+        row["total_fracao"] = None
+        row["total_protocolos_irregular"] = None
+        row["situacao"] = None
+        return row
+
+    regular_sum = 0
+    total_sum = 0
+    irregular_sum = 0
+    for secretaria, prefix in SECRETARIA_COLUMN_PREFIX.items():
+        if secretaria not in allowed:
+            row[f"{prefix}_fracao"] = None
+            for key in _counter_keys(prefix):
+                row[key] = None
+            continue
+        regular_sum += row.get(f"{prefix}_protocolos_regular") or 0
+        total_sum += row.get(f"{prefix}_protocolos_total") or 0
+        irregular_sum += row.get(f"{prefix}_protocolos_irregular") or 0
+
+    if total_sum == 0:
+        return None
+
+    row["total_protocolos_irregular"] = irregular_sum
+    row["total_fracao"] = f"{regular_sum}/{total_sum}"
+    row["situacao"] = None
+    return row
+
+
+def compute_detail_view(
+    resumo_row: dict[str, Any],
+    protocolo_items: list[dict[str, Any]],
+    secretarias_acesso: list[str],
+    full_access: bool,
+) -> dict[str, Any] | None:
+    """Build the detail view of one participant from `endpoint_participante_resumo`
+    + `endpoint_participante_protocolos_detalhe` rows.
+
+    Counters/fractions/situacao are always recomputed from the protocol items
+    (single source of truth, matching the list's in-app pipeline):
+
+    - Full access: every protocol kept; counters recomputed from all of them.
+    - Partial access: protocols filtered by secretaria; rows with no remaining
+      protocol are dropped (`None`); counters recomputed from the remaining.
+    - No access: row kept with an empty `protocolo_listagem` and every
+      protocol-derived column set to `None`.
+
+    Returns a new dict (never mutates the inputs) or `None` to drop the row.
+    """
+    items = [p for p in protocolo_items if isinstance(p, dict)]
+    row = dict(resumo_row)
+    row["protocolo_listagem"] = items
+
+    if full_access:
+        _recalculate(row, items, set(ALL_SECRETARIAS))
+        return row
+
+    if not secretarias_acesso:
+        _null_protocol_columns(row)
+        return row
+
+    allowed = set(secretarias_acesso)
+    filtered = [p for p in items if p.get("secretaria") in allowed]
+    if not filtered:
+        return None
+
+    row["protocolo_listagem"] = filtered
+    _recalculate(row, filtered, allowed)
+    return row

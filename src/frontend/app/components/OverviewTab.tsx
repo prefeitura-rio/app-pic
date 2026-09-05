@@ -2,11 +2,11 @@ import { memo, useCallback } from "react";
 import { Users, Loader2, AlertTriangle, CheckCircle, Home, BookOpen, Activity, Heart, Clock, TrendingUp, PieChart as PieChartIcon } from "lucide-react";
 import {
   Dashboard,
-  SmartFilterOptions,
+  DashboardFilterValues,
   ProtocoloIndicador,
 } from "../types";
 import { StatCard } from "./StatCard";
-import { DashboardFilterCard, DashboardFilterValues } from "./DashboardFilterCard";
+import { DashboardFilterCard } from "./DashboardFilterCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import {
   LineChart,
@@ -38,7 +38,6 @@ const PIE_COLORS = [
 
 interface OverviewTabProps {
   data: Dashboard | null;
-  filterOptions: SmartFilterOptions;
   filters: DashboardFilterValues;
   onFilterChange: (filters: DashboardFilterValues) => void;
   onRefresh?: () => void;
@@ -72,7 +71,6 @@ const ProtocoloCard = ({ protocolo, loading }: { protocolo: ProtocoloIndicador; 
 
 const OverviewTabComponent = ({
   data,
-  filterOptions,
   filters,
   onFilterChange,
   onRefresh,
@@ -109,8 +107,13 @@ const OverviewTabComponent = ({
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-base font-semibold">Carregando indicadores...</p>
+        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+          Agregando métricas por secretaria, safra e protocolo. Isso pode
+          levar alguns segundos na primeira abertura.
+        </p>
       </div>
     );
   }
@@ -140,7 +143,6 @@ const OverviewTabComponent = ({
     <div className="space-y-8">
       {/* Filtros do Dashboard */}
       <DashboardFilterCard
-        filterOptions={filterOptions}
         filters={filters}
         onFilterChange={onFilterChange}
         onRefresh={onRefresh}

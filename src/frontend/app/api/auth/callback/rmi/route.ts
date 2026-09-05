@@ -82,6 +82,17 @@ export async function GET(req: NextRequest) {
       maxAge: 60, // só precisa durar até o DashboardClient montar e ler
     });
 
+    // Sinaliza que as policies devem ser sincronizadas por completo no próximo
+    // GET /admin/me (force_sync=true). Independente do fresh_login — cada cookie
+    // tem propósito próprio. Consumido pelo hook useForcePolicySyncOnLogin().
+    res.cookies.set("policy_force_sync", "1", {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60, // mesma janela que fresh_login
+    });
+
     // Store tokens in httpOnly cookies for security
     res.cookies.set("access_token", data.access_token, {
       httpOnly: true,

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiService } from "@/app/services/api";
+import { useForcePolicySyncOnLogin } from "@/app/hooks/useForcePolicySyncOnLogin";
 import { UserAccessRecord, CreateUserRequest, UpdateUserRequest } from "@/app/types";
 import { UserTable } from "@/app/components/admin/UserTable";
 import { UserForm } from "@/app/components/admin/UserForm";
@@ -45,13 +46,16 @@ export default function AdminPage() {
   // Users to pass to ImportTab for batch update
   const [usersForImport, setUsersForImport] = useState<UserAccessRecord[]>([]);
 
+  // Força sincronização completa de policies no primeiro acesso pós-login OAuth.
+  const forceSync = useForcePolicySyncOnLogin();
+
   // Fetch current user (compartilha cache com DashboardHeader via queryKey)
   const {
     data: currentUser,
     isLoading: currentUserLoading,
   } = useQuery({
     queryKey: ['currentUser'], // Mesma key que DashboardHeader/DashboardClient
-    queryFn: () => apiService.getCurrentUser(),
+    queryFn: () => apiService.getCurrentUser(forceSync ? { force_sync: true } : {}),
     retry: false,
     staleTime: 10 * 60 * 1000, // 10 minutos (mesmo que DashboardHeader)
   });
@@ -156,16 +160,6 @@ export default function AdminPage() {
     });
     return editable;
   }, [selectedCpfs, users, currentUser?.cpf, currentUser?.is_super_admin]);
-
-  // Fetch available IDs
-  const {
-    data: availableIds,
-    isLoading: idsLoading,
-  } = useQuery({
-    queryKey: ["admin", "available-ids"],
-    queryFn: () => apiService.getAvailableIds(),
-    retry: false,
-  });
 
   // Upsert user mutation (create or update)
   const upsertUserMutation = useMutation({
@@ -399,7 +393,7 @@ export default function AdminPage() {
 
   // Loading state with skeletons - só mostrar na carga inicial, não em refetch
   // Isso evita desmontar o ImportTab e perder os dados importados
-  const isInitialLoading = usersLoading || idsLoading || currentUserLoading;
+  const isInitialLoading = usersLoading || currentUserLoading;
   if (isInitialLoading && !usersResponse) {
     return (
       <div className="space-y-6">
@@ -447,7 +441,7 @@ export default function AdminPage() {
   }
 
   // No data state
-  if (!availableIds || !currentUser || !meta) {
+  if (!currentUser || !meta) {
     return null;
   }
 
@@ -776,7 +770,6 @@ export default function AdminPage() {
         {/* Form Tab */}
         <TabsContent value="form" className="space-y-6">
           <UserForm
-            availableIds={availableIds}
             currentUser={currentUser}
             user={editingUser ?? undefined}
             onSubmit={handleSubmit}
@@ -789,7 +782,6 @@ export default function AdminPage() {
         {/* Import Tab */}
         <TabsContent value="import" className="space-y-6">
           <ImportTab
-            availableIds={availableIds}
             currentUser={currentUser}
             onPermissionsApplied={handleRefreshWithBypass}
             prePopulatedUsers={usersForImport}

@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.core.security.permissions_models import IdWithName
 from src.pic.domain.models.admin import (
-    AvailableIds,
+    UNIT_TYPE_REGISTRY,
     BatchImportError,
     BatchImportResult,
     BatchPermissionsError,
@@ -12,41 +12,33 @@ from src.pic.domain.models.admin import (
     ImportedUser,
     UpsertUserRequest,
     UserAccessRecord,
+    calculate_permission,
 )
 
 
-def test_available_ids_defaults_empty():
-    ids = AvailableIds()
-    assert ids.cras == []
-    assert ids.escolas == []
-    assert ids.cres == []
-    assert ids.aps == []
-    assert ids.cas == []
-    assert ids.clinicas == []
-    assert ids.equipes_familia == []
+def test_unit_type_registry():
+    assert set(UNIT_TYPE_REGISTRY.keys()) == {
+        "cras",
+        "escolas",
+        "cres",
+        "aps",
+        "cas",
+        "clinicas",
+        "equipes_familia",
+    }
+    assert UNIT_TYPE_REGISTRY["cras"] == ("cras", "id_cras_list")
+    assert UNIT_TYPE_REGISTRY["clinicas"] == ("clinica_familia", "id_clinica_familia_list")
 
 
-def test_available_ids_populated():
-    ids = AvailableIds(
-        cras=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
-        escolas=[IdWithName(id="ESC_001", nome="Escola A")],
-        cres=[IdWithName(id="CRE_01", nome="1a CRE")],
-    )
-    assert len(ids.cras) == 1
-    assert ids.cras[0].id == "CRAS_001"
-    assert len(ids.escolas) == 1
-    assert len(ids.aps) == 0
-
-
-def test_available_ids_serialization():
-    ids = AvailableIds(cras=[IdWithName(id="CRAS_001", nome="CRAS Centro")])
-    data = ids.model_dump()
-    assert len(data["cras"]) == 1
-    assert data["cras"][0]["id"] == "CRAS_001"
+def test_calculate_permission():
+    assert calculate_permission(False, False) == "user"
+    assert calculate_permission(True, False) == "admin"
+    assert calculate_permission(False, True) == "super_admin"
+    assert calculate_permission(True, True) == "super_admin"
 
 
 def test_user_access_record_minimal():
-    now = datetime(2025, 7, 1, tzinfo=timezone.utc)
+    now = datetime(2025, 7, 1, tzinfo=UTC)
     uar = UserAccessRecord(cpf="12345678900", created_by="admin", created_at=now)
     assert uar.cpf == "12345678900"
     assert uar.is_admin is False
@@ -57,7 +49,7 @@ def test_user_access_record_minimal():
 
 
 def test_user_access_record_full():
-    now = datetime(2025, 7, 1, tzinfo=timezone.utc)
+    now = datetime(2025, 7, 1, tzinfo=UTC)
     uar = UserAccessRecord(
         cpf="12345678900",
         email="user@example.com",
@@ -81,7 +73,7 @@ def test_user_access_record_full():
 
 
 def test_user_access_record_serialization():
-    now = datetime(2025, 7, 1, tzinfo=timezone.utc)
+    now = datetime(2025, 7, 1, tzinfo=UTC)
     uar = UserAccessRecord(cpf="11111111111", created_by="admin", created_at=now)
     data = uar.model_dump()
     assert data["cpf"] == "11111111111"
