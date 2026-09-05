@@ -100,7 +100,7 @@ export default function DebugPage() {
     isLoading: isLoadingUser,
   } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: apiService.getCurrentUser,
+    queryFn: () => apiService.getCurrentUser(),
     retry: false,
     enabled: DEBUG_PAGE_ENABLED,
   });
