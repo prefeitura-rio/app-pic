@@ -119,6 +119,13 @@ DB_MAX_ROWS = 1000
 # Redis cache TTL in seconds (session lifetime).
 _CACHE_TTL_SECONDS = 1800
 
+# TTL for EMPTY results: a zero-row list can be legitimate (filters without
+# match) but can also be the symptom of a race — e.g. the read reaching the
+# data-proxy before the RLS policy sync finished. Caching that for the full
+# session would keep the list wrongly empty for 30 minutes; a short TTL
+# self-heals within a minute.
+_EMPTY_CACHE_TTL_SECONDS = 60
+
 _CACHE_PREFIX = "participants_v2:"
 
 _VOCAB_CACHE_PREFIX = "filters_v2:"
@@ -725,6 +732,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
         key: str,
         data: list[ParticipanteListItem],
         meta: PaginationMeta,
+        ttl: int | None = None,
     ) -> None:
         try:
             payload = json.dumps(
@@ -733,8 +741,9 @@ class PostgrestParticipantRepository(ParticipantRepository):
                     "meta": meta.model_dump(mode="json"),
                 }
             )
-            await self._redis.set(key, payload, ex=_CACHE_TTL_SECONDS)
-            logger.info(f"[participants] cache SET ({len(data)} rows, TTL {_CACHE_TTL_SECONDS}s)")
+            ttl = _CACHE_TTL_SECONDS if ttl is None else ttl
+            await self._redis.set(key, payload, ex=ttl)
+            logger.info(f"[participants] cache SET ({len(data)} rows, TTL {ttl}s)")
         except Exception as exc:
             logger.warning(f"[participants] cache write error (ignoring): {exc}")
 
@@ -844,7 +853,8 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 can_view_dashboard=None,
             )
             if cache_key:
-                await self._set_cache(cache_key, [], meta)
+                # Empty result: short TTL (see _EMPTY_CACHE_TTL_SECONDS).
+                await self._set_cache(cache_key, [], meta, ttl=_EMPTY_CACHE_TTL_SECONDS)
             return [], meta
 
         select_columns = _list_select_columns(
@@ -935,7 +945,22 @@ class PostgrestParticipantRepository(ParticipantRepository):
         )
 
         if cache_key:
-            await self._set_cache(cache_key, data, meta)
+            # Empty result: short TTL — a zero-row list may be the symptom of
+            # a RLS/policy-sync race on the data-proxy, and caching it for the
+            # full session would keep the list wrongly empty for 30 minutes.
+            ttl = (
+                _CACHE_TTL_SECONDS
+                if data or (meta.total_rows or 0) > 0
+                else _EMPTY_CACHE_TTL_SECONDS
+            )
+            await self._set_cache(cache_key, data, meta, ttl=ttl)
+
+        if not data:
+            logger.warning(
+                f"[participants] empty list returned: cpf={user_id} "
+                f"page={page} total_rows={total_rows} "
+                f"bypass_cache={bypass_cache} full_access={full_access}"
+            )
 
         logger.info(
             f"PostgREST participants list ({TABLE_PROTOCOLOS_WIDE}): "

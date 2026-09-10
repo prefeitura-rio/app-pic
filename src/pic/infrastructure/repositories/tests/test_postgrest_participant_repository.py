@@ -1097,6 +1097,32 @@ class TestRepositoryCache:
         redis.set.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_non_empty_result_uses_full_ttl(self, make_repo):
+        redis = self._make_redis(None)
+        repo, _ = make_repo({"endpoint_participante_protocolos_wide": [resumo_row("1")]}, redis_client=redis)
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+        redis.set.assert_awaited_once()
+        assert redis.set.await_args.kwargs["ex"] == 1800
+
+    @pytest.mark.asyncio
+    async def test_empty_result_uses_short_ttl(self, make_repo):
+        redis = self._make_redis(None)
+        repo, _ = make_repo({"endpoint_participante_protocolos_wide": []}, redis_client=redis)
+        await repo.list_participants(
+            filters=FilterCriteria(),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+        redis.set.assert_awaited_once()
+        assert redis.set.await_args.kwargs["ex"] == 60
+
+    @pytest.mark.asyncio
     async def test_cache_hit_skips_fetches(self, make_repo):
         payload = {
             "data": [],
