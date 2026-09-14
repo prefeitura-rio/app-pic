@@ -8,7 +8,3 @@ class NotFoundError(DomainError):
 
 class ValidationError(DomainError):
     pass
-
-
-class ForbiddenError(DomainError):
-    pass

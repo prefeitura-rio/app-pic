@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 from src.pic.domain.models.dashboard import Dashboard
 
@@ -8,9 +9,8 @@ class IDashboardRepository(ABC):
     async def get_dashboard_metrics(
         self,
         filters: dict[str, object],
-        user_token: str | None = None,
+        permissions: Any = None,
         secretaria: str | None = None,
-        user_id: str | None = None,
         bypass_cache: bool = False,
     ) -> Dashboard:
         ...

@@ -5,7 +5,6 @@ import { IdWithName } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -16,7 +15,7 @@ import {
   CommandEmpty,
   CommandInput,
 } from "@/components/ui/command";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/app/utils/utils";
 import { List } from "react-window";
 
@@ -28,8 +27,6 @@ interface VirtualizedIdMultiSelectProps {
   placeholder?: string;
   disabled?: boolean;
   tooltip?: string;
-  onOpen?: () => void;
-  loading?: boolean;
 }
 
 export function VirtualizedIdMultiSelect({
@@ -40,22 +37,9 @@ export function VirtualizedIdMultiSelect({
   placeholder = "Selecione...",
   disabled = false,
   tooltip,
-  onOpen,
-  loading = false,
 }: VirtualizedIdMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-
-  // Trigger the lazy load on first open (filters pattern)
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      setOpen(nextOpen);
-      if (nextOpen) {
-        onOpen?.();
-      }
-    },
-    [onOpen]
-  );
 
   // Filter options based on search
   const filteredOptions = useMemo(() => {
@@ -82,6 +66,11 @@ export function VirtualizedIdMultiSelect({
       onChange([...selected, option]);
     }
   }, [selected, onChange, isOptionSelected]);
+
+  // Remove selected item
+  const removeItem = (option: IdWithName) => {
+    onChange(selected.filter((s) => s.id !== option.id));
+  };
 
   // Clear all
   const clearAll = () => {
@@ -137,7 +126,6 @@ export function VirtualizedIdMultiSelect({
           <div className="flex gap-2">
             {selected.length < options.length && (
               <Button
-                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={selectAll}
@@ -149,7 +137,6 @@ export function VirtualizedIdMultiSelect({
             )}
             {selected.length > 0 && (
               <Button
-                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={clearAll}
@@ -163,18 +150,67 @@ export function VirtualizedIdMultiSelect({
         )}
       </div>
 
-      {/* Selected count chip — individual items are shown inside the dropdown */}
+      {/* Selected items - Show summary for large selections */}
       {selected.length > 0 && (
-        <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
-          <Badge variant="secondary" title={`${selected.length} itens selecionados`}>
-            {selected.length} selecionado(s)
-          </Badge>
+        <div className="p-2 border rounded-md bg-muted/50">
+          {selected.length <= 10 ? (
+            // Show all badges if 10 or less
+            <div className="flex flex-wrap gap-1">
+              {selected.map((item) => (
+                <Badge
+                  key={item.id}
+                  variant="secondary"
+                  className="gap-1"
+                  title={`${item.nome} (${item.id})`}
+                >
+                  {item.nome}
+                  {!disabled && (
+                    <button
+                      onClick={() => removeItem(item)}
+                      className="ml-1 hover:text-destructive"
+                      title={`Remover ${item.nome}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            // Show summary for more than 10
+            <div className="flex items-center justify-between">
+              <div className="flex flex-wrap gap-1 flex-1">
+                {selected.slice(0, 5).map((item) => (
+                  <Badge
+                    key={item.id}
+                    variant="secondary"
+                    className="gap-1"
+                    title={`${item.nome} (${item.id})`}
+                  >
+                    {item.nome}
+                    {!disabled && (
+                      <button
+                        onClick={() => removeItem(item)}
+                        className="ml-1 hover:text-destructive"
+                        title={`Remover ${item.nome}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </Badge>
+                ))}
+                <Badge variant="outline" className="bg-background" title={`${selected.length - 5} itens adicionais selecionados`}>
+                  +{selected.length - 5} mais
+                </Badge>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Combobox */}
       {!disabled && (
-        <Popover open={open} onOpenChange={handleOpenChange}>
+        <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
@@ -199,16 +235,10 @@ export function VirtualizedIdMultiSelect({
                 value={search}
                 onValueChange={setSearch}
               />
-              {loading && (
-                <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Carregando opções...
-                </div>
-              )}
-              {!loading && filteredOptions.length === 0 && (
+              {filteredOptions.length === 0 && (
                 <CommandEmpty>Nenhum resultado encontrado</CommandEmpty>
               )}
-              {!loading && filteredOptions.length > 0 && (
+              {filteredOptions.length > 0 && (
                 <List
                   rowComponent={Row}
                   rowCount={filteredOptions.length}

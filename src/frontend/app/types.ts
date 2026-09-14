@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
 // BACKEND RESPONSE TYPES (matching src/api/v1/schemas.py)
 // ============================================================================
@@ -8,7 +9,7 @@ export interface PaginationMeta {
 	total_rows: number;
 	total_pages: number;
 	cache_hit: boolean;
-	profiling?: Record<string, unknown> | null; // Dados de profiling do backend (formato livre, uso apenas em debug)
+	profiling?: any;
 	can_view_dashboard?: boolean; // Indica se o usuário pode visualizar a aba Dashboard
 }
 
@@ -204,32 +205,6 @@ export interface FilterOptionItem {
 	label: string;
 }
 
-export type FilterFieldKey =
-	| "bairros"
-	| "subprefeituras"
-	| "regioes_administrativas"
-	| "grupos"
-	| "cohorts"
-	| "status_list"
-	| "situacoes"
-	| "racas"
-	| "cres"
-	| "aps"
-	| "cas_list"
-	| "cras"
-	| "escolas"
-	| "clinicas"
-	| "equipes_familia"
-	| "protocolo_descricoes"
-	| "protocolo_status_list"
-	| "bolsa_familia"
-	| "protocolo_secretarias";
-
-export interface FilterFieldOptionsResponse {
-	field: string;
-	options: FilterOptionItem[];
-}
-
 export interface SmartFilterOptions {
 	// Filtros de participantes
 	bairros: FilterOptionItem[];
@@ -249,8 +224,6 @@ export interface SmartFilterOptions {
 	racas: FilterOptionItem[];
 	protocolo_descricoes: FilterOptionItem[]; // Descrições de protocolos
 	protocolo_status_list: FilterOptionItem[]; // Status de protocolos
-	bolsa_familia: FilterOptionItem[]; // Opções de Bolsa Família (dinâmicas)
-	protocolo_secretarias: FilterOptionItem[]; // Secretarias de protocolo (dinâmicas)
 
 	// Filtros geoespaciais
 	tipos_camada: FilterOptionItem[];
@@ -263,7 +236,7 @@ export interface SmartFilterOptions {
 	secretarias: FilterOptionItem[];
 	status_ativo: FilterOptionItem[];
 	permissions: FilterOptionItem[];
-	secretarias_acesso_list: FilterOptionItem[];
+	secretaria_acesso_list: FilterOptionItem[];
 }
 
 // ============================================================================
@@ -482,29 +455,6 @@ export interface ParticipantFilters {
 }
 
 /**
- * Filtros específicos do Dashboard (Visão Geral)
- * Mapeados para as colunas da tabela de dashboard pré-agregada
- * Todos os filtros suportam multi-select
- */
-export interface DashboardFilterValues {
-	grupo?: string | string[]; // pic_grupo (multi-select)
-	cohort?: string | string[]; // pic_cohort (safra) (multi-select)
-	status?: string | string[]; // pic_status (multi-select)
-	secretaria?: string; // secretaria (SMAS, SME, SMS) (single-select apenas)
-	subprefeitura?: string | string[]; // subprefeitura (multi-select)
-	regiao_administrativa?: string | string[]; // regiao_administrativa (multi-select)
-	bairro?: string | string[]; // bairro (multi-select)
-	cre?: string | string[]; // id_cre (multi-select)
-	ap?: string | string[]; // id_ap (multi-select)
-	cas?: string | string[]; // id_cas (multi-select)
-	cras?: string | string[]; // id_cras (multi-select)
-	escola?: string | string[]; // id_escola (multi-select)
-	unidade_saude?: string | string[]; // id_clinica_familia (multi-select)
-	equipe_saude?: string | string[]; // id_equipe_familia (multi-select)
-	has_bolsa_familia?: boolean; // filtro booleano
-}
-
-/**
  * Pagination state for frontend tables
  */
 export interface PaginationState {
@@ -554,17 +504,17 @@ export interface IdWithName {
 }
 
 /**
- * Unidade (tipo de equipamento) atribuível a um usuário.
- * Chaves do endpoint lazy GET /admin/available-ids/{unit_type}.
+ * Available IDs for assignment (from /admin/available-ids endpoint)
  */
-export type UnitType =
-	| "cras"
-	| "escolas"
-	| "cres"
-	| "aps"
-	| "cas"
-	| "clinicas"
-	| "equipes_familia";
+export interface AvailableIds {
+	cras: IdWithName[];
+	escolas: IdWithName[];
+	cres: IdWithName[];
+	aps: IdWithName[];
+	cas: IdWithName[];
+	clinicas: IdWithName[];
+	equipes_familia: IdWithName[];
+}
 
 /**
  * User access record (from /admin/users endpoint)
@@ -587,7 +537,7 @@ export interface UserAccessRecord {
 	id_clinica_familia_list?: IdWithName[] | null;
 	id_equipe_familia_list?: IdWithName[] | null;
 
-	secretarias_acesso: string[];
+	secretaria_acesso?: string | null;
 
 	active: boolean;
 	notes?: string | null;
@@ -617,10 +567,9 @@ export interface CreateUserRequest {
 	id_clinica_familia_list?: IdWithName[] | null;
 	id_equipe_familia_list?: IdWithName[] | null;
 
-	secretarias_acesso?: string[] | null;
+	secretaria_acesso?: string | null;
 
 	notes?: string | null;
-	active?: boolean; // Backend UpsertUserRequest aceita `active` tanto na criação quanto na atualização
 	is_update?: boolean; // Indica se é uma atualização intencional (vs criação)
 }
 
@@ -643,7 +592,7 @@ export interface UpdateUserRequest {
 	id_clinica_familia_list?: IdWithName[] | null;
 	id_equipe_familia_list?: IdWithName[] | null;
 
-	secretarias_acesso?: string[] | null;
+	secretaria_acesso?: string | null;
 
 	notes?: string | null;
 	active?: boolean | null;
@@ -683,7 +632,7 @@ export interface ImportedUser {
 	id_ap_list?: IdWithName[] | null;
 	id_cas_list?: IdWithName[] | null;
 	id_clinica_familia_list?: IdWithName[] | null;
-	secretarias_acesso?: string[] | null;
+	secretaria_acesso?: string | null;
 }
 
 /**
@@ -721,7 +670,7 @@ export interface BatchPermissionsRequest {
 	id_cas_list?: IdWithName[] | null;
 	id_clinica_familia_list?: IdWithName[] | null;
 	id_equipe_familia_list?: IdWithName[] | null;
-	secretarias_acesso?: string[] | null;
+	secretaria_acesso?: string | null;
 }
 
 // ============================================================================
@@ -748,22 +697,6 @@ export interface GeospatialLayer {
 }
 
 /**
- * Filtros aplicáveis às camadas geoespaciais (V2). Cada valor é enviado ao
- * backend como string única (multi-selects são combinados com ",") ou,
- * por compatibilidade com estado persistido antigo, como array de strings.
- */
-export interface GeospatialFilters {
-	tipo_camada?: string | string[];
-	categoria?: string | string[];
-	regional?: string | string[];
-	bairro?: string | string[];
-	regiao_administrativa?: string | string[];
-	subprefeitura?: string | string[];
-	nome?: string | string[];
-	[key: string]: string | string[] | undefined;
-}
-
-/**
  * Opções de filtros disponíveis para camadas geoespaciais (V2)
  */
 export interface GeospatialFilterOptions {
@@ -787,15 +720,6 @@ export interface GeospatialLayersResponse {
  * Resposta do endpoint de vocabulário de filtros geoespaciais V2
  */
 export type GeospatialFilterVocabularyResponse = GeospatialFilterOptions;
-
-/**
- * Resposta do endpoint de opções de filtro geoespacial por campo (lazy, per-field)
- * Espelha FilterFieldOptionsResponse dos participantes.
- */
-export interface GeospatialFilterFieldOptionsResponse {
-	field: string;
-	options: FilterOptionItem[];
-}
 
 /**
  * Error for a specific CPF during batch permissions update
@@ -841,7 +765,7 @@ export interface ImportedUserWithEdits {
 	id_ap_list?: IdWithName[] | null;
 	id_cas_list?: IdWithName[] | null;
 	id_clinica_familia_list?: IdWithName[] | null;
-	secretarias_acesso?: string[] | null;
+	secretaria_acesso?: string | null;
 }
 
 // ============================================================================
@@ -855,56 +779,4 @@ export interface ProtocoloMotivoDetalhe {
 export interface ProtocoloMotivo {
 	motivos: string[];
 	detalhes: Record<string, ProtocoloMotivoDetalhe>;
-}
-
-// ============================================================================
-// DEBUG (super admin only) — dados brutos de origem BigQuery
-// ============================================================================
-
-/** Metadados de uma fonte de dados que alimentou um protocolo (rastreamento) */
-export interface DebugProtocoloMetadata {
-	id_origem?: string;
-	dados?: string; // JSON stringificado, parseado sob demanda no viewer
-	tabela_bq?: string;
-	dbt_model_path?: string;
-	dbt_model_type?: string;
-	updated_at?: string;
-	dados_schema?: unknown;
-}
-
-export interface DebugProtocoloRegrasNegocio {
-	publico_alvo?: string;
-	regular?: string;
-	irregular?: string;
-	atencao?: string;
-	nao_aplica?: string;
-}
-
-export interface DebugProtocolo {
-	protocolo_id?: string;
-	protocolo_descricao?: string;
-	protocolo_status?: string;
-	protocolo_status_label?: string;
-	protocolo_secretaria?: string;
-	protocolo_level?: string;
-	metadata?: DebugProtocoloMetadata[];
-	regras_negocio?: DebugProtocoloRegrasNegocio;
-}
-
-/**
- * Participante retornado pelo endpoint de debug. Os campos abaixo são os
- * consumidos pela página de debug; o restante vem bruto do BigQuery sem
- * schema fixo (por isso a index signature).
- */
-export interface DebugParticipant {
-	nome?: string;
-	cpf?: string;
-	id_membro_familia?: string;
-	nascimento_data?: string;
-	pic_grupo?: string;
-	pic_cohort?: string;
-	pic_status?: string;
-	pic_fase_atual?: string;
-	protocolos?: DebugProtocolo[];
-	[key: string]: unknown;
 }

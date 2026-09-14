@@ -71,8 +71,3 @@ class Dashboard(BaseModel):
     distribuicao_tempo_irregularidade: list[DistribuicaoTempoIrregularidade] = []
     taxa_resolucao_mensal: list[TaxaResolucaoMensalPoint] = []
     data_atualizacao: datetime | None = None
-
-    @classmethod
-    def empty(cls) -> "Dashboard":
-        """Fully zeroed dashboard (used when the user cannot view it)."""
-        return cls()

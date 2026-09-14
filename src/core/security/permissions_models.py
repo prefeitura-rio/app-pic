@@ -4,17 +4,14 @@ Data models for CPF-based data governance.
 This module defines the permission models used to control user access
 to data based on their assigned facility IDs (CRAS, schools, CRE, etc).
 """
-import logging
-
+from typing import Optional, List
 from pydantic import BaseModel
 
-from src.pic.domain.models.admin import IdWithName
 
-logger = logging.getLogger(__name__)
-
-_ALL_SECRETARIAS = {"SME", "SMS", "SMAS"}
-
-__all__ = ["IdWithName", "PermissionDeniedError", "UserPermissions"]
+class IdWithName(BaseModel):
+    """ID with name for UI display"""
+    id: str
+    nome: str
 
 
 class PermissionDeniedError(Exception):
@@ -24,64 +21,36 @@ class PermissionDeniedError(Exception):
 
 class UserPermissions(BaseModel):
     """
-    User permission record loaded from Postgres (users/policy tables).
+    User permission record from data_access table.
 
     Defines which facility IDs a user has access to and their admin status.
     """
     cpf: str
-    email: str | None = None
+    email: Optional[str] = None
     is_admin: bool = False
     is_super_admin: bool = False
-    permission: str | None = None
+    permission: Optional[str] = None
 
-    # Segmentation lists (None/empty = no restriction for that category)
-    id_cras_list: list[IdWithName] | None = None
-    id_escola_list: list[IdWithName] | None = None
-    id_cre_list: list[IdWithName] | None = None
-    id_ap_list: list[IdWithName] | None = None
-    id_cas_list: list[IdWithName] | None = None
-    id_clinica_familia_list: list[IdWithName] | None = None
-    id_equipe_familia_list: list[IdWithName] | None = None
+    # Segmentation lists (None = no restriction for that category)
+    id_cras_list: Optional[List[IdWithName]] = None
+    id_escola_list: Optional[List[IdWithName]] = None
+    id_cre_list: Optional[List[IdWithName]] = None
+    id_ap_list: Optional[List[IdWithName]] = None
+    id_cas_list: Optional[List[IdWithName]] = None
+    id_clinica_familia_list: Optional[List[IdWithName]] = None
+    id_equipe_familia_list: Optional[List[IdWithName]] = None
 
-    # Protocol access control: subset of {"SME", "SMS", "SMAS"}.
-    # Empty list = no access to protocolo-gated data.
-    secretarias_acesso: list[str] = []
+    # Protocol access control
+    secretaria_acesso: Optional[str] = None  # SME, SMS, SMAS, TODOS, NULL
 
     active: bool = True
-    notes: str | None = None
-
-    @property
-    def secretaria_acesso(self) -> str | None:
-        """
-        Backward-compat shim for legacy (v1) code that still expects the old
-        single-value representation (SME/SMS/SMAS/TODOS/NULL).
-
-        - No secretarias -> None (old "NULL")
-        - All three -> "TODOS"
-        - Exactly one -> that value
-        - Any other combination (2 of 3) has no equivalent in the old model;
-          fall back to "TODOS" (permissive) rather than silently dropping
-          access, and log so it's visible if this ever triggers.
-        """
-        if not self.secretarias_acesso:
-            return None
-        if set(self.secretarias_acesso) >= _ALL_SECRETARIAS:
-            return "TODOS"
-        if len(self.secretarias_acesso) == 1:
-            return self.secretarias_acesso[0]
-        logger.warning(
-            "secretarias_acesso=%s has no equivalent in the legacy "
-            "single-value model; falling back to TODOS for cpf=%s",
-            self.secretarias_acesso,
-            self.cpf,
-        )
-        return "TODOS"
+    notes: Optional[str] = None
 
     def has_full_access(self) -> bool:
         """Super admins have full access to all data"""
         return self.is_super_admin
 
-    def get_filter_ids(self, id_type: str) -> list[str]:
+    def get_filter_ids(self, id_type: str) -> List[str]:
         """
         Get list of IDs for a specific type (e.g., 'id_cras').
 

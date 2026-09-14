@@ -8,14 +8,13 @@ import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 type BadgeVariant = "outline" | "default" | "secondary" | "destructive" | "warning" | "success";
 
 interface ParticipantTableProps {
-	data: ParticipanteListItem[];
-	onRowClick: (idMembroFamilia: string) => void;
-	getBadgeVariant: (situacao?: string) => BadgeVariant;
-	isLoading?: boolean;
-	sortBy?: string | null;
-	sortOrder?: SortOrder;
-	onSort?: (column: string) => void;
-	visibleColumns?: string[];
+  data: ParticipanteListItem[];
+  onRowClick: (idMembroFamilia: string) => void;
+  getBadgeVariant: (situacao?: string) => BadgeVariant;
+  isLoading?: boolean;
+  sortBy?: string | null;
+  sortOrder?: SortOrder;
+  onSort?: (column: string) => void;
 }
 
 const SORTABLE_COLUMNS = [
@@ -68,24 +67,20 @@ const getTotalColor = (fracao?: string) => {
 
 const MIN_TABLE_WIDTH = 1000;
 
-export const ParticipantTable = memo(
-	({
-		data,
-		onRowClick,
-		getBadgeVariant,
-		isLoading,
-		sortBy,
-		sortOrder = "asc",
-		onSort,
-		visibleColumns: visibleColumnKeys,
-	}: ParticipantTableProps) => {
-		if (!data || !Array.isArray(data) || data.length === 0) {
-			return null;
-		}
+export const ParticipantTable = memo(({
+  data,
+  onRowClick,
+  getBadgeVariant,
+  isLoading,
+  sortBy,
+  sortOrder = "asc",
+  onSort,
+}: ParticipantTableProps) => {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return null;
+  }
 
-		const visibleColumns = visibleColumnKeys
-			? SORTABLE_COLUMNS.filter((col) => visibleColumnKeys.includes(col.key))
-			: SORTABLE_COLUMNS;
+	const visibleColumns = SORTABLE_COLUMNS;
 
   const handleHeaderClick = (column: string) => {
     if (onSort) {
@@ -209,17 +204,7 @@ export const ParticipantTable = memo(
 											);
 
 										if (key.includes("_fracao")) {
-											// key é sempre um dos campos "*_fracao" (string) de
-											// ParticipanteListItem nesse ponto (garantido pelo includes acima)
-											const value = participant[
-												key as keyof Pick<
-													ParticipanteListItem,
-													| "total_fracao"
-													| "assistencia_fracao"
-													| "educacao_fracao"
-													| "saude_fracao"
-												>
-											];
+											const value = (participant as any)[key];
 											const hasTotalFracao = visibleColumns.some(
 												(c) => c.key === "total_fracao",
 											);
