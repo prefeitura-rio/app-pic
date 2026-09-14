@@ -2,16 +2,15 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-DEFAULT_PAGE_SIZE = 20
-MAX_PAGE_SIZE = 10000
+from src.utils.data_manager_config import DataManagerConfig as config
 
 
 class PaginationParams(BaseModel):
     page: int = Field(1, ge=1)
     page_size: int = Field(
-        DEFAULT_PAGE_SIZE,
+        config.DEFAULT_PAGE_SIZE,
         ge=-1,
-        le=MAX_PAGE_SIZE,
+        le=config.MAX_PAGE_SIZE,
     )
 
 

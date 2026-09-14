@@ -1,8 +1,8 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from src.core.security.permissions_models import IdWithName
 from src.pic.domain.models.admin import (
-    UNIT_TYPE_REGISTRY,
+    AvailableIds,
     BatchImportError,
     BatchImportResult,
     BatchPermissionsError,
@@ -12,33 +12,41 @@ from src.pic.domain.models.admin import (
     ImportedUser,
     UpsertUserRequest,
     UserAccessRecord,
-    calculate_permission,
 )
 
 
-def test_unit_type_registry():
-    assert set(UNIT_TYPE_REGISTRY.keys()) == {
-        "cras",
-        "escolas",
-        "cres",
-        "aps",
-        "cas",
-        "clinicas",
-        "equipes_familia",
-    }
-    assert UNIT_TYPE_REGISTRY["cras"] == ("cras", "id_cras_list")
-    assert UNIT_TYPE_REGISTRY["clinicas"] == ("clinica_familia", "id_clinica_familia_list")
+def test_available_ids_defaults_empty():
+    ids = AvailableIds()
+    assert ids.cras == []
+    assert ids.escolas == []
+    assert ids.cres == []
+    assert ids.aps == []
+    assert ids.cas == []
+    assert ids.clinicas == []
+    assert ids.equipes_familia == []
 
 
-def test_calculate_permission():
-    assert calculate_permission(False, False) == "user"
-    assert calculate_permission(True, False) == "admin"
-    assert calculate_permission(False, True) == "super_admin"
-    assert calculate_permission(True, True) == "super_admin"
+def test_available_ids_populated():
+    ids = AvailableIds(
+        cras=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
+        escolas=[IdWithName(id="ESC_001", nome="Escola A")],
+        cres=[IdWithName(id="CRE_01", nome="1a CRE")],
+    )
+    assert len(ids.cras) == 1
+    assert ids.cras[0].id == "CRAS_001"
+    assert len(ids.escolas) == 1
+    assert len(ids.aps) == 0
+
+
+def test_available_ids_serialization():
+    ids = AvailableIds(cras=[IdWithName(id="CRAS_001", nome="CRAS Centro")])
+    data = ids.model_dump()
+    assert len(data["cras"]) == 1
+    assert data["cras"][0]["id"] == "CRAS_001"
 
 
 def test_user_access_record_minimal():
-    now = datetime(2025, 7, 1, tzinfo=UTC)
+    now = datetime(2025, 7, 1, tzinfo=timezone.utc)
     uar = UserAccessRecord(cpf="12345678900", created_by="admin", created_at=now)
     assert uar.cpf == "12345678900"
     assert uar.is_admin is False
@@ -49,7 +57,7 @@ def test_user_access_record_minimal():
 
 
 def test_user_access_record_full():
-    now = datetime(2025, 7, 1, tzinfo=UTC)
+    now = datetime(2025, 7, 1, tzinfo=timezone.utc)
     uar = UserAccessRecord(
         cpf="12345678900",
         email="user@example.com",
@@ -60,7 +68,7 @@ def test_user_access_record_full():
         is_super_admin=False,
         permission="admin",
         id_cras_list=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
-        secretarias_acesso=["SMS"],
+        secretaria_acesso="SMS",
         active=True,
         created_by="super_admin",
         created_at=now,
@@ -68,12 +76,12 @@ def test_user_access_record_full():
     assert uar.nome == "Joao"
     assert uar.is_admin is True
     assert uar.permission == "admin"
-    assert uar.secretarias_acesso == ["SMS"]
+    assert uar.secretaria_acesso == "SMS"
     assert len(uar.id_cras_list) == 1
 
 
 def test_user_access_record_serialization():
-    now = datetime(2025, 7, 1, tzinfo=UTC)
+    now = datetime(2025, 7, 1, tzinfo=timezone.utc)
     uar = UserAccessRecord(cpf="11111111111", created_by="admin", created_at=now)
     data = uar.model_dump()
     assert data["cpf"] == "11111111111"
@@ -95,12 +103,12 @@ def test_upsert_user_request_with_ids():
         is_admin=True,
         id_cras_list=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
         id_escola_list=[IdWithName(id="ESC_001", nome="Escola A")],
-        secretarias_acesso=["SME"],
+        secretaria_acesso="SME",
     )
     assert req.email == "user@example.com"
     assert req.is_admin is True
     assert len(req.id_cras_list) == 1
-    assert req.secretarias_acesso == ["SME"]
+    assert req.secretaria_acesso == "SME"
 
 
 def test_batch_import_error():
@@ -129,11 +137,11 @@ def test_imported_user_exists():
         status="exists",
         is_admin=True,
         is_super_admin=False,
-        secretarias_acesso=["SMS"],
+        secretaria_acesso="SMS",
     )
     assert u.status == "exists"
     assert u.is_admin is True
-    assert u.secretarias_acesso == ["SMS"]
+    assert u.secretaria_acesso == "SMS"
 
 
 def test_imported_user_error():
@@ -168,12 +176,12 @@ def test_batch_permissions_request():
         ],
         is_admin=True,
         id_cras_list=[IdWithName(id="CRAS_001", nome="CRAS Centro")],
-        secretarias_acesso=["SMAS"],
+        secretaria_acesso="SMAS",
     )
     assert len(req.users) == 2
     assert req.users[0].cpf == "12345678900"
     assert req.is_admin is True
-    assert req.secretarias_acesso == ["SMAS"]
+    assert req.secretaria_acesso == "SMAS"
 
 
 def test_batch_permissions_error():

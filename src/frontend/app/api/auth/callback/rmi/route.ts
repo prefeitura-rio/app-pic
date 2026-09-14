@@ -39,10 +39,6 @@ export async function GET(req: NextRequest) {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error(
-        `[OAuth Callback] Token exchange failed (${response.status}):`,
-        error,
-      );
       if (!process.env.NEXTAUTH_URL) {
         throw new Error("NEXTAUTH_URL environment variable is required");
       }
@@ -80,17 +76,6 @@ export async function GET(req: NextRequest) {
       sameSite: "lax",
       path: "/",
       maxAge: 60, // só precisa durar até o DashboardClient montar e ler
-    });
-
-    // Sinaliza que as policies devem ser sincronizadas por completo no próximo
-    // GET /admin/me (force_sync=true). Independente do fresh_login — cada cookie
-    // tem propósito próprio. Consumido pelo hook useForcePolicySyncOnLogin().
-    res.cookies.set("policy_force_sync", "1", {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60, // mesma janela que fresh_login
     });
 
     // Store tokens in httpOnly cookies for security
