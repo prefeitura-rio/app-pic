@@ -36,3 +36,34 @@ class GeospatialFilters(BaseModel):
     regiao_administrativa: str | None = None
     subprefeitura: str | None = None
     nome: str | None = None
+
+
+GEOSPATIAL_FILTER_COLUMN_MAP: dict[str, str] = {
+    "tipo_camada": "tipo_camada",
+    "categoria": "categoria",
+    "regional": "regional",
+    "bairro": "bairro",
+    "regiao_administrativa": "regiao_administrativa",
+    "subprefeitura": "subprefeitura",
+    "nome": "nome",
+}
+
+
+def geospatial_filters_to_columns(
+    filters: GeospatialFilters,
+) -> dict[str, object]:
+    """Single translation rule: API filter names -> DB columns.
+
+    Comma-separated values become lists (multi-select parity).
+    """
+    column_filters: dict[str, object] = {}
+    for filter_key, filter_value in filters.model_dump(exclude_none=True).items():
+        if filter_key not in GEOSPATIAL_FILTER_COLUMN_MAP:
+            continue
+        column_name = GEOSPATIAL_FILTER_COLUMN_MAP[filter_key]
+        if isinstance(filter_value, str) and "," in filter_value:
+            filter_value = [
+                v.strip() for v in filter_value.split(",") if v.strip()
+            ]
+        column_filters[column_name] = filter_value
+    return column_filters
