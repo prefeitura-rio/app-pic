@@ -1,28 +1,22 @@
-from collections.abc import AsyncIterator
 from typing import Any
 
-from src.pic.application.ports.participant_repository import ParticipantRepository
+import polars as pl
+
+from src.pic.application.ports.participant_repository import IParticipantRepository
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.domain.models.pagination import SortParams
 
+SENSITIVE_COLUMNS = ["latitude", "longitude"]
+
 
 class ExportOutput:
-    def __init__(
-        self,
-        columns: list[str],
-        pages: AsyncIterator[list[dict[str, Any]]],
-    ):
-        self.columns = columns
-        self.pages = pages
-
-
-async def _empty_pages() -> AsyncIterator[list[dict[str, Any]]]:
-    return
-    yield  # pragma: no cover
+    def __init__(self, df: pl.DataFrame):
+        self.df = df
+        self.total_rows = len(df)
 
 
 class ExportParticipantsUseCase:
-    def __init__(self, repository: ParticipantRepository):
+    def __init__(self, repository: IParticipantRepository):
         self._repository = repository
 
     async def execute(
@@ -30,34 +24,18 @@ class ExportParticipantsUseCase:
         filters: FilterCriteria,
         sort: SortParams,
         permissions: Any = None,
-        user_token: str | None = None,
         bypass_cache: bool = False,
     ) -> ExportOutput:
-        """Prepare the CSV export stream.
-
-        The first page is fetched eagerly so 403/422/502 errors and the
-        column names are resolved *before* the HTTP response starts; the
-        remaining pages stream lazily. `bypass_cache` is accepted for API
-        compatibility (the export never reads the cache).
-        """
-        pages = self._repository.export_wide_rows(
+        df = await self._repository.export_dataframe(
             filters=filters,
             sort=sort,
             permissions=permissions,
-            user_token=user_token,
+            bypass_cache=bypass_cache,
         )
 
-        try:
-            first_page = await anext(pages)
-        except StopAsyncIteration:
-            return ExportOutput(columns=self._repository.export_fallback_columns, pages=_empty_pages())
+        if permissions and not permissions.is_super_admin:
+            cols_to_drop = [c for c in SENSITIVE_COLUMNS if c in df.columns]
+            if cols_to_drop:
+                df = df.drop(cols_to_drop)
 
-        columns = list(first_page[0].keys()) if first_page else self._repository.export_fallback_columns
-
-        async def _all_pages() -> AsyncIterator[list[dict[str, Any]]]:
-            if first_page:
-                yield first_page
-            async for page in pages:
-                yield page
-
-        return ExportOutput(columns=columns, pages=_all_pages())
+        return ExportOutput(df=df)

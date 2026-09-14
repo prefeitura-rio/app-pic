@@ -2,37 +2,17 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-
-class IdWithName(BaseModel):
-    """ID with name for UI display.
-
-    Canonical domain model; `src.core.security.permissions_models` re-exports
-    this class so legacy consumers keep importing from there.
-    """
-
-    id: str
-    nome: str
+from src.core.security.permissions_models import IdWithName
 
 
-# public available-ids endpoint type -> (policy unit_type, permissions attr)
-UNIT_TYPE_REGISTRY: dict[str, tuple[str, str]] = {
-    "cras": ("cras", "id_cras_list"),
-    "escolas": ("escola", "id_escola_list"),
-    "cres": ("cre", "id_cre_list"),
-    "aps": ("ap", "id_ap_list"),
-    "cas": ("cas", "id_cas_list"),
-    "clinicas": ("clinica_familia", "id_clinica_familia_list"),
-    "equipes_familia": ("equipe_familia", "id_equipe_familia_list"),
-}
-
-
-def calculate_permission(is_admin: bool, is_super_admin: bool) -> str:
-    if is_super_admin:
-        return "super_admin"
-    elif is_admin:
-        return "admin"
-    else:
-        return "user"
+class AvailableIds(BaseModel):
+    cras: list[IdWithName] = Field(default_factory=list)
+    escolas: list[IdWithName] = Field(default_factory=list)
+    cres: list[IdWithName] = Field(default_factory=list)
+    aps: list[IdWithName] = Field(default_factory=list)
+    cas: list[IdWithName] = Field(default_factory=list)
+    clinicas: list[IdWithName] = Field(default_factory=list)
+    equipes_familia: list[IdWithName] = Field(default_factory=list)
 
 
 class UserAccessRecord(BaseModel):
@@ -53,7 +33,7 @@ class UserAccessRecord(BaseModel):
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
 
-    secretarias_acesso: list[str] = Field(default_factory=list)
+    secretaria_acesso: str | None = None
 
     active: bool = True
     notes: str | None = None
@@ -79,7 +59,7 @@ class UpsertUserRequest(BaseModel):
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
 
-    secretarias_acesso: list[str] | None = None
+    secretaria_acesso: str | None = None
 
     notes: str | None = None
     active: bool = True
@@ -110,7 +90,7 @@ class ImportedUser(BaseModel):
     id_cas_list: list[IdWithName] | None = None
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
-    secretarias_acesso: list[str] | None = None
+    secretaria_acesso: str | None = None
 
 
 class BatchImportResult(BaseModel):
@@ -139,7 +119,7 @@ class BatchPermissionsRequest(BaseModel):
     id_cas_list: list[IdWithName] | None = None
     id_clinica_familia_list: list[IdWithName] | None = None
     id_equipe_familia_list: list[IdWithName] | None = None
-    secretarias_acesso: list[str] | None = None
+    secretaria_acesso: str | None = None
 
 
 class BatchPermissionsError(BaseModel):

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import ExcelJS from "exceljs";
@@ -9,6 +9,8 @@ import ExcelJS from "exceljs";
 import { apiService } from "@/app/services/api";
 import {
   IdWithName,
+  AvailableIds,
+  ImportedUser,
   ImportedUserWithEdits,
   BatchImportResult,
   UserAccessRecord,
@@ -28,13 +30,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { VirtualizedIdMultiSelect } from "./VirtualizedIdMultiSelect";
-import { SecretariasAcessoField } from "./SecretariasAcessoField";
-import { useUnitOptions } from "./useUnitOptions";
 import {
   Download,
   Upload,
   Search,
+  Filter,
   Check,
+  X,
   AlertCircle,
   CheckCircle2,
   Clock,
@@ -72,6 +74,7 @@ const STATUS_ICONS = {
 };
 
 interface ImportTabProps {
+  availableIds: AvailableIds;
   currentUser: UserAccessRecord;
   onPermissionsApplied?: () => void; // Callback para atualizar tabela de usuários
   prePopulatedUsers?: UserAccessRecord[]; // Usuários pré-selecionados da tabela de usuários
@@ -82,66 +85,20 @@ type StatusFilter = "all" | UserStatus | "selectable" | "blocked";
 type SortBy = "nome" | "cpf" | "status";
 type SortOrder = "asc" | "desc";
 
-// Deduplicar por CPF (mantém a primeira ocorrência)
-function dedupeByCpf(users?: UserAccessRecord[]): UserAccessRecord[] {
-  if (!users || users.length === 0) return [];
-  const seen = new Set<string>();
-  return users.filter((u) => {
-    if (seen.has(u.cpf)) return false;
-    seen.add(u.cpf);
-    return true;
-  });
-}
-
-function buildImportedUsersFromPrePopulated(users?: UserAccessRecord[]): ImportedUserWithEdits[] {
-  return dedupeByCpf(users).map((user) => ({
-    cpf: user.cpf,
-    nome: user.nome,
-    email: user.email,
-    ocupacao: user.ocupacao,
-    secretaria: user.secretaria,
-    status: "exists" as const,
-    is_admin: user.is_admin,
-    is_super_admin: user.is_super_admin,
-    id_cras_list: user.id_cras_list,
-    id_escola_list: user.id_escola_list,
-    id_cre_list: user.id_cre_list,
-    id_ap_list: user.id_ap_list,
-    id_cas_list: user.id_cas_list,
-    id_clinica_familia_list: user.id_clinica_familia_list,
-    secretarias_acesso: user.secretarias_acesso,
-  }));
-}
-
-export function ImportTab({ currentUser, onPermissionsApplied, prePopulatedUsers }: ImportTabProps) {
+export function ImportTab({ availableIds, currentUser, onPermissionsApplied, prePopulatedUsers }: ImportTabProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const crasOptions = useUnitOptions("cras");
-  const escolasOptions = useUnitOptions("escolas");
-  const cresOptions = useUnitOptions("cres");
-  const apsOptions = useUnitOptions("aps");
-  const casOptions = useUnitOptions("cas");
-  const clinicasOptions = useUnitOptions("clinicas");
-  const equipesOptions = useUnitOptions("equipes_familia");
 
   // Upload state
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // Imported users state (with local edits)
-  // NOTA: inicializado direto a partir de `prePopulatedUsers` (sem useEffect)
-  // porque este componente sempre remonta ao trocar de aba (Radix TabsContent
-  // desmonta conteúdo inativo), então a prop já está correta no momento do mount.
-  const [importedUsers, setImportedUsers] = useState<ImportedUserWithEdits[]>(() =>
-    buildImportedUsersFromPrePopulated(prePopulatedUsers)
-  );
+  const [importedUsers, setImportedUsers] = useState<ImportedUserWithEdits[]>([]);
   const [importResult, setImportResult] = useState<BatchImportResult | null>(null);
 
   // Selection state
-  const [selectedCpfs, setSelectedCpfs] = useState<Set<string>>(
-    () => new Set(dedupeByCpf(prePopulatedUsers).map((u) => u.cpf))
-  );
+  const [selectedCpfs, setSelectedCpfs] = useState<Set<string>>(new Set());
 
   // Filter state
   const [searchTerm, setSearchTerm] = useState("");
@@ -158,18 +115,60 @@ export function ImportTab({ currentUser, onPermissionsApplied, prePopulatedUsers
   const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
   const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
   const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
-  const [secretariasAcesso, setSecretariasAcesso] = useState<string[]>([]);
+  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
 
-  // Secretarias que o admin logado pode atribuir (subset da própria secretarias_acesso)
-  const allowedSecretariasAcesso = useMemo(() => {
+
+  // Populate importedUsers when prePopulatedUsers is provided
+  useEffect(() => {
+    if (prePopulatedUsers && prePopulatedUsers.length > 0) {
+      // Deduplicar por CPF (manter primeiro)
+      const seen = new Set<string>();
+      const dedupedUsers = prePopulatedUsers.filter((u) => {
+        if (seen.has(u.cpf)) return false;
+        seen.add(u.cpf);
+        return true;
+      });
+      const usersWithStatus: ImportedUserWithEdits[] = dedupedUsers.map((user) => ({
+        cpf: user.cpf,
+        nome: user.nome,
+        email: user.email,
+        ocupacao: user.ocupacao,
+        secretaria: user.secretaria,
+        status: "exists" as const,
+        is_admin: user.is_admin,
+        is_super_admin: user.is_super_admin,
+        id_cras_list: user.id_cras_list,
+        id_escola_list: user.id_escola_list,
+        id_cre_list: user.id_cre_list,
+        id_ap_list: user.id_ap_list,
+        id_cas_list: user.id_cas_list,
+        id_clinica_familia_list: user.id_clinica_familia_list,
+        secretaria_acesso: user.secretaria_acesso,
+      }));
+      setImportedUsers(usersWithStatus);
+      // Select all pre-populated users
+      setSelectedCpfs(new Set(dedupedUsers.map((u) => u.cpf)));
+    }
+  }, [prePopulatedUsers]);
+
+  // Filter available IDs based on current user permissions
+  // Super admin sees all, segmented admin only sees their own IDs
+  const filteredAvailableIds = useMemo(() => {
     if (currentUser.is_super_admin) {
-      return ["SME", "SMS", "SMAS"];
+      return availableIds;
     }
-    if (currentUser.is_admin) {
-      return currentUser.secretarias_acesso || [];
-    }
-    return [];
-  }, [currentUser]);
+
+    // Segmented admin: only show IDs they can assign (their own IDs)
+    return {
+      cras: currentUser.id_cras_list || [],
+      escolas: currentUser.id_escola_list || [],
+      cres: currentUser.id_cre_list || [],
+      aps: currentUser.id_ap_list || [],
+      cas: currentUser.id_cas_list || [],
+      clinicas: currentUser.id_clinica_familia_list || [],
+      equipes_familia: currentUser.id_equipe_familia_list || [],
+    };
+  }, [availableIds, currentUser]);
 
   // Editing state
   const [editingCell, setEditingCell] = useState<{
@@ -411,9 +410,9 @@ export function ImportTab({ currentUser, onPermissionsApplied, prePopulatedUsers
         if (user.id_ap_list) setSelectedAps(user.id_ap_list);
         if (user.id_cas_list) setSelectedCas(user.id_cas_list);
         if (user.id_clinica_familia_list) setSelectedClinicas(user.id_clinica_familia_list);
-        // Preencher secretarias_acesso se existir
-        if (user.secretarias_acesso) {
-          setSecretariasAcesso(user.secretarias_acesso);
+        // Preencher secretaria_acesso se existir
+        if (user.secretaria_acesso) {
+          setSecretariaAcesso(user.secretaria_acesso);
         }
       }
     }
@@ -444,7 +443,7 @@ export function ImportTab({ currentUser, onPermissionsApplied, prePopulatedUsers
       id_cas_list: selectedCas.length > 0 ? selectedCas : null,
       id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
       id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-      secretarias_acesso: secretariasAcesso,
+      secretaria_acesso: secretariaAcesso,
     });
   };
 
@@ -1025,81 +1024,85 @@ export function ImportTab({ currentUser, onPermissionsApplied, prePopulatedUsers
               {/* Secretaria Acesso - MOVIDO PARA O TOPO */}
               <div className="space-y-2">
                 <Label>Acesso a Protocolos</Label>
-                <SecretariasAcessoField
-                  value={secretariasAcesso}
-                  onChange={setSecretariasAcesso}
-                  allowedValues={allowedSecretariasAcesso}
-                />
+                <Select
+                  value={secretariaAcesso}
+                  onValueChange={setSecretariaAcesso}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o acesso" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NULL">🚫 Sem Acesso a Protocolos</SelectItem>
+                    {(currentUser.is_super_admin || currentUser.secretaria_acesso === "TODOS") && (
+                      <SelectItem value="TODOS">🌐 Todos os Protocolos (TODOS)</SelectItem>
+                    )}
+                    {(!currentUser.secretaria_acesso || currentUser.secretaria_acesso === "TODOS" || currentUser.secretaria_acesso === "SME") && (
+                      <SelectItem value="SME">📚 Apenas Educação (SME)</SelectItem>
+                    )}
+                    {(!currentUser.secretaria_acesso || currentUser.secretaria_acesso === "TODOS" || currentUser.secretaria_acesso === "SMS") && (
+                      <SelectItem value="SMS">🏥 Apenas Saúde (SMS)</SelectItem>
+                    )}
+                    {(!currentUser.secretaria_acesso || currentUser.secretaria_acesso === "TODOS" || currentUser.secretaria_acesso === "SMAS") && (
+                      <SelectItem value="SMAS">🤝 Apenas Assistência Social (SMAS)</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* ID selectors */}
               <VirtualizedIdMultiSelect
                 label="CRAS"
-                options={crasOptions.options}
+                options={filteredAvailableIds.cras}
                 selected={selectedCras}
                 onChange={setSelectedCras}
-                onOpen={crasOptions.onOpen}
-                loading={crasOptions.isLoading}
                 placeholder="Selecionar CRAS..."
               />
 
               <VirtualizedIdMultiSelect
                 label="Escolas"
-                options={escolasOptions.options}
+                options={filteredAvailableIds.escolas}
                 selected={selectedEscolas}
                 onChange={setSelectedEscolas}
-                onOpen={escolasOptions.onOpen}
-                loading={escolasOptions.isLoading}
                 placeholder="Selecionar Escolas..."
               />
 
               <VirtualizedIdMultiSelect
                 label="CRE"
-                options={cresOptions.options}
+                options={filteredAvailableIds.cres}
                 selected={selectedCres}
                 onChange={setSelectedCres}
-                onOpen={cresOptions.onOpen}
-                loading={cresOptions.isLoading}
                 placeholder="Selecionar CREs..."
               />
 
               <VirtualizedIdMultiSelect
                 label="CAP"
-                options={apsOptions.options}
+                options={filteredAvailableIds.aps}
                 selected={selectedAps}
                 onChange={setSelectedAps}
-                onOpen={apsOptions.onOpen}
-                loading={apsOptions.isLoading}
                 placeholder="Selecionar CAPs..."
               />
 
               <VirtualizedIdMultiSelect
                 label="CAS"
-                options={casOptions.options}
+                options={filteredAvailableIds.cas}
                 selected={selectedCas}
                 onChange={setSelectedCas}
-                onOpen={casOptions.onOpen}
-                loading={casOptions.isLoading}
                 placeholder="Selecionar CAS..."
               />
 
               <VirtualizedIdMultiSelect
                 label="Clinicas"
-                options={clinicasOptions.options}
+                options={filteredAvailableIds.clinicas}
                 selected={selectedClinicas}
                 onChange={setSelectedClinicas}
-                onOpen={clinicasOptions.onOpen}
-                loading={clinicasOptions.isLoading}
                 placeholder="Selecionar Clinicas..."
               />
 
               <VirtualizedIdMultiSelect
                 label="Equipes de Saúde da Família"
-                options={equipesOptions.options}
+                options={filteredAvailableIds.equipes_familia}
                 selected={selectedEquipesFamilia}
                 onChange={setSelectedEquipesFamilia}
-                onOpen={equipesOptions.onOpen}
-                loading={equipesOptions.isLoading}
                 placeholder="Selecionar Equipes..."
               />
 

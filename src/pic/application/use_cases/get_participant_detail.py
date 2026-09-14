@@ -1,14 +1,12 @@
 from typing import Any
 
-from src.pic.application.ports.participant_repository import (
-    ParticipantRepository,
-)
+from src.pic.application.ports.participant_repository import IParticipantRepository
 from src.pic.domain.errors import NotFoundError
 from src.pic.domain.models.participante import Participante
 
 
 class GetParticipantDetailUseCase:
-    def __init__(self, repository: ParticipantRepository):
+    def __init__(self, repository: IParticipantRepository):
         self._repository = repository
 
     async def execute(
@@ -16,12 +14,11 @@ class GetParticipantDetailUseCase:
         id_membro_familia: str,
         permissions: Any = None,
         bypass_cache: bool = False,
-        user_token: str | None = None,
     ) -> Participante:
-        participante = await self._repository.get_participant_by_id(
+        participante = await self._repository.find_by_membro_familia(
             id_membro_familia=id_membro_familia,
             permissions=permissions,
-            user_token=user_token,
+            bypass_cache=bypass_cache,
         )
 
         if participante is None:

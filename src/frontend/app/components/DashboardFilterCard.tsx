@@ -3,12 +3,36 @@
 import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
-import { LazyFilterMultiSelect, LazyFilterSelect } from "@/app/components/LazyFilterSelects";
+import { VirtualizedMultiSelect } from "@/app/components/ui/virtualized-multi-select";
 import { Button } from "@/app/components/ui/button";
 import { Filter, X, RefreshCw, Download } from "lucide-react";
-import type { DashboardFilterValues } from "@/app/types";
+import { SmartFilterOptions } from "@/app/types";
+
+/**
+ * Filtros específicos do Dashboard
+ * Mapeados para as colunas da tabela de dashboard pré-agregada
+ * Todos os filtros suportam multi-select
+ */
+export interface DashboardFilterValues {
+  grupo?: string | string[];               // pic_grupo (multi-select)
+  cohort?: string | string[];              // pic_cohort (safra) (multi-select)
+  status?: string | string[];              // pic_status (multi-select)
+  secretaria?: string;                     // secretaria (SMAS, SME, SMS) (single-select apenas)
+  subprefeitura?: string | string[];       // subprefeitura (multi-select)
+  regiao_administrativa?: string | string[]; // regiao_administrativa (multi-select)
+  bairro?: string | string[];              // bairro (multi-select)
+  cre?: string | string[];                 // id_cre (multi-select)
+  ap?: string | string[];                  // id_ap (multi-select)
+  cas?: string | string[];                 // id_cas (multi-select)
+  cras?: string | string[];                // id_cras (multi-select)
+  escola?: string | string[];              // id_escola (multi-select)
+  unidade_saude?: string | string[];       // id_clinica_familia (multi-select)
+  equipe_saude?: string | string[];        // id_equipe_familia (multi-select)
+  has_bolsa_familia?: boolean;             // filtro booleano
+}
 
 interface DashboardFilterCardProps {
+  filterOptions: SmartFilterOptions;
   filters: DashboardFilterValues;
   onFilterChange: (filters: DashboardFilterValues) => void;
   onRefresh?: () => void;
@@ -16,7 +40,7 @@ interface DashboardFilterCardProps {
   loading?: boolean;
 }
 
-// Opções de secretaria fixas (dimensão do dashboard, fora do endpoint de filtros)
+// Opções de secretaria fixas
 const SECRETARIA_OPTIONS = [
   { id: "SMAS", label: "Assistência Social (SMAS)" },
   { id: "SME", label: "Educação (SME)" },
@@ -35,6 +59,7 @@ const formatGrupoLabel = (id: string): string => {
 };
 
 const DashboardFilterCardComponent = ({
+  filterOptions,
   filters,
   onFilterChange,
   onRefresh,
@@ -56,7 +81,7 @@ const DashboardFilterCardComponent = ({
   const handleMultiFilterUpdate = useCallback((key: keyof DashboardFilterValues, values: string[]) => {
     const newFilters = { ...filters };
     if (values.length > 0) {
-      (newFilters as Record<string, unknown>)[key] = values;
+      newFilters[key] = values as any;
     } else {
       delete newFilters[key];
     }
@@ -78,7 +103,24 @@ const DashboardFilterCardComponent = ({
     onFilterChange({});
   }, [onFilterChange]);
 
-  const formatGrupo = useMemo(() => formatGrupoLabel, []);
+  // Pré-filtrar opções (remover vazios) e formatar labels
+  const filteredOptions = useMemo(() => ({
+    grupos: (filterOptions.grupos || [])
+      .filter((item) => item.id && item.id.trim() !== "")
+      .map((item) => ({ ...item, label: formatGrupoLabel(item.id) })),
+    cohorts: (filterOptions.cohorts || []).filter((item) => item.id && item.id.trim() !== ""),
+    status_list: (filterOptions.status_list || []).filter((item) => item.id && item.id.trim() !== ""),
+    subprefeituras: (filterOptions.subprefeituras || []).filter((item) => item.id && item.id.trim() !== ""),
+    regioes_administrativas: (filterOptions.regioes_administrativas || []).filter((item) => item.id && item.id.trim() !== ""),
+    bairros: (filterOptions.bairros || []).filter((item) => item.id && item.id.trim() !== ""),
+    cres: (filterOptions.cres || []).filter((item) => item.id && item.id.trim() !== ""),
+    aps: (filterOptions.aps || []).filter((item) => item.id && item.id.trim() !== ""),
+    cas_list: (filterOptions.cas_list || []).filter((item) => item.id && item.id.trim() !== ""),
+    cras: (filterOptions.cras || []).filter((item) => item.id && item.id.trim() !== ""),
+    escolas: (filterOptions.escolas || []).filter((item) => item.id && item.id.trim() !== ""),
+    clinicas: (filterOptions.clinicas || []).filter((item) => item.id && item.id.trim() !== ""),
+    equipes_familia: (filterOptions.equipes_familia || []).filter((item) => item.id && item.id.trim() !== ""),
+  }), [filterOptions]);
 
   return (
     <Card className="relative border-2">
@@ -132,9 +174,7 @@ const DashboardFilterCardComponent = ({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {/* Grupo - Multi-select */}
-            <LazyFilterMultiSelect
-              field="grupos"
-              filters={filters}
+            <VirtualizedMultiSelect
               value={
                 Array.isArray(filters.grupo)
                   ? filters.grupo
@@ -146,13 +186,11 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Grupos"
               defaultLabel="Todos os Grupos"
-              transformLabel={formatGrupo}
+              options={filteredOptions.grupos}
             />
 
             {/* Status - Multi-select */}
-            <LazyFilterMultiSelect
-              field="status_list"
-              filters={filters}
+            <VirtualizedMultiSelect
               value={
                 Array.isArray(filters.status)
                   ? filters.status
@@ -164,12 +202,11 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Status"
               defaultLabel="Todos os Status"
+              options={filteredOptions.status_list}
             />
 
             {/* Mês de Ingresso - Multi-select */}
-            <LazyFilterMultiSelect
-              field="cohorts"
-              filters={filters}
+            <VirtualizedMultiSelect
               value={
                 Array.isArray(filters.cohort)
                   ? filters.cohort
@@ -181,9 +218,10 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Meses de Ingresso"
               defaultLabel="Todos os Meses de Ingresso"
+              options={filteredOptions.cohorts}
             />
 
-            {/* Secretaria - Single select (dimensão do dashboard, fixa) */}
+            {/* Secretaria - Single select */}
             <VirtualizedSelect
               value={filters.secretaria || "todas"}
               onSelect={(v) => handleFilterUpdate("secretaria", v)}
@@ -194,9 +232,7 @@ const DashboardFilterCardComponent = ({
             />
 
             {/* Bolsa Família */}
-            <LazyFilterSelect
-              field="bolsa_familia"
-              filters={filters}
+            <VirtualizedSelect
               value={
                 filters.has_bolsa_familia !== undefined
                   ? String(filters.has_bolsa_familia)
@@ -206,6 +242,10 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Todos Bolsa Família"
               defaultLabel="Todos Bolsa Família"
+              options={[
+                { id: "true", label: "Com Bolsa Família" },
+                { id: "false", label: "Sem Bolsa Família" },
+              ]}
             />
           </div>
         </div>
@@ -217,9 +257,7 @@ const DashboardFilterCardComponent = ({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {/* Subprefeitura - Multi-select */}
-            <LazyFilterMultiSelect
-              field="subprefeituras"
-              filters={filters}
+            <VirtualizedMultiSelect
               value={
                 Array.isArray(filters.subprefeitura)
                   ? filters.subprefeitura
@@ -231,12 +269,11 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Subprefeituras"
               defaultLabel="Todas as Subprefeituras"
+              options={filteredOptions.subprefeituras}
             />
 
             {/* Região Administrativa - Multi-select */}
-            <LazyFilterMultiSelect
-              field="regioes_administrativas"
-              filters={filters}
+            <VirtualizedMultiSelect
               value={
                 Array.isArray(filters.regiao_administrativa)
                   ? filters.regiao_administrativa
@@ -248,12 +285,11 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Regiões Administrativas"
               defaultLabel="Todas as Regiões Adm."
+              options={filteredOptions.regioes_administrativas}
             />
 
             {/* Bairro - Multi-select */}
-            <LazyFilterMultiSelect
-              field="bairros"
-              filters={filters}
+            <VirtualizedMultiSelect
               value={
                 Array.isArray(filters.bairro)
                   ? filters.bairro
@@ -265,13 +301,12 @@ const DashboardFilterCardComponent = ({
               disabled={loading}
               placeholder="Bairros"
               defaultLabel="Todos os Bairros"
+              options={filteredOptions.bairros}
             />
 
             {/* AP (Saúde) - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="aps"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.ap)
                     ? filters.ap
@@ -283,14 +318,13 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="CAPs"
                 defaultLabel="Todas as CAPs"
+                options={filteredOptions.aps}
               />
             )}
 
             {/* CRE (Educação) - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="cres"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.cre)
                     ? filters.cre
@@ -302,14 +336,13 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="CREs"
                 defaultLabel="Todas as CREs"
+                options={filteredOptions.cres}
               />
             )}
 
             {/* CAS (Assistência Social) - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="cas_list"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.cas)
                     ? filters.cas
@@ -321,14 +354,13 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="CAS"
                 defaultLabel="Todas as CAS"
+                options={filteredOptions.cas_list}
               />
             )}
 
             {/* CRAS (Assistência Social) - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="cras"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.cras)
                     ? filters.cras
@@ -340,14 +372,13 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="CRAS"
                 defaultLabel="Todos os CRAS"
+                options={filteredOptions.cras}
               />
             )}
 
             {/* Escolas (Educação) - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="escolas"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.escola)
                     ? filters.escola
@@ -359,14 +390,13 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="Escolas"
                 defaultLabel="Todas as Escolas"
+                options={filteredOptions.escolas}
               />
             )}
 
             {/* Unidades de Saúde - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="clinicas"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.unidade_saude)
                     ? filters.unidade_saude
@@ -378,14 +408,13 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="Unidades de Saúde"
                 defaultLabel="Todas as Unidades"
+                options={filteredOptions.clinicas}
               />
             )}
 
             {/* Equipes de Saúde - Multi-select */}
             { (
-              <LazyFilterMultiSelect
-                field="equipes_familia"
-                filters={filters}
+              <VirtualizedMultiSelect
                 value={
                   Array.isArray(filters.equipe_saude)
                     ? filters.equipe_saude
@@ -397,6 +426,7 @@ const DashboardFilterCardComponent = ({
                 disabled={loading}
                 placeholder="Equipes de Saúde"
                 defaultLabel="Todas as Equipes"
+                options={filteredOptions.equipes_familia}
               />
             )}
           </div>
