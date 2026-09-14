@@ -1,6 +1,5 @@
-from typing import Any
-
 from fastapi import APIRouter, Depends
+from typing import Dict, Any
 
 from src.core.security.jwt import verify_jwt
 
@@ -10,7 +9,7 @@ router = APIRouter(
 
 
 @router.get("/auth", tags=["Authentication"])
-async def protected_route(token_payload: dict[str, Any]):
+async def protected_route(token_payload: Dict[str, Any]):
     """
     Protected endpoint that requires JWT authentication.
     Returns user information from the JWT token.

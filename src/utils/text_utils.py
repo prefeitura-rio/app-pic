@@ -2,6 +2,7 @@
 Utilitários para manipulação e normalização de texto.
 """
 import unicodedata
+from typing import Dict
 
 
 class TextNormalizer:
@@ -12,7 +13,7 @@ class TextNormalizer:
     Mantém cache em memória para otimização de strings repetidas.
     """
 
-    _cache: dict[str, str] = {}
+    _cache: Dict[str, str] = {}
     MAX_CACHE_SIZE = 10000
 
     @classmethod
@@ -70,7 +71,7 @@ class TextNormalizer:
         return size
 
     @classmethod
-    def cache_stats(cls) -> dict[str, int]:
+    def cache_stats(cls) -> Dict[str, int]:
         """
         Retorna estatísticas do cache.
 

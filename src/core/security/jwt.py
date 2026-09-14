@@ -1,20 +1,18 @@
-from typing import Annotated, Any
-
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, Security
+from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
+from typing import Dict, Any, Annotated
 from src.config import env
 from src.utils.log import logger
 
 security = HTTPBearer()
 
 # Cache for JWKS keys
-_jwks_cache: dict[str, Any] = {}
+_jwks_cache: Dict[str, Any] = {}
 
 
-async def get_jwks() -> dict[str, Any]:
+async def get_jwks() -> Dict[str, Any]:
     """Fetch JWKS from RMI (Keycloak) and cache it."""
     if _jwks_cache:
         return _jwks_cache
@@ -28,10 +26,10 @@ async def get_jwks() -> dict[str, Any]:
             return jwks
     except Exception as e:
         logger.error(f"❌ Failed to fetch JWKS: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch JWKS") from e
+        raise HTTPException(status_code=500, detail="Failed to fetch JWKS")
 
 
-def get_signing_key(token: str, jwks: dict[str, Any]) -> Any:
+def get_signing_key(token: str, jwks: Dict[str, Any]) -> Any:
     """Get the signing key from JWKS for the given token."""
     try:
         unverified_header = jwt.get_unverified_header(token)
@@ -56,12 +54,12 @@ def get_signing_key(token: str, jwks: dict[str, Any]) -> Any:
         return jwt.algorithms.RSAAlgorithm.from_jwk(rsa_key)
     except Exception as e:
         logger.error(f"❌ Error getting signing key: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token header") from e
+        raise HTTPException(status_code=401, detail="Invalid token header")
 
 
 async def verify_jwt(
     credentials: HTTPAuthorizationCredentials = Security(security),
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Verify JWT token from Authorization header.
     Returns the decoded token payload if valid.
@@ -88,38 +86,31 @@ async def verify_jwt(
         logger.info(f"Token verified for user: {payload.get('sub')}")
         return payload
 
-    except jwt.ExpiredSignatureError as e:
+    except jwt.ExpiredSignatureError:
         logger.warning("Token has expired")
-        raise HTTPException(status_code=401, detail="Token has expired") from e
-    except jwt.InvalidAudienceError as e:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidAudienceError:
         logger.warning("Invalid token audience")
-        raise HTTPException(status_code=401, detail="Invalid token audience") from e
-    except jwt.InvalidIssuerError as e:
+        raise HTTPException(status_code=401, detail="Invalid token audience")
+    except jwt.InvalidIssuerError:
         logger.warning("Invalid token issuer")
-        raise HTTPException(status_code=401, detail="Invalid token issuer") from e
+        raise HTTPException(status_code=401, detail="Invalid token issuer")
     except jwt.InvalidTokenError as e:
         logger.warning(f"Invalid token: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token") from e
+        raise HTTPException(status_code=401, detail="Invalid token")
     except Exception as e:
         logger.error(f"❌ Token verification failed: {e}")
-        raise HTTPException(
-            status_code=401, detail="Could not validate credentials"
-        ) from e
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
 
 
 async def get_current_user_permissions(
-    token_payload: dict[str, Any] = Depends(verify_jwt),
+    token_payload: Dict[str, Any] = Depends(verify_jwt),
 ):
     """
-    Get current user's permissions from data_access table (BigQuery).
+    Get current user's permissions from data_access table.
 
-    Used by v1 (legacy) routes only. Extracts CPF from JWT token and loads
-    permissions from the BigQuery governance table (endpoint_data_access).
-    Uses the DataManager's shared cache for performance.
-
-    v2 routes use `get_current_user_permissions_v2` instead (Postgres-backed).
-    Do NOT swap this for the Postgres-backed version: v1's admin CRUD still
-    writes to BigQuery, so v1 auth must keep reading from BigQuery too.
+    Extracts CPF from JWT token and loads permissions from governance table.
+    Uses Redis/local cache for performance.
 
     Args:
         token_payload: Decoded JWT token from verify_jwt
@@ -161,75 +152,13 @@ async def get_current_user_permissions(
         raise HTTPException(
             status_code=403,
             detail=error_msg,  # Passar a mensagem específica da PermissionDeniedError
-        ) from e
+        )
     except Exception as e:
         logger.error(f"❌ Error loading permissions for CPF {cpf}: {e}")
         raise HTTPException(
             status_code=500, detail="Falha ao carregar permissões do usuário"
-        ) from e
-
-
-async def get_current_user_permissions_v2(
-    token_payload: dict[str, Any] = Depends(verify_jwt),
-):
-    """
-    Get current user's permissions from Postgres (users/policy tables).
-
-    Used by v2 routes only. Extracts CPF from JWT token and loads permissions
-    via HybridAdminRepository. This is the hot path: it does NOT join
-    against the participants catalog, so id_*_list entries have `nome == id`
-    as a fallback (real names require fetch_governance_df).
-
-    Args:
-        token_payload: Decoded JWT token from verify_jwt
-
-    Returns:
-        UserPermissions object
-
-    Raises:
-        HTTPException 403: If CPF not found in token or user not authorized
-        HTTPException 500: If failed to load permissions
-    """
-    import time
-    perm_start = time.perf_counter()
-
-    from src.core.security.permissions_models import PermissionDeniedError
-    from src.pic.infrastructure.repositories.hybrid_admin import (
-        HybridAdminRepository,
-    )
-
-    # Extract CPF from JWT (RMI/gov.br sends it in preferred_username)
-    cpf = token_payload.get("preferred_username")
-
-    if not cpf:
-        logger.error("❌ CPF not found in JWT token")
-        raise HTTPException(
-            status_code=403, detail="CPF não encontrado no token de autenticação"
         )
 
-    try:
-        permissions = await HybridAdminRepository().fetch_user_permissions(cpf)
-        perm_time = time.perf_counter() - perm_start
-        logger.info(
-            f"⏱️ [TIMING] fetch_user_permissions took {perm_time:.3f}s - "
-            f"User authenticated (Admin: {permissions.is_admin}, SuperAdmin: {permissions.is_super_admin})"
-        )
-        return permissions
 
-    except PermissionDeniedError as e:
-        error_msg = str(e)
-        logger.warning(f"Permission denied for CPF {cpf}: {error_msg}")
-        raise HTTPException(
-            status_code=403,
-            detail=error_msg,  # Passar a mensagem específica da PermissionDeniedError
-        ) from e
-    except Exception as e:
-        logger.error(f"❌ Error loading permissions for CPF {cpf}: {e}")
-        raise HTTPException(
-            status_code=500, detail="Falha ao carregar permissões do usuário"
-        ) from e
-
-
-# Type aliases for dependency injection
+# Type alias for dependency injection
 CurrentUserPermissions = Annotated[Any, Depends(get_current_user_permissions)]
-CurrentUserPermissionsV2 = Annotated[Any, Depends(get_current_user_permissions_v2)]

@@ -9,18 +9,17 @@ REGRAS:
 - Dados são retornados em formato bruto (JSON)
 """
 
-from typing import Any
-
+from fastapi import APIRouter, HTTPException, Query, Depends
+from typing import Optional, Any, Dict, List
 import polars as pl
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
 
-from src.api.v1.queries import DEBUG_ORIGINS_QUERY, PARTICIPANTS_TABLE_QUERY
-from src.config import env
 from src.core.security.jwt import CurrentUserPermissions
-from src.utils.bigquery import execute_query
-from src.utils.data_manager import DataManager
 from src.utils.log import logger
+from src.utils.data_manager import DataManager
+from src.utils.bigquery import execute_query
+from src.api.v1.queries import PARTICIPANTS_TABLE_QUERY, DEBUG_ORIGINS_QUERY
+from src.config import env
+from pydantic import BaseModel
 
 router = APIRouter(
     prefix="/debug",
@@ -38,7 +37,7 @@ class DebugParticipantResponse(BaseModel):
 
     total_found: int  # Total de participantes encontrados na busca
     total_returned: int  # Total retornado (sempre 1 ou 0)
-    data: list[dict[str, Any]]  # Raw JSON data from BigQuery
+    data: List[Dict[str, Any]]  # Raw JSON data from BigQuery
 
 
 # ========================================================================
@@ -63,7 +62,7 @@ def require_super_admin(permissions: CurrentUserPermissions):
 @router.get("/participants", response_model=DebugParticipantResponse)
 async def get_debug_participants(
     permissions: CurrentUserPermissions,
-    search: str | None = Query(
+    search: Optional[str] = Query(
         None, description="Buscar por CPF, nome ou ID membro família"
     ),
     bypass_cache: bool = Query(
@@ -140,7 +139,7 @@ async def get_debug_participants(
             logger.warning("⚠️ Nenhum CPF válido encontrado")
             return DebugParticipantResponse(total_found=0, total_returned=0, data=[])
 
-        logger.info("🔢 Converted CPFs to cpf_particao")
+        logger.info(f"🔢 Converted CPFs to cpf_particao")
 
         # PASSO 4: Query filtrada no BigQuery para tabela DEBUG
         cpf_list_str = ",".join(str(cpf) for cpf in cpfs_particao)
@@ -151,7 +150,7 @@ async def get_debug_participants(
         ORDER BY nome ASC
         """
 
-        logger.info("🔍 Fetching debug data for cpf_particao using partitioned query!")
+        logger.info(f"🔍 Fetching debug data for cpf_particao using partitioned query!")
         df_participants = execute_query(debug_query)
 
         if len(df_participants) == 0:
@@ -162,7 +161,7 @@ async def get_debug_participants(
 
         # Pegar apenas o primeiro resultado
         df_filtered = df_participants.head(1)
-        logger.info("✅ Found debug data for participant")
+        logger.info(f"✅ Found debug data for participant")
 
         # PASSO 5: Extrair unique protocolo_id dos protocolos filtrados
         try:
@@ -260,4 +259,4 @@ async def get_debug_participants(
 
     except Exception as e:
         logger.error(f"❌ Erro ao buscar dados de debug: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail=str(e))

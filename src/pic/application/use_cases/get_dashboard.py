@@ -2,6 +2,7 @@ from typing import Any
 
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.domain.models.dashboard import Dashboard
+from src.pic.infrastructure.dashboard.factory import _create_empty_dashboard
 
 
 class DashboardOutput:
@@ -17,7 +18,6 @@ class GetDashboardUseCase:
     async def execute(
         self,
         permissions: Any,
-        user_token: str | None = None,
         grupo: str | None = None,
         cohort: str | None = None,
         status: str | None = None,
@@ -37,7 +37,7 @@ class GetDashboardUseCase:
     ) -> DashboardOutput:
         if permissions and permissions.secretaria_acesso != "TODOS":
             return DashboardOutput(
-                data=Dashboard.empty(),
+                data=_create_empty_dashboard(),
                 can_view_dashboard=False,
             )
 
@@ -60,9 +60,8 @@ class GetDashboardUseCase:
 
         dashboard = await self._repository.get_dashboard_metrics(
             filters=filters,
-            user_token=user_token,
+            permissions=permissions,
             secretaria=secretaria,
-            user_id=permissions.cpf if permissions else None,
             bypass_cache=bypass_cache,
         )
 
