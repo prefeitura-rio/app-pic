@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { UserAccessRecord, AvailableIds, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
+import { useState, useMemo } from "react";
+import { UserAccessRecord, CreateUserRequest, UpdateUserRequest, IdWithName } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { VirtualizedIdMultiSelect } from "@/app/components/admin/VirtualizedIdMultiSelect";
-import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { SecretariasAcessoField } from "@/app/components/admin/SecretariasAcessoField";
+import { useUnitOptions } from "@/app/components/admin/useUnitOptions";
 
 interface UserFormProps {
-  availableIds: AvailableIds;
   currentUser: UserAccessRecord; // Current logged-in user
   user?: UserAccessRecord; // If provided, edit mode
   onSubmit: (data: CreateUserRequest | UpdateUserRequest) => void;
@@ -23,7 +23,6 @@ interface UserFormProps {
 }
 
 export function UserForm({
-  availableIds,
   currentUser,
   user,
   onSubmit,
@@ -32,123 +31,48 @@ export function UserForm({
   error,
 }: UserFormProps) {
   const isEditMode = !!user;
-  const canEditSuperAdmin = currentUser.is_super_admin;
 
-  // Filter available IDs based on current user permissions
-  // Super admin sees all, segmented admin only sees their own IDs
-  const filteredAvailableIds = useMemo(() => {
-    if (currentUser.is_super_admin) {
-      return availableIds;
-    }
+  const casOptions = useUnitOptions("cas");
+  const crasOptions = useUnitOptions("cras");
+  const cresOptions = useUnitOptions("cres");
+  const escolasOptions = useUnitOptions("escolas");
+  const apsOptions = useUnitOptions("aps");
+  const clinicasOptions = useUnitOptions("clinicas");
+  const equipesOptions = useUnitOptions("equipes_familia");
 
-    // Segmented admin: only show IDs they can assign (their own IDs)
-    return {
-      cras: currentUser.id_cras_list || [],
-      escolas: currentUser.id_escola_list || [],
-      cres: currentUser.id_cre_list || [],
-      aps: currentUser.id_ap_list || [],
-      cas: currentUser.id_cas_list || [],
-      clinicas: currentUser.id_clinica_familia_list || [],
-      equipes_familia: currentUser.id_equipe_familia_list || [],
-    };
-  }, [availableIds, currentUser]);
-
-  // Filter secretaria access options based on current user permissions
-  const secretariaAccessOptions = useMemo(() => {
-    const allOptions = [
-      { id: "NULL", label: "🚫 Sem Acesso a Protocolos" },
-      { id: "TODOS", label: "🌐 Todos os Protocolos (TODOS)" },
-      { id: "SME", label: "📚 Apenas Educação (SME)" },
-      { id: "SMS", label: "🏥 Apenas Saúde (SMS)" },
-      { id: "SMAS", label: "🤝 Apenas Assistência Social (SMAS)" },
-    ];
-
-    // Super admin sees all options
+  // Secretarias que o admin logado pode atribuir (subset da própria secretarias_acesso)
+  const allowedSecretariasAcesso = useMemo(() => {
     if (currentUser?.is_super_admin) {
-      return allOptions;
+      return ["SME", "SMS", "SMAS"];
     }
-
-    // Segmented admin can assign NULL or their own secretaria_acesso
     if (currentUser?.is_admin) {
-      const userSecretaria = currentUser?.secretaria_acesso;
-
-      // Admin with TODOS can see all options (same as super admin for this field)
-      if (userSecretaria === "TODOS") {
-        return allOptions;
-      }
-
-      // If admin has no secretaria_acesso set, they can only assign NULL
-      if (!userSecretaria || userSecretaria === "NULL") {
-        return allOptions.filter(opt => opt.id === "NULL");
-      }
-
-      // Admin can assign NULL or their own secretariat (not TODOS, not other secretariats)
-      return allOptions.filter(opt => opt.id === "NULL" || opt.id === userSecretaria);
+      return currentUser?.secretarias_acesso || [];
     }
-
-    // Non-admin users can't change this field
     return [];
   }, [currentUser]);
 
   // Form state
-  const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
-  const [nome, setNome] = useState("");
-  const [ocupacao, setOcupacao] = useState("");
-  const [secretaria, setSecretaria] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [notes, setNotes] = useState("");
+  // NOTA: inicializado direto a partir de `user` (sem useEffect) porque este
+  // componente sempre remonta ao trocar de aba (Radix TabsContent desmonta
+  // conteúdo inativo), então `user` já está correto no momento do mount.
+  const [cpf, setCpf] = useState(user?.cpf ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [nome, setNome] = useState(user?.nome ?? "");
+  const [ocupacao, setOcupacao] = useState(user?.ocupacao ?? "");
+  const [secretaria, setSecretaria] = useState(user?.secretaria ?? "");
+  const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false);
+  // Não há UI para promover/rebaixar super admin neste formulário; apenas preserva o valor existente.
+  const isSuperAdmin = user?.is_super_admin ?? false;
+  const [notes, setNotes] = useState(user?.notes ?? "");
 
-  const [selectedCras, setSelectedCras] = useState<IdWithName[]>([]);
-  const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>([]);
-  const [selectedCres, setSelectedCres] = useState<IdWithName[]>([]);
-  const [selectedAps, setSelectedAps] = useState<IdWithName[]>([]);
-  const [selectedCas, setSelectedCas] = useState<IdWithName[]>([]);
-  const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>([]);
-  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>([]);
-  const [secretariaAcesso, setSecretariaAcesso] = useState<string>("NULL");
-
-  // Initialize form with user data if editing
-  useEffect(() => {
-    if (user) {
-      setCpf(user.cpf);
-      setEmail(user.email || "");
-      setNome(user.nome || "");
-      setOcupacao(user.ocupacao || "");
-      setSecretaria(user.secretaria || "");
-      setIsAdmin(user.is_admin);
-      setIsSuperAdmin(user.is_super_admin);
-      setNotes(user.notes || "");
-
-      setSelectedCras(user.id_cras_list || []);
-      setSelectedEscolas(user.id_escola_list || []);
-      setSelectedCres(user.id_cre_list || []);
-      setSelectedAps(user.id_ap_list || []);
-      setSelectedCas(user.id_cas_list || []);
-      setSelectedClinicas(user.id_clinica_familia_list || []);
-      setSelectedEquipesFamilia(user.id_equipe_familia_list || []);
-      setSecretariaAcesso(user.secretaria_acesso || "NULL");
-    } else {
-      // Reset form
-      setCpf("");
-      setEmail("");
-      setNome("");
-      setOcupacao("");
-      setSecretaria("");
-      setIsAdmin(false);
-      setIsSuperAdmin(false);
-      setNotes("");
-      setSelectedCras([]);
-      setSelectedEscolas([]);
-      setSelectedCres([]);
-      setSelectedAps([]);
-      setSelectedCas([]);
-      setSelectedClinicas([]);
-      setSelectedEquipesFamilia([]);
-      setSecretariaAcesso("NULL");
-    }
-  }, [user]);
+  const [selectedCras, setSelectedCras] = useState<IdWithName[]>(user?.id_cras_list ?? []);
+  const [selectedEscolas, setSelectedEscolas] = useState<IdWithName[]>(user?.id_escola_list ?? []);
+  const [selectedCres, setSelectedCres] = useState<IdWithName[]>(user?.id_cre_list ?? []);
+  const [selectedAps, setSelectedAps] = useState<IdWithName[]>(user?.id_ap_list ?? []);
+  const [selectedCas, setSelectedCas] = useState<IdWithName[]>(user?.id_cas_list ?? []);
+  const [selectedClinicas, setSelectedClinicas] = useState<IdWithName[]>(user?.id_clinica_familia_list ?? []);
+  const [selectedEquipesFamilia, setSelectedEquipesFamilia] = useState<IdWithName[]>(user?.id_equipe_familia_list ?? []);
+  const [secretariasAcesso, setSecretariasAcesso] = useState<string[]>(user?.secretarias_acesso ?? []);
 
   // Handle CPF input (only numbers)
   const handleCpfChange = (value: string) => {
@@ -168,7 +92,13 @@ export function UserForm({
     e.preventDefault();
 
     if (isEditMode) {
-      // Update mode
+      // Update mode.
+      //
+      // IMPORTANTE: listas de equipamentos são SEMPRE enviadas (mesmo
+      // vazias). O backend trata `null` como "não fornecido → não mexer
+      // nos grants deste tipo" (`_replace_policy_grants`), então enviar
+      // null ao limpar um tipo deixaria as permissões antigas intactas;
+      // uma lista vazia é o que efetivamente remove os grants.
       const updateData: UpdateUserRequest = {
         email: email || null,
         nome: nome || null,
@@ -176,14 +106,14 @@ export function UserForm({
         secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
-        id_cras_list: selectedCras.length > 0 ? selectedCras : null,
-        id_escola_list: selectedEscolas.length > 0 ? selectedEscolas : null,
-        id_cre_list: selectedCres.length > 0 ? selectedCres : null,
-        id_ap_list: selectedAps.length > 0 ? selectedAps : null,
-        id_cas_list: selectedCas.length > 0 ? selectedCas : null,
-        id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
-        id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
+        id_cras_list: selectedCras,
+        id_escola_list: selectedEscolas,
+        id_cre_list: selectedCres,
+        id_ap_list: selectedAps,
+        id_cas_list: selectedCas,
+        id_clinica_familia_list: selectedClinicas,
+        id_equipe_familia_list: selectedEquipesFamilia,
+        secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
       onSubmit(updateData);
@@ -197,14 +127,14 @@ export function UserForm({
         secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
-        id_cras_list: selectedCras.length > 0 ? selectedCras : null,
-        id_escola_list: selectedEscolas.length > 0 ? selectedEscolas : null,
-        id_cre_list: selectedCres.length > 0 ? selectedCres : null,
-        id_ap_list: selectedAps.length > 0 ? selectedAps : null,
-        id_cas_list: selectedCas.length > 0 ? selectedCas : null,
-        id_clinica_familia_list: selectedClinicas.length > 0 ? selectedClinicas : null,
-        id_equipe_familia_list: selectedEquipesFamilia.length > 0 ? selectedEquipesFamilia : null,
-        secretaria_acesso: secretariaAcesso, // Envia "NULL" como string, não null
+        id_cras_list: selectedCras,
+        id_escola_list: selectedEscolas,
+        id_cre_list: selectedCres,
+        id_ap_list: selectedAps,
+        id_cas_list: selectedCas,
+        id_clinica_familia_list: selectedClinicas,
+        id_equipe_familia_list: selectedEquipesFamilia,
+        secretarias_acesso: secretariasAcesso,
         notes: notes || null,
       };
       onSubmit(createData);
@@ -355,16 +285,14 @@ export function UserForm({
 
           {/* Acesso a Protocolos - PRIMEIRO CAMPO */}
           <div className="space-y-2">
-            <Label htmlFor="secretaria-acesso" title="Controla quais protocolos o usuário pode visualizar">
+            <Label title="Controla quais protocolos o usuário pode visualizar">
               Acesso a Protocolos
             </Label>
-            <VirtualizedSelect
-              value={secretariaAcesso}
-              onSelect={setSecretariaAcesso}
-              options={secretariaAccessOptions}
-              placeholder="Selecione o acesso"
+            <SecretariasAcessoField
+              value={secretariasAcesso}
+              onChange={setSecretariasAcesso}
+              allowedValues={allowedSecretariasAcesso}
               disabled={isLoading || (!currentUser?.is_admin && !currentUser?.is_super_admin)}
-              showAllOption={false}
             />
             <p className="text-xs text-muted-foreground">
               {currentUser?.is_super_admin
@@ -380,20 +308,24 @@ export function UserForm({
             {/* CAS */}
             <VirtualizedIdMultiSelect
               label="CAS (Centros de Assistência Social)"
-              options={filteredAvailableIds.cas}
+              options={casOptions.options}
               selected={selectedCas}
               onChange={setSelectedCas}
               disabled={isLoading}
+              onOpen={casOptions.onOpen}
+              loading={casOptions.isLoading}
               tooltip="Coordenadorias de Assistência Social - selecione para dar acesso a todos os CRAS da região"
             />
 
             {/* CRAS */}
             <VirtualizedIdMultiSelect
               label="CRAS"
-              options={filteredAvailableIds.cras}
+              options={crasOptions.options}
               selected={selectedCras}
               onChange={setSelectedCras}
               disabled={isLoading}
+              onOpen={crasOptions.onOpen}
+              loading={crasOptions.isLoading}
               tooltip="Centros de Referência de Assistência Social que o usuário poderá acessar"
             />
 
@@ -401,20 +333,24 @@ export function UserForm({
             {/* CRE (Coordenadoria Regional de Educação) */}
             <VirtualizedIdMultiSelect
               label="CRE (Coordenadoria Regional de Educação)"
-              options={filteredAvailableIds.cres}
+              options={cresOptions.options}
               selected={selectedCres}
               onChange={setSelectedCres}
               disabled={isLoading}
+              onOpen={cresOptions.onOpen}
+              loading={cresOptions.isLoading}
               tooltip="Coordenadorias Regionais de Educação - selecione para dar acesso a todas as escolas da região"
             />
 
             {/* Escolas */}
             <VirtualizedIdMultiSelect
               label="Escolas"
-              options={filteredAvailableIds.escolas}
+              options={escolasOptions.options}
               selected={selectedEscolas}
               onChange={setSelectedEscolas}
               disabled={isLoading}
+              onOpen={escolasOptions.onOpen}
+              loading={escolasOptions.isLoading}
               tooltip="Unidades escolares que o usuário poderá visualizar no sistema"
             />
 
@@ -422,30 +358,36 @@ export function UserForm({
             {/* CAP (Coordenadoria de Área Programática) */}
             <VirtualizedIdMultiSelect
               label="CAP (Coordenadoria de Área Programática)"
-              options={filteredAvailableIds.aps}
+              options={apsOptions.options}
               selected={selectedAps}
               onChange={setSelectedAps}
               disabled={isLoading}
+              onOpen={apsOptions.onOpen}
+              loading={apsOptions.isLoading}
               tooltip="Coordenadorias de Área Programática de Saúde - divisão territorial do município"
             />
 
             {/* Clínicas da Família */}
             <VirtualizedIdMultiSelect
               label="Clínicas da Família"
-              options={filteredAvailableIds.clinicas}
+              options={clinicasOptions.options}
               selected={selectedClinicas}
               onChange={setSelectedClinicas}
               disabled={isLoading}
+              onOpen={clinicasOptions.onOpen}
+              loading={clinicasOptions.isLoading}
               tooltip="Clínicas da Família e unidades de saúde que o usuário poderá acessar"
             />
 
             {/* Equipes de Saúde da Família */}
             <VirtualizedIdMultiSelect
               label="Equipes de Saúde da Família"
-              options={filteredAvailableIds.equipes_familia}
+              options={equipesOptions.options}
               selected={selectedEquipesFamilia}
               onChange={setSelectedEquipesFamilia}
               disabled={isLoading}
+              onOpen={equipesOptions.onOpen}
+              loading={equipesOptions.isLoading}
               tooltip="Equipes de Saúde da Família (ESF) que o usuário poderá acessar"
             />
           </div>

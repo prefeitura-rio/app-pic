@@ -18,6 +18,6 @@ declare module "next-auth/jwt" {
     idToken?: string;
     refreshToken?: string;
     expiresAt?: number;
-    profile?: any;
+    profile?: Record<string, unknown>;
   }
 }
