@@ -15,8 +15,8 @@ EXECUÇÃO:
 IMPORTANTE: Faça backup antes de executar!
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
 # Adicionar src ao path para imports
@@ -187,8 +187,8 @@ def cleanup_all_duplicates(skip_confirmation: bool = False):
     # Refresh cache
     print("\n🔄 Atualizando cache de governança...")
     try:
-        from src.utils.data_manager import DataManager
         from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
+        from src.utils.data_manager import DataManager
 
         DataManager.get_dataset(GOVERNANCE_TABLE_QUERY, bypass_cache=True)
         print("✅ Cache atualizado\n")

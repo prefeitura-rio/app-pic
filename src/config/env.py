@@ -1,5 +1,6 @@
-from src.utils.infisical import getenv_or_action
 import os
+
+from src.utils.infisical import getenv_or_action
 
 # if file .env exists, load it.
 if os.path.exists("src/config/.env"):
@@ -72,3 +73,32 @@ FRONTEND_URL = getenv_or_action(
     env_name="FRONTEND_URL",
     action="raise",
 )
+
+# App-pic Postgres (identity + local mirror of data-proxy access_policy).
+# Plain host:port connection through the cluster's shared `cloudsql-proxy`
+# Service (in-cluster) or a `kubectl port-forward` of it (local dev).
+APP_PIC_PG_HOST = getenv_or_action(env_name="APP_PIC_PG_HOST", action="raise")
+APP_PIC_PG_PORT = int(
+    getenv_or_action(env_name="APP_PIC_PG_PORT", default="5432", action="raise")
+)
+APP_PIC_PG_DB = getenv_or_action(env_name="APP_PIC_PG_DB", action="raise")
+APP_PIC_PG_USER = getenv_or_action(env_name="APP_PIC_PG_USER", action="raise")
+APP_PIC_PG_PW = getenv_or_action(env_name="APP_PIC_PG_PW", action="raise")
+
+# Schema por ambiente — a mesma instância/banco Postgres é compartilhada
+# entre staging e prod (ver plan.md seção 7), então o isolamento de dados
+# entre ambientes é feito por schema Postgres (não por nome de tabela).
+# Tabelas (`users`, `policy`) têm nome fixo; staging e prod devem apontar
+# para schemas diferentes (ex: "staging"/"prod") via configuração de deploy.
+APP_PIC_PG_SCHEMA = getenv_or_action(env_name="APP_PIC_PG_SCHEMA", action="raise")
+
+# data-proxy (PostgREST) — writes to rls.access_policy for RLS enforcement.
+DATA_PROXY_API_URL = getenv_or_action(env_name="DATA_PROXY_API_URL", action="raise")
+DATA_PROXY_SCHEMA = getenv_or_action(
+    env_name="DATA_PROXY_SCHEMA", default="app_pequenos_cariocas", action="raise"
+)
+DATA_PROXY_CLIENT_ID = getenv_or_action(env_name="DATA_PROXY_CLIENT_ID", action="raise")
+DATA_PROXY_CLIENT_SECRET = getenv_or_action(
+    env_name="DATA_PROXY_CLIENT_SECRET", action="raise"
+)
+DATA_PROXY_TOKEN_URL = getenv_or_action(env_name="DATA_PROXY_TOKEN_URL", action="raise")
