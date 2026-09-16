@@ -2,14 +2,14 @@
 Simple group-based access control using Authentik groups.
 """
 
-from typing import Annotated, Any, Dict, List
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
 
 from src.core.security.jwt import verify_jwt
 
 
-def get_user_groups(token_payload: Dict[str, Any]) -> List[str]:
+def get_user_groups(token_payload: dict[str, Any]) -> list[str]:
     """
     Extract user groups from JWT token payload.
 
@@ -54,8 +54,8 @@ def require_groups(*required_groups: str):
     """
 
     async def check_groups(
-        token_payload: Annotated[Dict[str, Any], Depends(verify_jwt)]
-    ) -> Dict[str, Any]:
+        token_payload: Annotated[dict[str, Any], Depends(verify_jwt)]
+    ) -> dict[str, Any]:
         user_groups = get_user_groups(token_payload)
 
         # Check if user belongs to any of the required groups
@@ -92,8 +92,8 @@ def require_all_groups(*required_groups: str):
     """
 
     async def check_all_groups(
-        token_payload: Annotated[Dict[str, Any], Depends(verify_jwt)]
-    ) -> Dict[str, Any]:
+        token_payload: Annotated[dict[str, Any], Depends(verify_jwt)]
+    ) -> dict[str, Any]:
         user_groups = get_user_groups(token_payload)
 
         # Check if user belongs to all required groups

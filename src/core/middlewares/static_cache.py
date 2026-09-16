@@ -1,7 +1,8 @@
+import re
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
-import re
+from starlette.types import ASGIApp
 
 
 class NoCacheStaticFilesMiddleware(BaseHTTPMiddleware):

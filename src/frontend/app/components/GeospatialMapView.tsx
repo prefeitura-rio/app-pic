@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiService } from "@/app/services/api";
 import DeckGL from "@deck.gl/react";
 import { GeoJsonLayer } from "@deck.gl/layers";
+import type { PickingInfo, MapViewState } from "@deck.gl/core";
 import { Map as MapGL } from "react-map-gl/maplibre";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -16,8 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import { MapPin, Layers, Filter, X } from "lucide-react";
-import { GeospatialLayer, GeospatialFilterOptions } from "@/app/types";
+import { MapPin, Filter, X, Loader2 } from "lucide-react";
+import type { Feature, FeatureCollection, Geometry } from "geojson";
+import { GeospatialLayer, GeospatialFilterOptions, FilterOptionItem, GeospatialFilters } from "@/app/types";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const INITIAL_VIEW_STATE = {
@@ -51,9 +55,8 @@ interface GeospatialMapViewProps {
   onBack?: () => void;
   loading?: boolean;
   layers?: GeospatialLayer[]; // Camadas já filtradas do backend
-  filters?: Record<string, any>; // Filtros atuais
-  availableFilters?: GeospatialFilterOptions; // Opções de filtros disponíveis do backend
-  onFilterChange?: (filters: Record<string, any>) => void; // Callback para atualizar filtros
+  filters?: GeospatialFilters; // Filtros atuais
+  onFilterChange?: (filters: GeospatialFilters) => void; // Callback para atualizar filtros
   participantLocation?: ParticipantLocation; // Localização do participante para sobrepor no mapa
   hideHeader?: boolean; // Esconder o header com título quando embedded no modal
 }
@@ -63,12 +66,11 @@ export const GeospatialMapView = ({
   loading = false,
   layers = [],
   filters = {},
-  availableFilters,
   onFilterChange,
   participantLocation,
   hideHeader = false,
 }: GeospatialMapViewProps) => {
-  const [viewState, setViewState] = useState(
+  const [viewState, setViewState] = useState<MapViewState>(
     participantLocation
       ? {
           ...INITIAL_VIEW_STATE,
@@ -79,28 +81,119 @@ export const GeospatialMapView = ({
       : INITIAL_VIEW_STATE
   );
 
+  // Controla quais campos tiveram seu dropdown aberto (lazy load: ativa uma vez, não desativa)
+  const [openedDropdowns, setOpenedDropdowns] = useState<Record<string, boolean>>({});
+
+  const onDropdownOpen = useCallback((field: string) => {
+    setOpenedDropdowns((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }, []);
+
+  // Alias para legibilidade nas queryKeys (cascade: os filtros ativos são passados ao backend)
+  const activeColumnFilters = filters;
+
+  // Lazy queries por campo: carrega quando dropdown foi aberto OU já tem valor ativo
+  const shouldFetch = useCallback(
+    (field: string, filterKey: string) =>
+      openedDropdowns[field] === true || !!filters[filterKey],
+    [openedDropdowns, filters]
+  );
+
+  const { data: tiposCamadaResp, isFetching: tiposCamadaFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "tipos_camada", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("tipos_camada", filters),
+    enabled: shouldFetch("tipos_camada", "tipo_camada"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: categoriasResp, isFetching: categoriasFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "categorias", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("categorias", filters),
+    enabled: shouldFetch("categorias", "categoria"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: regionaisResp, isFetching: regionaisFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "regionais", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("regionais", filters),
+    enabled: shouldFetch("regionais", "regional"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: bairrosResp, isFetching: bairrosFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "bairros", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("bairros", filters),
+    enabled: shouldFetch("bairros", "bairro"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: regiaoAdmResp, isFetching: regiaoAdmFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "regioes_administrativas", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("regioes_administrativas", filters),
+    enabled: shouldFetch("regioes_administrativas", "regiao_administrativa"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: subprefeituraResp, isFetching: subprefeituraFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "subprefeituras", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("subprefeituras", filters),
+    enabled: shouldFetch("subprefeituras", "subprefeitura"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const { data: nomesResp, isFetching: nomesFetching } = useQuery({
+    queryKey: ["geospatialFilterOptions", "nomes", activeColumnFilters],
+    queryFn: () => apiService.getGeospatialFilterOptions("nomes", filters),
+    enabled: shouldFetch("nomes", "nome"),
+    staleTime: 30 * 60 * 1000,
+  });
+
+  // Montar availableFilters a partir das respostas lazy
+  const availableFilters: GeospatialFilterOptions = useMemo(() => ({
+    tipos_camada: tiposCamadaResp?.options ?? [],
+    categorias: categoriasResp?.options ?? [],
+    regionais: regionaisResp?.options ?? [],
+    bairros: bairrosResp?.options ?? [],
+    regioes_administrativas: regiaoAdmResp?.options ?? [],
+    subprefeituras: subprefeituraResp?.options ?? [],
+    nomes: nomesResp?.options ?? [],
+  }), [
+    tiposCamadaResp, categoriasResp, regionaisResp,
+    bairrosResp, regiaoAdmResp, subprefeituraResp, nomesResp,
+  ]);
+
+  // O tipo de camada padrão ao abrir a visualização geoespacial é "BAIRRO".
+  // Aplica já na montagem (a componente só monta quando o mapa é aberto), para
+  // que a query de camadas já venha filtrada desde o primeiro fetch — sem isso,
+  // o primeiro carregamento traria as 4470+ camadas inteiras.
+  useEffect(() => {
+    if (onFilterChange && !filters.tipo_camada) {
+      onFilterChange({ ...filters, tipo_camada: "BAIRRO" });
+    }
+    // Deps intencionalmente vazias: roda uma vez por abertura do mapa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Inicializar com BAIRRO como filtro padrão se nenhum filtro estiver ativo
   useEffect(() => {
     const tiposCamada = availableFilters?.tipos_camada;
     if (onFilterChange && !filters.tipo_camada && tiposCamada && tiposCamada.length > 0) {
       // Verificar se BAIRRO existe nas opções
       const hasBairro = tiposCamada.some(
-        (opt: any) => opt.id === "BAIRRO" || opt.label === "BAIRRO"
+        (opt) => opt.id === "BAIRRO" || opt.label === "BAIRRO"
       );
       if (hasBairro) {
         onFilterChange({ ...filters, tipo_camada: "BAIRRO" });
       }
     }
-  }, [availableFilters?.tipos_camada]); // Executar apenas quando tipos_camada estiver disponível
+    // Deps intencionalmente limitadas: incluir `filters`/`onFilterChange` faria o
+    // default "BAIRRO" ser reimposto sempre que o usuário limpar esse filtro manualmente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableFilters?.tipos_camada]);
 
   // Converter availableFilters do backend para formato esperado pelos dropdowns
   const filterOptions = useMemo(() => {
-    const toOptions = (items: any[]) =>
-      (items || []).map((item) =>
-        typeof item === "string"
-          ? { id: item, label: item }
-          : { id: item.id || item.value, label: item.label || item.name || item.id || item.value }
-      );
+    const toOptions = (items: FilterOptionItem[]) =>
+      (items || []).map((item) => ({ id: item.id, label: item.label || item.id }));
 
     const options = {
       tipoCamada: toOptions(availableFilters?.tipos_camada || []),
@@ -207,17 +300,12 @@ export const GeospatialMapView = ({
     for (const categoria of categoriesToRender) {
       const categoryLayers = layersByCategory[categoria];
 
-      // Log para debug: quantas camadas temos antes do parse
-      const beforeParse = categoryLayers.length;
-      const withoutGeometry = categoryLayers.filter(layer => !layer.geometry_geojson).length;
-
       // Converter geometry_geojson string para objeto GeoJSON
-      let parseErrors = 0;
       const features = categoryLayers
         .filter(layer => layer.geometry_geojson) // Garantir que geometry existe
-        .map(layer => {
+        .map((layer): Feature | null => {
           try {
-            const geometry = JSON.parse(layer.geometry_geojson!);
+            const geometry: Geometry = JSON.parse(layer.geometry_geojson!);
             return {
               type: "Feature",
               properties: {
@@ -234,7 +322,6 @@ export const GeospatialMapView = ({
               geometry,
             };
           } catch (e) {
-            parseErrors++;
             console.error(
               `Failed to parse geometry for ${layer.nome || layer.id || "unknown"} ` +
               `(ID: ${layer.id}, ${categoria}):`,
@@ -243,10 +330,10 @@ export const GeospatialMapView = ({
             return null;
           }
         })
-        .filter((f): f is NonNullable<typeof f> => f !== null);
+        .filter((f): f is Feature => f !== null);
 
-      const geojson = {
-        type: "FeatureCollection" as const,
+      const geojson: FeatureCollection = {
+        type: "FeatureCollection",
         features,
       };
 
@@ -269,7 +356,7 @@ export const GeospatialMapView = ({
         result.push(
           new GeoJsonLayer({
             id: `geojson-${categoria}`,
-            data: geojson as any,
+            data: geojson,
             pointType: "circle",
             getPointRadius: adaptiveRadius,
             opacity: opacity,
@@ -287,7 +374,7 @@ export const GeospatialMapView = ({
         result.push(
           new GeoJsonLayer({
             id: `geojson-${categoria}`,
-            data: geojson as any,
+            data: geojson,
             stroked: true,
             filled: true,
             extruded: false,
@@ -314,7 +401,7 @@ export const GeospatialMapView = ({
       const baseSize = 0.00036; // Tamanho base no zoom 14
       const baseZoom = 14;
       const size = baseSize * Math.pow(2, baseZoom - viewState.zoom);
-      const { latitude, longitude, nome } = participantLocation;
+      const { latitude, longitude } = participantLocation;
 
       const participantSquare = {
         type: "FeatureCollection" as const,
@@ -356,7 +443,7 @@ export const GeospatialMapView = ({
       result.push(
         new GeoJsonLayer({
           id: "participant-location",
-          data: participantSquare as any,
+          data: participantSquare,
           stroked: true,
           filled: true,
           lineWidthMinPixels: 3,
@@ -375,8 +462,8 @@ export const GeospatialMapView = ({
   }, [layers, participantLocation, viewState.zoom]);
 
   // Tooltip customizado com mais informações
-  const getTooltip = ({ object }: any) => {
-    if (!object) return null;
+  const getTooltip = ({ object }: PickingInfo<Feature>) => {
+    if (!object?.properties) return null;
 
     const props = object.properties;
     const parts: string[] = [];
@@ -509,6 +596,8 @@ export const GeospatialMapView = ({
     };
   }, [layers]);
 
+  // Loading inicial: primeira abertura do mapa, dados ainda sendo baixados
+  // pelo backend (4470+ linhas paginadas em janelas concorrentes).
   if (loading && layers.length === 0) {
     return (
       <Card className="border-2">
@@ -516,7 +605,18 @@ export const GeospatialMapView = ({
           <Skeleton className="h-8 w-64" />
         </CardHeader>
         <CardContent className="space-y-4">
-          <Skeleton className="h-[600px] w-full" />
+          <div className="relative h-[600px] w-full rounded-lg overflow-hidden border-2">
+            <Skeleton className="h-full w-full" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-sm font-medium text-muted-foreground">
+                Carregando camadas geoespaciais...
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                Baixando geometrias do servidor
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
@@ -578,21 +678,26 @@ export const GeospatialMapView = ({
               {/* Tipo de Camada - Single Select */}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Tipo de Camada</label>
-                <Select
-                  value={getSingleFilterValue("tipo_camada") || "BAIRRO"}
-                  onValueChange={(value) => updateFilter("tipo_camada", value)}
-                >
-                  <SelectTrigger className="text-sm h-9">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent position="popper" sideOffset={5}>
-                    {filterOptions.tipoCamada.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {tiposCamadaFetching && filterOptions.tipoCamada.length === 0 ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <Select
+                    value={getSingleFilterValue("tipo_camada") || "BAIRRO"}
+                    onValueChange={(value) => updateFilter("tipo_camada", value)}
+                    onOpenChange={(open) => open && onDropdownOpen("tipos_camada")}
+                  >
+                    <SelectTrigger className="text-sm h-9">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={5}>
+                      {filterOptions.tipoCamada.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* Nome */}
@@ -602,8 +707,10 @@ export const GeospatialMapView = ({
                   options={filterOptions.nome}
                   value={getFilterValue("nome")}
                   onSelect={(value) => updateFilter("nome", value)}
+                  onOpen={() => onDropdownOpen("nomes")}
                   placeholder="Todos"
                   className="text-sm"
+                  loading={nomesFetching}
                 />
               </div>
 
@@ -614,8 +721,10 @@ export const GeospatialMapView = ({
                   options={filterOptions.categoria}
                   value={getFilterValue("categoria")}
                   onSelect={(value) => updateFilter("categoria", value)}
+                  onOpen={() => onDropdownOpen("categorias")}
                   placeholder="Todas"
                   className="text-sm"
+                  loading={categoriasFetching}
                 />
               </div>
 
@@ -626,8 +735,10 @@ export const GeospatialMapView = ({
                   options={filterOptions.regional}
                   value={getFilterValue("regional")}
                   onSelect={(value) => updateFilter("regional", value)}
+                  onOpen={() => onDropdownOpen("regionais")}
                   placeholder="Todas"
                   className="text-sm"
+                  loading={regionaisFetching}
                 />
               </div>
 
@@ -638,8 +749,10 @@ export const GeospatialMapView = ({
                   options={filterOptions.bairro}
                   value={getFilterValue("bairro")}
                   onSelect={(value) => updateFilter("bairro", value)}
+                  onOpen={() => onDropdownOpen("bairros")}
                   placeholder="Todos"
                   className="text-sm"
+                  loading={bairrosFetching}
                 />
               </div>
 
@@ -650,8 +763,10 @@ export const GeospatialMapView = ({
                   options={filterOptions.regiaoAdm}
                   value={getFilterValue("regiao_administrativa")}
                   onSelect={(value) => updateFilter("regiao_administrativa", value)}
+                  onOpen={() => onDropdownOpen("regioes_administrativas")}
                   placeholder="Todas"
                   className="text-sm"
+                  loading={regiaoAdmFetching}
                 />
               </div>
 
@@ -662,8 +777,10 @@ export const GeospatialMapView = ({
                   options={filterOptions.subprefeitura}
                   value={getFilterValue("subprefeitura")}
                   onSelect={(value) => updateFilter("subprefeitura", value)}
+                  onOpen={() => onDropdownOpen("subprefeituras")}
                   placeholder="Todas"
                   className="text-sm"
+                  loading={subprefeituraFetching}
                 />
               </div>
             </div>
@@ -673,7 +790,10 @@ export const GeospatialMapView = ({
           <div className="relative h-[600px] w-full rounded-lg overflow-hidden border-2">
             <DeckGL
               viewState={viewState}
-              onViewStateChange={({ viewState }) => setViewState(viewState as any)}
+              // Este app usa apenas MapView (sem views customizadas), então o viewState
+              // recebido é sempre MapViewState; a lib tipa genericamente para suportar
+              // outras Views (ex: TransitionProps), daí a necessidade do cast pontual.
+              onViewStateChange={(params) => setViewState(params.viewState as MapViewState)}
               controller={true}
               layers={deckLayers}
               getTooltip={getTooltip}
@@ -683,6 +803,13 @@ export const GeospatialMapView = ({
                 attributionControl={false}
               />
             </DeckGL>
+            {/* Indicador de refetch: filtro alterado com dados antigos em tela */}
+            {loading && layers.length > 0 && (
+              <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-md bg-background/85 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Atualizando camadas...
+              </div>
+            )}
           </div>
 
           {/* Legenda e Estatísticas */}
