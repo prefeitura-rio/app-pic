@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "../services/api";
 import { IdWithName } from "@/app/types";
+import { DEBUG_PAGE_ENABLED } from "@/app/debug/config";
 
 interface UserInfo {
   // JWT standard fields
@@ -28,7 +29,7 @@ interface UserInfo {
   nome?: string | null;
   ocupacao?: string | null;
   secretaria?: string | null;
-  secretaria_acesso?: string | null;
+  secretarias_acesso?: string[] | null;
   permission?: string | null;
   is_admin?: boolean;
   is_super_admin?: boolean;
@@ -61,7 +62,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
     queryFn: async () => {
       try {
         return await apiService.getCurrentUser();
-      } catch (error) {
+      } catch {
         return null;
       }
     },
@@ -109,7 +110,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
               {showUserControls && (
                 <>
                   {/* Debug icon for super admin (always visible except on debug page) */}
-                  {!isDebugPage && isSuperAdmin && (
+                  {!isDebugPage && isSuperAdmin && DEBUG_PAGE_ENABLED && (
                     <Button
                       variant="ghost"
                       size="icon"
