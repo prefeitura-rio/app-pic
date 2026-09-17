@@ -866,8 +866,8 @@ async def test_list_protocolo_status_matches_any_protocol_column(make_repo):
     repo, fake = make_repo(
         {
             "endpoint_participante_protocolos_wide": [
-                wide_row("1", protocolos={"sms_vacinacao_pentavalente": "Atenção"}),
-                wide_row("2", protocolos={"sme_frequencia_escolar": "Regular"}),
+                wide_row("1", protocolos={"sms_vacinacao_pentavalente": "atencao"}),
+                wide_row("2", protocolos={"sme_frequencia_escolar": "regular"}),
                 wide_row("3"),
             ]
         }
@@ -884,7 +884,7 @@ async def test_list_protocolo_status_matches_any_protocol_column(make_repo):
     assert or_param.startswith("(") and or_param.endswith(")")
     terms = or_param.strip("()").split(",")
     assert len(terms) == len(PROTOCOLO_STATUS_COLUMNS)
-    assert all(term.endswith(".eq.Atenção") for term in terms)
+    assert all(term.endswith(".eq.atencao") for term in terms)
     assert [item.id_membro_familia for item in data] == ["1"]
     assert meta.total_rows == 1
 
@@ -898,15 +898,15 @@ async def test_list_protocolo_descricao_and_status_requires_status_per_protocol(
                 wide_row(
                     "1",
                     protocolos={
-                        "sms_vacinacao_pentavalente": "Regular",
-                        "sme_frequencia_escolar": "Regular",
+                        "sms_vacinacao_pentavalente": "regular",
+                        "sme_frequencia_escolar": "regular",
                     },
                 ),
                 wide_row(
                     "2",
                     protocolos={
-                        "sms_vacinacao_pentavalente": "Regular",
-                        "sme_frequencia_escolar": "Atenção",
+                        "sms_vacinacao_pentavalente": "regular",
+                        "sme_frequencia_escolar": "atencao",
                     },
                 ),
                 wide_row("3"),
@@ -925,8 +925,8 @@ async def test_list_protocolo_descricao_and_status_requires_status_per_protocol(
     )
 
     params = fake.requests[0].url.params
-    assert params["sms_vacinacao_pentavalente"] == "eq.Regular"
-    assert params["sme_frequencia_escolar"] == "eq.Regular"
+    assert params["sms_vacinacao_pentavalente"] == "eq.regular"
+    assert params["sme_frequencia_escolar"] == "eq.regular"
     assert [item.id_membro_familia for item in data] == ["1"]
     assert meta.total_rows == 1
 
@@ -940,8 +940,8 @@ async def test_list_protocolo_descricao_and_multi_status_uses_in_per_protocol(
                 wide_row(
                     "1",
                     protocolos={
-                        "sms_vacinacao_pentavalente": "Regular",
-                        "sme_frequencia_escolar": "Atenção",
+                        "sms_vacinacao_pentavalente": "regular",
+                        "sme_frequencia_escolar": "atencao",
                     },
                 ),
             ]
@@ -959,8 +959,8 @@ async def test_list_protocolo_descricao_and_multi_status_uses_in_per_protocol(
     )
 
     params = fake.requests[0].url.params
-    assert params["sms_vacinacao_pentavalente"] == "in.(Regular,Atenção)"
-    assert params["sme_frequencia_escolar"] == "in.(Regular,Atenção)"
+    assert params["sms_vacinacao_pentavalente"] == "in.(regular,atencao)"
+    assert params["sme_frequencia_escolar"] == "in.(regular,atencao)"
 
 
 async def test_list_protocolo_filter_pages_have_single_offset_and_limit(make_repo):
@@ -1605,20 +1605,20 @@ def filtro_rows() -> list[dict]:
         filtro_row(
             "1",
             bairro="Centro",
-            sms_vacinacao_pentavalente="Regular",
+            sms_vacinacao_pentavalente="regular",
             saude_protocolos_total=2,
         ),
         filtro_row(
             "2",
             bairro="Centro",
-            sme_frequencia_escolar="Regular",
+            sme_frequencia_escolar="regular",
             educacao_protocolos_total=1,
             saude_protocolos_total=0,
         ),
         filtro_row(
             "3",
             bairro="Centro",
-            smas_acesso_alimentacao="Atenção",
+            smas_acesso_alimentacao="atencao",
             assistencia_protocolos_total=1,
             saude_protocolos_total=0,
         ),
@@ -1817,7 +1817,7 @@ class TestFilterOptions:
         assert request.url.params["bairro"] == "ilike.Centro"
         or_param = request.url.params["or"]
         assert len(or_param.strip("()").split(",")) == len(PROTOCOLO_STATUS_COLUMNS)
-        assert all(term.endswith(".eq.Atenção") for term in or_param.strip("()").split(","))
+        assert all(term.endswith(".eq.atencao") for term in or_param.strip("()").split(","))
         assert [o.id for o in descricoes] == ["smas_acesso_alimentacao"]
 
     @pytest.mark.asyncio

@@ -35,6 +35,15 @@ PROTOCOLO_FILTER_FIELDS = {
     "protocolo_secretaria": "protocolo_secretaria",
 }
 
+# UI label (FilterOption id, v1 semantics) -> value stored on the wide-table
+# protocol status columns (lowercase, no accent). Kept in sync with
+# `filter_vocabulary.PROTOCOLO_STATUS_VALUES`.
+PROTOCOLO_STATUS_DB_VALUES = {
+    "Regular": "regular",
+    "Atenção": "atencao",
+    "Irregular": "irregular",
+}
+
 # One status column per protocol on `endpoint_participante_protocolos_wide`
 # (column name == protocolo_id; NULL when the participant lacks the
 # protocol). Kept in sync with `filter_vocabulary.PROTOCOLO_DESCRICOES`.
