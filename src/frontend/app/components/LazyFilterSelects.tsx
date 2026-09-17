@@ -80,8 +80,9 @@ function effectiveFiltersKey(
  * tempo), `refetchOnMount: false` (sem refetch por remontagem) e
  * `fetchIfNeeded` só refaz quando os filtros efetivos mudaram desde o último
  * cálculo (comparado por `effectiveFiltersKey`, gravada apenas em sucesso).
- * O botão "Atualizar" recalcula via `invalidateQueries(["filterFieldOptions"])`
- * (DashboardClient), que marca a query como stale para a próxima abertura.
+ * O botão "Atualizar" NÃO recalcula estas opções (só participantes/dashboard):
+ * invalidar `filterFieldOptions` re-dispararia todas as APIs de filtro de uma
+ * vez, o que contradiz a estratégia lazy.
  */
 export function useFilterFieldOptions(
 	field: FilterFieldKey,

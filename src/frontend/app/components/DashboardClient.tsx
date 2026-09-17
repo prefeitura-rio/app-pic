@@ -498,7 +498,6 @@ export function DashboardClient({
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
     queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
-    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -506,11 +505,12 @@ export function DashboardClient({
    * Handle refresh with cache bypass (for Professional tab)
    */
   const handleProfessionalRefresh = useCallback(() => {
+    // Só participantes: as opções dos filtros são lazy e NÃO devem ser
+    // recalculadas aqui (invalidar "filterFieldOptions" re-dispara todas as
+    // APIs de filtro de uma vez). O timestamp novo já força o refetch de
+    // participantsV2 via queryKey.
     queryClient.invalidateQueries({ queryKey: ["participantsV2"] });
-    queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
-    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheParticipantsTimestamp(Date.now());
-    setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
 
   const handleRowClick = useCallback((idMembroFamilia: string) => {
