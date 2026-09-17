@@ -27,7 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from src.core.security.permissions_models import IdWithName
 from src.pic.infrastructure.db.models import BASE_UNIT_ID, BASE_UNIT_TYPE, PolicyRow
-from src.pic.infrastructure.repositories.hybrid_admin import HybridAdminRepository
+from src.pic.infrastructure.repositories.hybrid_admin import (
+    HybridAdminRepository,
+    _self_heal_lock_for,
+)
 
 SCHEMA = "app_pequenos_cariocas"
 CPF = "12345678900"
@@ -49,6 +52,20 @@ async def session() -> AsyncIterator[AsyncSession]:
 async def _all_policy_rows(session: AsyncSession) -> list[PolicyRow]:
     result = await session.execute(select(PolicyRow))
     return list(result.scalars().all())
+
+
+# ----------------------------------------------------------------------
+# Self-heal lock (barreira de sync por CPF)
+# ----------------------------------------------------------------------
+
+
+async def test_self_heal_lock_is_shared_per_cpf():
+    lock_a = await _self_heal_lock_for(CPF)
+    lock_a_again = await _self_heal_lock_for(CPF)
+    lock_other = await _self_heal_lock_for("99999999999")
+
+    assert lock_a is lock_a_again
+    assert lock_a is not lock_other
 
 
 # ----------------------------------------------------------------------

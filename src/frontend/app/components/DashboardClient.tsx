@@ -29,7 +29,8 @@ import {
   Participante,
   DashboardFilterValues,
 } from "@/app/types";
-import { Loader2, BarChart3, Search } from "lucide-react";
+import { Loader2, BarChart3, Search, AlertCircle, RefreshCw } from "lucide-react";
+import { Button } from "@/app/components/ui/button";
 
 interface UserInfo {
   name?: string | null;
@@ -72,31 +73,36 @@ export function DashboardClient({
   // Novo login → callback seta cookie fresh_login=1 → sessionStorage vai pra "0"
   // Aceite → sessionStorage vai pra "1" e fica assim até novo login
   const TERMS_KEY = "terms-accepted";
-  const [isFreshLogin] = useState<boolean>(() => {
+
+  // Fresh login: descarta TODO o cache do TanStack Query do usuário anterior
+  // (lista, dashboard, opções de filtro, detalhe) para a página nascer limpa.
+  // IMPORTANTE: o clear() roda SINCRONAMENTE no primeiro render, ANTES de
+  // qualquer useQuery criar observers. Limpar num useEffect criava uma
+  // corrida: as queries já estavam em voo quando eram destruídas pelo
+  // clear(), e o observer podia ficar preso (loading infinito ou dados
+  // recebidos que não renderizavam).
+  // A inicialização lazy do useState é o veículo: roda uma única vez, no
+  // primeiro render, e o valor retornado não precisa ser consumido.
+  useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    return document.cookie
+    const isFresh = document.cookie
       .split(";")
       .some((c) => c.trim() === "fresh_login=1");
-  });
-  const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    if (isFreshLogin) {
+    if (isFresh) {
       // Consome o cookie de fresh login e zera o estado da página: filtros,
       // aba, paginação e ordenação voltam aos defaults (ordenação por nome).
       document.cookie = "fresh_login=; path=/; max-age=0";
       sessionStorage.setItem(TERMS_KEY, "0");
       sessionStorage.removeItem(STORAGE_KEY);
-    }
-    return sessionStorage.getItem(TERMS_KEY) === "1";
-  });
-
-  // Fresh login: descarta TODO o cache do TanStack Query do usuário anterior
-  // (lista, dashboard, opções de filtro, detalhe) para a página nascer limpa.
-  useEffect(() => {
-    if (isFreshLogin) {
       queryClient.clear();
     }
-  }, [isFreshLogin, queryClient]);
+    return isFresh;
+  });
+
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return sessionStorage.getItem(TERMS_KEY) === "1";
+  });
 
   const handleTermsAccept = () => {
     sessionStorage.setItem(TERMS_KEY, "1");
@@ -289,6 +295,7 @@ export function DashboardClient({
     queryFn: () => apiService.getCurrentUser(forceSync ? { force_sync: true } : {}),
     staleTime: 10 * 60 * 1000, // 10 minutos
     retry: false, // Não retry em caso de 403/401
+    refetchOnMount: "always", // Sempre consulta /me ao montar (permissões podem ter mudado)
   });
 
   // Redirect se usuário não autorizado
@@ -372,6 +379,7 @@ export function DashboardClient({
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
+    refetchOnMount: "always", // Sempre consulta /participants ao montar a página
   });
 
   // TanStack Query para Geospatial Layers (Mapa) — LAZY
@@ -490,7 +498,6 @@ export function DashboardClient({
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
     queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
-    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -498,11 +505,12 @@ export function DashboardClient({
    * Handle refresh with cache bypass (for Professional tab)
    */
   const handleProfessionalRefresh = useCallback(() => {
+    // Só participantes: as opções dos filtros são lazy e NÃO devem ser
+    // recalculadas aqui (invalidar "filterFieldOptions" re-dispara todas as
+    // APIs de filtro de uma vez). O timestamp novo já força o refetch de
+    // participantsV2 via queryKey.
     queryClient.invalidateQueries({ queryKey: ["participantsV2"] });
-    queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
-    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheParticipantsTimestamp(Date.now());
-    setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
 
   const handleRowClick = useCallback((idMembroFamilia: string) => {
@@ -613,6 +621,43 @@ export function DashboardClient({
    * bloqueia o load inicial.
    */
   const isInitialLoading = currentUserLoading || participantsLoading;
+
+  // Falha crítica no load inicial: se as queries ERRORAREM (5xx/rede), sem
+  // este tratamento a página renderiza "Nenhuma pessoa encontrada" como se
+  // não houvesse dados. Só mostramos a tela de erro quando não há nenhum
+  // dado anterior (placeholderData/cache) para exibir.
+  const hasFatalInitialError =
+    !isInitialLoading &&
+    !!(currentUserError || participantsError) &&
+    !currentUser &&
+    !participantsResponse;
+
+  if (hasFatalInitialError) {
+    if (currentUserError) {
+      console.error("[DashboardClient] currentUser query error:", currentUserError);
+    }
+    if (participantsError) {
+      console.error("[DashboardClient] participants query error:", participantsError);
+    }
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md px-6">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <p className="text-lg font-semibold">
+            Não foi possível carregar o painel
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Ocorreu um erro ao buscar seus dados. Verifique sua conexão e
+            tente novamente.
+          </p>
+          <Button className="mt-6" onClick={() => window.location.reload()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isInitialLoading) {
     return (

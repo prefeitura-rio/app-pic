@@ -29,6 +29,7 @@ the login-time self-heal (`GET /admin/me`, see
 `src.pic.infrastructure.data_proxy.access_policy_sync.push_and_mark_synced`).
 """
 
+import asyncio
 import hashlib
 import json
 from typing import Any
@@ -94,6 +95,27 @@ _CATALOG_CACHE_PREFIX = "admin_unit_catalog:"
 # PostgREST caps every response at PGRST_DB_MAX_ROWS rows; grouped option
 # queries paginate with offset/limit over the same ordered aggregate.
 _OPTION_PAGE_SIZE = 1000
+
+# Barreira de sync por CPF: no fresh login o frontend dispara /admin/me
+# (force_sync=true) e os endpoints de dados (/participants, /dashboard, ...)
+# em PARALELO — cada um rodando o self-heal de policies. Sem serialização, a
+# leitura de dados pode alcançar o data-proxy antes do RLS do usuário estar
+# aplicado e retornar uma lista vazia. O lock por CPF faz as chamadas
+# concorrentes aguardarem o sync em andamento terminar antes de ler.
+_self_heal_locks: dict[str, asyncio.Lock] = {}
+_self_heal_locks_guard = asyncio.Lock()
+
+
+async def _self_heal_lock_for(cpf: str) -> asyncio.Lock:
+    """Return the per-CPF lock serializing policy self-heals."""
+    lock = _self_heal_locks.get(cpf)
+    if lock is None:
+        async with _self_heal_locks_guard:
+            lock = _self_heal_locks.get(cpf)
+            if lock is None:
+                lock = asyncio.Lock()
+                _self_heal_locks[cpf] = lock
+    return lock
 
 
 class HybridAdminRepository(IAdminRepository):
@@ -821,6 +843,16 @@ class HybridAdminRepository(IAdminRepository):
         await self._push_eager(changed)
 
     async def self_heal_policy_sync(self, cpf: str, force: bool = False) -> None:
+        # Serializado por CPF: evita que /admin/me (force_sync) e os endpoints
+        # de dados (self-heal) disputem a mesma policy em paralelo, e garante
+        # que uma leitura de dados espera o sync em andamento terminar.
+        lock = await _self_heal_lock_for(cpf)
+        async with lock:
+            await self._self_heal_policy_sync_locked(cpf, force)
+
+    async def _self_heal_policy_sync_locked(
+        self, cpf: str, force: bool = False
+    ) -> None:
         async with get_session() as session:
             where_clauses = [
                 PolicyRow.schema == SCHEMA,
@@ -837,4 +869,7 @@ class HybridAdminRepository(IAdminRepository):
                 )
             result = await session.execute(select(PolicyRow).where(*where_clauses))
             pending = list(result.scalars().all())
+        # Push mantido DENTRO do lock: o próximo waiter só entra quando o
+        # grant já foi confirmado no data-proxy, garantindo que a leitura de
+        # dados subsequente veja o RLS aplicado.
         await self._push_eager(pending)
