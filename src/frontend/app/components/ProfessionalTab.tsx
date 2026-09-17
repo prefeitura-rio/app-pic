@@ -487,19 +487,62 @@ const ProfessionalTabComponent = ({
 						)}
 					</CardContent>
 				</Card>
-			) : (
-				<Card className="border-2 border-dashed">
-					<CardContent className="py-12">
-						<div className="text-center text-muted-foreground">
-							<Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-							<p className="text-lg font-medium">Nenhuma pessoa encontrada</p>
-							<p className="text-sm mt-2">
-								Tente ajustar os filtros ou termo de busca
-							</p>
-						</div>
-					</CardContent>
-				</Card>
-			)}
+			) : (() => {
+				// Página restaurada do sessionStorage pode estar além do total de
+				// páginas atual (dados mudaram entre sessões): o backend retorna
+				// data vazio com meta.total_rows > 0 e a UI mostraría um falso
+				// "Nenhuma pessoa encontrada". Aqui oferecemos voltar à página 1.
+				const pageOutOfRange =
+					!!meta &&
+					meta.total_rows > 0 &&
+					data.length === 0 &&
+					meta.total_pages > 0 &&
+					meta.page > meta.total_pages;
+
+				if (pageOutOfRange) {
+					return (
+						<Card className="border-2 border-dashed">
+							<CardContent className="py-12">
+								<div className="text-center text-muted-foreground">
+									<Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+									<p className="text-lg font-medium">
+										Página fora do alcance
+									</p>
+									<p className="text-sm mt-2">
+										Você está na página {meta.page}, mas a listagem atual
+										tem apenas {meta.total_pages} página(s).{" "}
+										<span className="font-medium">
+											{meta.total_rows.toLocaleString("pt-BR")} pessoa(s)
+											encontrada(s)
+										</span>
+										.
+									</p>
+									<Button
+										className="mt-6"
+										onClick={() => onPageChange(1)}
+									>
+										Ir para a primeira página
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					);
+				}
+
+				return (
+					<Card className="border-2 border-dashed">
+						<CardContent className="py-12">
+							<div className="text-center text-muted-foreground">
+								<Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+								<p className="text-lg font-medium">Nenhuma pessoa encontrada</p>
+								<p className="text-sm mt-2">
+									Tente ajustar os filtros ou termo de busca
+								</p>
+							</div>
+						</CardContent>
+					</Card>
+				);
+			})()}
 
 			{/* Modal de Detalhamento */}
 			<Dialog

@@ -28,23 +28,38 @@ import {
 // This allows reading API_URL from runtime environment (Infisical)
 const BASE_URL = "/api/proxy";
 
+// Refresh em voo compartilhado: quando /me e /participants respondem 401
+// ao mesmo tempo, ambas as chamadas tentariam usar o refresh token
+// concorrentemente. Com refresh tokens rotativos, a segunda tentativa falha
+// (token já rotacionado) e redireciona o usuário para /login no meio do
+// carregamento. Um único promise em voo garante um só POST /api/auth/refresh.
+let refreshPromise: Promise<boolean> | null = null;
+
 /**
  * Attempt to refresh the access token using the refresh token
  */
 async function tryRefreshToken(): Promise<boolean> {
-  try {
-    const response = await fetch("/api/auth/refresh", {
-      method: "POST",
-    });
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch("/api/auth/refresh", {
+          method: "POST",
+        });
 
-    if (response.ok) {
-      return true;
-    }
+        if (response.ok) {
+          return true;
+        }
 
-    return false;
-  } catch {
-    return false;
+        return false;
+      } catch {
+        return false;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
   }
+
+  return refreshPromise;
 }
 
 /**
