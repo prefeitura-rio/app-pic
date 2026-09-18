@@ -8,8 +8,7 @@ import { SessionMonitor } from "@/app/components/SessionMonitor";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { apiService } from "../services/api";
+import { useCurrentUserCache } from "@/app/hooks/useCurrentUserCache";
 import { IdWithName } from "@/app/types";
 import { DEBUG_PAGE_ENABLED } from "@/app/debug/config";
 
@@ -53,23 +52,11 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
   const isDebugPage = pathname?.startsWith("/debug");
   const [userAreaOpen, setUserAreaOpen] = useState(false);
 
-  // Fetch complete user info (including permissions) from backend
-  // IMPORTANTE: Usa mesma queryKey que DashboardClient para compartilhar cache
-  // IMPORTANTE: Desabilita query quando showUserControls=false (página de login)
-  // para evitar loop infinito de redirects 401 -> /login -> 401 -> /login
-  const { data: currentUserAccess } = useQuery({
-    queryKey: ['currentUser'], // Mesma key que DashboardClient
-    queryFn: async () => {
-      try {
-        return await apiService.getCurrentUser();
-      } catch {
-        return null;
-      }
-    },
-    retry: false,
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes (mesmo que DashboardClient)
-    enabled: showUserControls, // Não executa na página de login
-  });
+  // Consome o /me do cache da query ["currentUser"] — o único observer é o
+  // do DashboardClient (ou da página /admin), que aplica force_sync e trata
+  // erros de auth corretamente. Aqui não há queryFn próprio: evita a corrida
+  // de queryFns diferentes na mesma chave e o loop 401 -> /login -> 401.
+  const currentUserAccess = useCurrentUserCache();
 
   // Merge basic userInfo (from JWT) with detailed access info (from API)
   const effectiveUserInfo: UserInfo | null = userInfo ? {

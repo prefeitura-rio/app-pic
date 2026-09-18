@@ -77,7 +77,7 @@ async def get_participants(
             f"Filters active: {len(filters.model_dump(exclude_none=True))}"
         )
 
-    await self_heal_policy_sync(admin_repo, permissions.cpf)
+    #await self_heal_policy_sync(admin_repo, permissions.cpf)
 
     try:
         result = await use_case.execute(
@@ -133,7 +133,7 @@ async def export_participants_csv_v2(
     export_start = time.perf_counter()
     logger.info("V2 CSV export started")
 
-    await self_heal_policy_sync(admin_repo, permissions.cpf)
+    #await self_heal_policy_sync(admin_repo, permissions.cpf)
 
     await _EXPORT_SEMAPHORE.acquire()
 
@@ -209,7 +209,7 @@ async def get_participant_detail(
     endpoint_start = time.perf_counter()
     logger.info(f"V2 participant detail endpoint started: {id_membro_familia}")
 
-    await self_heal_policy_sync(admin_repo, permissions.cpf)
+    #self_heal_policy_sync(admin_repo, permissions.cpf)
 
     try:
         result = await use_case.execute(
