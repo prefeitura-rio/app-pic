@@ -10,6 +10,9 @@ from typing import Any
 
 from src.pic.domain.models.dashboard import (
     Dashboard,
+    DisparoJornadaResumo,
+    DisparosDashboard,
+    DisparoStatusDistribuicao,
     DistribuicaoMotivoSaida,
     DistribuicaoSafra,
     DistribuicaoTempoIrregularidade,
@@ -59,15 +62,99 @@ def _percentual_raw(num: int | float, den: int | float) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _calculate_disparos_metrics(
+    disparos: dict[str, Any] | None,
+    total_participantes: int,
+) -> DisparosDashboard | None:
+    """Section 8 — WhatsApp disparos metrics from PostgREST aggregates.
+
+    ``disparos`` is the output of ``_fetch_disparos`` (already aggregated by
+    PostgREST); Python only derives percentages and builds the domain object.
+
+    Delivery/failure rates come from the status distribution (read implies
+    delivery): ``taxa_entrega`` = ENTREGUE + RESPONDIDO + LIDO over all rows
+    with a status, ``taxa_falha`` = FALHOU over the same base. The 30d
+    quantities stay available for the UI descriptions.
+
+    Returns ``None`` when the fetch degraded or the scope has no disparos.
+    """
+    if not disparos:
+        return None
+
+    totals = disparos.get("totals") or {}
+    total = int(totals.get("total") or 0)
+    entregues = int(totals.get("entregues") or 0)
+    falhas = int(totals.get("falhas") or 0)
+    alcancados = int(disparos.get("alcancados") or 0)
+    engajados = int(disparos.get("engajados") or 0)
+
+    status_distribuicao = [
+        DisparoStatusDistribuicao(
+            status=row.get("status"),
+            total=int(row.get("total") or 0),
+        )
+        for row in (disparos.get("status") or [])
+    ]
+    _STATUSES_ENTREGA_EFETIVA = {"ENTREGUE", "RESPONDIDO", "LIDO"}
+    status_total = sum(s.total for s in status_distribuicao)
+    entregues_efetivos = sum(
+        s.total
+        for s in status_distribuicao
+        if s.status in _STATUSES_ENTREGA_EFETIVA
+    )
+    falhas_status = sum(
+        s.total for s in status_distribuicao if s.status == "FALHOU"
+    )
+
+    statuses_por_jornada: dict[str, list[DisparoStatusDistribuicao]] = {}
+    for row in (disparos.get("jornadas_statuses") or []):
+        statuses_por_jornada.setdefault(row.get("jornada"), []).append(
+            DisparoStatusDistribuicao(
+                status=row.get("status"),
+                total=int(row.get("total") or 0),
+            )
+        )
+
+    por_jornada = [
+        DisparoJornadaResumo(
+            jornada=row.get("jornada"),
+            participantes=int(row.get("participantes") or 0),
+            entregues_30d=int(row.get("entregues") or 0),
+            falhas_30d=int(row.get("falhas") or 0),
+            taxa_falha=_percentual(
+                int(row.get("falhas") or 0), int(row.get("participantes") or 0)
+            ),
+            status_distribuicao=statuses_por_jornada.get(row.get("jornada"), []),
+        )
+        for row in (disparos.get("jornadas") or [])
+    ]
+    por_jornada.sort(key=lambda j: j.participantes, reverse=True)
+
+    return DisparosDashboard(
+        alcancados=alcancados,
+        cobertura_percentual=_percentual(alcancados, total_participantes),
+        total_30d=total,
+        entregues_30d=entregues,
+        falhas_30d=falhas,
+        taxa_entrega=_percentual(entregues_efetivos, status_total),
+        taxa_falha=_percentual(falhas_status, status_total),
+        engajados=engajados,
+        taxa_engajamento=_percentual(engajados, alcancados),
+        status_distribuicao=status_distribuicao,
+        por_jornada=por_jornada,
+    )
+
+
 def _calculate_dashboard_metrics(
     consolidado: dict[str, Any],
     protocolos: list[dict[str, Any]],
     series: list[dict[str, Any]],
     tempo: dict[str, Any],
     resolucao: list[dict[str, Any]],
+    disparos: dict[str, Any] | None = None,
     filtro_secretaria: str | None = None,
 ) -> Dashboard:
-    """Compute all seven dashboard sections from PostgREST data.
+    """Compute all dashboard sections from PostgREST data.
 
     Os dados já vêm agregados do banco; quando houver mais de uma linha por
     chave (ex.: protocolos repetidos entre dimensões), as linhas são somadas.
@@ -81,6 +168,7 @@ def _calculate_dashboard_metrics(
         series: linhas por (mes, serie_tipo)
         tempo: {smas, sme, sms} com somas ponderadas pré-calculadas
         resolucao: linhas por (mes, secretaria)
+        disparos: output of ``_fetch_disparos`` (None on graceful degradation)
         filtro_secretaria: Optional secretaria param (SMS|SME|SMAS)
 
     Returns:
@@ -360,6 +448,13 @@ def _calculate_dashboard_metrics(
         )
 
     logger.info(f"⚡ [postgrest_v2] Seção 7: {perf_time.perf_counter() - t1:.3f}s")
+
+    # =========================================================================
+    # SECTION 8 — Disparos WhatsApp (agregados no PostgREST)
+    # =========================================================================
+    t1 = perf_time.perf_counter()
+    disparos_dashboard = _calculate_disparos_metrics(disparos, total_participantes)
+    logger.info(f"⚡ [postgrest_v2] Seção 8 (disparos): {perf_time.perf_counter() - t1:.3f}s")
     logger.info(f"⚡ [postgrest_v2] total compute: {perf_time.perf_counter() - t0:.3f}s")
 
     return Dashboard(
@@ -375,5 +470,6 @@ def _calculate_dashboard_metrics(
         tempo_medio_irregularidade=tempo_medio_lista,
         distribuicao_tempo_irregularidade=distribuicao_tempo,
         taxa_resolucao_mensal=taxa_resolucao,
+        disparos=disparos_dashboard,
         data_atualizacao=None,
     )
