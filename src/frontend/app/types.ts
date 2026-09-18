@@ -59,6 +59,37 @@ export interface Disparo {
 	metadados?: DisparoMetadados | null;
 }
 
+/** Contagem de disparos por status (seção de disparos do dashboard) */
+export interface DisparoStatusDistribuicao {
+	status?: string | null;
+	total?: number | null;
+}
+
+/** Resumo de uma campanha/jornada na seção de disparos do dashboard */
+export interface DisparoJornadaResumo {
+	jornada?: string | null;
+	participantes?: number | null;
+	entregues_30d?: number | null;
+	falhas_30d?: number | null;
+	taxa_falha?: number | null;
+	status_distribuicao?: DisparoStatusDistribuicao[] | null;
+}
+
+/** Métricas agregadas de disparos de WhatsApp (snapshot 30d) do dashboard */
+export interface DisparosDashboard {
+	alcancados: number;
+	cobertura_percentual: number | null;
+	total_30d: number;
+	entregues_30d: number;
+	falhas_30d: number;
+	taxa_entrega: number;
+	taxa_falha: number;
+	engajados: number;
+	taxa_engajamento: number;
+	status_distribuicao: DisparoStatusDistribuicao[];
+	por_jornada: DisparoJornadaResumo[];
+}
+
 export interface EnderecoSMS {
 	endereco?: string;
 	complemento?: string;
@@ -410,6 +441,11 @@ export interface Dashboard {
 	// SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)
 	// =========================================================================
 	taxa_resolucao_mensal: TaxaResolucaoMensalPoint[];
+
+	// =========================================================================
+	// SEÇÃO 8: DISPAROS WHATSAPP (snapshot últimos 30 dias)
+	// =========================================================================
+	disparos?: DisparosDashboard | null;
 
 	// =========================================================================
 	// METADADOS
