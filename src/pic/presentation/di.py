@@ -3,6 +3,9 @@ import asyncio
 from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.application.ports.debug_repository import IDebugRepository
+from src.pic.application.ports.disparos_repository import (
+    DisparosRepository,
+)
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
 from src.pic.application.ports.participant_repository import (
     ParticipantRepository,
@@ -46,6 +49,9 @@ from src.pic.infrastructure.postgrest_client.client import get_postgrest_client
 from src.pic.infrastructure.redis_client import get_redis_client
 from src.pic.infrastructure.repositories.bigquery_debug import (
     BigQueryDebugRepository,
+)
+from src.pic.infrastructure.repositories.disparos_repository import (
+    PostgrestDisparosRepository,
 )
 from src.pic.infrastructure.repositories.hybrid_admin import (
     HybridAdminRepository,
@@ -128,7 +134,25 @@ async def get_list_participants_use_case() -> ListParticipantsUseCase:
 
 
 async def get_participant_detail_use_case() -> GetParticipantDetailUseCase:
-    return GetParticipantDetailUseCase(repository=await get_participant_read_repo())
+    """Detail use case: participant reads + disparos (WhatsApp) reads.
+
+    Both repositories share the same PostgREST client singleton; the use case
+    runs the two fetches concurrently (`asyncio.gather`).
+    """
+    participant_repo, disparos_repo = await asyncio.gather(
+        get_participant_read_repo(),
+        get_disparos_repo(),
+    )
+    return GetParticipantDetailUseCase(
+        repository=participant_repo,
+        disparos_repository=disparos_repo,
+    )
+
+
+async def get_disparos_repo() -> DisparosRepository:
+    """PostgREST-backed disparos repository (WhatsApp HSM per participant)."""
+    postgrest_client = await get_postgrest_client()
+    return PostgrestDisparosRepository(postgrest_client)
 
 
 async def get_filter_options_use_case() -> GetFilterOptionsUseCase:

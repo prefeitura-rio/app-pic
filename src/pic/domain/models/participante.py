@@ -3,6 +3,7 @@ from datetime import date
 
 from pydantic import BaseModel, field_validator
 
+from src.pic.domain.models.disparo import Disparo
 from src.pic.domain.models.endereco import EnderecoSMS
 from src.pic.domain.models.protocolo import ProtocoloListagemItem
 
@@ -91,3 +92,4 @@ class Participante(BaseModel):
     saude_protocolos_regular: int | None = None
     saude_fracao: str | None = None
     protocolo_listagem: list[ProtocoloListagemItem] | None = None
+    disparos: list[Disparo] | None = None
