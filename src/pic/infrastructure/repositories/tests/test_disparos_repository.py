@@ -2,8 +2,9 @@
 
 Covers the query shape (table, select list, `id_membro_familia=eq`, user
 token forwarding), the row -> `Disparo` mapping (nulls, metadados omission),
-newest-first ordering, and the graceful degradation (`None`) on API and
-transport errors.
+the discard of rows with every `disparo_*` column null (no disparo
+happened), newest-first ordering, and the graceful degradation (`None`) on
+API and transport errors.
 """
 
 import httpx
@@ -178,7 +179,7 @@ async def test_get_disparos_builds_query_and_maps_rows_newest_first(make_repo):
 
 
 @pytest.mark.asyncio
-async def test_get_disparos_maps_nulls_and_omits_empty_metadados(make_repo):
+async def test_get_disparos_discards_rows_with_all_disparo_fields_null(make_repo):
     repo, _ = make_repo(
         [
             disparo_row(
@@ -197,15 +198,32 @@ async def test_get_disparos_maps_nulls_and_omits_empty_metadados(make_repo):
 
     disparos = await repo.get_disparos("00325420412")
 
+    assert disparos == []
+
+
+@pytest.mark.asyncio
+async def test_get_disparos_keeps_valid_rows_and_skips_null_rows(make_repo):
+    repo, _ = make_repo(
+        [
+            disparo_row(
+                campanha=None,
+                data=None,
+                datahora=None,
+                secretaria=None,
+                status=None,
+                indicador_falha=None,
+                total_30d=None,
+                entregues_30d=None,
+                falhas_30d=None,
+            ),
+            disparo_row(campanha="Mutirão de Vacinação"),
+        ]
+    )
+
+    disparos = await repo.get_disparos("00325420412")
+
     assert len(disparos) == 1
-    disparo = disparos[0]
-    assert disparo.campanha is None
-    assert disparo.data is None
-    assert disparo.datahora is None
-    assert disparo.secretaria is None
-    assert disparo.status is None
-    assert disparo.indicador_falha is None
-    assert disparo.metadados is None
+    assert disparos[0].campanha == "Mutirão de Vacinação"
 
 
 @pytest.mark.asyncio
