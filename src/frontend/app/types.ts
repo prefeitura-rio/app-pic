@@ -41,6 +41,24 @@ export interface ProtocoloListagemItem {
 	protocolo_motivo?: ProtocoloMotivo; // array de strings com os motivos de irregularidade, caso existam. Ex: ["Falta de documentação", "Pendência de atualização"]
 }
 
+/** Métricas de 30 dias de uma campanha de disparos de WhatsApp */
+export interface DisparoMetadados {
+	total_ultimos_30d?: number | null;
+	entregues_30d?: number | null;
+	falhas_30d?: number | null;
+}
+
+/** Um disparo (campanha) de WhatsApp do participante */
+export interface Disparo {
+	campanha?: string | null;
+	data?: string | null; // ISO date (YYYY-MM-DD)
+	datahora?: string | null; // ISO datetime
+	secretaria?: string | null; // SMS | SMAS | SME | PGM
+	status?: string | null; // ENTREGUE | RESPONDIDO | LIDO | FALHOU | SEM_RETORNO | ENVIADO
+	indicador_falha?: boolean | null;
+	metadados?: DisparoMetadados | null;
+}
+
 export interface EnderecoSMS {
 	endereco?: string;
 	complemento?: string;
@@ -86,6 +104,9 @@ export interface Participante {
 
 	// Protocolos - Lista detalhada (NOVO)
 	protocolo_listagem?: ProtocoloListagemItem[];
+
+	// Disparos de WhatsApp (campanhas HSM)
+	disparos?: Disparo[] | null;
 
 	// Protocolos - Contadores gerais
 	total_protocolos?: number;

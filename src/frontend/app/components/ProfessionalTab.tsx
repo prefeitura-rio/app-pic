@@ -52,6 +52,7 @@ import { FilterCard } from "./FilterCard";
 import { GeospatialMapView } from "./GeospatialMapView";
 import { ParticipantTable } from "./ParticipantTable";
 import { ProtocoloItem } from "./ProtocoloItem";
+import { WhatsAppDisparosSection } from "./whatsapp/WhatsAppDisparosSection";
 
 // Função para renderizar o grupo com emoji (consistente com VirtualizedParticipantTable)
 const renderGrupo = (grupo?: string) => {
@@ -1202,6 +1203,11 @@ const ProfessionalTabComponent = ({
 							</div>
 
 							<Separator />
+
+							{/* Disparos WhatsApp (campanhas HSM) */}
+							<WhatsAppDisparosSection
+								disparos={selectedParticipant.disparos}
+							/>
 
 							{/* Dimensão Assistência Social */}
 							{(() => {

@@ -26,6 +26,7 @@ applied in pure Python over the fetched rows. Results are cached in Redis for
 cache.
 """
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
@@ -303,19 +304,10 @@ class PostgrestParticipantRepository(ParticipantRepository):
         secretarias_acesso, full_access = governance.resolve_access(permissions)
 
         async with self._client.with_user_token(user_token):
-            wide_result = await execute_query(
-                self._client,
-                self._client.table(TABLE_PROTOCOLOS_WIDE)
-                .select("*")
-                .filter("id_membro_familia", "eq", str(id_membro_familia))
-                .limit(1),
-            )
-            if not wide_result.data:
-                return None
-
-            participant_row = dict(wide_result.data[0])
-
-            protocolos_rows: list[dict[str, Any]] = []
+            # The wide row and the protocol items both depend only on
+            # `id_membro_familia` — fetch them concurrently. The wide row
+            # still gates the detail: when it is missing the protocol rows
+            # are simply discarded (one extra query on the 404 path).
             if full_access or secretarias_acesso:
 
                 def build_protocolos_query() -> AsyncSelectRequestBuilder:
@@ -334,12 +326,37 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         "protocolo_secretaria", desc=False, nullsfirst=False
                     ).order("protocolo_id", desc=False, nullsfirst=False)
 
-                protocolos_rows, _ = await fetch_pages(
-                    self._client,
-                    lambda count=None: build_protocolos_query(),
-                    limit=None,
-                    with_count=False,
+                wide_result, (protocolos_rows, _) = await asyncio.gather(
+                    execute_query(
+                        self._client,
+                        self._client.table(TABLE_PROTOCOLOS_WIDE)
+                        .select("*")
+                        .filter(
+                            "id_membro_familia", "eq", str(id_membro_familia)
+                        )
+                        .limit(1),
+                    ),
+                    fetch_pages(
+                        self._client,
+                        lambda count=None: build_protocolos_query(),
+                        limit=None,
+                        with_count=False,
+                    ),
                 )
+            else:
+                wide_result = await execute_query(
+                    self._client,
+                    self._client.table(TABLE_PROTOCOLOS_WIDE)
+                    .select("*")
+                    .filter("id_membro_familia", "eq", str(id_membro_familia))
+                    .limit(1),
+                )
+                protocolos_rows = []
+
+            if not wide_result.data:
+                return None
+
+            participant_row = dict(wide_result.data[0])
 
             row = governance.compute_detail_view(
                 participant_row,
