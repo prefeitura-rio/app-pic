@@ -5,6 +5,10 @@ one row per participant x campaign) filtered by `id_membro_familia`. The
 request carries the end user's JWT (`with_user_token`) so the data-proxy
 applies RLS; the read is best-effort — a PostgREST/transport failure is
 logged and degrades to `None` so the participant detail stays up.
+
+Rows where every `disparo_*` column is null mean no disparo happened for
+that campaign and are dropped before mapping, so they never reach the API
+response.
 """
 
 from datetime import datetime
@@ -35,6 +39,11 @@ _DISPARO_COLUMNS = [
 ]
 
 _DISPARO_SELECT = ",".join(_DISPARO_COLUMNS)
+
+
+def _is_disparo_row_empty(row: dict[str, Any]) -> bool:
+    """True when every `disparo_*` column is null — no disparo happened."""
+    return all(row.get(column) is None for column in _DISPARO_COLUMNS)
 
 
 def _row_to_disparo(row: dict[str, Any]) -> Disparo:
@@ -102,7 +111,11 @@ class PostgrestDisparosRepository(DisparosRepository):
             )
             return None
 
-        disparos = [_row_to_disparo(dict(row)) for row in rows]
+        disparos = [
+            _row_to_disparo(dict(row))
+            for row in rows
+            if not _is_disparo_row_empty(dict(row))
+        ]
         logger.info(
             f"[disparos] fetched {len(disparos)} campaign(s) for "
             f"id_membro_familia={id_membro_familia}"
