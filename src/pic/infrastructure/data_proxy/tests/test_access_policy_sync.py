@@ -39,7 +39,7 @@ def revoke_row(**overrides) -> PolicyRow:
     return grant_row(is_enabled=False, **overrides)
 
 
-def fake_data_proxy(*, grant_status: int = 201, revoke_status: int = 200):
+def fake_data_proxy(*, post_status: int = 201):
     """Fakes Keycloak + the data-proxy's access_policy endpoint. Records
     every non-token request."""
     requests: list[httpx.Request] = []
@@ -50,9 +50,7 @@ def fake_data_proxy(*, grant_status: int = 201, revoke_status: int = 200):
 
         requests.append(request)
         if request.method == "POST":
-            return httpx.Response(grant_status, json=[])
-        if request.method == "PATCH":
-            return httpx.Response(revoke_status, json=[])
+            return httpx.Response(post_status, json=[])
         raise AssertionError(f"unexpected method {request.method}")
 
     handler.requests = requests  # type: ignore[attr-defined]
@@ -82,7 +80,7 @@ async def test_grant_upserts_with_merge_duplicates_and_app_schema_profile():
     assert "schema" not in payload[0]
 
 
-async def test_revoke_patches_is_enabled_false_filtered_by_row():
+async def test_revoke_upserts_disabled_row():
     handler = fake_data_proxy()
     sync = make_sync(handler)
     row = revoke_row(unit_id="42")
@@ -91,16 +89,46 @@ async def test_revoke_patches_is_enabled_false_filtered_by_row():
 
     assert pushed == [row]
     sent = handler.requests[0]
-    assert sent.method == "PATCH"
+    assert sent.method == "POST"
     assert sent.headers["content-profile"] == "app_pequenos_cariocas"
-    assert sent.url.params["unit_id"] == "in.(42)"
-    assert sent.url.params["subject"] == "eq.12345678900"
-    assert "schema" not in sent.url.params
+    assert "resolution=merge-duplicates" in sent.headers["prefer"]
+    assert sent.url.params["on_conflict"] == "subject,unit_type,unit_id"
+    assert json.loads(sent.content) == [
+        {
+            "subject": "12345678900",
+            "is_admin": False,
+            "is_enabled": False,
+            "unit_type": "cras",
+            "unit_id": "42",
+        }
+    ]
 
 
-async def test_revoke_batches_same_unit_type_into_a_single_patch():
-    """Revoking many units of the same (subject, unit_type) should
-    cost one PATCH request, not one per unit_id."""
+async def test_push_mixes_grants_and_revokes_in_one_post():
+    """Grant and revoke rows travel in the same upsert batch — each row
+    carries its own `is_enabled` — so one push costs one POST, whatever the
+    mix of unit_types and states."""
+    handler = fake_data_proxy()
+    sync = make_sync(handler)
+    g = grant_row(id=1, unit_id="1", unit_type="cras")
+    r = revoke_row(id=2, unit_id="2", unit_type="escola")
+
+    pushed = await sync.push([g, r])
+
+    assert set(pushed) == {g, r}
+    assert len(handler.requests) == 1
+    assert handler.requests[0].method == "POST"
+    payload = json.loads(handler.requests[0].content)
+    assert [(p["unit_type"], p["unit_id"], p["is_enabled"]) for p in payload] == [
+        ("cras", "1", True),
+        ("escola", "2", False),
+    ]
+
+
+async def test_push_chunks_by_body_budget(monkeypatch):
+    """Batches are split by serialized body size (never by row count or
+    unit_type), keeping every POST under the data-proxy's body limit."""
+    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 250)
     handler = fake_data_proxy()
     sync = make_sync(handler)
     rows = [revoke_row(id=i, unit_id=str(i)) for i in range(1, 6)]
@@ -108,43 +136,15 @@ async def test_revoke_batches_same_unit_type_into_a_single_patch():
     pushed = await sync.push(rows)
 
     assert set(pushed) == set(rows)
-    assert len(handler.requests) == 1
-    sent = handler.requests[0]
-    assert sent.method == "PATCH"
-    assert sent.url.params["unit_id"] == "in.(1,2,3,4,5)"
-
-
-async def test_revoke_groups_by_unit_type_into_separate_patches():
-    """Different unit_types can't share one `unit_id=in.(...)` filter
-    (it would revoke the cross-product), so each unit_type gets its own
-    PATCH — still far fewer requests than one per row."""
-    handler = fake_data_proxy()
-    sync = make_sync(handler)
-    cras = [revoke_row(id=1, unit_type="cras", unit_id="1")]
-    escola = [
-        revoke_row(id=2, unit_type="escola", unit_id="9"),
-        revoke_row(id=3, unit_type="escola", unit_id="10"),
-    ]
-
-    pushed = await sync.push(cras + escola)
-
-    assert set(pushed) == set(cras + escola)
-    assert len(handler.requests) == 2
-    unit_id_filters = {req.url.params["unit_id"] for req in handler.requests}
-    assert unit_id_filters == {"in.(1)", "in.(9,10)"}
-
-
-async def test_push_mixes_grants_and_revokes_in_one_call():
-    handler = fake_data_proxy()
-    sync = make_sync(handler)
-    g = grant_row(id=1, unit_id="1")
-    r = revoke_row(id=2, unit_id="2")
-
-    pushed = await sync.push([g, r])
-
-    assert set(pushed) == {g, r}
-    methods = {req.method for req in handler.requests}
-    assert methods == {"POST", "PATCH"}
+    # ~103 bytes of JSON per row -> two rows per 250-byte chunk.
+    assert len(handler.requests) == 3
+    for req in handler.requests:
+        body = json.loads(req.content)
+        assert sum(len(json.dumps(row)) for row in body) <= 250
+    unit_ids = {
+        p["unit_id"] for req in handler.requests for p in json.loads(req.content)
+    }
+    assert unit_ids == {"1", "2", "3", "4", "5"}
 
 
 async def test_push_returns_empty_list_when_no_rows():
@@ -171,59 +171,24 @@ async def test_push_dedupes_rows_sharing_the_same_primary_key():
     assert len(payload) == 1
 
 
-async def test_grant_failure_does_not_block_revoke_success():
-    handler = fake_data_proxy(grant_status=500)
+async def test_chunk_failure_pushes_only_successful_chunks(monkeypatch):
+    """One failed chunk leaves only its own rows unsynced; the remaining
+    chunks still complete (the next self-heal retries the failed ones)."""
+    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 250)
+    statuses = iter([500, 201, 201])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "keycloak.example":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+        return httpx.Response(next(statuses), json=[])
+
     sync = make_sync(handler)
-    g = grant_row(id=1)
-    r = revoke_row(id=2)
+    rows = [revoke_row(id=i, unit_id=str(i)) for i in range(1, 6)]
 
-    pushed = await sync.push([g, r])
+    pushed = await sync.push(rows)
 
-    assert pushed == [r]
-
-
-async def test_revoke_failure_does_not_block_grant_success():
-    handler = fake_data_proxy(revoke_status=500)
-    sync = make_sync(handler)
-    g = grant_row(id=1)
-    r = revoke_row(id=2)
-
-    pushed = await sync.push([g, r])
-
-    assert pushed == [g]
-
-
-async def _fake_get_postgrest_client():
-    return object()
-
-
-class _FakeSession:
-    def __init__(self, log: list) -> None:
-        self._log = log
-
-    async def execute(self, stmt) -> None:
-        self._log.append(stmt)
-
-    async def commit(self) -> None:
-        pass
-
-
-class _FakeSyncer:
-    """Stub standing in for an `AccessPolicySync` instance."""
-
-    def __init__(self, expected_rows: list[PolicyRow], result: list[PolicyRow]) -> None:
-        self._expected_rows = expected_rows
-        self._result = result
-
-    async def push(self, rows: list[PolicyRow]) -> list[PolicyRow]:
-        assert rows == self._expected_rows
-        return self._result
-
-
-def _fake_access_policy_sync_factory(expected_rows, result):
-    """Returns a stand-in for the `AccessPolicySync` class constructor, so
-    `push_and_mark_synced` tests don't need a real `PostgrestClient`."""
-    return lambda generic_client: _FakeSyncer(expected_rows, result)
+    # First POST (rows 1-2) failed; rows 3-5 landed.
+    assert {r.id for r in pushed} == {3, 4, 5}
 
 
 async def test_push_and_mark_synced_stamps_only_the_rows_that_succeeded(monkeypatch):
@@ -323,3 +288,36 @@ async def test_push_and_mark_synced_swallows_client_init_errors(monkeypatch):
 
     # Should not raise.
     await push_and_mark_synced([grant_row()])
+
+
+async def _fake_get_postgrest_client():
+    return object()
+
+
+class _FakeSession:
+    def __init__(self, log: list) -> None:
+        self._log = log
+
+    async def execute(self, stmt) -> None:
+        self._log.append(stmt)
+
+    async def commit(self) -> None:
+        pass
+
+
+class _FakeSyncer:
+    """Stub standing in for an `AccessPolicySync` instance."""
+
+    def __init__(self, expected_rows: list[PolicyRow], result: list[PolicyRow]) -> None:
+        self._expected_rows = expected_rows
+        self._result = result
+
+    async def push(self, rows: list[PolicyRow]) -> list[PolicyRow]:
+        assert rows == self._expected_rows
+        return self._result
+
+
+def _fake_access_policy_sync_factory(expected_rows, result):
+    """Returns a stand-in for the `AccessPolicySync` class constructor, so
+    `push_and_mark_synced` tests don't need a real `PostgrestClient`."""
+    return lambda generic_client: _FakeSyncer(expected_rows, result)
