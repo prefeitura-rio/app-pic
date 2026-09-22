@@ -48,10 +48,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from src.pic.infrastructure.admin.validation import _sanitize_cpf, _validate_cpf
 
 from src.api.v1.queries import GOVERNANCE_TABLE_QUERY
 from src.config import env
-from src.pic.infrastructure.admin.validation import _sanitize_cpf, _validate_cpf
 from src.pic.infrastructure.db.engine import close_engine, get_session
 from src.pic.infrastructure.db.models import (
     BASE_UNIT_ID,
@@ -156,7 +156,15 @@ def fetch_and_validate_rows() -> tuple[list[dict], list[tuple[str, str]]]:
 
 
 def build_policy_rows(row: dict) -> list[dict]:
-    """Gera as linhas de `policy` para um usuário (sem `id`/timestamps)."""
+    """Gera as linhas de `policy` para um usuário (sem `id`/timestamps).
+
+    Usuário inativo (`active=false`) não gera nenhuma linha: o `access_policy`
+    do data-proxy não tem mais `is_enabled` (revogação = DELETE da linha), então
+    não existe "linha desabilitada" — inativo é simplesmente não ter linha.
+    """
+    if not row["active"]:
+        return []
+
     policy_rows: list[dict] = []
 
     if row["is_super_admin"]:
@@ -165,7 +173,6 @@ def build_policy_rows(row: dict) -> list[dict]:
                 "schema": SCHEMA,
                 "subject": row["cpf"],
                 "is_admin": True,
-                "is_enabled": row["active"],
                 "unit_type": BASE_UNIT_TYPE,
                 "unit_id": BASE_UNIT_ID,
                 "synced_at": None,
@@ -179,7 +186,6 @@ def build_policy_rows(row: dict) -> list[dict]:
                     "schema": SCHEMA,
                     "subject": row["cpf"],
                     "is_admin": False,
-                    "is_enabled": row["active"],
                     "unit_type": unit_type,
                     "unit_id": unit_id,
                     "synced_at": None,
