@@ -102,7 +102,9 @@ async def test_grant_upserts_with_merge_duplicates_and_app_schema_profile():
 
 async def test_revoke_deletes_row_filtered_by_pk():
     """`access_policy` no longer has `is_enabled` — a revoke is a hard
-    DELETE filtered by subject/unit_type/unit_id, not a soft upsert."""
+    DELETE filtered by subject/unit_type/unit_id, not a soft upsert. The
+    DELETE uses `return=representation`: the data-proxy hangs on the
+    minimal/204 path (observed in staging)."""
     handler = fake_data_proxy()
     sync = make_sync(handler)
     row = revoke_row(unit_id="42")
@@ -113,7 +115,7 @@ async def test_revoke_deletes_row_filtered_by_pk():
     sent = handler.requests[0]
     assert sent.method == "DELETE"
     assert sent.headers["content-profile"] == "app_pequenos_cariocas"
-    assert "return=minimal" in sent.headers["prefer"]
+    assert "return=representation" in sent.headers["prefer"]
     assert delete_filter(sent) == {
         "subject": "eq.12345678900",
         "unit_type": "eq.cras",

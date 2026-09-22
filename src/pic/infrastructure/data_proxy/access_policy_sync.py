@@ -25,8 +25,11 @@ longer has an `is_enabled` column — see plan.md section 3.3):
   `DELETE ...&unit_id=in.(...)`, chunked by URL-encoded byte budget
   (`_DELETE_URL_CHUNK_BYTES`): a grant set with thousands of unit ids
   (e.g. every school) stays well under nginx's request-line limit across a
-  handful of requests. Deletes are idempotent — matching zero rows is a
-  success (204), so a repeated revoke is harmless.
+  handful of requests. DELETEs use `Prefer: return=representation`: the
+  data-proxy hangs on the default minimal/204 path (observed in staging),
+  while representation answers in ~200ms even when the filter matches
+  nothing — so a revoke whose row is already gone converges in one fast,
+  idempotent call.
 """
 
 import json
@@ -180,7 +183,10 @@ class AccessPolicySync:
                 pushed.extend(chunk_rows)
 
         for chunk_rows in _revoke_chunks(revokes):
-            if await self._delete(chunk_rows):
+            subject = chunk_rows[0].subject
+            unit_type = chunk_rows[0].unit_type
+            unit_ids = [row.unit_id for row in chunk_rows]
+            if await self._delete(subject, unit_type, unit_ids):
                 pushed.extend(chunk_rows)
 
         return pushed
@@ -199,14 +205,18 @@ class AccessPolicySync:
             return False
         return True
 
-    async def _delete(self, rows: list[PolicyRow]) -> bool:
-        subject = rows[0].subject
-        unit_type = rows[0].unit_type
-        unit_ids = [row.unit_id for row in rows]
+    async def _delete(
+        self, subject: str, unit_type: str, unit_ids: list[str]
+    ) -> bool:
+        # `return=representation` on purpose: the data-proxy staging hangs
+        # on DELETEs that answer with the default minimal/204 path (observed
+        # ~20s client timeouts); with representation it responds in ~200ms
+        # even when the filter matches nothing. Idempotent — zero rows
+        # matched is still a success.
         try:
             await (
                 self._client.from_(ACCESS_POLICY_TABLE)
-                .delete(returning=ReturnMethod.minimal)
+                .delete(returning=ReturnMethod.representation)
                 .eq("subject", subject)
                 .eq("unit_type", unit_type)
                 .in_("unit_id", unit_ids)
@@ -214,7 +224,7 @@ class AccessPolicySync:
             )
         except Exception:
             logger.exception(
-                f"Falha ao remover {len(rows)} revoke(s) de access_policy "
+                f"Falha ao remover {len(unit_ids)} revoke(s) de access_policy "
                 f"(subject={subject}, unit_type={unit_type})"
             )
             return False
