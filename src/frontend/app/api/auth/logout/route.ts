@@ -50,7 +50,15 @@ export async function GET() {
   // Create redirect response
   const response = NextResponse.redirect(logoutRedirectUrl);
 
-  // Clear all auth cookies before redirecting
+  // Apaga todos os cookies de autenticação e sinalização.
+  //
+  // Os cookies fresh_login e policy_force_sync são cookies de curta duração
+  // (60s) criados pelo callback OAuth. Se o logout acontecer dentro desse
+  // janela — ou se o browser restaurar cookies de uma aba anterior — eles
+  // podem persistir para o próximo carregamento da app. Isso faz o
+  // DashboardClient detectar um "fresh login" sem tokens válidos, disparando
+  // removeQueries() e tentando buscar /me e /participants sem autenticação
+  // (401 imediato), resultando em loading infinito ou loop de redirect.
   response.cookies.set("access_token", "", {
     path: "/",
     httpOnly: true,
@@ -69,6 +77,19 @@ export async function GET() {
     maxAge: 0,
   });
 
+  // Cookies de sinalização (client-readable) — apagados explicitamente para
+  // não contaminar o próximo ciclo de login.
+  response.cookies.set("fresh_login", "", {
+    path: "/",
+    httpOnly: false,
+    maxAge: 0,
+  });
+
+  response.cookies.set("policy_force_sync", "", {
+    path: "/",
+    httpOnly: false,
+    maxAge: 0,
+  });
 
   return response;
 }
