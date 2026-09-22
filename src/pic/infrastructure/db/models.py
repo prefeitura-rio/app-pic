@@ -70,8 +70,8 @@ class User(Base):
     # Manages every user AND sees every row of data. Mirrors to `is_admin=true`
     # on this subject's base `policy` row (unit_type/unit_id NULL).
     is_super_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Soft delete for the whole account. Mirrors to `is_enabled=false` on every
-    # `policy` row for this subject.
+    # Soft delete for the whole account. Mirrors to a revoke (DELETE) of every
+    # `policy` row for this subject on the data-proxy.
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     notes: Mapped[str | None] = mapped_column(String)
@@ -100,8 +100,10 @@ class PolicyRow(Base):
 
     Postgres local is the write of record — see plan.md section 5.
     `metadata` is intentionally not mirrored here; we never use it. Never
-    hard-deleted: like the data-proxy's `access_policy`, this table is
-    append-only; revoking a grant sets `is_enabled=false` instead.
+    hard-deleted locally (append-only): revoking a grant sets
+    `is_enabled=false`, and `AccessPolicySync` translates that into a hard
+    `DELETE` on the data-proxy, whose `access_policy` no longer has an
+    `is_enabled` column (see plan.md section 3.3).
     """
 
     __tablename__ = "policy"
@@ -131,6 +133,9 @@ class PolicyRow(Base):
     # BASE_UNIT_TYPE/BASE_UNIT_ID) — never combined with a specific unit. See
     # plan.md section 4.
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Local soft-delete flag (the data-proxy's `access_policy` no longer has
+    # this column): `false` means the sync must DELETE the corresponding row
+    # there — see `AccessPolicySync`.
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # BASE_UNIT_TYPE/BASE_UNIT_ID = the subject's "base" row (identity/

@@ -63,6 +63,28 @@ async function tryRefreshToken(): Promise<boolean> {
 }
 
 /**
+ * Dispara um redirect para o login e retorna uma Promise que nunca resolve.
+ *
+ * Por que nunca resolver em vez de throw?
+ *
+ * Quando window.location.href é atribuído, o browser inicia a navegação mas
+ * não descarrega a página imediatamente — há um delay de dezenas a centenas
+ * de ms. Nesse intervalo, se o queryFn lançar um erro, o TanStack Query
+ * captura, agenda um retry (se retry > 0) e coloca a query de volta em
+ * estado "loading". O componente re-renderiza com isLoading=true e fica
+ * preso num loading infinito enquanto o browser ainda não descarregou.
+ *
+ * Retornar uma Promise pendente mantém o queryFn "em voo" sem erro —
+ * o TanStack Query não agenda retry, o componente permanece no loading
+ * screen estático, e quando o unload acontece tudo é destruído naturalmente.
+ */
+function redirectToLoginAndHang(url: string): Promise<never> {
+  window.location.href = url;
+  // Promise que nunca resolve — o unload da página a cancela naturalmente
+  return new Promise(() => {});
+}
+
+/**
  * Handle API response with automatic token refresh on 401
  */
 async function handleResponse<T>(
@@ -71,7 +93,6 @@ async function handleResponse<T>(
 ): Promise<T> {
   if (response.status === 401) {
     // Token expired - try to refresh
-
     const refreshed = await tryRefreshToken();
 
     if (refreshed && retryFn) {
@@ -80,9 +101,10 @@ async function handleResponse<T>(
       return handleResponse<T>(retryResponse); // Recursive call without retry to avoid infinite loop
     }
 
-    // Refresh failed or no retry function - redirect to login
-    window.location.href = "/login";
-    throw new Error("Unauthorized");
+    // Refresh failed or no retry function — navega para login e congela
+    // a Promise para evitar que o TanStack Query entre em ciclo de retry
+    // enquanto o browser ainda não descarregou a página.
+    return redirectToLoginAndHang("/login");
   }
 
   // Handle Forbidden (403) - User logged in but no permission
@@ -100,8 +122,7 @@ async function handleResponse<T>(
 
     // 1. Check for inactive user
     if (detailStr.includes("inativo")) {
-      window.location.href = "/login?error=InactiveUser";
-      throw new Error("User Inactive");
+      return redirectToLoginAndHang("/login?error=InactiveUser");
     }
 
     // 2. Check for non-admin trying to access admin endpoints
@@ -118,8 +139,7 @@ async function handleResponse<T>(
 
     // 3. CPF não cadastrado ou outro erro de acesso
     const safeDetail = encodeURIComponent(detailStr.substring(0, 200));
-    window.location.href = `/login?error=AccessDenied&details=${safeDetail}`;
-    throw new Error(`Access Denied: ${detail}`);
+    return redirectToLoginAndHang(`/login?error=AccessDenied&details=${safeDetail}`);
   }
 
   if (!response.ok) {

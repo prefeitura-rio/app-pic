@@ -1,5 +1,7 @@
 import json
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -39,7 +41,14 @@ def revoke_row(**overrides) -> PolicyRow:
     return grant_row(is_enabled=False, **overrides)
 
 
-def fake_data_proxy(*, post_status: int = 201):
+def confirmed_revoke_row(**overrides) -> PolicyRow:
+    """A revoke whose DELETE was already confirmed on the data-proxy
+    (`synced_at >= updated_at`) — must be skipped by `push`."""
+    stamp = datetime(2026, 1, 1, tzinfo=UTC)
+    return revoke_row(synced_at=stamp, updated_at=stamp, **overrides)
+
+
+def fake_data_proxy(*, post_status: int = 201, delete_status: int = 204):
     """Fakes Keycloak + the data-proxy's access_policy endpoint. Records
     every non-token request."""
     requests: list[httpx.Request] = []
@@ -51,6 +60,8 @@ def fake_data_proxy(*, post_status: int = 201):
         requests.append(request)
         if request.method == "POST":
             return httpx.Response(post_status, json=[])
+        if request.method == "DELETE":
+            return httpx.Response(delete_status)
         raise AssertionError(f"unexpected method {request.method}")
 
     handler.requests = requests  # type: ignore[attr-defined]
@@ -60,6 +71,14 @@ def fake_data_proxy(*, post_status: int = 201):
 def make_sync(handler) -> AccessPolicySync:
     client = PostgrestClient(CONFIG, transport=httpx.MockTransport(handler))
     return AccessPolicySync(client)
+
+
+def delete_filter(req: httpx.Request) -> dict[str, str]:
+    """Extract the (subject, unit_type, unit_id) filters of a DELETE."""
+    return {
+        name: req.url.params.get(name)
+        for name in ("subject", "unit_type", "unit_id")
+    }
 
 
 async def test_grant_upserts_with_merge_duplicates_and_app_schema_profile():
@@ -78,9 +97,14 @@ async def test_grant_upserts_with_merge_duplicates_and_app_schema_profile():
     assert sent.url.params["on_conflict"] == "subject,unit_type,unit_id"
     payload = json.loads(sent.content)
     assert "schema" not in payload[0]
+    assert "is_enabled" not in payload[0]
 
 
-async def test_revoke_upserts_disabled_row():
+async def test_revoke_deletes_row_filtered_by_pk():
+    """`access_policy` no longer has `is_enabled` — a revoke is a hard
+    DELETE filtered by subject/unit_type/unit_id, not a soft upsert. The
+    DELETE uses `return=representation`: the data-proxy hangs on the
+    minimal/204 path (observed in staging)."""
     handler = fake_data_proxy()
     sync = make_sync(handler)
     row = revoke_row(unit_id="42")
@@ -89,62 +113,129 @@ async def test_revoke_upserts_disabled_row():
 
     assert pushed == [row]
     sent = handler.requests[0]
-    assert sent.method == "POST"
+    assert sent.method == "DELETE"
     assert sent.headers["content-profile"] == "app_pequenos_cariocas"
-    assert "resolution=merge-duplicates" in sent.headers["prefer"]
-    assert sent.url.params["on_conflict"] == "subject,unit_type,unit_id"
-    assert json.loads(sent.content) == [
-        {
-            "subject": "12345678900",
-            "is_admin": False,
-            "is_enabled": False,
-            "unit_type": "cras",
-            "unit_id": "42",
-        }
-    ]
+    assert "return=representation" in sent.headers["prefer"]
+    assert delete_filter(sent) == {
+        "subject": "eq.12345678900",
+        "unit_type": "eq.cras",
+        "unit_id": "in.(42)",
+    }
 
 
-async def test_push_mixes_grants_and_revokes_in_one_post():
-    """Grant and revoke rows travel in the same upsert batch — each row
-    carries its own `is_enabled` — so one push costs one POST, whatever the
-    mix of unit_types and states."""
+async def test_push_mixes_grants_and_revokes_into_post_and_delete():
+    """Grants travel in one upsert POST; revokes become DELETEs grouped by
+    (subject, unit_type)."""
     handler = fake_data_proxy()
     sync = make_sync(handler)
-    g = grant_row(id=1, unit_id="1", unit_type="cras")
-    r = revoke_row(id=2, unit_id="2", unit_type="escola")
+    g1 = grant_row(id=1, unit_id="1", unit_type="cras")
+    g2 = grant_row(id=2, unit_id="2", unit_type="cras")
+    r = revoke_row(id=3, unit_id="2", unit_type="escola")
 
-    pushed = await sync.push([g, r])
+    pushed = await sync.push([g1, g2, r])
 
-    assert set(pushed) == {g, r}
-    assert len(handler.requests) == 1
-    assert handler.requests[0].method == "POST"
-    payload = json.loads(handler.requests[0].content)
-    assert [(p["unit_type"], p["unit_id"], p["is_enabled"]) for p in payload] == [
-        ("cras", "1", True),
-        ("escola", "2", False),
-    ]
+    assert set(pushed) == {g1, g2, r}
+    assert len(handler.requests) == 2
+    post = next(req for req in handler.requests if req.method == "POST")
+    delete = next(req for req in handler.requests if req.method == "DELETE")
+    payload = json.loads(post.content)
+    assert {p["unit_id"] for p in payload} == {"1", "2"}
+    assert all("is_enabled" not in p for p in payload)
+    assert delete_filter(delete) == {
+        "subject": "eq.12345678900",
+        "unit_type": "eq.escola",
+        "unit_id": "in.(2)",
+    }
 
 
-async def test_push_chunks_by_body_budget(monkeypatch):
-    """Batches are split by serialized body size (never by row count or
-    unit_type), keeping every POST under the data-proxy's body limit."""
-    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 250)
+async def test_grant_push_chunks_by_body_budget(monkeypatch):
+    """Grant batches are split by serialized body size (never by row count
+    or unit_type), keeping every POST under the data-proxy's body limit."""
+    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 200)
     handler = fake_data_proxy()
     sync = make_sync(handler)
-    rows = [revoke_row(id=i, unit_id=str(i)) for i in range(1, 6)]
+    rows = [grant_row(id=i, unit_id=str(i)) for i in range(1, 6)]
 
     pushed = await sync.push(rows)
 
     assert set(pushed) == set(rows)
-    # ~103 bytes of JSON per row -> two rows per 250-byte chunk.
+    # ~82 bytes of JSON per row -> two rows per 200-byte chunk.
     assert len(handler.requests) == 3
     for req in handler.requests:
+        assert req.method == "POST"
         body = json.loads(req.content)
-        assert sum(len(json.dumps(row)) for row in body) <= 250
+        assert sum(len(json.dumps(row)) for row in body) <= 200
     unit_ids = {
         p["unit_id"] for req in handler.requests for p in json.loads(req.content)
     }
     assert unit_ids == {"1", "2", "3", "4", "5"}
+
+
+async def test_revoke_delete_chunks_by_url_budget(monkeypatch):
+    """Revoke DELETEs are chunked by URL-encoded `in.(...)` size, so long
+    unit ids (e.g. school codes) never overflow nginx's request line."""
+    monkeypatch.setattr(access_policy_sync, "_DELETE_URL_CHUNK_BYTES", 40)
+    handler = fake_data_proxy()
+    sync = make_sync(handler)
+    rows = [
+        revoke_row(id=i, unit_id=f"ESCOLA_{'X' * 20}_{i}")
+        for i in range(1, 4)
+    ]
+
+    pushed = await sync.push(rows)
+
+    assert set(pushed) == set(rows)
+    # Each id is ~29 encoded bytes + comma > 40-byte budget -> one request
+    # per id.
+    assert len(handler.requests) == 3
+    ids: set[str] = set()
+    for req in handler.requests:
+        assert req.method == "DELETE"
+        unit_id = req.url.params.get("unit_id")
+        assert unit_id.startswith("in.(")
+        inner = unit_id[4:-1]
+        encoded_len = sum(len(quote_plus(part)) for part in inner.split(","))
+        commas = inner.count(",")
+        assert encoded_len + commas <= 40
+        ids.update(inner.split(","))
+    assert ids == {f"ESCOLA_{'X' * 20}_{i}" for i in range(1, 4)}
+
+
+async def test_revoke_delete_groups_by_subject_and_unit_type():
+    """Revokes sharing (subject, unit_type) travel in one DELETE with a
+    joined `unit_id=in.(...)`."""
+    handler = fake_data_proxy()
+    sync = make_sync(handler)
+    r1 = revoke_row(id=1, unit_id="1", unit_type="escola")
+    r2 = revoke_row(id=2, unit_id="2", unit_type="escola")
+    r3 = revoke_row(id=3, unit_id="3", unit_type="cras")
+
+    pushed = await sync.push([r1, r2, r3])
+
+    assert set(pushed) == {r1, r2, r3}
+    assert len(handler.requests) == 2
+    filters = sorted(
+        (delete_filter(req)["unit_type"], delete_filter(req)["unit_id"])
+        for req in handler.requests
+    )
+    assert filters == [
+        ("eq.cras", "in.(3)"),
+        ("eq.escola", "in.(1,2)"),
+    ]
+
+
+async def test_push_skips_confirmed_revokes():
+    """A revoke already confirmed on the data-proxy (`synced_at >=
+    updated_at`) is skipped — a forced self-heal must not re-DELETE every
+    login."""
+    handler = fake_data_proxy()
+    sync = make_sync(handler)
+    row = confirmed_revoke_row(unit_id="42")
+
+    pushed = await sync.push([row])
+
+    assert pushed == []
+    assert handler.requests == []
 
 
 async def test_push_returns_empty_list_when_no_rows():
@@ -171,10 +262,11 @@ async def test_push_dedupes_rows_sharing_the_same_primary_key():
     assert len(payload) == 1
 
 
-async def test_chunk_failure_pushes_only_successful_chunks(monkeypatch):
-    """One failed chunk leaves only its own rows unsynced; the remaining
-    chunks still complete (the next self-heal retries the failed ones)."""
-    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 250)
+async def test_grant_chunk_failure_pushes_only_successful_chunks(monkeypatch):
+    """One failed POST chunk leaves only its own rows unsynced; the
+    remaining chunks still complete (the next self-heal retries the failed
+    ones)."""
+    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 200)
     statuses = iter([500, 201, 201])
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -183,12 +275,35 @@ async def test_chunk_failure_pushes_only_successful_chunks(monkeypatch):
         return httpx.Response(next(statuses), json=[])
 
     sync = make_sync(handler)
-    rows = [revoke_row(id=i, unit_id=str(i)) for i in range(1, 6)]
+    rows = [grant_row(id=i, unit_id=str(i)) for i in range(1, 6)]
 
     pushed = await sync.push(rows)
 
     # First POST (rows 1-2) failed; rows 3-5 landed.
     assert {r.id for r in pushed} == {3, 4, 5}
+
+
+async def test_revoke_chunk_failure_leaves_its_rows_unsynced(monkeypatch):
+    """A failed DELETE chunk leaves only its own rows unsynced; the other
+    chunks still complete."""
+    monkeypatch.setattr(access_policy_sync, "_DELETE_URL_CHUNK_BYTES", 40)
+    statuses = iter([500, 204, 204])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "keycloak.example":
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+        return httpx.Response(next(statuses))
+
+    sync = make_sync(handler)
+    rows = [
+        revoke_row(id=i, unit_id=f"ESCOLA_{'X' * 20}_{i}")
+        for i in range(1, 4)
+    ]
+
+    pushed = await sync.push(rows)
+
+    # First DELETE (row 1) failed; rows 2-3 landed.
+    assert {r.id for r in pushed} == {2, 3}
 
 
 async def test_push_and_mark_synced_stamps_only_the_rows_that_succeeded(monkeypatch):

@@ -541,9 +541,11 @@ class HybridAdminRepository(IAdminRepository):
         list. Returns every `PolicyRow` that changed, so the caller can push
         them eagerly to the data-proxy afterwards.
 
-        Never hard-deletes: `policy` mirrors `rls.access_policy`, which is
-        append-only (the `policy_writer_<schema>` role has no DELETE grant
-        there) — see plan.md section 3.2.
+        Never hard-deletes locally: `policy` is append-only on our side
+        (soft-disable is the write of record). The data-proxy's
+        `access_policy` no longer has `is_enabled`, so `AccessPolicySync`
+        translates each `is_enabled=false` row into a hard `DELETE` there —
+        see plan.md sections 3.2/3.3.
         """
         changed: list[PolicyRow] = []
         for list_key, unit_type in LIST_KEY_TO_UNIT_TYPE.items():
