@@ -12,19 +12,12 @@ export default async function Home() {
   const userInfo = token ? getUserInfoFromToken(token) : null;
 
   // Detecta fresh login no servidor — leitura determinística, sem race condition
-  // de hidratação. O cookie é apagado aqui via Set-Cookie para que o cliente
-  // nunca o veja durante a hidratação do React (evita side effects em
-  // useState initializers no DashboardClient).
+  // de hidratação. O cookie fresh_login tem maxAge: 60 e expira naturalmente;
+  // não tentamos deletá-lo aqui porque cookieStore.delete() não é permitido
+  // em Server Components (apenas em Server Actions e Route Handlers).
+  // O DashboardClient recebe o valor como prop booleana e executa a limpeza
+  // de cache no useLayoutEffect após o mount.
   const isFreshLogin = freshLoginCookie === "1";
-
-  // Apaga o cookie fresh_login no servidor. O DashboardClient recebe o valor
-  // como prop booleana e faz a limpeza de cache no useLayoutEffect.
-  if (isFreshLogin) {
-    // Next.js App Router não expõe Set-Cookie direto num Server Component,
-    // mas cookieStore.delete() adiciona o header Set-Cookie: fresh_login=; max-age=0
-    // ao response do SSR de forma segura.
-    cookieStore.delete("fresh_login");
-  }
 
   return <DashboardClient userInfo={userInfo} isFreshLogin={isFreshLogin} />;
 }
