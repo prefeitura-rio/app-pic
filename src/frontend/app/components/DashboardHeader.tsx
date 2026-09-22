@@ -53,21 +53,31 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
   const isDebugPage = pathname?.startsWith("/debug");
   const [userAreaOpen, setUserAreaOpen] = useState(false);
 
-  // Fetch complete user info (including permissions) from backend
-  // IMPORTANTE: Usa mesma queryKey que DashboardClient para compartilhar cache
-  // IMPORTANTE: Desabilita query quando showUserControls=false (página de login)
-  // para evitar loop infinito de redirects 401 -> /login -> 401 -> /login
+  // Consome o cache de currentUser preenchido pelo DashboardClient.
+  //
+  // IMPORTANTE: refetchOnMount: false — o Header NÃO deve disparar o fetch.
+  //
+  // O DashboardClient registra o observer para ["currentUser"] com
+  // refetchOnMount: "always" e é o responsável por buscar os dados.
+  // Quando o Header também registra um observer para a mesma queryKey,
+  // o TanStack Query v5 vê que a query já está em estado "fetching" (iniciado
+  // pelo Header, que monta antes na árvore) e NÃO dispara um segundo fetch
+  // para o DashboardClient. Isso causa loading infinito sem nenhuma request
+  // visível no Network tab — o observer do DashboardClient aguarda um resultado
+  // que o Header iniciou, mas o queryFn do Header engolia erros silenciosamente
+  // (try/catch retornando null), impedindo que erros de auth propagassem.
+  //
+  // Com refetchOnMount: false o Header apenas se inscreve no cache existente.
+  // Quando o DashboardClient disparar o fetch e o resultado chegar, ambos os
+  // observers são notificados simultaneamente. Se não houver cache (ex: fresh
+  // login após removeQueries), o Header fica com data=undefined — aceitável,
+  // pois o Header só usa os dados para exibir nome/role/botões opcionais.
   const { data: currentUserAccess } = useQuery({
-    queryKey: ['currentUser'], // Mesma key que DashboardClient
-    queryFn: async () => {
-      try {
-        return await apiService.getCurrentUser();
-      } catch {
-        return null;
-      }
-    },
+    queryKey: ['currentUser'], // Mesma key que DashboardClient — compartilha cache
+    queryFn: () => apiService.getCurrentUser(),
     retry: false,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes (mesmo que DashboardClient)
+    refetchOnMount: false, // Header nunca inicia o fetch — apenas consome o cache
     enabled: showUserControls, // Não executa na página de login
   });
 
