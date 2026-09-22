@@ -74,15 +74,25 @@ export function DashboardClient({
   // Aceite → sessionStorage vai pra "1" e fica assim até novo login
   const TERMS_KEY = "terms-accepted";
 
-  // Fresh login: descarta TODO o cache do TanStack Query do usuário anterior
+  // Fresh login: descarta o cache do TanStack Query do usuário anterior
   // (lista, dashboard, opções de filtro, detalhe) para a página nascer limpa.
-  // IMPORTANTE: o clear() roda SINCRONAMENTE no primeiro render, ANTES de
-  // qualquer useQuery criar observers. Limpar num useEffect criava uma
-  // corrida: as queries já estavam em voo quando eram destruídas pelo
-  // clear(), e o observer podia ficar preso (loading infinito ou dados
-  // recebidos que não renderizavam).
-  // A inicialização lazy do useState é o veículo: roda uma única vez, no
-  // primeiro render, e o valor retornado não precisa ser consumido.
+  //
+  // IMPORTANTE: NÃO usar queryClient.clear() aqui.
+  //
+  // O clear() remove toda a estrutura interna do QueryClient — incluindo os
+  // registros de observers — de forma que os useQuery hooks declarados logo
+  // abaixo ficam "orphaned": registram observers mas não encontram a entrada
+  // correspondente no cache, e o queryFn nunca é invocado. Resultado: a query
+  // fica em isLoading=true para sempre sem nenhuma requisição HTTP ser feita
+  // (confirmado pela ausência de requests no Network tab).
+  //
+  // A solução correta é remover apenas os dados (removeQueries) preservando
+  // a estrutura de observers, e marcar as queries como inválidas
+  // (invalidateQueries) para que o próximo observer dispare um refetch limpo.
+  //
+  // A inicialização lazy do useState é o veículo: roda uma única vez,
+  // síncronamente no primeiro render, ANTES de qualquer useQuery registrar
+  // observers — garantindo que o cache esteja vazio quando os hooks montam.
   useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     const isFresh = document.cookie
@@ -94,7 +104,10 @@ export function DashboardClient({
       document.cookie = "fresh_login=; path=/; max-age=0";
       sessionStorage.setItem(TERMS_KEY, "0");
       sessionStorage.removeItem(STORAGE_KEY);
-      queryClient.clear();
+      // Remove os dados de todas as queries sem destruir a estrutura interna
+      // do QueryClient (observers, subscriptions). Isso garante que os
+      // useQuery abaixo disparem fetchs frescos sem ficar presos em loading.
+      queryClient.removeQueries();
     }
     return isFresh;
   });
@@ -380,6 +393,11 @@ export function DashboardClient({
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
     refetchOnMount: "always", // Sempre consulta /participants ao montar a página
+    // Camada extra de segurança: erros de auth (401/403) já disparam redirect em
+    // handleResponse() — não há nada útil que um retry possa fazer aqui.
+    // O QueryProvider já tem retry condicional global, mas ser explícito nestas
+    // queries críticas evita regressões futuras caso o default global mude.
+    retry: false,
   });
 
   // TanStack Query para Geospatial Layers (Mapa) — LAZY
