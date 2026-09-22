@@ -90,19 +90,20 @@ class PolicyWriterClient:
         """GRANT a permission (upsert into rls.access_policy)."""
         token = await self.get_token()
 
+        # `access_policy` has no `schema`/`is_enabled` columns anymore —
+        # just subject, is_admin, unit_type, unit_id, metadata (see plan.md
+        # section 3.3).
         payload = [
             {
-                "schema": self.schema,
                 "subject": cpf,
                 "is_admin": is_admin,
-                "is_enabled": True,
                 "unit_type": unit_type,
                 "unit_id": unit_id,
             }
         ]
 
         url = f"{self.api_url}/access_policy"
-        params = {"on_conflict": "schema,subject,unit_type,unit_id"}
+        params = {"on_conflict": "subject,unit_type,unit_id"}
 
         print("[REQUEST] GRANT Request:")
         print(f"  URL: POST {url}")
@@ -135,32 +136,25 @@ class PolicyWriterClient:
         unit_type: str,
         unit_id: str,
     ) -> dict[str, Any]:
-        """REVOKE a permission (soft-delete via upsert is_enabled=false)."""
+        """REVOKE a permission (hard DELETE of the matching row — the table
+        no longer has an `is_enabled` column)."""
         token = await self.get_token()
 
-        payload = [
-            {
-                "schema": self.schema,
-                "subject": cpf,
-                "is_admin": False,
-                "is_enabled": False,
-                "unit_type": unit_type,
-                "unit_id": unit_id,
-            }
-        ]
-
         url = f"{self.api_url}/access_policy"
-        params = {"on_conflict": "schema,subject,unit_type,unit_id"}
+        params = {
+            "subject": f"eq.{cpf}",
+            "unit_type": f"eq.{unit_type}",
+            "unit_id": f"eq.{unit_id}",
+        }
 
         print("[REQUEST] REVOKE Request:")
-        print(f"  URL: POST {url}")
-        print(f"  Payload: {json.dumps(payload, indent=2)}")
+        print(f"  URL: DELETE {url}")
+        print(f"  Params: {json.dumps(params, indent=2)}")
         print()
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(
+            response = await client.delete(
                 url,
-                json=payload,
                 headers=self._headers(token),
                 params=params,
             )
@@ -271,7 +265,7 @@ Examples:
     # REVOKE subcommand
     revoke_parser = subparsers.add_parser(
         "revoke",
-        help="Revoke a permission (soft-delete)",
+        help="Revoke a permission (hard DELETE)",
     )
     revoke_parser.add_argument(
         "--cpf",
