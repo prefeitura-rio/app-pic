@@ -6,6 +6,7 @@ import { Button } from "@/app/components/ui/button";
 import { UserAreaDialog } from "@/app/components/UserAreaDialog";
 import { SessionMonitor } from "@/app/components/SessionMonitor";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
+import { AnonymizeToggle } from "@/app/components/AnonymizeToggle";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useCurrentUserCache } from "@/app/hooks/useCurrentUserCache";
@@ -138,6 +139,7 @@ export function DashboardHeader({ userInfo, showUserControls = true }: Dashboard
                 </>
               )}
 
+              <AnonymizeToggle />
               <ThemeToggle />
 
               {showUserControls && (

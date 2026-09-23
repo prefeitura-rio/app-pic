@@ -11,6 +11,7 @@ import {
 	Users,
 } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
+import { useAnonymizeData } from "@/app/hooks/useAnonymizeData";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -300,6 +301,9 @@ const ProfessionalTabComponent = ({
 	onGeospatialMapOpen,
 	onGeospatialFilterChange,
 }: ProfessionalTabProps) => {
+	const { isAnonymized, maskCpf, maskName, maskId, maskDate } =
+		useAnonymizeData();
+
 	// Acesso completo a protocolos: super admin ou as 3 secretarias.
 	const fullAccess =
 		isSuperAdmin || (secretariasAcesso || []).length === 3;
@@ -589,13 +593,17 @@ const ProfessionalTabComponent = ({
 										<div>
 											<p className="text-sm text-muted-foreground">Nome</p>
 											<p className="font-medium">
-												{selectedParticipant.nome || "-"}
+												{isAnonymized && selectedParticipant.nome
+													? maskName(selectedParticipant.nome)
+													: selectedParticipant.nome || "-"}
 											</p>
 										</div>
 										<div>
 											<p className="text-sm text-muted-foreground">CPF</p>
 											<p className="font-mono font-medium">
-												{selectedParticipant.cpf || "-"}
+												{isAnonymized && selectedParticipant.cpf
+													? maskCpf(selectedParticipant.cpf)
+													: selectedParticipant.cpf || "-"}
 											</p>
 										</div>
 										<div>
@@ -603,7 +611,9 @@ const ProfessionalTabComponent = ({
 												ID Família (CadÚnico)
 											</p>
 											<p className="font-mono font-medium">
-												{selectedParticipant.id_familia || "-"}
+												{isAnonymized && selectedParticipant.id_familia
+													? maskId(selectedParticipant.id_familia)
+													: selectedParticipant.id_familia || "-"}
 											</p>
 										</div>
 										<div>
@@ -611,7 +621,9 @@ const ProfessionalTabComponent = ({
 												ID Membro Família (CadÚnico)
 											</p>
 											<p className="font-mono font-medium">
-												{selectedParticipant.id_membro_familia || "-"}
+												{isAnonymized && selectedParticipant.id_membro_familia
+													? maskId(selectedParticipant.id_membro_familia)
+													: selectedParticipant.id_membro_familia || "-"}
 											</p>
 										</div>
 										<div>
@@ -623,12 +635,16 @@ const ProfessionalTabComponent = ({
 										<div>
 											<p className="text-sm text-muted-foreground">Idade</p>
 											<p className="font-medium">
-												{selectedParticipant.idade != null &&
+												{isAnonymized &&
+												selectedParticipant.idade != null &&
 												selectedParticipant.nascimento_data
-													? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
-													: selectedParticipant.idade != null
-														? `${selectedParticipant.idade} anos`
-														: "-"}
+													? `${selectedParticipant.idade} anos (${maskDate(selectedParticipant.nascimento_data)})`
+													: selectedParticipant.idade != null &&
+													  selectedParticipant.nascimento_data
+														? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
+														: selectedParticipant.idade != null
+															? `${selectedParticipant.idade} anos`
+															: "-"}
 											</p>
 										</div>
 										<div>
@@ -636,21 +652,27 @@ const ProfessionalTabComponent = ({
 												Idade em 31/03/{new Date().getFullYear()}
 											</p>
 											<p className="font-medium">
-												{selectedParticipant.nascimento_data
-													? (() => {
-															const dataReferencia = new Date(
-																new Date().getFullYear(),
-																2,
-																31,
-															);
-															const { anos, meses, dias } =
-																calcularIdadeDetalhada(
-																	selectedParticipant.nascimento_data,
-																	dataReferencia,
+												{isAnonymized && selectedParticipant.nascimento_data
+													? maskName(selectedParticipant.nascimento_data)
+													: selectedParticipant.nascimento_data
+														? (() => {
+																const dataReferencia = new Date(
+																	new Date().getFullYear(),
+																	2,
+																	31,
 																);
-															return formatarIdadeDetalhada(anos, meses, dias);
-														})()
-													: "-"}
+																const { anos, meses, dias } =
+																	calcularIdadeDetalhada(
+																		selectedParticipant.nascimento_data,
+																		dataReferencia,
+																	);
+																return formatarIdadeDetalhada(
+																	anos,
+																	meses,
+																	dias,
+																);
+															})()
+														: "-"}
 											</p>
 										</div>
 										<div>

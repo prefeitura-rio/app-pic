@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { memo } from "react";
 import { Badge } from "@/app/components/ui/badge";
+import { useAnonymizeData } from "@/app/hooks/useAnonymizeData";
 import type { ParticipanteListItem, SortOrder } from "../types";
 
 type BadgeVariant =
@@ -100,6 +101,8 @@ export const ParticipantTable = memo(
 		onSort,
 		visibleColumns: visibleColumnKeys,
 	}: ParticipantTableProps) => {
+		const { isAnonymized, maskCpf, maskName } = useAnonymizeData();
+
 		if (!data || !Array.isArray(data) || data.length === 0) {
 			return null;
 		}
@@ -177,9 +180,11 @@ export const ParticipantTable = memo(
 													key={key}
 													className="px-3 py-3 font-medium max-w-[200px]"
 												>
-													<span className="line-clamp-2">
-														{participant.nome || "-"}
-													</span>
+												<span className="line-clamp-2">
+													{isAnonymized && participant.nome
+														? maskName(participant.nome)
+														: participant.nome || "-"}
+												</span>
 												</td>
 											);
 
@@ -189,7 +194,9 @@ export const ParticipantTable = memo(
 													key={key}
 													className="px-3 py-3 font-mono whitespace-nowrap"
 												>
-													{participant.cpf || "-"}
+													{isAnonymized && participant.cpf
+													? maskCpf(participant.cpf)
+													: participant.cpf || "-"}
 												</td>
 											);
 
