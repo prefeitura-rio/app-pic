@@ -38,12 +38,12 @@ import type { DisparosDashboard } from "@/app/types";
  */
 
 const STATUS_COLORS: Record<string, string> = {
-	ENTREGUE: "#FD7C45FF",
-	RESPONDIDO: "#626063FF",
-	LIDO: "#AD5E59FF",
-	ENVIADO: "#FABA62FF",
-	SEM_RETORNO: "#FFFFBBFF",
-	FALHOU: "#BBDADCFF",
+	ENTREGUE: "#1BB6AFFF",
+	RESPONDIDO: "#172869FF",
+	LIDO: "#088BBEFF",
+	ENVIADO: "#F8CD9CFF",
+	SEM_RETORNO: "#F6A1A5FF",
+	FALHOU: "#EA7580FF",
 };
 
 const STATUS_LABELS: Record<string, string> = {
