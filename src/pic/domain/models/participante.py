@@ -24,6 +24,7 @@ class ParticipanteListItem(BaseModel):
     saude_fracao: str | None = None
     total_protocolos_irregular: int | None = None
     raca: str | None = None
+    has_cartao_pic: bool | None = None
 
 
 class Participante(BaseModel):

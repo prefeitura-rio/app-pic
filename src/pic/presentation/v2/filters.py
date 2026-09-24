@@ -8,6 +8,7 @@ from src.pic.application.ports.admin_repository import IAdminRepository
 from src.pic.application.use_cases.get_filter_options import (
     GetFilterOptionsUseCase,
 )
+from src.pic.domain.errors import ValidationError as DomainValidationError
 from src.pic.domain.models.filters import FilterCriteria, FilterField
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.presentation.di import (
@@ -67,6 +68,8 @@ async def get_filters(
                 data_proxy_token, credentials.credentials
             ),
         )
+    except DomainValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except PostgrestError as e:
         log_postgrest_error(e)
         raise HTTPException(status_code=502, detail=str(e)) from e

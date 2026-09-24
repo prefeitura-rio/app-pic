@@ -52,6 +52,13 @@ from src.pic.infrastructure.repositories.helpers.participant_query_mapping impor
 from src.utils.constants import SECRETARIA_COLUMN_PREFIX
 from src.utils.data_manager_config import DataManagerConfig as config
 
+# Request value -> PostgREST condition for the `has_cartao_pic` bool column.
+CARTAO_PIC_STATUS_VALUES = {
+    "retirado": "true",
+    "nao_retirou": "false",
+    "sem_direito": "null",
+}
+
 
 def export_hidden_columns(
     full_access: bool,
@@ -112,6 +119,21 @@ def split_filters(
             values = clean_values(split_values(value))
             if values:
                 column_filters[FILTER_COLUMN_MAP[key]] = values
+
+    if "cartao_pic_status" in filters_dict:
+        cartao_values = clean_values(
+            split_values(filters_dict.pop("cartao_pic_status"))
+        )
+        mapped: list[str] = []
+        for value in cartao_values:
+            key = str(value)
+            if key not in CARTAO_PIC_STATUS_VALUES:
+                raise ValidationError(
+                    f"Valor inválido para cartao_pic_status: {value}"
+                )
+            mapped.append(CARTAO_PIC_STATUS_VALUES[key])
+        if mapped:
+            column_filters["has_cartao_pic"] = mapped
 
     return search_term, situacao_values, protocolo_filters, column_filters
 
@@ -182,6 +204,16 @@ def apply_scalar_filter(
         if len(bool_values) > 1:
             return query.or_(",".join(f"{column}.is.{v}" for v in bool_values))
         return query.filter(column, "is", bool_values[0])
+
+    if column == "has_cartao_pic":
+        terms = [
+            f"{column}.is.{v}" for v in values if v != "null"
+        ] + [f"{column}.is.null" for v in values if v == "null"]
+        if len(terms) > 1:
+            return query.or_(",".join(terms))
+        if terms[0] == f"{column}.is.null":
+            return query.is_(column, "null")
+        return query.filter(column, "is", terms[0].split(".")[-1])
 
     if column in EXACT_COLUMNS:
         if len(values) > 1:

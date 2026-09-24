@@ -13,6 +13,7 @@ import {
 import { memo, useCallback, useMemo } from "react";
 import { useAnonymizeData } from "@/app/hooks/useAnonymizeData";
 import { Badge } from "@/app/components/ui/badge";
+import { CartaoPicBadge } from "@/app/components/CartaoPicBadge";
 import { Button } from "@/app/components/ui/button";
 import {
 	Card,
@@ -318,6 +319,7 @@ const ProfessionalTabComponent = ({
 			"bairro",
 			"idade",
 			"status",
+			"cartao_pic",
 			"total_fracao",
 			"total_irregular",
 		];
@@ -1089,26 +1091,14 @@ const ProfessionalTabComponent = ({
 														: "-"}
 											</Badge>
 										</div>
-										<div>
-											<p className="text-sm text-muted-foreground">
-												Cartão PIC
-											</p>
-											<Badge
-												variant={
-													selectedParticipant.has_cartao_pic === true
-														? "success"
-														: selectedParticipant.has_cartao_pic === false
-															? "warning"
-															: "secondary"
-												}
-											>
-												{selectedParticipant.has_cartao_pic === true
-													? "Possui cartão"
-													: selectedParticipant.has_cartao_pic === false
-														? "Tem direito, mas não retirou"
-														: "Não tem direito"}
-											</Badge>
-										</div>
+									<div>
+										<p className="text-sm text-muted-foreground">
+											Cartão PIC
+										</p>
+										<CartaoPicBadge
+											value={selectedParticipant.has_cartao_pic}
+										/>
+									</div>
 										<div>
 											<p className="text-sm text-muted-foreground">
 												Mês de Ingresso no Programa

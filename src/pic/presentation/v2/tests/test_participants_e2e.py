@@ -34,6 +34,7 @@ LIST_ITEM_FIELDS = [
     "saude_fracao",
     "total_protocolos_irregular",
     "raca",
+    "has_cartao_pic",
 ]
 
 PROFILING_FIELDS = [
@@ -70,6 +71,7 @@ def sample_list_item() -> ParticipanteListItem:
         saude_fracao="4/4",
         total_protocolos_irregular=0,
         raca="branca",
+        has_cartao_pic=True,
     )
 
 

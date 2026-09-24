@@ -28,7 +28,6 @@ from src.pic.presentation.di import (
 from src.pic.presentation.v2._helpers import (
     data_proxy_user_token,
     log_postgrest_error,
-    self_heal_policy_sync,
 )
 from src.pic.presentation.v2.schemas import (
     ParticipantDetailResponse,

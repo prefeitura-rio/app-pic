@@ -4,6 +4,7 @@ from httpx import ASGITransport, AsyncClient
 from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import UserPermissions
 from src.main import app
+from src.pic.domain.errors import ValidationError as DomainValidationError
 from src.pic.domain.models.filters import FilterOption
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.presentation.di import (
@@ -164,6 +165,24 @@ async def test_filters_maps_postgrest_error_to_502(override_auth):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "data-proxy down"
+
+
+@pytest.mark.asyncio
+async def test_filters_maps_domain_validation_error_to_422(override_auth):
+    app.dependency_overrides[get_filter_options_use_case] = lambda: (
+        FakeOptionsUseCase(error=DomainValidationError("Valor inválido para cartao_pic_status: x"))
+    )
+    app.dependency_overrides[get_admin_repo] = lambda: FakeAdminRepo()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/filters", params={"field": "bairros"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Valor inválido para cartao_pic_status: x"
 
 
 @pytest.mark.asyncio
