@@ -5,6 +5,7 @@ import {
   useCallback,
   useTransition,
   useEffect,
+  useLayoutEffect,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -59,54 +60,80 @@ const PAGE_SIZE = 50;
  */
 export function DashboardClient({
   userInfo,
+  isFreshLogin = false,
 }: {
   userInfo?: UserInfo | null;
+  isFreshLogin?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
   // Chave do sessionStorage com o estado da página (filtros, aba, paginação,
-  // ordenação). Declarada antes do bloco de fresh login, que pode limpar.
+  // ordenação).
   const STORAGE_KEY = "dashboard-state";
 
   // Termo de responsabilidade
-  // Novo login → callback seta cookie fresh_login=1 → sessionStorage vai pra "0"
+  // Novo login → Server Component detecta fresh_login → isFreshLogin=true → "0"
   // Aceite → sessionStorage vai pra "1" e fica assim até novo login
   const TERMS_KEY = "terms-accepted";
 
-  // Fresh login: descarta TODO o cache do TanStack Query do usuário anterior
-  // (lista, dashboard, opções de filtro, detalhe) para a página nascer limpa.
-  // IMPORTANTE: o clear() roda SINCRONAMENTE no primeiro render, ANTES de
-  // qualquer useQuery criar observers. Limpar num useEffect criava uma
-  // corrida: as queries já estavam em voo quando eram destruídas pelo
-  // clear(), e o observer podia ficar preso (loading infinito ou dados
-  // recebidos que não renderizavam).
-  // A inicialização lazy do useState é o veículo: roda uma única vez, no
-  // primeiro render, e o valor retornado não precisa ser consumido.
-  useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const isFresh = document.cookie
-        .split(";")
-        .some((c) => c.trim() === "fresh_login=1");
-      if (isFresh) {
-        // Consome o cookie de fresh login e zera o estado da página: filtros,
-        // aba, paginação e ordenação voltam aos defaults (ordenação por nome).
-        document.cookie = "fresh_login=; path=/; max-age=0";
-        sessionStorage.setItem(TERMS_KEY, "0");
-        sessionStorage.removeItem(STORAGE_KEY);
-        queryClient.clear();
-      }
-      return isFresh;
-    } catch {
-      // Storage/cookies bloqueados (ex.: Safari privado): sem cleanup, o
-      // efeito de garantia abaixo ainda dispara as chamadas críticas.
-      return false;
-    }
-  });
+  // Fresh login: descarta o cache do TanStack Query do usuário anterior.
+  //
+  // HISTÓRICO DE ABORDAGENS (para entender por que useLayoutEffect):
+  //
+  // 1ª tentativa — queryClient.clear() num useState initializer:
+  //    Problema: clear() destrói a estrutura interna de observers do TanStack
+  //    Query. Os useQuery hooks registram observers mas não encontram a entrada
+  //    no cache → queryFn nunca é invocado → isLoading=true infinito sem
+  //    nenhuma request no Network tab.
+  //
+  // 2ª tentativa — queryClient.removeQueries() num useState initializer:
+  //    Problema: useState initializers devem ser funções puras (sem side
+  //    effects). No React 19 + Next.js 16 App Router, a fronteira RSC→Client
+  //    envolve múltiplas fases de render onde inicializadores com side effects
+  //    causam comportamento não-determinístico (o initializer pode rodar em
+  //    momentos e contextos diferentes do esperado).
+  //    Adicionalmente, a leitura de document.cookie no cliente cria uma race
+  //    condition com a hidratação: o cookie pode não estar visível ainda quando
+  //    o initializer roda.
+  //
+  // 3ª tentativa (atual) — useLayoutEffect com isFreshLogin como prop:
+  //    O Server Component (page.tsx) lê o cookie fresh_login de forma
+  //    determinística no servidor e passa o valor como prop booleana. O cookie
+  //    é apagado no servidor (cookieStore.delete), então o cliente nunca o vê.
+  //    O useLayoutEffect roda após o mount completo mas antes do paint — e,
+  //    crucialmente, ANTES que o TanStack Query v5 agende seus fetches (que
+  //    também usam useLayoutEffect internamente). Isso garante que o cache está
+  //    limpo quando os observers fazem o primeiro fetch.
+  useLayoutEffect(() => {
+    if (!isFreshLogin) return;
 
+    console.log("[DashboardClient][fresh-login] isFreshLogin=true — limpando cache");
+    console.log("[DashboardClient][fresh-login] queries antes do removeQueries:",
+      queryClient.getQueryCache().getAll().map(q => ({
+        key: JSON.stringify(q.queryKey),
+        status: q.state.status,
+        fetchStatus: q.state.fetchStatus,
+      }))
+    );
+
+    queryClient.removeQueries();
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.setItem(TERMS_KEY, "0");
+
+    console.log("[DashboardClient][fresh-login] removeQueries() concluído, queries restantes:",
+      queryClient.getQueryCache().getAll().length
+    );
+  // isFreshLogin é uma prop constante (definida no servidor, nunca muda
+  // durante o ciclo de vida do componente) — sem risco de loop infinito.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFreshLogin]);
+
+  // isFreshLogin=true significa novo login — termos devem ser aceitos novamente.
+  // Sem fresh login, lê o estado salvo no sessionStorage.
   const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
+    if (isFreshLogin) return false; // novo login sempre pede aceite dos termos
     try {
       return sessionStorage.getItem(TERMS_KEY) === "1";
     } catch {
@@ -123,10 +150,13 @@ export function DashboardClient({
     setTermsAccepted(true);
   };
 
-  // State para filtros e paginação (com restauração do sessionStorage)
+  // State para filtros e paginação (com restauração do sessionStorage).
+  // Com isFreshLogin=true ignoramos o sessionStorage — o useLayoutEffect vai
+  // limpá-lo logo após o mount, mas os initializers rodam antes disso.
+  // Retornar os defaults diretamente evita restaurar estado de sessão antiga.
   const [overviewFilters, setOverviewFilters] =
     useState<DashboardFilterValues>(() => {
-      if (typeof window === "undefined") return {};
+      if (typeof window === "undefined" || isFreshLogin) return {};
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
         if (saved) {
@@ -141,7 +171,7 @@ export function DashboardClient({
 
   const [professionalFilters, setProfessionalFilters] =
     useState<ParticipantFilters>(() => {
-      if (typeof window === "undefined") return {};
+      if (typeof window === "undefined" || isFreshLogin) return {};
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
         if (saved) {
@@ -160,7 +190,7 @@ export function DashboardClient({
   const [geospatialFilters, setGeospatialFilters] =
     useState<GeospatialFilters>(() => {
       const DEFAULT: GeospatialFilters = { tipo_camada: "BAIRRO" };
-      if (typeof window === "undefined") return DEFAULT;
+      if (typeof window === "undefined" || isFreshLogin) return DEFAULT;
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
         if (saved) {
@@ -175,7 +205,7 @@ export function DashboardClient({
     });
 
   const [professionalPage, setProfessionalPage] = useState(() => {
-    if (typeof window === "undefined") return 1;
+    if (typeof window === "undefined" || isFreshLogin) return 1;
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -190,7 +220,7 @@ export function DashboardClient({
 
   const [activeTab, setActiveTab] = useState<"overview" | "professional">(
     () => {
-      if (typeof window === "undefined") return "professional";
+      if (typeof window === "undefined" || isFreshLogin) return "professional";
       try {
         const saved = sessionStorage.getItem(STORAGE_KEY);
         if (saved) {
@@ -221,7 +251,7 @@ export function DashboardClient({
 
   // State para ordenação (com restauração do sessionStorage)
   const [sortBy, setSortBy] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
+    if (typeof window === "undefined" || isFreshLogin) return null;
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -235,7 +265,7 @@ export function DashboardClient({
   });
 
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    if (typeof window === "undefined") return "asc";
+    if (typeof window === "undefined" || isFreshLogin) return "asc";
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -403,6 +433,11 @@ export function DashboardClient({
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
     refetchOnMount: "always", // Sempre consulta /participants ao montar a página
+    // Camada extra de segurança: erros de auth (401/403) já disparam redirect em
+    // handleResponse() — não há nada útil que um retry possa fazer aqui.
+    // O QueryProvider já tem retry condicional global, mas ser explícito nestas
+    // queries críticas evita regressões futuras caso o default global mude.
+    retry: false,
   });
 
   // GARANTIA DE DISPARO DO LOAD INICIAL.
@@ -489,6 +524,62 @@ export function DashboardClient({
     setActiveTab("professional");
   }
 
+  // ─── DIAGNÓSTICO ──────────────────────────────────────────────────────────
+  // Logs temporários para identificar a causa do loading infinito.
+  // Remover após confirmação de que o problema foi resolvido.
+
+  // Log de mount: estado inicial do QueryClient e cookies visíveis no cliente.
+  useEffect(() => {
+    console.group("[DashboardClient][MOUNT]");
+    console.log("isFreshLogin prop:", isFreshLogin);
+    console.log("QueryClient cache ao montar:",
+      queryClient.getQueryCache().getAll().map(q => ({
+        key: JSON.stringify(q.queryKey),
+        status: q.state.status,
+        fetchStatus: q.state.fetchStatus,
+        dataUpdatedAt: q.state.dataUpdatedAt,
+      }))
+    );
+    console.log("document.cookie (visível no cliente):", document.cookie);
+    console.log("sessionStorage[dashboard-state]:", sessionStorage.getItem("dashboard-state"));
+    console.groupEnd();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Log de estado das queries críticas: captura o momento exato em que
+  // currentUserLoading ou participantsLoading mudam, incluindo o estado
+  // completo de todas as queries no cache.
+  useEffect(() => {
+    console.group("[DashboardClient][QUERY-STATE]");
+    console.log("currentUserLoading:", currentUserLoading, "| participantsLoading:", participantsLoading);
+    console.log("currentUserError:", currentUserError?.message ?? null);
+    console.log("participantsError:", participantsError?.message ?? null);
+    console.log("currentUser:", currentUser ? `cpf=${currentUser.cpf} active=${currentUser.active}` : null);
+    console.log("participantsResponse:", participantsResponse
+      ? `total_rows=${participantsResponse.meta?.total_rows} items=${participantsResponse.data?.length}`
+      : null
+    );
+    const allQueries = queryClient.getQueryCache().getAll();
+    if (allQueries.length === 0) {
+      console.warn("[DashboardClient][QUERY-STATE] ⚠️ QueryCache VAZIO — nenhuma query registrada!");
+    } else {
+      allQueries.forEach(q => {
+        const icon = q.state.fetchStatus === "fetching" ? "⏳"
+          : q.state.status === "success" ? "✅"
+          : q.state.status === "error" ? "❌"
+          : "⬜";
+        console.log(`  ${icon} [${JSON.stringify(q.queryKey).substring(0, 80)}]`,
+          `status=${q.state.status}`,
+          `fetchStatus=${q.state.fetchStatus}`,
+          `observers=${q.getObserversCount()}`
+        );
+      });
+    }
+    console.groupEnd();
+  }, [currentUserLoading, participantsLoading, currentUserError, participantsError, currentUser, participantsResponse, queryClient]);
+
+  // ─── FIM DIAGNÓSTICO ───────────────────────────────────────────────────────
+
   /**
    * Handle authentication errors
    */
@@ -554,7 +645,6 @@ export function DashboardClient({
   const handleOverviewRefresh = useCallback(() => {
     // Invalidate TanStack Query cache to force refetch
     queryClient.invalidateQueries({ queryKey: ["dashboardV2"] });
-    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheDashboardTimestamp(Date.now());
   }, [queryClient]);
 
@@ -562,11 +652,12 @@ export function DashboardClient({
    * Handle refresh with cache bypass (for Professional tab)
    */
   const handleProfessionalRefresh = useCallback(() => {
+    // Só participantes: as opções dos filtros são lazy e NÃO devem ser
+    // recalculadas aqui (invalidar "filterFieldOptions" re-dispara todas as
+    // APIs de filtro de uma vez). O timestamp novo já força o refetch de
+    // participantsV2 via queryKey.
     queryClient.invalidateQueries({ queryKey: ["participantsV2"] });
-    queryClient.invalidateQueries({ queryKey: ["geospatialLayers"] });
-    queryClient.invalidateQueries({ queryKey: ["filterFieldOptions"] });
     setBypassCacheParticipantsTimestamp(Date.now());
-    setBypassCacheGeospatialTimestamp(Date.now());
   }, [queryClient]);
 
   const handleRowClick = useCallback((idMembroFamilia: string) => {

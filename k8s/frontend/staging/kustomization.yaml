@@ -11,6 +11,13 @@ helmCharts:
     valuesInline:
       fullnameOverride: app-pic-frontend
 
+      # Segura o start do container principal até o sidecar Envoy do Istio
+      # estar sincronizado. Sem isso, há uma janela após o pod ficar "Ready"
+      # em que o Envoy rejeita requests com 503 (chunks JS do Next.js falham
+      # e a página fica presa em loading infinito sem hidratação do cliente).
+      podAnnotations:
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+
       image:
         repository: ghcr.io/prefeitura-rio/app-pic-frontend
         tag: latest

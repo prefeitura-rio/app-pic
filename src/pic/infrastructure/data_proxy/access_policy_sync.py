@@ -10,14 +10,34 @@ caller — never propagated to the admin request. A row that fails to sync
 here is retried later by the login-time self-heal (`GET /admin/me`), driven
 by `PolicyRow.synced_at`.
 
-Never issues DELETE: the `policy_writer_<schema>` Postgres role has no DELETE
-grant on `access_policy` (it's meant to be append-only across every
-data-proxy tenant). Revoking a grant is always `PATCH is_enabled=false`.
+Two write shapes, mirroring the current `access_policy` schema (which no
+longer has an `is_enabled` column — see plan.md section 3.3):
+
+- Grant (`is_enabled=true`): idempotent upsert (`POST` with
+  `Prefer: resolution=merge-duplicates` and
+  `on_conflict=subject,unit_type,unit_id`). Batches are split only by
+  serialized body size (`_UPSERT_CHUNK_BYTES`), so neither nginx's
+  request-line limit (the historical 414) nor its default 1MB body limit is
+  ever hit.
+- Revoke (`is_enabled=false`): hard `DELETE` — a disabled row must
+  disappear from the table, since the RLS check just sees what exists.
+  Revokes are grouped by (subject, unit_type) and sent as
+  `DELETE ...&unit_id=in.(...)`, chunked by URL-encoded byte budget
+  (`_DELETE_URL_CHUNK_BYTES`): a grant set with thousands of unit ids
+  (e.g. every school) stays well under nginx's request-line limit across a
+  handful of requests. DELETEs use `Prefer: return=representation`: the
+  data-proxy hangs on the default minimal/204 path (observed in staging),
+  while representation answers in ~200ms even when the filter matches
+  nothing — so a revoke whose row is already gone converges in one fast,
+  idempotent call.
 """
 
+import json
 from datetime import UTC, datetime
+from urllib.parse import quote_plus
 
 from postgrest import AsyncPostgrestClient
+from postgrest.types import ReturnMethod
 from sqlalchemy import update
 
 from src.pic.infrastructure.db.engine import get_session
@@ -37,18 +57,66 @@ ACCESS_POLICY_TABLE = "access_policy"
 # — see plan.md section 3.3.
 ON_CONFLICT_COLUMNS = "subject,unit_type,unit_id"
 
+# Max JSON body size per upsert `POST`. The nginx in front of the data-proxy
+# applies its default `client_max_body_size` (1MB); this leaves headroom for
+# any serialization larger than measured while keeping every request safely
+# under that limit.
+_UPSERT_CHUNK_BYTES = 500_000
 
-def _group_by_revoke_key(
-    rows: list[PolicyRow],
-) -> list[list[PolicyRow]]:
-    """Group rows sharing (subject, unit_type) so `_revoke` can
-    disable all their `unit_id`s in a single `PATCH ...&unit_id=in.(...)`
-    request instead of one `PATCH` per row. Preserves first-seen group
-    order for deterministic test assertions."""
-    groups: dict[tuple[str, str], list[PolicyRow]] = {}
+# Max URL-encoded size of the `unit_id=in.(...)` filter value per revoke
+# `DELETE`. Chunking by encoded bytes (not by id count) keeps the request
+# line safely under nginx's default ~8KB limit regardless of how long the
+# unit ids are (school codes can be large).
+_DELETE_URL_CHUNK_BYTES = 4_000
+
+
+def _upsert_chunks(
+    rows: list[PolicyRow], payloads: list[dict]
+) -> list[tuple[list[PolicyRow], list[dict]]]:
+    """Split `rows`/`payloads` (same order) into batches whose payloads stay
+    under `_UPSERT_CHUNK_BYTES` of serialized body. Preserves order; a single
+    payload larger than the budget becomes a chunk of its own."""
+    chunks: list[tuple[list[PolicyRow], list[dict]]] = []
+    chunk_rows: list[PolicyRow] = []
+    chunk_payloads: list[dict] = []
+    chunk_bytes = 0
+    for row, payload in zip(rows, payloads, strict=True):
+        size = len(json.dumps(payload))
+        if chunk_payloads and chunk_bytes + size > _UPSERT_CHUNK_BYTES:
+            chunks.append((chunk_rows, chunk_payloads))
+            chunk_rows, chunk_payloads, chunk_bytes = [], [], 0
+        chunk_rows.append(row)
+        chunk_payloads.append(payload)
+        chunk_bytes += size
+    if chunk_payloads:
+        chunks.append((chunk_rows, chunk_payloads))
+    return chunks
+
+
+def _revoke_chunks(rows: list[PolicyRow]) -> list[list[PolicyRow]]:
+    """Split revokes into `DELETE` batches: grouped by (subject, unit_type),
+    then chunked so each request's `unit_id=in.(...)` filter value stays
+    under `_DELETE_URL_CHUNK_BYTES` of URL-encoded bytes."""
+    by_group: dict[tuple[str, str], list[PolicyRow]] = {}
     for row in rows:
-        groups.setdefault((row.subject, row.unit_type), []).append(row)
-    return list(groups.values())
+        by_group.setdefault((row.subject, row.unit_type), []).append(row)
+
+    chunks: list[list[PolicyRow]] = []
+    for group_rows in by_group.values():
+        chunk: list[PolicyRow] = []
+        chunk_bytes = 0
+        for row in group_rows:
+            # `quote_plus` matches the query-string encoding httpx applies
+            # to the `in.(...)` filter value; +1 for the separating comma.
+            size = len(quote_plus(row.unit_id)) + 1
+            if chunk and chunk_bytes + size > _DELETE_URL_CHUNK_BYTES:
+                chunks.append(chunk)
+                chunk, chunk_bytes = [], 0
+            chunk.append(row)
+            chunk_bytes += size
+        if chunk:
+            chunks.append(chunk)
+    return chunks
 
 
 class AccessPolicySync:
@@ -62,13 +130,15 @@ class AccessPolicySync:
     async def push(self, rows: list[PolicyRow]) -> list[PolicyRow]:
         """Push every row's current state to the data-proxy, best-effort.
 
-        Enabled rows are upserted (grant) as a single batch. Disabled rows
-        are soft-revoked (`is_enabled=false`) in as few `PATCH` requests as
-        possible — one per distinct (schema, subject, unit_type) group,
-        matching every `unit_id` in that group with a single `in.(...)`
-        filter — never deleted. Returns the subset of `rows` that were
-        confirmed pushed; callers should leave `synced_at` unset on the rest
-        so the next self-heal pass retries them.
+        Grants (`is_enabled=true`) are upserted (payload without any
+        `is_enabled` field — the column no longer exists), in as few `POST`
+        batches as `_UPSERT_CHUNK_BYTES` allows. Revokes (`is_enabled=false`)
+        are hard-deleted, grouped by (subject, unit_type) and chunked by
+        URL-encoded filter size — never one request per row and never a
+        filter big enough to overflow nginx's request-line limit (the
+        historical 414). Returns the subset of `rows` confirmed pushed;
+        callers should leave `synced_at` unset on the rest so the next
+        self-heal pass retries them.
         """
         if not rows:
             return []
@@ -85,28 +155,43 @@ class AccessPolicySync:
         # so two genuinely distinct rows are never merged into one.
         rows = list({r.id: r for r in rows}.values())
 
-        to_grant = [row for row in rows if row.is_enabled]
-        to_revoke = [row for row in rows if not row.is_enabled]
+        grants = [row for row in rows if row.is_enabled]
+        # Confirmed revokes (`synced_at >= updated_at`) are already gone
+        # from the data-proxy — skip them so a forced self-heal doesn't
+        # re-DELETE on every fresh login. Pending ones (changed locally, or
+        # a previous DELETE failed) must be retried.
+        revokes = [
+            row
+            for row in rows
+            if not row.is_enabled
+            and (row.synced_at is None or row.synced_at < row.updated_at)
+        ]
 
         pushed: list[PolicyRow] = []
-        if to_grant and await self._grant(to_grant):
-            pushed.extend(to_grant)
-        for group in _group_by_revoke_key(to_revoke):
-            if await self._revoke(group):
-                pushed.extend(group)
-        return pushed
 
-    async def _grant(self, rows: list[PolicyRow]) -> bool:
-        payload = [
+        grant_payloads = [
             {
                 "subject": row.subject,
                 "is_admin": row.is_admin,
-                "is_enabled": True,
                 "unit_type": row.unit_type,
                 "unit_id": row.unit_id,
             }
-            for row in rows
+            for row in grants
         ]
+        for chunk_rows, chunk_payloads in _upsert_chunks(grants, grant_payloads):
+            if await self._upsert(chunk_payloads):
+                pushed.extend(chunk_rows)
+
+        for chunk_rows in _revoke_chunks(revokes):
+            subject = chunk_rows[0].subject
+            unit_type = chunk_rows[0].unit_type
+            unit_ids = [row.unit_id for row in chunk_rows]
+            if await self._delete(subject, unit_type, unit_ids):
+                pushed.extend(chunk_rows)
+
+        return pushed
+
+    async def _upsert(self, payload: list[dict]) -> bool:
         try:
             await (
                 self._client.from_(ACCESS_POLICY_TABLE)
@@ -115,35 +200,32 @@ class AccessPolicySync:
             )
         except Exception:
             logger.exception(
-                f"Falha ao sincronizar {len(rows)} grant(s) com access_policy"
+                f"Falha ao sincronizar {len(payload)} grant(s) com access_policy"
             )
             return False
         return True
 
-    async def _revoke(self, rows: list[PolicyRow]) -> bool:
-        """Soft-revoke every row in `rows` with a single `PATCH`. All rows
-        must share (subject, unit_type) — see `_group_by_revoke_key`
-        — so a single `unit_id=in.(...)` filter matches exactly this group.
-        `policy_writer_<schema>` has `UPDATE` (not just `INSERT`) on
-        `access_policy` (see `access_policy_writer.sql` in the
-        data-proxy repo), and PostgREST applies a `PATCH` to every row
-        matching the filter — see docs/security.md in that repo.
-        The schema scoping is handled by the Content-Profile header.
-        """
-        first = rows[0]
+    async def _delete(
+        self, subject: str, unit_type: str, unit_ids: list[str]
+    ) -> bool:
+        # `return=representation` on purpose: the data-proxy staging hangs
+        # on DELETEs that answer with the default minimal/204 path (observed
+        # ~20s client timeouts); with representation it responds in ~200ms
+        # even when the filter matches nothing. Idempotent — zero rows
+        # matched is still a success.
         try:
             await (
                 self._client.from_(ACCESS_POLICY_TABLE)
-                .update({"is_enabled": False})
-                .eq("subject", first.subject)
-                .eq("unit_type", first.unit_type)
-                .in_("unit_id", [row.unit_id for row in rows])
+                .delete(returning=ReturnMethod.representation)
+                .eq("subject", subject)
+                .eq("unit_type", unit_type)
+                .in_("unit_id", unit_ids)
                 .execute()
             )
         except Exception:
             logger.exception(
-                f"Falha ao revogar {len(rows)} grant(s) em access_policy "
-                f"(subject={first.subject}, unit_type={first.unit_type})"
+                f"Falha ao remover {len(unit_ids)} revoke(s) de access_policy "
+                f"(subject={subject}, unit_type={unit_type})"
             )
             return False
         return True

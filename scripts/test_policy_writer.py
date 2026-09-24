@@ -24,15 +24,16 @@ Usage:
 import argparse
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 
 import httpx
 
 # Load environment
-import os
 if os.path.exists("src/config/.env"):
     import dotenv
+
     dotenv.load_dotenv(dotenv_path="src/config/.env", override=True)
 
 from src.config import env
@@ -89,21 +90,22 @@ class PolicyWriterClient:
         """GRANT a permission (upsert into rls.access_policy)."""
         token = await self.get_token()
 
+        # `access_policy` has no `schema`/`is_enabled` columns anymore —
+        # just subject, is_admin, unit_type, unit_id, metadata (see plan.md
+        # section 3.3).
         payload = [
             {
-                "schema": self.schema,
                 "subject": cpf,
                 "is_admin": is_admin,
-                "is_enabled": True,
                 "unit_type": unit_type,
                 "unit_id": unit_id,
             }
         ]
 
         url = f"{self.api_url}/access_policy"
-        params = {"on_conflict": "schema,subject,unit_type,unit_id"}
+        params = {"on_conflict": "subject,unit_type,unit_id"}
 
-        print(f"[REQUEST] GRANT Request:")
+        print("[REQUEST] GRANT Request:")
         print(f"  URL: POST {url}")
         print(f"  Payload: {json.dumps(payload, indent=2)}")
         print()
@@ -134,32 +136,27 @@ class PolicyWriterClient:
         unit_type: str,
         unit_id: str,
     ) -> dict[str, Any]:
-        """REVOKE a permission (soft-delete via PATCH is_enabled=false)."""
+        """REVOKE a permission (hard DELETE of the matching row — the table
+        no longer has an `is_enabled` column)."""
         token = await self.get_token()
 
         url = f"{self.api_url}/access_policy"
+        params = {
+            "subject": f"eq.{cpf}",
+            "unit_type": f"eq.{unit_type}",
+            "unit_id": f"eq.{unit_id}",
+        }
 
-        print(f"[REQUEST] REVOKE Request:")
-        print(f"  URL: PATCH {url}")
-        print(f"  Filters:")
-        print(f"    schema = {self.schema}")
-        print(f"    subject = {cpf}")
-        print(f"    unit_type = {unit_type}")
-        print(f"    unit_id = {unit_id}")
-        print(f"  Update: is_enabled = false")
+        print("[REQUEST] REVOKE Request:")
+        print(f"  URL: DELETE {url}")
+        print(f"  Params: {json.dumps(params, indent=2)}")
         print()
 
         async with httpx.AsyncClient() as client:
-            response = await client.patch(
+            response = await client.delete(
                 url,
-                json={"is_enabled": False},
                 headers=self._headers(token),
-                params={
-                    "schema": f"eq.{self.schema}",
-                    "subject": f"eq.{cpf}",
-                    "unit_type": f"eq.{unit_type}",
-                    "unit_id": f"eq.{unit_id}",
-                },
+                params=params,
             )
 
             print(f"[RESPONSE] Status: {response.status_code}")
@@ -180,7 +177,7 @@ class PolicyWriterClient:
 
         url = f"{self.api_url}/access_policy"
 
-        print(f"[REQUEST] LIST Request:")
+        print("[REQUEST] LIST Request:")
         print(f"  URL: GET {url}")
         if cpf:
             print(f"  Filter: schema = {self.schema}, subject = {cpf}")
@@ -268,7 +265,7 @@ Examples:
     # REVOKE subcommand
     revoke_parser = subparsers.add_parser(
         "revoke",
-        help="Revoke a permission (soft-delete)",
+        help="Revoke a permission (hard DELETE)",
     )
     revoke_parser.add_argument(
         "--cpf",
@@ -303,7 +300,7 @@ Examples:
         parser.print_help()
         sys.exit(1)
 
-    print(f"[*] Policy Writer Tester\n")
+    print("[*] Policy Writer Tester\n")
     print(f"  Data-proxy URL: {env.DATA_PROXY_API_URL}")
     print(f"  Schema: {env.DATA_PROXY_SCHEMA}")
     print(f"  Action: {args.action.upper()}\n")

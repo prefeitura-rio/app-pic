@@ -46,6 +46,7 @@ from src.pic.infrastructure.repositories.helpers.participant_query_mapping impor
     PROTOCOLO_FILTER_FIELDS,
     PROTOCOLO_SECRETARIA,
     PROTOCOLO_STATUS_COLUMNS,
+    PROTOCOLO_STATUS_DB_VALUES,
     SEARCH_COLUMNS,
     SORTABLE_COLUMNS,
 )
@@ -246,7 +247,8 @@ def apply_wide_protocolo_filters(
       participant must have every selected protocol (AND, one filter per
       column: `col.not.is.null`, or `col.eq/in.<status>` when protocol
       statuses are also selected — each selected protocol must carry one of
-      them).
+      them; status labels are translated to the wide-table values via
+      `PROTOCOLO_STATUS_DB_VALUES`, e.g. "Atenção" -> "atencao").
     - `protocolo_status_label` alone matches any protocol with one of the
       selected statuses (`or=` across every protocol column).
     - `protocolo_secretaria` matches the pre-aggregated counters
@@ -254,7 +256,10 @@ def apply_wide_protocolo_filters(
       secretarias).
     """
     descricao_ids = protocolo_filters.get("protocolo_id") or []
-    status_values = protocolo_filters.get("protocolo_status_label") or []
+    status_values = [
+        PROTOCOLO_STATUS_DB_VALUES.get(value, value)
+        for value in (protocolo_filters.get("protocolo_status_label") or [])
+    ]
     secretaria_values = protocolo_filters.get("protocolo_secretaria") or []
 
     for protocolo_id in descricao_ids:
