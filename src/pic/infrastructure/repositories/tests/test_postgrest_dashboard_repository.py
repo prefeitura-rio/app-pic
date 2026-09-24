@@ -26,6 +26,7 @@ from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
 from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
     _TABLE_CONSOLIDADO,
+    _TABLE_DISPAROS,
     _TABLE_PROTOCOLOS,
     _TABLE_RESOLUCAO,
     _TABLE_SERIES,
@@ -51,7 +52,9 @@ class FakeDataProxy:
     """Minimal fake of the data-proxy PostgREST.
 
     Returns pre-canned rows keyed by table name. For consolidado,
-    selects the correct sub-dataset based on select parameter.
+    selects the correct sub-dataset based on select parameter. For the
+    disparos table, distinguishes the five aggregate queries by the select
+    parameter and honours `Prefer: count=exact` via a Content-Range header.
 
     Keycloak token requests are answered with a dummy credential response
     so the auth flow does not block.
@@ -60,6 +63,7 @@ class FakeDataProxy:
     def __init__(self, rows_by_table: dict[str, list[dict]]) -> None:
         self.rows_by_table = rows_by_table
         self.requests: list[httpx.Request] = []
+        self.disparos_error_status: int | None = None
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "keycloak.example":
@@ -72,6 +76,10 @@ class FakeDataProxy:
         # Extract table name from path
         path = request.url.path.lstrip("/")
         table = path.split(".")[-1]  # Handle schema.table format
+
+        # Special handling for disparos (5 different aggregate responses)
+        if table == _TABLE_DISPAROS:
+            return self._disparos_response(request)
 
         # Special handling for consolidado (has 3 different responses)
         if table == _TABLE_CONSOLIDADO:
@@ -96,6 +104,38 @@ class FakeDataProxy:
             rows = self.rows_by_table.get(table, [])
 
         return httpx.Response(200, json=rows, request=request)
+
+    def _disparos_response(self, request: httpx.Request) -> httpx.Response:
+        if self.disparos_error_status is not None:
+            return httpx.Response(
+                self.disparos_error_status,
+                json={"message": "boom"},
+                request=request,
+            )
+        if _TABLE_DISPAROS not in self.rows_by_table:
+            return httpx.Response(200, json=[], request=request)
+        select = request.url.params.get("select", "")
+        headers: dict[str, str] = {}
+        if "id_membro_familia" in select:
+            # Distinct-count query: body is ignored by the repo (limit=1);
+            # the exact count travels on the Content-Range header.
+            status_params = request.url.params.get_list("disparo_status")
+            total = (
+                DISPAROS_ENGAJADOS
+                if any("RESPONDIDO" in v for v in status_params)
+                else DISPAROS_ALCANCADOS
+            )
+            headers["Content-Range"] = f"0-0/{total}"
+            rows: list[dict] = []
+        elif "disparo_jornada" in select and "disparo_status" in select:
+            rows = DISPAROS_JORNADAS_STATUSES
+        elif "disparo_status" in select:
+            rows = DISPAROS_STATUS
+        elif "disparo_jornada" in select:
+            rows = DISPAROS_JORNADAS
+        else:
+            rows = DISPAROS_TOTALS
+        return httpx.Response(200, json=rows, headers=headers, request=request)
 
 
 def _make_repo(
@@ -205,6 +245,29 @@ ALL_TABLES: dict[str, list[dict]] = {
     _TABLE_TEMPO: TEMPO_ROWS,
     _TABLE_RESOLUCAO: RESOLUCAO_ROWS,
 }
+
+# Mock de dados AGREGADOS de disparos (endpoint_whatsapp_disparo)
+DISPAROS_TOTALS = [{"total": 120, "entregues": 105, "falhas": 15}]
+DISPAROS_ALCANCADOS = 60
+DISPAROS_ENGAJADOS = 35
+DISPAROS_STATUS = [
+    {"disparo_status": "ENTREGUE", "total": 40},
+    {"disparo_status": "RESPONDIDO", "total": 25},
+    {"disparo_status": "LIDO", "total": 10},
+    {"disparo_status": "FALHOU", "total": 8},
+]
+DISPAROS_JORNADAS = [
+    {"disparo_jornada": "Mutirão de Vacinação", "participantes": 50, "entregues": 48, "falhas": 2},
+    {"disparo_jornada": "Volta às Aulas", "participantes": 30, "entregues": 29, "falhas": 1},
+]
+DISPAROS_JORNADAS_STATUSES = [
+    {"disparo_jornada": "Mutirão de Vacinação", "disparo_status": "ENTREGUE", "total": 30},
+    {"disparo_jornada": "Mutirão de Vacinação", "disparo_status": "RESPONDIDO", "total": 18},
+    {"disparo_jornada": "Mutirão de Vacinação", "disparo_status": "FALHOU", "total": 2},
+    {"disparo_jornada": "Volta às Aulas", "disparo_status": "ENTREGUE", "total": 20},
+    {"disparo_jornada": "Volta às Aulas", "disparo_status": "LIDO", "total": 9},
+    {"disparo_jornada": "Volta às Aulas", "disparo_status": "FALHOU", "total": 1},
+]
 
 # ---------------------------------------------------------------------------
 # Tests: _calculate_dashboard_metrics
@@ -678,6 +741,110 @@ class TestSection7Resolucao:
         assert result.taxa_resolucao_mensal[0].mes_label == "Dez/25"
 
 
+class TestSection8Disparos:
+    """Section 8 — WhatsApp disparos metrics."""
+
+    def _compute(
+        self,
+        disparos: dict | None,
+        total_participantes: int = 14,
+    ) -> Dashboard:
+        return _calculate_dashboard_metrics(
+            consolidado={
+                "totals": {"regular_num": 10, "regular_den": total_participantes, "irregular_num": 2},
+                "safras": [],
+                "motivos": [],
+            },
+            protocolos=[],
+            series=[],
+            tempo={},
+            resolucao=[],
+            disparos=disparos,
+        )
+
+    def test_none_disparos_yields_none_section(self):
+        result = self._compute(None)
+        assert result.disparos is None
+
+    def test_empty_disparos_yields_none_section(self):
+        result = self._compute({})
+        assert result.disparos is None
+
+    def test_coverage_zero_denominator(self):
+        result = self._compute(
+            {
+                "totals": {"total": 0, "entregues": 0, "falhas": 0},
+                "alcancados": 5,
+                "engajados": 0,
+                "status": [],
+                "jornadas": [],
+            },
+            total_participantes=0,
+        )
+        assert result.disparos is not None
+        assert result.disparos.alcancados == 5
+        assert result.disparos.cobertura_percentual == 0.0
+
+    def test_jornadas_sorted_by_participantes_desc(self):
+        result = self._compute(
+            {
+                "totals": {"total": 10, "entregues": 9, "falhas": 1},
+                "alcancados": 5,
+                "engajados": 2,
+                "status": [{"status": "ENTREGUE", "total": 5}],
+                "jornadas": [
+                    {"jornada": "A", "participantes": 2, "entregues": 2, "falhas": 0},
+                    {"jornada": "B", "participantes": 8, "entregues": 7, "falhas": 1},
+                ],
+            }
+        )
+        assert [j.jornada for j in result.disparos.por_jornada] == ["B", "A"]
+        assert result.disparos.por_jornada[0].taxa_falha == round(1 / 8 * 100, 1)
+
+    def test_taxas_from_status_distribution(self):
+        """taxa_entrega = ENTREGUE+RESPONDIDO+LIDO; taxa_falha = FALHOU (status base)."""
+        result = self._compute(
+            {
+                "totals": {"total": 100, "entregues": 90, "falhas": 10},
+                "alcancados": 50,
+                "engajados": 12,
+                "status": [
+                    {"status": "ENTREGUE", "total": 30},
+                    {"status": "RESPONDIDO", "total": 15},
+                    {"status": "LIDO", "total": 5},
+                    {"status": "SEM_RETORNO", "total": 8},
+                    {"status": "FALHOU", "total": 2},
+                ],
+                "jornadas": [],
+                "jornadas_statuses": [],
+            }
+        )
+        assert result.disparos.taxa_entrega == round(50 / 60 * 100, 1)
+        assert result.disparos.taxa_falha == round(2 / 60 * 100, 1)
+        # 30d quantities stay untouched for the UI descriptions
+        assert result.disparos.entregues_30d == 90
+
+    def test_jornada_status_segments_attached(self):
+        result = self._compute(
+            {
+                "totals": {"total": 10, "entregues": 9, "falhas": 1},
+                "alcancados": 5,
+                "engajados": 2,
+                "status": [],
+                "jornadas": [
+                    {"jornada": "A", "participantes": 5, "entregues": 4, "falhas": 1},
+                ],
+                "jornadas_statuses": [
+                    {"jornada": "A", "status": "ENTREGUE", "total": 3},
+                    {"jornada": "A", "status": "LIDO", "total": 2},
+                ],
+            }
+        )
+        assert {
+            s.status: s.total for s in result.disparos.por_jornada[0].status_distribuicao
+        } == {"ENTREGUE": 3, "LIDO": 2}
+
+
 class TestEmptyDashboard:
     """All-empty inputs must yield a fully zeroed Dashboard."""
 
@@ -699,6 +866,7 @@ class TestEmptyDashboard:
         assert result.distribuicao_por_safra == []
         assert result.distribuicao_motivo_saida == []
         assert result.data_atualizacao is None
+        assert result.disparos is None
         # histogram still returns 4 fixed faixas
         assert len(result.distribuicao_tempo_irregularidade) == 4
 
@@ -746,11 +914,11 @@ class TestRepositoryFetches:
         assert any("is.true" in str(p) for p in params_list)
 
     @pytest.mark.asyncio
-    async def test_seven_requests_sent(self):
-        """3 consolidado subfetches + 4 other tables = 7 requests."""
+    async def test_thirteen_requests_sent(self):
+        """3 consolidado subfetches + 4 other tables + 6 disparos = 13 requests."""
         repo, fake = _make_repo(ALL_TABLES)
         await repo.get_dashboard_metrics(filters={})
-        assert len(fake.requests) == 7
+        assert len(fake.requests) == 13
 
     @pytest.mark.asyncio
     async def test_empty_tables_returns_zero_dashboard(self):
@@ -767,6 +935,119 @@ class TestRepositoryFetches:
         )
         secs = {t.secretaria for t in result.tempo_medio_irregularidade}
         assert secs == {"geral", "sms"}
+
+
+class TestRepositoryDisparos:
+    """WhatsApp disparos fetches (section 8) over the raw disparos table."""
+
+    def _make_with_disparos(self):
+        return _make_repo({**ALL_TABLES, _TABLE_DISPAROS: []})
+
+    @pytest.mark.asyncio
+    async def test_full_pipeline_includes_disparos(self):
+        repo, fake = self._make_with_disparos()
+        result = await repo.get_dashboard_metrics(filters={})
+
+        d = result.disparos
+        assert d is not None
+        # 30d totals
+        assert d.total_30d == 120
+        assert d.entregues_30d == 105
+        assert d.falhas_30d == 15
+        # distinct counts from the Content-Range header
+        assert d.alcancados == DISPAROS_ALCANCADOS
+        assert d.engajados == DISPAROS_ENGAJADOS
+        # derived percentages (total_participantes == 14 from the consolidado)
+        assert d.cobertura_percentual == round(60 / 14 * 100, 1)
+        # delivery/failure rates from the status distribution
+        # (ENTREGUE 40 + RESPONDIDO 25 + LIDO 10) / 83 statuses
+        assert d.taxa_entrega == round(75 / 83 * 100, 1)
+        # FALHOU 8 / 83 statuses
+        assert d.taxa_falha == round(8 / 83 * 100, 1)
+        assert d.taxa_engajamento == round(35 / 60 * 100, 1)
+        # status distribution
+        assert {s.status: s.total for s in d.status_distribuicao} == {
+            "ENTREGUE": 40,
+            "RESPONDIDO": 25,
+            "LIDO": 10,
+            "FALHOU": 8,
+        }
+        # per-jornada sorted by participants desc
+        assert [j.jornada for j in d.por_jornada] == [
+            "Mutirão de Vacinação",
+            "Volta às Aulas",
+        ]
+        assert d.por_jornada[0].taxa_falha == round(2 / 50 * 100, 1)
+        # per-jornada status segments
+        assert {
+            s.status: s.total for s in d.por_jornada[0].status_distribuicao
+        } == {"ENTREGUE": 30, "RESPONDIDO": 18, "FALHOU": 2}
+        assert len(fake.requests) == 13
+
+    @pytest.mark.asyncio
+    async def test_disparos_query_shapes(self):
+        repo, fake = self._make_with_disparos()
+        await repo.get_dashboard_metrics(filters={})
+
+        reqs = [r for r in fake.requests if r.url.path.endswith(_TABLE_DISPAROS)]
+        assert len(reqs) == 6
+        selects = [r.url.params.get("select", "") for r in reqs]
+        assert any("disparo_total_quantidade.sum()" in s for s in selects)
+        assert any("disparo_status,total:count()" in s for s in selects)
+        assert any(
+            "disparo_jornada" in s and "participantes:count()" in s
+            for s in selects
+        )
+        # per-jornada status segments query
+        assert any(
+            "disparo_jornada" in s
+            and "disparo_status" in s
+            and "total:count()" in s
+            for s in selects
+        )
+        # two distinct-count queries, both with Prefer: count=exact
+        count_reqs = [
+            r
+            for r in reqs
+            if "id_membro_familia" in r.url.params.get("select", "")
+        ]
+        assert len(count_reqs) == 2
+        for r in count_reqs:
+            assert "count=exact" in r.headers.get("prefer", "")
+
+    @pytest.mark.asyncio
+    async def test_filter_mapping_and_incompatible_ignored(self):
+        repo, fake = self._make_with_disparos()
+        await repo.get_dashboard_metrics(
+            filters={
+                "pic_grupo": "Criança",
+                "has_bolsa_familia": True,
+                "pic_status": "ativo",
+            }
+        )
+        reqs = [r for r in fake.requests if r.url.path.endswith(_TABLE_DISPAROS)]
+        assert len(reqs) == 6
+        for r in reqs:
+            params = str(r.url.params)
+            assert "grupo" in params  # mapped from pic_grupo
+            assert "pic_grupo" not in params
+            assert "has_bolsa_familia" not in params
+            assert "pic_status" not in params
+        # the other sections keep the original filter names
+        others = [r for r in fake.requests if not r.url.path.endswith(_TABLE_DISPAROS)]
+        assert any("pic_grupo" in str(r.url.params) for r in others)
+
+    @pytest.mark.asyncio
+    async def test_disparos_error_degrades_to_none(self):
+        repo, fake = self._make_with_disparos()
+        fake.disparos_error_status = 500
+
+        result = await repo.get_dashboard_metrics(filters={})
+
+        assert result.disparos is None
+        # other sections unaffected
+        assert result.total_participantes == 14
+        assert result.protocolos
 
 
 class TestRepositoryCache:
@@ -807,8 +1088,8 @@ class TestRepositoryCache:
         repo, fake = _make_repo(ALL_TABLES, redis_client=redis)
         await repo.get_dashboard_metrics(filters={}, bypass_cache=True)
         # bypass_cache=True must skip cache read and go to PostgREST
-        # 3 consolidado subfetches + 4 other tables = 7 requests
-        assert len(fake.requests) == 7
+        # 3 consolidado subfetches + 4 other tables + 6 disparos = 13 requests
+        assert len(fake.requests) == 13
 
     @pytest.mark.asyncio
     async def test_bypass_cache_still_writes_cache(self):

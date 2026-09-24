@@ -31,6 +31,27 @@ def has_full_protocol_access(secretarias_acesso: list[str]) -> bool:
     return set(secretarias_acesso) >= ALL_SECRETARIAS
 
 
+def resolve_access(permissions: Any) -> tuple[list[str], bool]:
+    """Resolve `(secretarias_acesso, full_access)` from one permissions object.
+
+    Same rules as every repository operation: `permissions=None` means full
+    access (all secretarias); otherwise the accessible secretarias are the
+    user's own, and full access holds when the permissions grant it or every
+    secretaria is covered anyway.
+    """
+    secretarias_acesso = (
+        list(permissions.secretarias_acesso)
+        if permissions is not None
+        else sorted(ALL_SECRETARIAS)
+    )
+    full_access = (
+        permissions is None
+        or permissions.has_full_access()
+        or has_full_protocol_access(secretarias_acesso)
+    )
+    return secretarias_acesso, full_access
+
+
 def _is_true(value: Any) -> bool:
     """Normalize `irregular_indicador` ("true"/"false" strings in BigQuery,
     booleans in Postgres JSON) to a Python bool."""

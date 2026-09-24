@@ -7,6 +7,7 @@ from src.main import app
 from src.pic.application.use_cases.export_participants import ExportOutput
 from src.pic.application.use_cases.list_participants import ParticipantListOutput
 from src.pic.domain.errors import ForbiddenError, NotFoundError, ValidationError
+from src.pic.domain.models.disparo import Disparo, DisparoMetadados
 from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
@@ -33,6 +34,7 @@ LIST_ITEM_FIELDS = [
     "saude_fracao",
     "total_protocolos_irregular",
     "raca",
+    "has_cartao_pic",
 ]
 
 PROFILING_FIELDS = [
@@ -69,6 +71,7 @@ def sample_list_item() -> ParticipanteListItem:
         saude_fracao="4/4",
         total_protocolos_irregular=0,
         raca="branca",
+        has_cartao_pic=True,
     )
 
 
@@ -122,6 +125,19 @@ def sample_detail() -> Participante:
                 "irregular_indicador": False,
                 "protocolo_status_label": "Regular",
             },
+        ],
+        disparos=[
+            Disparo(
+                campanha="Mutirão de Vacinação",
+                data="2026-07-24",
+                datahora="2026-07-25T13:58:52",
+                secretaria="SMS",
+                status="ENTREGUE",
+                indicador_falha=False,
+                metadados=DisparoMetadados(
+                    total_ultimos_30d=3, entregues_30d=3, falhas_30d=0
+                ),
+            )
         ],
     )
 
@@ -428,6 +444,20 @@ async def test_detail_returns_full_envelope(client, override_use_cases):
         "irregular_indicador",
         "protocolo_status_label",
     }
+    # WhatsApp disparos serialized inside the participant object.
+    disparos = data["disparos"]
+    assert len(disparos) == 1
+    assert set(disparos[0].keys()) == {
+        "campanha",
+        "data",
+        "datahora",
+        "secretaria",
+        "status",
+        "indicador_falha",
+        "metadados",
+    }
+    assert disparos[0]["status"] == "ENTREGUE"
+    assert disparos[0]["metadados"]["total_ultimos_30d"] == 3
 
     _, detail_use_case, _ = override_use_cases
     assert detail_use_case.received["user_token"] == "fake-access-token"

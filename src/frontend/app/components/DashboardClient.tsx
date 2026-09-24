@@ -134,11 +134,19 @@ export function DashboardClient({
   const [termsAccepted, setTermsAccepted] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     if (isFreshLogin) return false; // novo login sempre pede aceite dos termos
-    return sessionStorage.getItem(TERMS_KEY) === "1";
+    try {
+      return sessionStorage.getItem(TERMS_KEY) === "1";
+    } catch {
+      return true;
+    }
   });
 
   const handleTermsAccept = () => {
-    sessionStorage.setItem(TERMS_KEY, "1");
+    try {
+      sessionStorage.setItem(TERMS_KEY, "1");
+    } catch {
+      // Storage bloqueado: aceite vale apenas para a sessão atual.
+    }
     setTermsAccepted(true);
   };
 
@@ -379,40 +387,49 @@ export function DashboardClient({
 
   // V2 — Participants (Busca Individual)
   // Substitui getParticipants V1 pelo endpoint enxuto (13 campos)
+  const participantsQueryKey = [
+    "participantsV2",
+    professionalFilters,
+    professionalPage,
+    sortBy,
+    sortOrder,
+    bypassCacheParticipantsTimestamp,
+  ];
+
+  const fetchParticipants = useCallback(async () => {
+    const shouldBypassCache = bypassCacheParticipantsTimestamp !== null;
+
+    const result = await apiService.getParticipantsV2(
+      {
+        ...professionalFilters,
+        ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
+        ...(shouldBypassCache && { bypass_cache: true }),
+      },
+      professionalPage,
+      PAGE_SIZE,
+    );
+
+    if (shouldBypassCache) {
+      setBypassCacheParticipantsTimestamp(null);
+    }
+
+    return result;
+  }, [
+    professionalFilters,
+    sortBy,
+    sortOrder,
+    professionalPage,
+    bypassCacheParticipantsTimestamp,
+  ]);
+
   const {
     data: participantsResponse,
     isLoading: participantsLoading,
     isFetching: participantsFetching,
     error: participantsError,
   } = useQuery({
-    queryKey: [
-      "participantsV2",
-      professionalFilters,
-      professionalPage,
-      sortBy,
-      sortOrder,
-      bypassCacheParticipantsTimestamp,
-    ],
-    queryFn: async ({ queryKey }) => {
-      const timestamp = queryKey[queryKey.length - 1] as number | null;
-      const shouldBypassCache = timestamp !== null;
-
-      const result = await apiService.getParticipantsV2(
-        {
-          ...professionalFilters,
-          ...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
-          ...(shouldBypassCache && { bypass_cache: true }),
-        },
-        professionalPage,
-        PAGE_SIZE,
-      );
-
-      if (shouldBypassCache) {
-        setBypassCacheParticipantsTimestamp(null);
-      }
-
-      return result;
-    },
+    queryKey: participantsQueryKey,
+    queryFn: fetchParticipants,
     staleTime: 5 * 60 * 1000, // 5 minutos
     placeholderData: (prev) => prev, // Mantém dados antigos enquanto carrega novos
     refetchOnMount: "always", // Sempre consulta /participants ao montar a página
@@ -422,6 +439,39 @@ export function DashboardClient({
     // queries críticas evita regressões futuras caso o default global mude.
     retry: false,
   });
+
+  // GARANTIA DE DISPARO DO LOAD INICIAL.
+  // Em raros casos (corrida de mount/hydration do TanStack Query), os
+  // observers ficam presos no estado otimista de "fetching" sem nunca
+  // despachar o fetch real — sintoma: loader infinito sem /me e /participants
+  // na rede. Este efeito dispara as duas chamadas críticas imperativamente,
+  // ignorando o mount heuristic. fetchQuery é seguro: se a query já está em
+  // voo ele retorna a mesma promise (dedupe), e se está fresca não refaz a
+  // rede (respeita staleTime).
+  useEffect(() => {
+    void queryClient
+      .fetchQuery({
+        queryKey: ["currentUser"],
+        queryFn: () =>
+          apiService.getCurrentUser(forceSync ? { force_sync: true } : {}),
+        staleTime: 10 * 60 * 1000,
+        retry: false,
+      })
+      .catch(() => {
+        // 401/403/redirect já tratados em handleResponse()
+      });
+
+    void queryClient
+      .fetchQuery({
+        queryKey: participantsQueryKey,
+        queryFn: fetchParticipants,
+        staleTime: 5 * 60 * 1000,
+      })
+      .catch(() => {
+        // idem
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // TanStack Query para Geospatial Layers (Mapa) — LAZY
   // Só carrega quando a aba "professional" está ativa E o mapa foi aberto.
@@ -718,6 +768,31 @@ export function DashboardClient({
    * bloqueia o load inicial.
    */
   const isInitialLoading = currentUserLoading || participantsLoading;
+
+  // Watchdog de diagnóstico: se o load inicial travar (loader infinito sem
+  // chamadas na rede), loga o estado das duas queries críticas para confirmar
+  // o cenário em produção. Não interfere no fluxo — só observa.
+  useEffect(() => {
+    if (!isInitialLoading) return;
+    const timer = window.setTimeout(() => {
+      const currentUserState = queryClient.getQueryState(["currentUser"]);
+      const participantsStates = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["participantsV2"] })
+        .map((q) => ({ status: q.state.status, fetchStatus: q.state.fetchStatus }));
+      console.warn(
+        "[DashboardClient] load inicial ainda pendente após 10s:",
+        {
+          currentUser: currentUserState && {
+            status: currentUserState.status,
+            fetchStatus: currentUserState.fetchStatus,
+          },
+          participants: participantsStates,
+        },
+      );
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [isInitialLoading, queryClient]);
 
   // Falha crítica no load inicial: se as queries ERRORAREM (5xx/rede), sem
   // este tratamento a página renderiza "Nenhuma pessoa encontrada" como se

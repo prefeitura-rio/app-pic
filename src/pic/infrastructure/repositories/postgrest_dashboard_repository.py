@@ -7,19 +7,24 @@ Design notes:
 
 - Five tables serve the seven dashboard sections. All share the same filter
   columns, so the same filter-building helper is applied to every query.
+  WhatsApp disparos metrics (section 8) come from the raw
+  `endpoint_whatsapp_disparo` table via five aggregate queries (GROUP BY done
+  server-side — no pagination), accepting only the filter columns that exist
+  on that table; failures degrade to `disparos=None`.
 - The data-proxy enforces row-level security server-side when the request
   carries the end-user JWT (`with_user_token`). The *secretaria* query param
   does NOT filter rows — it only affects which secretaria bands appear in
   section 6 (tempo médio), exactly as V1 did.
-- All five fetches run concurrently with `asyncio.gather` to minimise latency.
+- All fetches run concurrently with `asyncio.gather` to minimise latency.
 - Results are cached in Redis keyed by a deterministic hash of (filters,
   secretaria, user_id). Entries are never shared across users; PostgREST RLS
   scopes each user's data at query time. `bypass_cache=True` skips reading the
   cache but still writes.
 - `PGRST_DB_MAX_ROWS` caps each response at 1 000 rows. Sections 1/4/5 use
   PostgREST aggregates (one row back); sections 2/3/6/7 may return up to
-  ~hundreds of rows but never approach the cap for this dataset.  If that
-  assumption changes, add pagination here.
+  ~hundreds of rows but never approach the cap for this dataset. Disparos
+  aggregates return one row per group (status/jornada), also far below the
+  cap.  If that assumption changes, add pagination here.
 """
 
 import asyncio
@@ -49,6 +54,26 @@ _TABLE_PROTOCOLOS = "endpoint_participante_visao_geral_protocolos"
 _TABLE_SERIES = "endpoint_participante_visao_geral_series"
 _TABLE_TEMPO = "endpoint_participante_visao_geral_tempo_irregular"
 _TABLE_RESOLUCAO = "endpoint_participante_visao_geral_resolucao_alertas"
+_TABLE_DISPAROS = "endpoint_whatsapp_disparo"
+
+# Filters of the dashboard screen that map to columns present on the raw
+# disparos table. Keys are the filter names used by the other sections;
+# values are the column names on `endpoint_whatsapp_disparo`. Anything else
+# (pic_status, has_bolsa_familia, equipe_saude) is silently ignored by the
+# disparos section — those columns do not exist there.
+_DISPARO_FILTER_MAPPING: dict[str, str] = {
+    "pic_grupo": "grupo",
+    "pic_cohort": "cohort",
+    "subprefeitura": "subprefeitura",
+    "regiao_administrativa": "regiao_administrativa",
+    "bairro": "bairro",
+    "id_cre": "id_cre",
+    "id_ap": "id_ap",
+    "id_cas": "id_cas",
+    "id_cras": "id_cras",
+    "id_escola": "id_escola",
+    "id_clinica_familia": "id_clinica_familia",
+}
 
 # ---------------------------------------------------------------------------
 # Filter helpers (mirrors postgrest_participant_repository conventions)
@@ -65,6 +90,7 @@ _EXACT_COLUMNS: frozenset[str] = frozenset({
     "id_clinica_familia",
     "id_equipe_familia",
     "pic_cohort",
+    "cohort",
 })
 
 _CACHE_TTL_SECONDS = 1800  # 30 minutes (session lifetime)
@@ -151,7 +177,7 @@ def _make_cache_key(
 class PostgrestDashboardRepository(IDashboardRepository):
     """Dashboard metrics read from the data-proxy via PostgREST.
 
-    All five table fetches run concurrently; results are aggregated in pure
+    All table fetches run concurrently; results are aggregated in pure
     Python (no Polars) by `_calculate_dashboard_metrics`.
     """
 
@@ -200,8 +226,8 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 )
                 return cached
 
-        # 2. Five concurrent fetches ----------------------------------------
-        logger.info("[dashboard] ── CACHE MISS — iniciando 5 queries paralelas ──────────────")
+        # 2. Concurrent fetches -----------------------------------------------
+        logger.info("[dashboard] ── CACHE MISS — iniciando queries paralelas ──────────────")
         fetch_start = time.perf_counter()
         async with self._client.with_user_token(user_token):
             (
@@ -210,15 +236,17 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 series,
                 tempo,
                 resolucao,
+                disparos,
             ) = await asyncio.gather(
                 self._fetch_consolidado(filters),
                 self._fetch_protocolos(filters),
                 self._fetch_series(filters),
                 self._fetch_tempo(filters),
                 self._fetch_resolucao(filters),
+                self._fetch_disparos(filters),
             )
         _fetch_elapsed = (time.perf_counter() - fetch_start) * 1000
-        logger.info(f"[dashboard] ⏱  TOTAL 5 fetches (paralelo)    : {_fetch_elapsed:7.1f} ms  ← gargalo real = query mais lenta acima")
+        logger.info(f"[dashboard] ⏱  TOTAL fetches (paralelo)      : {_fetch_elapsed:7.1f} ms  ← gargalo real = query mais lenta acima")
 
         # 3. Compute metrics (agregações já feitas em SQL) --------------------
         calc_start = time.perf_counter()
@@ -228,6 +256,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
             series=series,
             tempo=tempo,
             resolucao=resolucao,
+            disparos=disparos,
             filtro_secretaria=secretaria,
         )
         _calc_elapsed = (time.perf_counter() - calc_start) * 1000
@@ -594,6 +623,188 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 "denominador": row.get("denominador") or 0,
             })
         return rows
+
+    # ------------------------------------------------------------------
+    # WhatsApp disparos fetches (raw table, aggregate queries — no pagination)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _disparo_filters(filters: dict[str, object]) -> dict[str, object]:
+        """Subset of *filters* mapped to columns present on the disparos table."""
+        return {
+            target: filters[source]
+            for source, target in _DISPARO_FILTER_MAPPING.items()
+            if source in filters and filters[source] is not None
+        }
+
+    async def _fetch_disparos(self, filters: dict[str, object]) -> dict[str, Any] | None:
+        """WhatsApp disparos metrics (dashboard section 8).
+
+        Six aggregate queries on `endpoint_whatsapp_disparo`, all executed
+        concurrently: 30d totals, distinct participants reached, distinct
+        participants engaged, status distribution, per-jornada breakdown and
+        per-jornada status breakdown (segments of the stacked bar chart).
+        GROUP BY/COUNT DISTINCT work is done by PostgREST — the distinct
+        counts read only the `Content-Range` header of a grouped query, so no
+        pagination is needed.
+
+        Degrades to `None` on any PostgREST error (the dashboard keeps
+        serving the other seven sections).
+        """
+        disparo_filters = self._disparo_filters(filters)
+        _t0 = time.perf_counter()
+        try:
+            (
+                totals,
+                alcancados,
+                engajados,
+                status,
+                jornadas,
+                jornadas_statuses,
+            ) = await asyncio.gather(
+                self._fetch_disparos_totals(disparo_filters),
+                self._fetch_disparos_distinct_count(disparo_filters, None),
+                self._fetch_disparos_distinct_count(
+                    disparo_filters, ("RESPONDIDO", "LIDO")
+                ),
+                self._fetch_disparos_status(disparo_filters),
+                self._fetch_disparos_jornadas(disparo_filters),
+                self._fetch_disparos_jornadas_statuses(disparo_filters),
+            )
+        except PostgrestError as exc:
+            logger.warning(
+                f"[dashboard] disparos fetch failed (degrading to None): {exc}"
+            )
+            return None
+        finally:
+            _elapsed = time.perf_counter() - _t0
+            logger.info(f"[dashboard] ⏱  QUERY disparos (6 paralelas)   : {_elapsed * 1000:7.1f} ms")
+
+        return {
+            "totals": totals,
+            "alcancados": alcancados,
+            "engajados": engajados,
+            "status": status,
+            "jornadas": jornadas,
+            "jornadas_statuses": jornadas_statuses,
+        }
+
+    async def _fetch_disparos_totals(
+        self, filters: dict[str, object]
+    ) -> dict[str, int]:
+        """30d totals: SUM over the whole filtered table (single row)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_DISPAROS).select(
+                    "total:disparo_total_quantidade.sum(), "
+                    "entregues:disparo_entregues_quantidade.sum(), "
+                    "falhas:disparo_falhas_quantidade.sum()"
+                ).limit(1),
+                filters,
+            )
+        )
+        row = result.data[0] if result.data else {}
+        return {
+            "total": row.get("total") or 0,
+            "entregues": row.get("entregues") or 0,
+            "falhas": row.get("falhas") or 0,
+        }
+
+    async def _fetch_disparos_distinct_count(
+        self,
+        filters: dict[str, object],
+        statuses: tuple[str, ...] | None,
+    ) -> int:
+        """Distinct participants with at least one disparo (optionally
+        restricted to *statuses*).
+
+        GROUP BY `id_membro_familia` collapses the rows to one per
+        participant; the exact count comes from the `Content-Range` header
+        (`Prefer: count=exact`), so the response body (capped at 1000 rows)
+        is irrelevant and dropped with `limit(1)`.
+        """
+        query = self._client.table(_TABLE_DISPAROS).select(
+            "id_membro_familia,count()", count="exact"
+        )
+        query = query.not_.is_("disparo_status", "null")
+        if statuses:
+            query = query.filter(
+                "disparo_status", "in", f"({','.join(statuses)})"
+            )
+        result = await self._execute(_apply_filters(query, filters))
+        return result.count or 0
+
+    async def _fetch_disparos_status(
+        self, filters: dict[str, object]
+    ) -> list[dict[str, Any]]:
+        """Distribution of disparos by status (GROUP BY disparo_status)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_DISPAROS)
+                .select("disparo_status,total:count()")
+                .not_.is_("disparo_status", "null"),
+                filters,
+            )
+        )
+        return [
+            {"status": row.get("disparo_status"), "total": row.get("total") or 0}
+            for row in (result.data or [])
+            if row.get("disparo_status")
+        ]
+
+    async def _fetch_disparos_jornadas(
+        self, filters: dict[str, object]
+    ) -> list[dict[str, Any]]:
+        """Per-jornada breakdown (GROUP BY disparo_jornada)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_DISPAROS)
+                .select(
+                    "disparo_jornada, "
+                    "participantes:count(), "
+                    "entregues:disparo_entregues_quantidade.sum(), "
+                    "falhas:disparo_falhas_quantidade.sum()"
+                )
+                .not_.is_("disparo_jornada", "null"),
+                filters,
+            )
+        )
+        return [
+            {
+                "jornada": row.get("disparo_jornada"),
+                "participantes": row.get("participantes") or 0,
+                "entregues": row.get("entregues") or 0,
+                "falhas": row.get("falhas") or 0,
+            }
+            for row in (result.data or [])
+            if row.get("disparo_jornada")
+        ]
+
+    async def _fetch_disparos_jornadas_statuses(
+        self, filters: dict[str, object]
+    ) -> list[dict[str, Any]]:
+        """Per-jornada status breakdown (GROUP BY disparo_jornada, disparo_status).
+
+        Feeds the stacked segments of the per-campaign bar chart.
+        """
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_DISPAROS)
+                .select("disparo_jornada,disparo_status,total:count()")
+                .not_.is_("disparo_jornada", "null")
+                .not_.is_("disparo_status", "null"),
+                filters,
+            )
+        )
+        return [
+            {
+                "jornada": row.get("disparo_jornada"),
+                "status": row.get("disparo_status"),
+                "total": row.get("total") or 0,
+            }
+            for row in (result.data or [])
+            if row.get("disparo_jornada") and row.get("disparo_status")
+        ]
 
     # ------------------------------------------------------------------
     # Execution helper

@@ -74,5 +74,5 @@ class ParticipantRepository(ABC):
         order (sort column + `id_membro_familia`). Rows are already
         restricted to the user's access: unit RLS server-side, secretaria
         restriction pushdown, and columns outside the user's reach stripped
-        before yielding (see `_export_hidden_columns`).
+        before yielding (see `export_hidden_columns`).
         """

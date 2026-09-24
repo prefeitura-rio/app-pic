@@ -2,6 +2,9 @@ from datetime import datetime
 
 from src.pic.domain.models.dashboard import (
     Dashboard,
+    DisparoJornadaResumo,
+    DisparosDashboard,
+    DisparoStatusDistribuicao,
     DistribuicaoMotivoSaida,
     DistribuicaoSafra,
     DistribuicaoTempoIrregularidade,
@@ -184,6 +187,57 @@ def test_taxa_resolucao_mensal_point():
     assert tr.mes_label == "Jun/25"
     assert tr.todos == 60.0
     assert tr.saude == 65.0
+
+
+def test_disparos_dashboard_models():
+    dd = DisparosDashboard(
+        alcancados=60,
+        cobertura_percentual=42.9,
+        total_30d=120,
+        entregues_30d=105,
+        falhas_30d=15,
+        taxa_entrega=87.5,
+        taxa_falha=12.5,
+        engajados=35,
+        taxa_engajamento=58.3,
+        status_distribuicao=[
+            DisparoStatusDistribuicao(status="ENTREGUE", total=40)
+        ],
+        por_jornada=[
+            DisparoJornadaResumo(
+                jornada="Mutirão de Vacinação",
+                participantes=50,
+                entregues_30d=48,
+                falhas_30d=2,
+                taxa_falha=4.0,
+                status_distribuicao=[
+                    DisparoStatusDistribuicao(status="ENTREGUE", total=30),
+                    DisparoStatusDistribuicao(status="RESPONDIDO", total=18),
+                    DisparoStatusDistribuicao(status="FALHOU", total=2),
+                ],
+            )
+        ],
+    )
+    assert dd.alcancados == 60
+    assert dd.cobertura_percentual == 42.9
+    assert dd.total_30d == 120
+    assert dd.status_distribuicao[0].status == "ENTREGUE"
+    assert dd.por_jornada[0].jornada == "Mutirão de Vacinação"
+    assert dd.por_jornada[0].taxa_falha == 4.0
+    assert dd.por_jornada[0].status_distribuicao[1].status == "RESPONDIDO"
+
+
+def test_disparos_dashboard_defaults():
+    dd = DisparosDashboard()
+    assert dd.alcancados == 0
+    assert dd.status_distribuicao == []
+    assert dd.por_jornada == []
+
+
+def test_dashboard_disparos_none_by_default():
+    d = Dashboard()
+    assert d.disparos is None
+    assert d.model_dump()["disparos"] is None
 
 
 def test_dashboard_with_full_sections():

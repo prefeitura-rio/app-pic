@@ -488,6 +488,63 @@ async def test_list_boolean_filter_uses_is(make_repo):
     assert fake.requests[0].url.params["has_bolsa_familia"] == "is.true"
 
 
+async def test_list_cartao_pic_status_retirado_uses_is_true(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="retirado"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["has_cartao_pic"] == "is.true"
+
+
+async def test_list_cartao_pic_status_nao_retirou_uses_is_false(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="nao_retirou"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["has_cartao_pic"] == "is.false"
+
+
+async def test_list_cartao_pic_status_sem_direito_uses_is_null(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="sem_direito"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["has_cartao_pic"] == "is.null"
+
+
+async def test_list_cartao_pic_status_multi_value_uses_or(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="retirado|sem_direito"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    or_param = fake.requests[0].url.params["or"]
+    assert or_param == "(has_cartao_pic.is.true,has_cartao_pic.is.null)"
+
+
+async def test_list_cartao_pic_status_invalid_raises_validation_error(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(cartao_pic_status="desconhecido"),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
 async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
     repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
@@ -1327,18 +1384,19 @@ async def test_get_participant_by_id_maps_resumo_and_protocolos_and_attaches_mot
     assert len(irregular) == 1
     assert irregular[0].protocolo_motivo.motivos == ["falta de dados"]
 
-    resumo_req = fake.requests[0]
-    assert resumo_req.url.path == "/endpoint_participante_protocolos_wide"
+    # The wide and protocol queries run concurrently, so their arrival order
+    # in the fake is nondeterministic; resolve each request by path.
+    requests_by_path = {r.url.path: r for r in fake.requests}
+    resumo_req = requests_by_path["/endpoint_participante_protocolos_wide"]
     assert resumo_req.url.params["id_membro_familia"] == "eq.00325420412"
     assert resumo_req.headers["authorization"] == f"Bearer {USER_TOKEN}"
-    protocolos_req = fake.requests[1]
-    assert protocolos_req.url.path == "/endpoint_participante_protocolos_detalhe"
+    protocolos_req = requests_by_path[
+        "/endpoint_participante_protocolos_detalhe"
+    ]
     assert protocolos_req.url.params["id_membro_familia"] == "eq.00325420412"
     assert "protocolo_secretaria" not in protocolos_req.url.params
-    motivos_req = fake.requests[2]
-    assert motivos_req.url.path == "/protocolo_detalhes"
+    motivos_req = requests_by_path["/protocolo_detalhes"]
     assert motivos_req.url.params["id_membro_familia"] == "eq.00325420412"
-
 
 async def test_get_participant_by_id_returns_none_when_missing(make_repo):
     repo, _ = make_repo({"endpoint_participante_protocolos_wide": []})
@@ -1385,8 +1443,11 @@ async def test_get_participant_by_id_partial_secretaria_filters_and_recalculates
     assert result.assistencia_protocolos_total is None
     assert result.assistencia_fracao is None
 
-    protocolos_req = fake.requests[1]
-    assert protocolos_req.url.path == "/endpoint_participante_protocolos_detalhe"
+    protocolos_req = next(
+        r
+        for r in fake.requests
+        if r.url.path == "/endpoint_participante_protocolos_detalhe"
+    )
     assert protocolos_req.url.params["protocolo_secretaria"] == "in.(SMS)"
     # No irregular protocols left -> no motives query.
     assert [r.url.path for r in fake.requests[2:]] == []
@@ -1405,9 +1466,11 @@ async def test_get_participant_by_id_partial_secretaria_drops_invisible_row(make
         "00325420412", permissions=PARTIAL_SMS, user_token=USER_TOKEN
     )
     assert result is None
-    assert [r.url.path for r in fake.requests] == [
-        "/endpoint_participante_protocolos_wide",
+    # Wide + protocolos run concurrently (order nondeterministic); no
+    # motives query because the row was dropped.
+    assert sorted(r.url.path for r in fake.requests) == [
         "/endpoint_participante_protocolos_detalhe",
+        "/endpoint_participante_protocolos_wide",
     ]
 
 
