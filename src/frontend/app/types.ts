@@ -217,6 +217,7 @@ export interface ParticipanteListItem {
 	educacao_fracao?: string;
 	saude_fracao?: string;
 	total_protocolos_irregular?: number;
+	has_cartao_pic?: boolean | null;
 }
 
 /** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
@@ -534,6 +535,7 @@ export interface ParticipantFilters {
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
 	protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
+	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }

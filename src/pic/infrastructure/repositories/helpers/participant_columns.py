@@ -59,6 +59,7 @@ BASE_LIST_COLUMNS = [
     "idade",
     "status",
     "raca",
+    "has_cartao_pic",
 ]
 
 # Full-access extras returned verbatim from the resumo table.

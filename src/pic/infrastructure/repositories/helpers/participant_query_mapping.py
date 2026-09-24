@@ -100,6 +100,7 @@ SORTABLE_COLUMNS = {
     "educacao_fracao": "educacao_protocolos_regular",
     "saude_fracao": "saude_protocolos_regular",
     "situacao": "situacao",
+    "cartao_pic": "has_cartao_pic",
 }
 
 # Columns matched by the free-text `search` query param (partial, case-insensitive).
@@ -122,4 +123,5 @@ LIST_ITEM_FIELDS = [
     "saude_fracao",
     "total_protocolos_irregular",
     "raca",
+    "has_cartao_pic",
 ]

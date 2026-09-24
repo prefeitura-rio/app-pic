@@ -488,6 +488,63 @@ async def test_list_boolean_filter_uses_is(make_repo):
     assert fake.requests[0].url.params["has_bolsa_familia"] == "is.true"
 
 
+async def test_list_cartao_pic_status_retirado_uses_is_true(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="retirado"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["has_cartao_pic"] == "is.true"
+
+
+async def test_list_cartao_pic_status_nao_retirou_uses_is_false(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="nao_retirou"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["has_cartao_pic"] == "is.false"
+
+
+async def test_list_cartao_pic_status_sem_direito_uses_is_null(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="sem_direito"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["has_cartao_pic"] == "is.null"
+
+
+async def test_list_cartao_pic_status_multi_value_uses_or(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(cartao_pic_status="retirado|sem_direito"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    or_param = fake.requests[0].url.params["or"]
+    assert or_param == "(has_cartao_pic.is.true,has_cartao_pic.is.null)"
+
+
+async def test_list_cartao_pic_status_invalid_raises_validation_error(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(cartao_pic_status="desconhecido"),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
 async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
     repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
