@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Detects a fresh OAuth login via the `policy_force_sync` cookie and returns
@@ -6,9 +6,13 @@ import { useState } from "react";
  *
  * The cookie is created by the OAuth callback (`/api/auth/callback/rmi`) right
  * after token exchange and expires in 60 s — long enough for any page to mount
- * and read it. The hook reads and consumes (deletes) the cookie on first render
- * via the useState initializer, so only the very first `getCurrentUser()` call
- * after login carries the flag.
+ * and read it.
+ *
+ * IMPORTANTE (idempotência com renders concorrentes do React 19): a LEITURA
+ * fica no inicializador do useState (para o /me no mount já nascer com
+ * force_sync), mas a DELEÇÃO do cookie fica num efeito. Se o React descartar
+ * e refazer o render, o inicializador re-lê o cookie intacto — a deleção
+ * acontece uma única vez, após o commit.
  *
  * Usage:
  *   const forceSync = useForcePolicySyncOnLogin();
@@ -21,19 +25,26 @@ export function useForcePolicySyncOnLogin(): boolean {
   const [forceSync] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
 
-    const hasPolicySyncFlag = document.cookie
-      .split(";")
-      .some((c) => c.trim() === "policy_force_sync=1");
-
-    if (hasPolicySyncFlag) {
-      // Consume the cookie immediately so subsequent mounts (e.g. /admin page
-      // after DashboardClient already consumed it) don't re-trigger the sync.
-      document.cookie = "policy_force_sync=; path=/; max-age=0";
-      return true;
+    try {
+      return document.cookie
+        .split(";")
+        .some((c) => c.trim() === "policy_force_sync=1");
+    } catch {
+      return false;
     }
-
-    return false;
   });
+
+  useEffect(() => {
+    if (!forceSync || typeof window === "undefined") return;
+
+    try {
+      // Consume o cookie para que montagens seguintes (ex.: /admin depois do
+      // DashboardClient) não re-disparam o sync.
+      document.cookie = "policy_force_sync=; path=/; max-age=0";
+    } catch {
+      // Cookie expira sozinho em 60s — falhar aqui é inofensivo.
+    }
+  }, [forceSync]);
 
   return forceSync;
 }

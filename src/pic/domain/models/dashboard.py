@@ -57,6 +57,36 @@ class ProtocoloIndicador(BaseModel):
     percentual_irregular: float = 0.0
 
 
+class DisparoStatusDistribuicao(BaseModel):
+    status: str | None = None
+    total: int = 0
+
+
+class DisparoJornadaResumo(BaseModel):
+    jornada: str | None = None
+    participantes: int = 0
+    entregues_30d: int = 0
+    falhas_30d: int = 0
+    taxa_falha: float = 0.0
+    status_distribuicao: list[DisparoStatusDistribuicao] = []
+
+
+class DisparosDashboard(BaseModel):
+    """Métricas agregadas de disparos de WhatsApp (snapshot últimos 30 dias)."""
+
+    alcancados: int = 0
+    cobertura_percentual: float = 0.0
+    total_30d: int = 0
+    entregues_30d: int = 0
+    falhas_30d: int = 0
+    taxa_entrega: float = 0.0
+    taxa_falha: float = 0.0
+    engajados: int = 0
+    taxa_engajamento: float = 0.0
+    status_distribuicao: list[DisparoStatusDistribuicao] = []
+    por_jornada: list[DisparoJornadaResumo] = []
+
+
 class Dashboard(BaseModel):
     total_participantes: int = 0
     total_regulares: int = 0
@@ -70,6 +100,7 @@ class Dashboard(BaseModel):
     tempo_medio_irregularidade: list[TempoMedioIrregularidade] = []
     distribuicao_tempo_irregularidade: list[DistribuicaoTempoIrregularidade] = []
     taxa_resolucao_mensal: list[TaxaResolucaoMensalPoint] = []
+    disparos: DisparosDashboard | None = None
     data_atualizacao: datetime | None = None
 
     @classmethod
