@@ -4,8 +4,6 @@ import { memo } from "react";
 import { ParticipanteListItem, SortOrder } from "../types";
 import { Badge } from "@/app/components/ui/badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
-import { CartaoPicBadge } from "@/app/components/CartaoPicBadge";
-import { useAnonymizeData } from "@/app/hooks/useAnonymizeData";
 
 type BadgeVariant = "outline" | "default" | "secondary" | "destructive" | "warning" | "success";
 
@@ -27,7 +25,6 @@ const SORTABLE_COLUMNS = [
 	{ key: "bairro", label: "Bairro", align: "left" as const },
 	{ key: "idade", label: "Idade", align: "center" as const },
 	{ key: "status", label: "Status", align: "center" as const },
-	{ key: "cartao_pic", label: "Cartão PIC", align: "left" as const },
 	{ key: "total_fracao", label: "Total", align: "center" as const },
 	{ key: "total_irregular", label: "Total Irreg.", align: "center" as const },
 	{ key: "assistencia_fracao", label: "Assist.", align: "center" as const },
@@ -82,8 +79,6 @@ export const ParticipantTable = memo(
 		onSort,
 		visibleColumns: visibleColumnKeys,
 	}: ParticipantTableProps) => {
-		const { isAnonymized, maskCpf, maskName } = useAnonymizeData();
-
 		if (!data || !Array.isArray(data) || data.length === 0) {
 			return null;
 		}
@@ -159,11 +154,9 @@ export const ParticipantTable = memo(
 													key={key}
 													className="px-3 py-3 font-medium max-w-[200px]"
 												>
-												<span className="line-clamp-2">
-													{isAnonymized && participant.nome
-														? maskName(participant.nome)
-														: participant.nome || "-"}
-												</span>
+													<span className="line-clamp-2">
+														{participant.nome || "-"}
+													</span>
 												</td>
 											);
 
@@ -173,9 +166,7 @@ export const ParticipantTable = memo(
 													key={key}
 													className="px-3 py-3 font-mono whitespace-nowrap"
 												>
-													{isAnonymized && participant.cpf
-													? maskCpf(participant.cpf)
-													: participant.cpf || "-"}
+													{participant.cpf || "-"}
 												</td>
 											);
 
@@ -207,22 +198,15 @@ export const ParticipantTable = memo(
 												</td>
 											);
 
-									if (key === "status")
-										return (
-											<td
-												key={key}
-												className="px-3 py-3 text-center capitalize whitespace-nowrap"
-											>
-												{participant.status || "-"}
-											</td>
-										);
-
-									if (key === "cartao_pic")
-										return (
-											<td key={key} className="px-3 py-3 whitespace-nowrap">
-												<CartaoPicBadge value={participant.has_cartao_pic} />
-											</td>
-										);
+										if (key === "status")
+											return (
+												<td
+													key={key}
+													className="px-3 py-3 text-center capitalize whitespace-nowrap"
+												>
+													{participant.status || "-"}
+												</td>
+											);
 
 										if (key.includes("_fracao")) {
 											// key é sempre um dos campos "*_fracao" (string) de

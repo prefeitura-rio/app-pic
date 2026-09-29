@@ -10,10 +10,6 @@ import {
 	X,
 } from "lucide-react";
 import { memo, useCallback, useState } from "react";
-import {
-	LazyFilterMultiSelect,
-	LazyFilterSelect,
-} from "@/app/components/LazyFilterSelects";
 import { Button } from "@/app/components/ui/button";
 import {
 	Card,
@@ -22,14 +18,11 @@ import {
 	CardTitle,
 } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
-import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import {
+	LazyFilterMultiSelect,
+	LazyFilterSelect,
+} from "@/app/components/LazyFilterSelects";
 import type { ParticipantFilters } from "@/app/types";
-
-const CARTAO_PIC_STATUS_OPTIONS = [
-	{ id: "retirado", label: "Retirado" },
-	{ id: "nao_retirou", label: "Não Retirou" },
-	{ id: "sem_direito", label: "Sem Direito" },
-];
 
 interface FilterCardProps {
 	filters: ParticipantFilters;
@@ -268,9 +261,7 @@ const FilterCardComponent = ({
 											? [filters.situacao]
 											: []
 								}
-								onSelect={(values) =>
-									handleMultiFilterUpdate("situacao", values)
-								}
+								onSelect={(values) => handleMultiFilterUpdate("situacao", values)}
 								disabled={loading}
 								placeholder="Situações"
 								defaultLabel="Todas as Situações"
@@ -327,24 +318,6 @@ const FilterCardComponent = ({
 							disabled={loading}
 							placeholder="Todos Bolsa Família"
 							defaultLabel="Todos Bolsa Família"
-						/>
-
-						{/* Status do Cartão PIC */}
-						<VirtualizedSelect
-							options={CARTAO_PIC_STATUS_OPTIONS}
-							value={filters.cartao_pic_status ?? "todos"}
-							onSelect={(v) => {
-								if (v === "todos" || v === "todas" || v === "") {
-									const updated: Record<string, unknown> = { ...filters };
-									delete updated.cartao_pic_status;
-									onFilterChange(updated as ParticipantFilters);
-								} else {
-									handleFilterUpdate("cartao_pic_status", v);
-								}
-							}}
-							disabled={loading}
-							placeholder="Status do Cartão PIC"
-							defaultLabel="Todos os Status de Cartão PIC"
 						/>
 
 						{/* Secretaria de Protocolo */}

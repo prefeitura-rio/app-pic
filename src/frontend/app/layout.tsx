@@ -6,7 +6,6 @@ import { ThemeProvider } from "@/app/components/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/app/providers/QueryProvider";
-import { AnonymizeProvider } from "@/app/providers/AnonymizeProvider";
 import { ErrorBoundary } from "@/app/components/ErrorBoundary";
 import { ServiceWorkerRegister } from "@/app/components/ServiceWorkerRegister";
 
@@ -83,19 +82,17 @@ export default function RootLayout({
         />
         <ErrorBoundary>
           <QueryProvider>
-            <AnonymizeProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-              >
-                <TooltipProvider delayDuration={200}>
-                    {children}
-                    <Toaster />
-                </TooltipProvider>
-              </ThemeProvider>
-            </AnonymizeProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <TooltipProvider delayDuration={200}>
+                  {children}
+                  <Toaster />
+              </TooltipProvider>
+            </ThemeProvider>
           </QueryProvider>
         </ErrorBoundary>
         <ServiceWorkerRegister />
