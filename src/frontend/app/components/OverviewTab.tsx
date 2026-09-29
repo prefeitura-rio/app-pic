@@ -41,7 +41,6 @@ import type {
 } from "../types";
 import { DashboardFilterCard } from "./DashboardFilterCard";
 import { StatCard } from "./StatCard";
-import { DashboardWhatsAppDisparosSection } from "./whatsapp/DashboardWhatsAppDisparosSection";
 
 // Cores para o gráfico de pizza (ordem: crianca=vermelho, cadunico=amarelo, gravidez=verde, obito=azul)
 const PIE_COLORS = [
@@ -908,13 +907,6 @@ const OverviewTabComponent = ({
 					</CardContent>
 				</Card>
 			</div>
-			{/* ===================================================================== */}
-			{/* SEÇÃO 8: DISPAROS WHATSAPP (snapshot 30d) */}
-			{/* ===================================================================== */}
-			<DashboardWhatsAppDisparosSection
-				disparos={data.disparos ?? null}
-				loading={loading}
-			/>
 		</div>
 	);
 };
