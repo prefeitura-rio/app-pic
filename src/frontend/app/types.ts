@@ -41,6 +41,55 @@ export interface ProtocoloListagemItem {
 	protocolo_motivo?: ProtocoloMotivo; // array de strings com os motivos de irregularidade, caso existam. Ex: ["Falta de documentação", "Pendência de atualização"]
 }
 
+/** Métricas de 30 dias de uma campanha de disparos de WhatsApp */
+export interface DisparoMetadados {
+	total_ultimos_30d?: number | null;
+	entregues_30d?: number | null;
+	falhas_30d?: number | null;
+}
+
+/** Um disparo (campanha) de WhatsApp do participante */
+export interface Disparo {
+	campanha?: string | null;
+	data?: string | null; // ISO date (YYYY-MM-DD)
+	datahora?: string | null; // ISO datetime
+	secretaria?: string | null; // SMS | SMAS | SME | PGM
+	status?: string | null; // ENTREGUE | RESPONDIDO | LIDO | FALHOU | SEM_RETORNO | ENVIADO
+	indicador_falha?: boolean | null;
+	metadados?: DisparoMetadados | null;
+}
+
+/** Contagem de disparos por status (seção de disparos do dashboard) */
+export interface DisparoStatusDistribuicao {
+	status?: string | null;
+	total?: number | null;
+}
+
+/** Resumo de uma campanha/jornada na seção de disparos do dashboard */
+export interface DisparoJornadaResumo {
+	jornada?: string | null;
+	participantes?: number | null;
+	entregues_30d?: number | null;
+	falhas_30d?: number | null;
+	taxa_falha?: number | null;
+	status_distribuicao?: DisparoStatusDistribuicao[] | null;
+}
+
+/** Métricas agregadas de disparos de WhatsApp (snapshot 30d) do dashboard */
+export interface DisparosDashboard {
+	alcancados: number;
+	cobertura_percentual: number | null;
+	total_30d: number;
+	entregues_30d: number;
+	falhas_30d: number;
+	taxa_entrega: number;
+	taxa_falha: number;
+	engajados: number;
+	taxa_engajamento: number;
+	status_distribuicao: DisparoStatusDistribuicao[];
+	por_jornada: DisparoJornadaResumo[];
+}
+
 export interface EnderecoSMS {
 	endereco?: string;
 	complemento?: string;
@@ -86,6 +135,9 @@ export interface Participante {
 
 	// Protocolos - Lista detalhada (NOVO)
 	protocolo_listagem?: ProtocoloListagemItem[];
+
+	// Disparos de WhatsApp (campanhas HSM)
+	disparos?: Disparo[] | null;
 
 	// Protocolos - Contadores gerais
 	total_protocolos?: number;
@@ -165,6 +217,7 @@ export interface ParticipanteListItem {
 	educacao_fracao?: string;
 	saude_fracao?: string;
 	total_protocolos_irregular?: number;
+	has_cartao_pic?: boolean | null;
 }
 
 /** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
@@ -391,6 +444,11 @@ export interface Dashboard {
 	taxa_resolucao_mensal: TaxaResolucaoMensalPoint[];
 
 	// =========================================================================
+	// SEÇÃO 8: DISPAROS WHATSAPP (snapshot últimos 30 dias)
+	// =========================================================================
+	disparos?: DisparosDashboard | null;
+
+	// =========================================================================
 	// METADADOS
 	// =========================================================================
 	data_atualizacao?: string;
@@ -477,6 +535,7 @@ export interface ParticipantFilters {
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
 	protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
+	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }

@@ -208,7 +208,7 @@ async def test_get_dashboard_200_superadmin(client):
 
 @pytest.mark.asyncio
 async def test_response_contains_all_sections(client):
-    """All seven dashboard sections must be present in the response."""
+    """All dashboard sections must be present in the response."""
     response = await client.get("/api/v2/dashboard")
     assert response.status_code == 200
     data = response.json()["data"]
@@ -225,6 +225,7 @@ async def test_response_contains_all_sections(client):
     assert "tempo_medio_irregularidade" in data
     assert "distribuicao_tempo_irregularidade" in data
     assert "taxa_resolucao_mensal" in data
+    assert "disparos" in data
 
 
 @pytest.mark.asyncio
