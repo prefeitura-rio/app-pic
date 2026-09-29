@@ -101,4 +101,3 @@ class FilterCriteria(BaseModel):
     protocolo_descricao: str | None = None
     protocolo_status: str | None = None
     protocolo_secretaria: str | None = None
-    cartao_pic_status: str | None = None
