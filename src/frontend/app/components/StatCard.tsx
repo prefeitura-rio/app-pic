@@ -12,6 +12,7 @@ interface StatCardProps {
     isPositive: boolean;
   };
   variant?: "default" | "success" | "warning" | "accent" | "destructive";
+  size?: "default" | "sm";
   isLoading?: boolean;
 }
 
@@ -35,6 +36,7 @@ export function StatCard({
   icon,
   trend,
   variant = "default",
+  size = "default",
   isLoading = false
 }: StatCardProps) {
   // Check if icon is a LucideIcon component or JSX element
@@ -60,13 +62,13 @@ export function StatCard({
   return (
     <Card className={`${variantStyles[variant]} border-2 transition-all hover:shadow-lg relative`}>
       {isLoading && <div className="loading-overlay"></div>}
-      <CardContent className="p-6">
+      <CardContent className={size === "sm" ? "p-4" : "p-6"}>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
-            <h3 className="text-3xl font-bold text-foreground mb-2">{formatNumber(value)}</h3>
+            <p className={`${size === "sm" ? "text-xs" : "text-sm"} font-medium text-muted-foreground mb-1`}>{title}</p>
+            <h3 className={`${size === "sm" ? "text-xl" : "text-3xl"} font-bold text-foreground mb-2`}>{formatNumber(value)}</h3>
             {description && (
-              <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+              <p className={`${size === "sm" ? "text-xs" : "text-sm"} text-muted-foreground leading-relaxed`}>{description}</p>
             )}
             {trend && (
               <p className={`text-xs font-medium mt-1 ${trend.isPositive ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -74,8 +76,8 @@ export function StatCard({
               </p>
             )}
           </div>
-          <div className={`${iconVariantStyles[variant]} p-3 rounded-lg shadow-md`}>
-            {Icon ? <Icon className="h-6 w-6" /> : <>{icon}</>}
+          <div className={`${iconVariantStyles[variant]} ${size === "sm" ? "p-2" : "p-3"} rounded-lg shadow-md`}>
+            {Icon ? <Icon className={size === "sm" ? "h-5 w-5" : "h-6 w-6"} /> : <>{icon}</>}
           </div>
         </div>
       </CardContent>

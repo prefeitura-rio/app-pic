@@ -318,7 +318,11 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
         return rows
 
     async def _fetch_protocolos(self) -> list[dict[str, Any]]:
-        """GROUP BY protocolo_id com numerador/denominador de regularidade."""
+        """GROUP BY protocolo_id com numerador/denominador de regularidade.
+
+        Restrito a participantes ativos (`pic_status = ativo`): o escopo do
+        acordo considera apenas quem ainda está no programa.
+        """
         _t0 = time.perf_counter()
         try:
             result = await self._execute(
@@ -329,7 +333,7 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
                         "protocolo_secretaria, "
                         "numerador:protocolo_regular_numerador.sum(), "
                         "denominador:protocolo_regular_denominador.sum()"
-                    ).not_.is_("protocolo_id", "null"),
+                    ).not_.is_("protocolo_id", "null").ilike("pic_status", "ativo"),
                     {},
                 ).lte("pic_cohort", ACORDO_COHORT_CUTOFF)
             )

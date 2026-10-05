@@ -286,6 +286,25 @@ async def test_cohort_cutoff_filter_present_in_all_queries():
 
 
 @pytest.mark.asyncio
+async def test_protocolos_restritos_a_ativos():
+    repo, fake = _make_repo(FIXTURES)
+
+    await repo.get_acordo_resultados(user_token="jwt", user_id="123")
+
+    protocolos_requests = [
+        r
+        for r in fake.requests
+        if r.url.path.lstrip("/").split(".")[-1] == _TABLE_PROTOCOLOS
+    ]
+    assert protocolos_requests, "nenhuma query de protocolos foi disparada"
+
+    for request in protocolos_requests:
+        assert request.url.params.get_list("pic_status") == ["ilike.ativo"], (
+            f"protocolos sem pic_status=ilike.ativo: {request.url}"
+        )
+
+
+@pytest.mark.asyncio
 async def test_cache_hit_avoids_queries():
     redis = FakeRedis()
     expected = AcordoResultados(total_participantes=99)
