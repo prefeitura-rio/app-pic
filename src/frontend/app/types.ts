@@ -231,6 +231,43 @@ export interface DashboardV2Response {
 	can_view_dashboard: boolean;
 }
 
+/** Resumo de regularidade por status (Acordo de Resultados) */
+export interface AcordoStatusResumo {
+	total: number;
+	regulares: number;
+	irregulares: number;
+	percentual_regular: number;
+	percentual_irregular: number;
+}
+
+/** Distribuição genérica por categoria (raça, grupo, RA) */
+export interface AcordoDistribuicaoPublico {
+	categoria: string;
+	total: number;
+}
+
+/** Métricas do Acordo de Resultados 2026 — GET /api/v2/acordo-resultados */
+export interface AcordoResultados {
+	total_participantes: number;
+	ativos: AcordoStatusResumo;
+	inativos: AcordoStatusResumo;
+	protocolos: ProtocoloIndicador[];
+	evolucao_mensal: ResultadoProgramaPoint[];
+	motivos_saida: DistribuicaoMotivoSaida[];
+	distribuicao_raca: AcordoDistribuicaoPublico[];
+	distribuicao_grupo: AcordoDistribuicaoPublico[];
+	distribuicao_ra: AcordoDistribuicaoPublico[];
+	distribuicao_cartao_pic: AcordoDistribuicaoPublico[];
+	distribuicao_bolsa_familia: AcordoDistribuicaoPublico[];
+	meta_regularidade: number;
+}
+
+/** Response do GET /api/v2/acordo-resultados */
+export interface AcordoResultadosResponse {
+	data: AcordoResultados;
+	can_view_acordo: boolean;
+}
+
 export interface ProtocoloDetalhes {
 	cpf?: string;
 	id_membro_familia?: string;

@@ -37,9 +37,9 @@ import {
 import type {
 	Dashboard,
 	DashboardFilterValues,
-	ProtocoloIndicador,
 } from "../types";
 import { DashboardFilterCard } from "./DashboardFilterCard";
+import { ProtocoloCard } from "./ProtocoloCard";
 import { StatCard } from "./StatCard";
 
 // Cores para o gráfico de pizza (ordem: crianca=vermelho, cadunico=amarelo, gravidez=verde, obito=azul)
@@ -66,36 +66,6 @@ interface OverviewTabProps {
 const LoadingOverlay = ({ show }: { show: boolean }) => {
 	if (!show) return null;
 	return <div className="loading-overlay" />;
-};
-
-// Componente para card de protocolo individual
-const ProtocoloCard = ({
-	protocolo,
-	loading,
-}: {
-	protocolo: ProtocoloIndicador;
-	loading: boolean;
-}) => {
-	return (
-		<Card className="relative">
-			<LoadingOverlay show={loading} />
-			<CardContent className="p-4">
-				<p className="text-sm font-semibold mb-3 line-clamp-2">
-					{protocolo.protocolo_descricao}
-				</p>
-				<div className="flex items-baseline gap-2">
-					<span className="text-2xl font-bold">
-						{protocolo.percentual_regular.toFixed(1)}%
-					</span>
-					<span className="text-xs text-muted-foreground">regular</span>
-				</div>
-				<p className="text-xs text-muted-foreground mt-1">
-					{protocolo.numerador.toLocaleString("pt-BR")} de{" "}
-					{protocolo.denominador.toLocaleString("pt-BR")} participantes
-				</p>
-			</CardContent>
-		</Card>
-	);
 };
 
 const OverviewTabComponent = ({
