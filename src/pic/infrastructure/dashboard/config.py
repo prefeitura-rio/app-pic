@@ -20,3 +20,9 @@ MESES_LABELS: dict[str, str] = {
     "05": "Mai", "06": "Jun", "07": "Jul", "08": "Ago",
     "09": "Set", "10": "Out", "11": "Nov", "12": "Dez",
 }
+
+# Acordo de Resultados 2026 — escopo fixo: todos os cohorts até esta data.
+ACORDO_COHORT_CUTOFF = "2026-03-01"
+
+# Meta de regularidade do acordo (%), traçada nos gráficos.
+ACORDO_META_REGULARIDADE_PERCENTUAL = 30.5
