@@ -96,6 +96,7 @@ const DistribuicaoPie = ({
 	height = 440,
 	palette = PALETA_CATEGORIAS,
 	categoryColors,
+	customLegend = false,
 }: {
 	title: string;
 	data: Array<{ categoria?: string; motivo?: string; total?: number }>;
@@ -103,8 +104,10 @@ const DistribuicaoPie = ({
 	height?: number;
 	palette?: string[];
 	categoryColors?: Record<string, string>;
+	customLegend?: boolean;
 }) => {
 	const cores = paletaPorQuantidade(data.length, palette);
+	const total = data.reduce((acc, i) => acc + (i.total ?? 0), 0);
 
 	return (
 		<Card>
@@ -143,9 +146,41 @@ const DistribuicaoPie = ({
 								name,
 							]}
 						/>
-						<Legend />
+						{!customLegend && <Legend />}
 					</PieChart>
 				</ResponsiveContainer>
+				{customLegend && (
+					<div className="space-y-2 px-4">
+						{data.map((entry, index) => {
+							const nome = String(
+								entry[nameKey as "categoria" | "motivo"] ?? "",
+							);
+							const color =
+								categoryColors?.[nome] ?? cores[index % cores.length];
+							const percent =
+								total > 0
+									? (((entry.total ?? 0) / total) * 100).toFixed(1)
+									: 0;
+							return (
+								<div
+									key={index}
+									className="flex items-center justify-between text-sm"
+								>
+									<div className="flex items-center gap-2">
+										<div
+											className="w-3 h-3 rounded-full flex-shrink-0"
+											style={{ backgroundColor: color }}
+										/>
+										<span style={{ color }}>{nome}</span>
+									</div>
+									<span className="font-medium" style={{ color }}>
+										{(entry.total ?? 0).toLocaleString("pt-BR")} ({percent}%)
+									</span>
+								</div>
+							);
+						})}
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);
@@ -346,8 +381,8 @@ const AcordoResultadosTabComponent = ({
 				</div>
 
 				<div className="space-y-3">
-					<h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-						<AlertTriangle className="h-5 w-5 text-muted-foreground" />
+					<h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+						<AlertTriangle className="h-4 w-4" />
 						Quem entrou e já saiu do programa
 					</h2>
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -357,6 +392,7 @@ const AcordoResultadosTabComponent = ({
 							description="Participantes que saíram do programa"
 							icon={<Users className="h-6 w-6" />}
 							variant="default"
+							size="sm"
 							isLoading={loading}
 						/>
 						<StatCard
@@ -364,15 +400,17 @@ const AcordoResultadosTabComponent = ({
 							value={`${(data.inativos.percentual_regular || 0).toFixed(1)}%`}
 							description={`${(data.inativos.regulares || 0).toLocaleString("pt-BR")} de ${(data.inativos.total || 0).toLocaleString("pt-BR")} inativos`}
 							icon={<CheckCircle className="h-6 w-6" />}
-							variant="success"
+							variant="default"
+							size="sm"
 							isLoading={loading}
 						/>
 						<StatCard
 							title="Inativos Irregulares"
 							value={`${(data.inativos.percentual_irregular || 0).toFixed(1)}%`}
 							description={`${(data.inativos.irregulares || 0).toLocaleString("pt-BR")} de ${(data.inativos.total || 0).toLocaleString("pt-BR")} inativos`}
-							icon={<AlertTriangle className="h-6 w-6" />}
-							variant="destructive"
+							icon={<AlertTriangle color="white" className="h-6 w-6" />}
+							variant="default"
+							size="sm"
 							isLoading={loading}
 						/>
 					</div>
@@ -595,6 +633,7 @@ const AcordoResultadosTabComponent = ({
 						title="Motivos de Saída"
 						data={data.motivos_saida}
 						nameKey="motivo"
+						customLegend
 					/>
 				)}
 
@@ -612,6 +651,7 @@ const AcordoResultadosTabComponent = ({
 							},
 						]}
 						categoryColors={CORES_SITUACAO}
+						customLegend
 					/>
 				)}
 			</div>
