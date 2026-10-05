@@ -24,6 +24,9 @@ from src.pic.application.use_cases.admin.write import (
     UpsertUserUseCase,
 )
 from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
+from src.pic.application.use_cases.get_acordo_resultados import (
+    GetAcordoResultadosUseCase,
+)
 from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
 from src.pic.application.use_cases.get_debug_participant import (
     GetDebugParticipantUseCase,
@@ -55,6 +58,9 @@ from src.pic.infrastructure.repositories.disparos_repository import (
 )
 from src.pic.infrastructure.repositories.hybrid_admin import (
     HybridAdminRepository,
+)
+from src.pic.infrastructure.repositories.postgrest_acordo_resultados_repository import (
+    PostgrestAcordoResultadosRepository,
 )
 from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
     PostgrestDashboardRepository,
@@ -161,6 +167,26 @@ async def get_filter_options_use_case() -> GetFilterOptionsUseCase:
 
 async def get_dashboard_use_case() -> GetDashboardUseCase:
     return GetDashboardUseCase(repository=await get_dashboard_repo())
+
+
+async def get_acordo_resultados_repo() -> PostgrestAcordoResultadosRepository:
+    """PostgREST-backed Acordo de Resultados repository (V2 hexagonal).
+
+    Reuses the dashboard's pre-aggregated tables with a fixed cohort cutoff.
+    Same PostgREST/Redis lazy singletons; caching degrades gracefully when
+    Redis is unavailable.
+    """
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return PostgrestAcordoResultadosRepository(
+        postgrest_client, redis_client=redis_client
+    )
+
+
+async def get_acordo_resultados_use_case() -> GetAcordoResultadosUseCase:
+    return GetAcordoResultadosUseCase(repository=await get_acordo_resultados_repo())
 
 
 async def get_export_participants_use_case() -> ExportParticipantsUseCase:

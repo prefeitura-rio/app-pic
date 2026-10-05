@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from src.pic.domain.models.acordo_resultados import AcordoResultados
 from src.pic.domain.models.admin import UserAccessRecord
 from src.pic.domain.models.dashboard import Dashboard
 from src.pic.domain.models.filters import FilterOption
@@ -31,6 +32,11 @@ class FilterFieldOptionsResponse(BaseModel):
 class DashboardV2Response(BaseModel):
     data: Dashboard
     can_view_dashboard: bool = True
+
+
+class AcordoResultadosResponse(BaseModel):
+    data: AcordoResultados
+    can_view_acordo: bool = True
 
 
 class GeospatialLayersResponse(BaseModel):
