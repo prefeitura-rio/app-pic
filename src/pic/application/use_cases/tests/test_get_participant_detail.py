@@ -1,4 +1,4 @@
-"""Tests for `GetParticipantDetailUseCase` (detail + disparos composition)."""
+"""Tests for `GetParticipantDetailUseCase` (detail + disparos + busca ativa)."""
 
 import pytest
 
@@ -7,6 +7,7 @@ from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
 from src.pic.domain.errors import NotFoundError
+from src.pic.domain.models.busca_ativa import BuscaAtivaEvento
 from src.pic.domain.models.disparo import Disparo, DisparoMetadados
 from src.pic.domain.models.participante import Participante
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
@@ -63,10 +64,39 @@ class FakeDisparosRepository:
         return self._disparos
 
 
-def make_use_case(participant_repo, disparos_repo) -> GetParticipantDetailUseCase:
+class FakeBuscaAtivaRepository:
+    def __init__(self, busca_ativa=None):
+        self._busca_ativa = busca_ativa
+        self.received: dict = {}
+
+    async def get_busca_ativa(
+        self,
+        id_membro_familia,
+        *,
+        user_token=None,
+        offset=0,
+        limit=20,
+        permissions=None,
+    ):
+        self.received = {
+            "id_membro_familia": id_membro_familia,
+            "user_token": user_token,
+            "offset": offset,
+            "limit": limit,
+            "permissions": permissions,
+        }
+        return self._busca_ativa
+
+
+def make_use_case(
+    participant_repo,
+    disparos_repo,
+    busca_ativa_repo=None,
+) -> GetParticipantDetailUseCase:
     return GetParticipantDetailUseCase(
         repository=participant_repo,
         disparos_repository=disparos_repo,
+        busca_ativa_repository=busca_ativa_repo or FakeBuscaAtivaRepository([]),
     )
 
 
@@ -119,6 +149,61 @@ async def test_execute_disparos_none_is_graceful():
     )
 
     assert result.disparos is None
+
+
+@pytest.mark.asyncio
+async def test_execute_attaches_busca_ativa_to_participant():
+    participante = make_participante()
+    eventos = [
+        BuscaAtivaEvento(
+            id_busca_ativa="abc123",
+            fonte="SMAS",
+            data="2026-07-14",
+            smas_tipo=["Por telefone"],
+            smas_familia_localizada_indicador=True,
+            smas_protocolo_violado=["Acesso a CPF ou Certidão de Nascimento"],
+        )
+    ]
+    busca_ativa_repo = FakeBuscaAtivaRepository(eventos)
+    use_case = make_use_case(
+        FakeParticipantRepository(participante),
+        FakeDisparosRepository([]),
+        busca_ativa_repo=busca_ativa_repo,
+    )
+
+    result = await use_case.execute(
+        id_membro_familia="00325420412",
+        permissions=SUPER_ADMIN,
+        user_token="user-jwt",
+    )
+
+    assert result.busca_ativa == eventos
+    assert busca_ativa_repo.received["id_membro_familia"] == "00325420412"
+    assert busca_ativa_repo.received["user_token"] == "user-jwt"
+    assert busca_ativa_repo.received["permissions"] is SUPER_ADMIN
+    # Detail embeds only the first page of the paginated stream.
+    assert busca_ativa_repo.received["offset"] == 0
+    assert busca_ativa_repo.received["limit"] == (
+        GetParticipantDetailUseCase.DETAIL_BUSCA_ATIVA_LIMIT
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_busca_ativa_none_is_graceful():
+    participante = make_participante()
+    use_case = make_use_case(
+        FakeParticipantRepository(participante),
+        FakeDisparosRepository([]),
+        busca_ativa_repo=FakeBuscaAtivaRepository(None),
+    )
+
+    result = await use_case.execute(
+        id_membro_familia="00325420412",
+        permissions=SUPER_ADMIN,
+        user_token="user-jwt",
+    )
+
+    assert result.busca_ativa is None
 
 
 @pytest.mark.asyncio
