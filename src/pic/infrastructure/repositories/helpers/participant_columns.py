@@ -7,9 +7,7 @@ names, per-operation select lists, cache TTLs and the CSV-export column policy
 shared by `postgrest_participant_repository` and its helpers.
 """
 
-from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
-    PROTOCOLO_STATUS_COLUMNS,
-)
+from src.pic.infrastructure.export.csv_columns import build_export_header
 
 TABLE_PROTOCOLOS = "endpoint_participante_protocolos_detalhe"
 TABLE_PROTOCOLO_DETALHES = "protocolo_detalhes"
@@ -92,73 +90,6 @@ EXPORT_GLOBAL_COLUMNS = [
 EXPORT_PREFETCH_WINDOW = 3
 
 # Header used when the export has zero rows (no data row to derive the
-# column names from). Best-effort mirror of the wide table columns.
-EXPORT_FALLBACK_COLUMNS = [
-    "id_familia",
-    "id_membro_familia",
-    "nome",
-    "cpf",
-    "grupo",
-    "bairro",
-    "idade",
-    "status",
-    "situacao",
-    "raca",
-    "nascimento_data",
-    "endereco",
-    "complemento",
-    "endereco_sms",
-    "telefone_1_ddd",
-    "telefone_1_numero",
-    "telefone_2_ddd",
-    "telefone_2_numero",
-    "subprefeitura",
-    "regiao_administrativa",
-    "cohort",
-    "has_bolsa_familia",
-    "has_cartao_pic",
-    "latitude",
-    "longitude",
-    "total_fracao",
-    "total_protocolos",
-    "total_protocolos_regular",
-    "total_protocolos_irregular",
-    "total_protocolos_atencao",
-    "assistencia_fracao",
-    "assistencia_protocolos_total",
-    "assistencia_protocolos_regular",
-    "assistencia_protocolos_irregular",
-    "assistencia_protocolos_atencao",
-    "educacao_fracao",
-    "educacao_protocolos_total",
-    "educacao_protocolos_regular",
-    "educacao_protocolos_irregular",
-    "educacao_protocolos_atencao",
-    "saude_fracao",
-    "saude_protocolos_total",
-    "saude_protocolos_regular",
-    "saude_protocolos_irregular",
-    "saude_protocolos_atencao",
-    "id_cre",
-    "nome_cre",
-    "id_escola",
-    "nome_escola",
-    "source_escola",
-    "id_cas",
-    "nome_cas",
-    "id_cras",
-    "nome_cras",
-    "source_cras",
-    "id_ap",
-    "nome_ap",
-    "id_clinica_familia",
-    "nome_clinica_familia",
-    "source_clinica_familia",
-    "has_cobertura_clinica_familia",
-    "id_equipe_familia",
-    "nome_equipe_familia",
-    "source_equipe_familia",
-    "has_cobertura_equipe_familia",
-    "equipe_familia",
-    *PROTOCOLO_STATUS_COLUMNS,
-]
+# column names from). Derived from the fixed CSV map (`csv_columns`), with no
+# hidden columns: the full participant header + every protocol column.
+EXPORT_FALLBACK_COLUMNS = build_export_header(set())

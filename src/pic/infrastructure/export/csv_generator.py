@@ -1,15 +1,17 @@
 """CSV streaming for the participant export (PostgREST wide rows).
 
 The export pages come as plain dict rows (one per participant, wide-table
-columns); this module turns them into the same CSV format the v1 export
-always used: UTF-8 BOM, `;` delimiter, every value quoted, `""` for nulls,
-`_CHUNK_ROWS` lines buffered per yielded chunk.
+columns); this module turns them into the deterministic CSV defined by
+`csv_columns` (fixed header + per-column transformations): UTF-8 BOM, `;`
+delimiter, every value quoted, `""` for nulls, `_CHUNK_ROWS` lines buffered
+per yielded chunk.
 """
 
 import json
 from collections.abc import AsyncIterator
 
 from src.pic.infrastructure.export.config import _CHUNK_ROWS, _DELIMITER
+from src.pic.infrastructure.export.csv_columns import transform_row
 
 
 def _escape_csv(value: object) -> str:
@@ -22,7 +24,8 @@ def _escape_csv(value: object) -> str:
 
 
 def _row_line(row: dict[str, object], columns: list[str]) -> str:
-    return _DELIMITER.join(_escape_csv(row.get(column)) for column in columns)
+    values = transform_row(row, columns)
+    return _DELIMITER.join(_escape_csv(value) for value in values)
 
 
 async def rows_to_csv_chunks(
@@ -31,7 +34,7 @@ async def rows_to_csv_chunks(
 ) -> AsyncIterator[bytes]:
     """Stream the export CSV as encoded chunks (BOM + header first)."""
     header_line = _DELIMITER.join(columns)
-    yield ("\uFEFF" + header_line + "\n").encode("utf-8")
+    yield ("\ufeff" + header_line + "\n").encode("utf-8")
 
     rows_buffer: list[str] = []
     async for page in pages:

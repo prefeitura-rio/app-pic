@@ -196,9 +196,6 @@ export interface Participante {
 	source_equipe_familia?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
 	equipe_familia?: string;
 	has_cobertura_equipe_familia?: boolean;
-
-	// Infraestrutura
-	cpf_particao?: number;
 }
 
 /** V2 listagem enxuta — 14 campos, sem protocolo_listagem */
@@ -282,7 +279,6 @@ export interface ProtocoloDetalhes {
 	protocolo_irregular?: boolean; // RENOMEADO de protocolo_violado
 	protocolo_data_referencia_particicao?: string; // ISO date string
 	protocolo_status_label?: string;
-	cpf_particao?: number;
 }
 
 // ============================================================================

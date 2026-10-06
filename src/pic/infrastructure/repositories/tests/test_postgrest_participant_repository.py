@@ -2282,3 +2282,99 @@ async def test_export_generator_can_cross_task_boundaries(make_repo):
 
     assert len(remaining[0]) == 5
     assert len(fake.requests) == 3
+
+
+# ---------------------------------------------------------------------------
+# Export — deterministic header filtered by secretaria access
+# ---------------------------------------------------------------------------
+
+
+async def test_export_columns_full_access_keeps_every_column(make_repo):
+    repo, _ = make_repo({})
+
+    columns = repo.export_columns(SUPER_ADMIN)
+
+    # Global aggregates, coordinates and every protocol column are present.
+    assert "situacao" in columns
+    assert "total_fracao" in columns
+    assert "latitude" in columns
+    assert "longitude" in columns
+    assert "sms_vacinacao_pentavalente" in columns
+    assert "smas_acesso_alimentacao" in columns
+    assert "sme_frequencia_creche_escola" in columns
+    assert "assistencia_protocolos_total" in columns
+    assert "educacao_fracao" in columns
+    assert "saude_fracao" in columns
+
+
+async def test_export_columns_non_super_admin_full_access_hides_coordinates(make_repo):
+    repo, _ = make_repo({})
+
+    columns = repo.export_columns(FULL_NON_SUPER)
+
+    assert "latitude" not in columns
+    assert "longitude" not in columns
+    # Everything else stays (full protocol access).
+    assert "situacao" in columns
+    assert "sms_vacinacao_pentavalente" in columns
+    assert "sme_frequencia_creche_escola" in columns
+    assert "saude_protocolos_total" in columns
+
+
+async def test_export_columns_partial_access_omits_globals_and_other_secretarias(
+    make_repo,
+):
+    repo, _ = make_repo({})
+
+    columns = repo.export_columns(PARTIAL_SMS)
+
+    # Global protocol-derived columns omitted.
+    for column in ("situacao", "total_fracao", "total_protocolos"):
+        assert column not in columns
+    # Other secretarias' counters/fractions and protocols omitted.
+    for column in (
+        "assistencia_protocolos_total",
+        "assistencia_fracao",
+        "educacao_protocolos_total",
+        "educacao_fracao",
+        "smas_acesso_alimentacao",
+        "sme_frequencia_creche_escola",
+    ):
+        assert column not in columns
+    # Coordinates are super-admin only.
+    assert "latitude" not in columns
+    assert "longitude" not in columns
+    # Allowed secretaria columns kept.
+    assert "saude_protocolos_total" in columns
+    assert "saude_fracao" in columns
+    assert "sms_vacinacao_pentavalente" in columns
+    # Base columns and addresses stay visible.
+    assert "nome" in columns
+    assert "endereco_smas" in columns
+    assert "bairro_endereco_sms" in columns
+
+
+async def test_export_columns_no_access_keeps_only_base_columns(make_repo):
+    repo, _ = make_repo({})
+
+    columns = repo.export_columns(NO_ACCESS)
+
+    # Base participant columns stay.
+    assert "nome" in columns
+    assert "cpf" in columns
+    assert "endereco_smas" in columns
+    assert "endereco_sms" in columns
+    # All aggregates and protocol columns omitted.
+    for column in (
+        "situacao",
+        "total_fracao",
+        "saude_fracao",
+        "assistencia_protocolos_total",
+        "sms_vacinacao_pentavalente",
+        "smas_acesso_alimentacao",
+        "sme_frequencia_creche_escola",
+        "latitude",
+        "longitude",
+    ):
+        assert column not in columns
+
