@@ -3,6 +3,7 @@ from datetime import date
 
 from pydantic import BaseModel, field_validator
 
+from src.pic.domain.models.busca_ativa import BuscaAtivaEvento
 from src.pic.domain.models.disparo import Disparo
 from src.pic.domain.models.endereco import EnderecoSMS
 from src.pic.domain.models.protocolo import ProtocoloListagemItem
@@ -25,6 +26,7 @@ class ParticipanteListItem(BaseModel):
     total_protocolos_irregular: int | None = None
     raca: str | None = None
     has_cartao_pic: bool | None = None
+    has_busca_ativa: bool | None = None
 
 
 class Participante(BaseModel):
@@ -94,3 +96,4 @@ class Participante(BaseModel):
     saude_fracao: str | None = None
     protocolo_listagem: list[ProtocoloListagemItem] | None = None
     disparos: list[Disparo] | None = None
+    busca_ativa: list[BuscaAtivaEvento] | None = None
