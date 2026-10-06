@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { memo } from "react";
 import { Badge } from "@/app/components/ui/badge";
+import { BuscaAtivaBadge } from "@/app/components/BuscaAtivaBadge";
 import { CartaoPicBadge } from "@/app/components/CartaoPicBadge";
 import { useAnonymizeData } from "@/app/hooks/useAnonymizeData";
 import type { ParticipanteListItem, SortOrder } from "../types";
@@ -27,20 +28,30 @@ interface ParticipantTableProps {
 }
 
 // Configuração base das colunas (key corresponde ao sort_by do backend)
-const SORTABLE_COLUMNS = [
-	{ key: "nome", label: "Nome", align: "left" as const },
-	{ key: "cpf", label: "CPF", align: "left" as const },
-	{ key: "grupo", label: "Grupo", align: "left" as const },
-	{ key: "bairro", label: "Bairro", align: "left" as const },
-	{ key: "idade", label: "Idade", align: "center" as const },
-	{ key: "status", label: "Status", align: "center" as const },
-	{ key: "cartao_pic", label: "Cartão PIC", align: "left" as const },
-	{ key: "total_fracao", label: "Total", align: "center" as const },
-	{ key: "total_irregular", label: "Total Irreg.", align: "center" as const },
-	{ key: "assistencia_fracao", label: "Assist.", align: "center" as const },
-	{ key: "educacao_fracao", label: "Educ.", align: "center" as const },
-	{ key: "saude_fracao", label: "Saúde", align: "center" as const },
-	{ key: "situacao", label: "Situação", align: "center" as const },
+interface SortableColumn {
+	key: string;
+	label: string;
+	align: "left" | "center";
+	sortable?: boolean;
+}
+
+const SORTABLE_COLUMNS: SortableColumn[] = [
+	{ key: "nome", label: "Nome", align: "left" },
+	{ key: "cpf", label: "CPF", align: "left" },
+	{ key: "grupo", label: "Grupo", align: "left" },
+	{ key: "bairro", label: "Bairro", align: "left" },
+	{ key: "idade", label: "Idade", align: "center" },
+	{ key: "status", label: "Status", align: "center" },
+	{ key: "cartao_pic", label: "Cartão PIC", align: "left" },
+	// Coluna derivada (agregada app-side via endpoint_busca_ativa) — sem
+	// ordenação server-side, logo não clicável.
+	{ key: "busca_ativa", label: "Busca Ativa", align: "center", sortable: false },
+	{ key: "total_fracao", label: "Total", align: "center" },
+	{ key: "total_irregular", label: "Total Irreg.", align: "center" },
+	{ key: "assistencia_fracao", label: "Assist.", align: "center" },
+	{ key: "educacao_fracao", label: "Educ.", align: "center" },
+	{ key: "saude_fracao", label: "Saúde", align: "center" },
+	{ key: "situacao", label: "Situação", align: "center" },
 ];
 
 // Componente de ícone de ordenação
@@ -149,18 +160,26 @@ export const ParticipantTable = memo(
 								{visibleColumns.map((col) => (
 									<th
 										key={col.key}
-										className={`px-3 py-3 text-${col.align} font-medium text-muted-foreground whitespace-nowrap cursor-pointer hover:bg-muted/80 transition-colors select-none`}
-										onClick={() => handleHeaderClick(col.key)}
+										className={`px-3 py-3 text-${col.align} font-medium text-muted-foreground whitespace-nowrap ${
+											col.sortable !== false
+												? "cursor-pointer hover:bg-muted/80"
+												: ""
+										} transition-colors select-none`}
+										onClick={() => {
+											if (col.sortable !== false) handleHeaderClick(col.key);
+										}}
 									>
 										<div
 											className={`flex items-center ${col.align === "center" ? "justify-center" : ""}`}
 										>
 											{col.label}
-											<SortIcon
-												column={col.key}
-												sortBy={sortBy}
-												sortOrder={sortOrder}
-											/>
+											{col.sortable !== false && (
+												<SortIcon
+													column={col.key}
+													sortBy={sortBy}
+													sortOrder={sortOrder}
+												/>
+											)}
 										</div>
 									</th>
 								))}
@@ -247,7 +266,14 @@ export const ParticipantTable = memo(
 											</td>
 										);
 
-										if (key.includes("_fracao")) {
+									if (key === "busca_ativa")
+										return (
+											<td key={key} className="px-3 py-3 whitespace-nowrap">
+												<BuscaAtivaBadge value={participant.has_busca_ativa} />
+											</td>
+										);
+
+									if (key.includes("_fracao")) {
 											// key é sempre um dos campos "*_fracao" (string) de
 											// ParticipanteListItem nesse ponto (garantido pelo includes acima)
 											const value = participant[

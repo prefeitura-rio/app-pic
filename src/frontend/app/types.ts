@@ -59,6 +59,52 @@ export interface Disparo {
 	metadados?: DisparoMetadados | null;
 }
 
+/** Unidade de saúde (clínica da família/equipe) da busca ativa SMS */
+export interface BuscaAtivaUnidadeSMS {
+	nome?: string | null;
+	regional?: string | null;
+	equipe_nome?: string | null;
+}
+
+/** Equipamento de assistência social (CRAS/CAS) da busca ativa SMAS */
+export interface BuscaAtivaUnidadeSMAS {
+	nome?: string | null;
+	regional?: string | null;
+}
+
+/** Unidade responsável pela busca ativa (sme não é exposto) */
+export interface BuscaAtivaUnidadeReferenciada {
+	sms?: BuscaAtivaUnidadeSMS | null;
+	smas?: BuscaAtivaUnidadeSMAS | null;
+}
+
+/** Um evento de busca ativa do participante (endpoint_busca_ativa) */
+export interface BuscaAtivaEvento {
+	id_busca_ativa?: string | null;
+	fonte?: string | null; // SMS | SMAS
+	data?: string | null; // ISO date (YYYY-MM-DD)
+	sms_tipo_publico?: string | null; // apenas SMS (não exibido)
+	smas_tipo?: string[] | null; // apenas SMAS (ex.: ["Por telefone"])
+	smas_familia_localizada_indicador?: boolean | null; // apenas SMAS
+	smas_protocolo_violado?: string[] | null; // apenas SMAS
+	smas_motivo_nao_localizada?: string[] | null; // apenas SMAS
+	processed_at?: string | null; // ISO datetime
+	unidade_referenciada?: BuscaAtivaUnidadeReferenciada | null;
+}
+
+/** Metadados de uma página de eventos de busca ativa */
+export interface BuscaAtivaPageMeta {
+	offset: number;
+	limit: number;
+	has_more: boolean;
+}
+
+/** Resposta paginada da rota GET /api/v2/participants/{id}/busca-ativa */
+export interface BuscaAtivaPageResponse {
+	data: BuscaAtivaEvento[];
+	meta: BuscaAtivaPageMeta;
+}
+
 /** Contagem de disparos por status (seção de disparos do dashboard) */
 export interface DisparoStatusDistribuicao {
 	status?: string | null;
@@ -139,6 +185,9 @@ export interface Participante {
 	// Disparos de WhatsApp (campanhas HSM)
 	disparos?: Disparo[] | null;
 
+	// Eventos de busca ativa (SMS/SMAS) — primeira página (20) embutida
+	busca_ativa?: BuscaAtivaEvento[] | null;
+
 	// Protocolos - Contadores gerais
 	total_protocolos?: number;
 	total_protocolos_irregular?: number; // RENOMEADO de total_protocolos_violados
@@ -215,6 +264,7 @@ export interface ParticipanteListItem {
 	saude_fracao?: string;
 	total_protocolos_irregular?: number;
 	has_cartao_pic?: boolean | null;
+	has_busca_ativa?: boolean | null; // enriquecido app-side (eventos em endpoint_busca_ativa)
 }
 
 /** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
