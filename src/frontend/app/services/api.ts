@@ -312,6 +312,26 @@ export const apiService = {
 	},
 
 	/**
+	 * V2 — Página de eventos de busca ativa de um participante.
+	 */
+	async getBuscaAtivaV2(
+		idMembroFamilia: string,
+		offset: number = 0,
+		limit: number = 20,
+	): Promise<BuscaAtivaPageResponse> {
+		const params = new URLSearchParams({
+			offset: offset.toString(),
+			limit: limit.toString(),
+		});
+		const url = `${BASE_URL}/api/v2/participants/${idMembroFamilia}/busca-ativa?${params.toString()}`;
+
+		const fetchFn = () => fetch(url, { cache: "no-store" });
+		const res = await fetchFn();
+
+		return handleResponse<BuscaAtivaPageResponse>(res, fetchFn);
+	},
+
+	/**
 	 * V2 — Opções de um único campo de filtro (lazy por dropdown).
 	 * Aceita filtros ativos para cascateamento contextual.
 	 */

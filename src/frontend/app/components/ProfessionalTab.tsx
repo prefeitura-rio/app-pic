@@ -36,6 +36,12 @@ import {
 import { Separator } from "@/app/components/ui/separator";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@/app/components/ui/tabs";
+import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
@@ -54,6 +60,7 @@ import { FilterCard } from "./FilterCard";
 import { GeospatialMapView } from "./GeospatialMapView";
 import { ParticipantTable } from "./ParticipantTable";
 import { ProtocoloItem } from "./ProtocoloItem";
+import { BuscaAtivaSection } from "./busca-ativa/BuscaAtivaSection";
 
 // Função para renderizar o grupo com emoji (consistente com VirtualizedParticipantTable)
 const renderGrupo = (grupo?: string) => {
@@ -319,6 +326,7 @@ const ProfessionalTabComponent = ({
 			"idade",
 			"status",
 			"cartao_pic",
+			"busca_ativa",
 			"total_fracao",
 			"total_irregular",
 		];
@@ -582,12 +590,21 @@ const ProfessionalTabComponent = ({
 							<Skeleton className="h-40" />
 						</div>
 					) : selectedParticipant ? (
-						<div className="space-y-6 mt-4">
-							{/* Informações Básicas */}
-							<div>
-								<h3 className="text-lg font-semibold mb-3 text-foreground">
-									Informações Básicas
-								</h3>
+						<Tabs defaultValue="detalhamento" className="mt-4">
+							<TabsList>
+								<TabsTrigger value="detalhamento">
+									Dados e Protocolos
+								</TabsTrigger>
+								<TabsTrigger value="busca-ativa">
+									Busca Ativa
+								</TabsTrigger>
+							</TabsList>
+							<TabsContent value="detalhamento" className="mt-6 space-y-6">
+								{/* Informações Básicas */}
+								<div>
+									<h3 className="text-lg font-semibold mb-3 text-foreground">
+										Informações Básicas
+									</h3>
 								<div className="space-y-4">
 									{/* ── Seção 1: Identificação ── */}
 									<div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
@@ -1318,7 +1335,16 @@ const ProfessionalTabComponent = ({
 									</>
 								);
 							})()}
-						</div>
+							</TabsContent>
+							<TabsContent value="busca-ativa" className="mt-6 space-y-6">
+								{/* Eventos de busca ativa (SMS/SMAS) */}
+								<BuscaAtivaSection
+									key={selectedParticipant.id_membro_familia ?? "busca-ativa"}
+									idMembroFamilia={selectedParticipant.id_membro_familia}
+									buscaAtiva={selectedParticipant.busca_ativa}
+								/>
+							</TabsContent>
+						</Tabs>
 					) : null}
 				</DialogContent>
 			</Dialog>
