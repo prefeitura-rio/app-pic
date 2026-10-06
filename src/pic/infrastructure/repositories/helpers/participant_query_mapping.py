@@ -124,4 +124,7 @@ LIST_ITEM_FIELDS = [
     "total_protocolos_irregular",
     "raca",
     "has_cartao_pic",
+    # Enriched app-side (aggregate query over endpoint_busca_ativa) — no
+    # matching column on the wide table, so the mapper reads None here.
+    "has_busca_ativa",
 ]

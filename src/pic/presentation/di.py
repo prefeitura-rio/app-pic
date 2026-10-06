@@ -1,6 +1,9 @@
 import asyncio
 
 from src.pic.application.ports.admin_repository import IAdminRepository
+from src.pic.application.ports.busca_ativa_repository import (
+    BuscaAtivaRepository,
+)
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.application.ports.debug_repository import IDebugRepository
 from src.pic.application.ports.disparos_repository import (
@@ -26,6 +29,9 @@ from src.pic.application.use_cases.admin.write import (
 from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
 from src.pic.application.use_cases.get_acordo_resultados import (
     GetAcordoResultadosUseCase,
+)
+from src.pic.application.use_cases.get_busca_ativa import (
+    GetBuscaAtivaEventsUseCase,
 )
 from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
 from src.pic.application.use_cases.get_debug_participant import (
@@ -59,6 +65,9 @@ from src.pic.infrastructure.postgrest_client.client import get_postgrest_client
 from src.pic.infrastructure.redis_client import get_redis_client
 from src.pic.infrastructure.repositories.bigquery_debug import (
     BigQueryDebugRepository,
+)
+from src.pic.infrastructure.repositories.busca_ativa_repository import (
+    PostgrestBuscaAtivaRepository,
 )
 from src.pic.infrastructure.repositories.disparos_repository import (
     PostgrestDisparosRepository,
@@ -143,22 +152,32 @@ def get_debug_repo() -> IDebugRepository:
 
 
 async def get_list_participants_use_case() -> ListParticipantsUseCase:
-    return ListParticipantsUseCase(repository=await get_participant_read_repo())
+    """List use case: participant list + busca ativa enrichment (has flag)."""
+    participant_repo, busca_ativa_repo = await asyncio.gather(
+        get_participant_read_repo(),
+        get_busca_ativa_repo(),
+    )
+    return ListParticipantsUseCase(
+        repository=participant_repo,
+        busca_ativa_repository=busca_ativa_repo,
+    )
 
 
 async def get_participant_detail_use_case() -> GetParticipantDetailUseCase:
-    """Detail use case: participant reads + disparos (WhatsApp) reads.
+    """Detail use case: participant reads + disparos + busca ativa reads.
 
-    Both repositories share the same PostgREST client singleton; the use case
-    runs the two fetches concurrently (`asyncio.gather`).
+    All repositories share the same PostgREST client singleton; the use case
+    runs the three fetches concurrently (`asyncio.gather`).
     """
-    participant_repo, disparos_repo = await asyncio.gather(
+    participant_repo, disparos_repo, busca_ativa_repo = await asyncio.gather(
         get_participant_read_repo(),
         get_disparos_repo(),
+        get_busca_ativa_repo(),
     )
     return GetParticipantDetailUseCase(
         repository=participant_repo,
         disparos_repository=disparos_repo,
+        busca_ativa_repository=busca_ativa_repo,
     )
 
 
@@ -166,6 +185,17 @@ async def get_disparos_repo() -> DisparosRepository:
     """PostgREST-backed disparos repository (WhatsApp HSM per participant)."""
     postgrest_client = await get_postgrest_client()
     return PostgrestDisparosRepository(postgrest_client)
+
+
+async def get_busca_ativa_repo() -> BuscaAtivaRepository:
+    """PostgREST-backed busca ativa repository (events per participant)."""
+    postgrest_client = await get_postgrest_client()
+    return PostgrestBuscaAtivaRepository(postgrest_client)
+
+
+async def get_busca_ativa_use_case() -> GetBuscaAtivaEventsUseCase:
+    """Paginated busca ativa use case (participant detail "carregar mais")."""
+    return GetBuscaAtivaEventsUseCase(repository=await get_busca_ativa_repo())
 
 
 async def get_filter_options_use_case() -> GetFilterOptionsUseCase:
