@@ -44,6 +44,7 @@ from src.pic.domain.models.pagination import (
 )
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
 from src.pic.domain.models.protocolo import ProtocoloMotivo
+from src.pic.infrastructure.export.csv_columns import build_export_header
 from src.pic.infrastructure.mappers.participant_mapper import (
     row_to_list_item,
     row_to_participante,
@@ -498,6 +499,25 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 yield page
             if done:
                 break
+
+    def export_columns(self, permissions: Any = None) -> list[str]:
+        """Deterministic CSV header filtered to the user's access.
+
+        Mirrors the column-stripping rule of `export_wide_rows`
+        (`export_hidden_columns`): full access keeps every column; partial
+        access omits global aggregates, other secretarias' counters/fractions
+        and out-of-reach protocol columns; coordinates are super-admin only.
+        Base participant columns (addresses included) are always kept.
+        """
+        secretarias_acesso, full_access = governance.resolve_access(permissions)
+        hidden = export_hidden_columns(
+            full_access,
+            secretarias_acesso,
+            include_coordinates=(
+                permissions is not None and permissions.is_super_admin
+            ),
+        )
+        return build_export_header(hidden)
 
     # ------------------------------------------------------------------
     # Filter options (all sourced from the wide table)

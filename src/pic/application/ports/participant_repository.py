@@ -76,3 +76,12 @@ class ParticipantRepository(ABC):
         restriction pushdown, and columns outside the user's reach stripped
         before yielding (see `export_hidden_columns`).
         """
+
+    @abstractmethod
+    def export_columns(self, permissions: Any = None) -> list[str]:
+        """Return the deterministic, visibility-filtered CSV header.
+
+        Derived from the fixed column map (`csv_columns`) filtered by the
+        same rule as `export_hidden_columns`, so it matches the columns kept
+        in `export_wide_rows` without needing any data row.
+        """
