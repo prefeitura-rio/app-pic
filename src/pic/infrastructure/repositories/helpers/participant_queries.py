@@ -16,6 +16,7 @@ from src.pic.infrastructure.repositories.helpers.participant_columns import (
     TABLE_PROTOCOLOS_WIDE,
 )
 from src.pic.infrastructure.repositories.helpers.participant_filtering import (
+    apply_busca_ativa_filter,
     apply_scalar_filter,
     apply_wide_protocolo_filters,
     search_or_term,
@@ -33,6 +34,7 @@ def build_list_query(
     situacao_values: list[Any] | None,
     sort_column: str,
     sort_descending: bool,
+    busca_ativa_values: list[str] | None = None,
     count: str | None = None,
 ) -> AsyncSelectRequestBuilder:
     # One row per participant on the wide table, so the Content-Range
@@ -45,6 +47,8 @@ def build_list_query(
     if search_term:
         query = query.or_(search_or_term(search_term))
     query = apply_wide_protocolo_filters(query, protocolo_filters)
+    if busca_ativa_values:
+        query = apply_busca_ativa_filter(query, busca_ativa_values)
     if secretaria_or_terms:
         query = query.or_(secretaria_or_terms)
     if situacao_values:
@@ -64,6 +68,7 @@ def build_vocab_query(
     exclude_protocolo_field: str | None,
     search_term: str | None,
     secretaria_or_terms: str | None,
+    busca_ativa_values: list[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """One aggregate (GROUP BY) query for a single option list.
 
@@ -82,6 +87,8 @@ def build_vocab_query(
         if field != exclude_protocolo_field
     }
     query = apply_wide_protocolo_filters(query, protocolo_cascade)
+    if busca_ativa_values:
+        query = apply_busca_ativa_filter(query, busca_ativa_values)
     if secretaria_or_terms:
         query = query.or_(secretaria_or_terms)
     if search_term:
@@ -98,6 +105,7 @@ def build_wide_aggregate_query(
     exclude_protocolo_field: str | None,
     search_term: str | None,
     secretaria_or_terms: str | None,
+    busca_ativa_values: list[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """Single-row pure-aggregate query over the wide table.
 
@@ -119,6 +127,8 @@ def build_wide_aggregate_query(
         if field != exclude_protocolo_field
     }
     query = apply_wide_protocolo_filters(query, protocolo_cascade)
+    if busca_ativa_values:
+        query = apply_busca_ativa_filter(query, busca_ativa_values)
     if secretaria_or_terms:
         query = query.or_(secretaria_or_terms)
     if search_term:

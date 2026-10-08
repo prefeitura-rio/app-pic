@@ -6,18 +6,31 @@ Pure functions operating on plain dicts; no Polars involved anywhere.
 from typing import Any
 
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
+from src.pic.infrastructure.repositories.helpers.participant_governance import (
+    compute_busca_ativa_indicator,
+)
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
     LIST_ITEM_FIELDS,
 )
 
 
-def row_to_list_item(row: dict[str, Any]) -> ParticipanteListItem:
+def row_to_list_item(
+    row: dict[str, Any],
+    full_access: bool = True,
+    secretarias_acesso: list[str] | None = None,
+) -> ParticipanteListItem:
     """Map one `endpoint_participante_resumo` row to the lean list item.
 
     Only the fields of the v2 list envelope are kept; everything else is
     discarded so the response shape stays exactly the same as before.
+    `has_busca_ativa` is derived from the wide-table 30d indicator columns,
+    respecting the user's secretaria access.
     """
-    return ParticipanteListItem(**{field: row.get(field) for field in LIST_ITEM_FIELDS})
+    fields = {field: row.get(field) for field in LIST_ITEM_FIELDS}
+    fields["has_busca_ativa"] = compute_busca_ativa_indicator(
+        row, full_access, secretarias_acesso or []
+    )
+    return ParticipanteListItem(**fields)
 
 
 def row_to_protocolo_item(row: dict[str, Any]) -> dict[str, Any]:

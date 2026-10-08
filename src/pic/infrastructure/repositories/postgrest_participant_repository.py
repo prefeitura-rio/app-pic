@@ -69,6 +69,7 @@ from src.pic.infrastructure.repositories.helpers.participant_cache_keys import (
     make_vocab_cache_key,
 )
 from src.pic.infrastructure.repositories.helpers.participant_columns import (
+    BUSCA_ATIVA_EXPORT_COLUMNS,
     CACHE_TTL_SECONDS,
     DB_MAX_ROWS,
     EMPTY_CACHE_TTL_SECONDS,
@@ -126,7 +127,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
         pipeline_start = time.perf_counter()
         profiling = ProfilingData()
 
-        search_term, situacao_values, protocolo_filters, column_filters = split_filters(
+        search_term, situacao_values, protocolo_filters, column_filters, busca_ativa_values = split_filters(
             filters
         )
 
@@ -205,6 +206,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                     situacao_values=situacao_values if full_access else None,
                     sort_column=sort_column,
                     sort_descending=sort_descending,
+                    busca_ativa_values=busca_ativa_values,
                     count=count,
                 ),
                 limit=limit,
@@ -247,7 +249,10 @@ class PostgrestParticipantRepository(ParticipantRepository):
             profiling.rows_after_search = total_rows
 
         convert_start = time.perf_counter()
-        data = [row_to_list_item(row) for row in result_rows]
+        data = [
+            row_to_list_item(row, full_access, secretarias_acesso)
+            for row in result_rows
+        ]
         profiling.convert_to_dict_s = round(
             time.perf_counter() - convert_start, config.PROFILING_DECIMAL_PLACES
         )
@@ -433,7 +438,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
         (`export_hidden_columns`): the CSV never contains data the user
         cannot see, and the row set/order match the list pipeline.
         """
-        search_term, situacao_values, protocolo_filters, column_filters = split_filters(
+        search_term, situacao_values, protocolo_filters, column_filters, busca_ativa_values = split_filters(
             filters
         )
 
@@ -473,6 +478,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 situacao_values=situacao_values,
                 sort_column=sort_column,
                 sort_descending=sort_descending,
+                busca_ativa_values=busca_ativa_values,
             )
 
         # The user token context is scoped to each prefetch window (enter and
@@ -496,6 +502,70 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         {key: value for key, value in row.items() if key not in hidden}
                         for row in page
                     ]
+                yield page
+            if done:
+                break
+
+    async def export_busca_ativa_rows(
+        self,
+        filters: FilterCriteria,
+        sort: SortParams,
+        permissions: Any = None,
+        user_token: str | None = None,
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Yield pages of identity/address rows for the busca ativa export.
+
+        Same filter/sort/governance semantics as `export_wide_rows`, but with a
+        reduced select (only `BUSCA_ATIVA_EXPORT_COLUMNS`) — the events are
+        joined in-app from `endpoint_busca_ativa`, so the wide fetch only needs
+        the participant identity/address columns.
+        """
+        search_term, situacao_values, protocolo_filters, column_filters, busca_ativa_values = split_filters(
+            filters
+        )
+
+        secretarias_acesso, full_access = governance.resolve_access(permissions)
+        allowed_secretarias = None if full_access else set(secretarias_acesso)
+
+        validate_protocol_filter_access(protocolo_filters, allowed_secretarias)
+
+        sort_column = resolve_sort_column(
+            sort.sort_by, full_access, allowed_secretarias
+        )
+        sort_descending = sort.sort_order == "desc"
+
+        secretaria_or_terms, no_protocolo_match = secretaria_access_terms(
+            allowed_secretarias, bool(protocolo_filters)
+        )
+
+        if no_protocolo_match:
+            return
+
+        def build_query() -> AsyncSelectRequestBuilder:
+            return build_list_query(
+                self._client,
+                select_columns=BUSCA_ATIVA_EXPORT_COLUMNS,
+                column_filters=column_filters,
+                search_term=search_term,
+                protocolo_filters=protocolo_filters,
+                secretaria_or_terms=secretaria_or_terms,
+                situacao_values=situacao_values,
+                sort_column=sort_column,
+                sort_descending=sort_descending,
+                busca_ativa_values=busca_ativa_values,
+            )
+
+        offset = 0
+        while True:
+            async with self._client.with_user_token(user_token):
+                pages, offset, done = await fetch_next_window(
+                    self._client,
+                    build_query,
+                    offset,
+                    page_size=DB_MAX_ROWS,
+                    window=EXPORT_PREFETCH_WINDOW,
+                )
+            for page in pages:
                 yield page
             if done:
                 break
@@ -550,7 +620,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
             if cached is not None:
                 return cached
 
-        search_term, situacao_values, protocolo_filters, scalar_filters = split_filters(
+        search_term, situacao_values, protocolo_filters, scalar_filters, busca_ativa_values = split_filters(
             filters
         )
         if situacao_values:
@@ -583,6 +653,8 @@ class PostgrestParticipantRepository(ParticipantRepository):
         async with self._client.with_user_token(user_token):
             if kind == "static_status":
                 rows: list[dict[str, Any]] = []
+            elif kind == "busca_ativa":
+                rows: list[dict[str, Any]] = []
             elif kind == "wide_counts":
                 rows, _ = await fetch_pages(
                     self._client,
@@ -597,6 +669,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         exclude_protocolo_field=exclude_protocolo_field,
                         search_term=search_term,
                         secretaria_or_terms=secretaria_or_terms,
+                        busca_ativa_values=busca_ativa_values,
                     ),
                     limit=None,
                     with_count=False,
@@ -616,6 +689,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         exclude_protocolo_field=exclude_protocolo_field,
                         search_term=search_term,
                         secretaria_or_terms=secretaria_or_terms,
+                        busca_ativa_values=busca_ativa_values,
                     ),
                     limit=None,
                     with_count=False,
@@ -632,6 +706,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         exclude_protocolo_field=exclude_protocolo_field,
                         search_term=search_term,
                         secretaria_or_terms=secretaria_or_terms,
+                        busca_ativa_values=busca_ativa_values,
                     ),
                     limit=None,
                     with_count=False,

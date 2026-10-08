@@ -36,17 +36,25 @@ class BuscaAtivaRepository(ABC):
         """
 
     @abstractmethod
-    async def get_members_with_busca_ativa(
+    async def get_busca_ativa_for_members(
         self,
-        id_membros_familia: list[str],
+        ids: list[str],
         *,
         user_token: str | None = None,
         permissions: Any = None,
-    ) -> set[str] | None:
-        """Return which of the given members have at least one event.
+        fontes: list[str] | None = None,
+    ) -> list[tuple[str, BuscaAtivaEvento]]:
+        """Return the busca ativa events of many participants at once.
 
-        One aggregate query over `endpoint_busca_ativa` (group by
-        `id_membro_familia`), respecting the same secretaria recorte as
-        `get_busca_ativa`. Returns `None` on data-proxy failure (graceful
-        degradation) — the caller leaves the list field unset.
+        Bulk read for the CSV export: one `id_membro_familia=in.(...)` query
+        per chunk (the ids are split app-side to keep the request URL within
+        the proxy limits and issued concurrently), with the same
+        `fonte=SMS/SMAS` secretaria recorte as `get_busca_ativa`. `fontes`
+        further restricts the events to the selected `busca_ativa` filter
+        (`None` means no filter recorte), intersected with the user's access.
+        Each returned item is `(id_membro_familia, evento)` so the caller can
+        group events back to their participant. Raises `PostgrestError` on a
+        data-proxy failure (the export must not silently drop events); `[]`
+        when the user has no SMS/SMAS access, the intersection is empty, or
+        `ids` is empty.
         """

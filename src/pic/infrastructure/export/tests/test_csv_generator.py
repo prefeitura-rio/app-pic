@@ -109,6 +109,43 @@ def test_row_translates_boolean_columns():
     assert _values({"has_cartao_pic": "yes"}, headers)["status_cartao_pic"] is None
 
 
+def test_row_translates_busca_ativa_columns():
+    headers = build_export_header(set())
+
+    assert (
+        _values({"busca_ativa_smas_30d_indicador": True}, headers)[
+            "busca_ativa_smas_30d"
+        ]
+        == "sim"
+    )
+    assert (
+        _values({"busca_ativa_smas_30d_indicador": False}, headers)[
+            "busca_ativa_smas_30d"
+        ]
+        == "não"
+    )
+    assert (
+        _values({"busca_ativa_smas_30d_indicador": None}, headers)[
+            "busca_ativa_smas_30d"
+        ]
+        == "-"
+    )
+    assert (
+        _values({"busca_ativa_sms_30d_indicador": True}, headers)[
+            "busca_ativa_sms_30d"
+        ]
+        == "sim"
+    )
+
+
+def test_busca_ativa_columns_hidden_from_header():
+    headers = build_export_header(
+        {"busca_ativa_smas_30d_indicador", "busca_ativa_sms_30d_indicador"}
+    )
+    assert "busca_ativa_smas_30d" not in headers
+    assert "busca_ativa_sms_30d" not in headers
+
+
 def test_row_formats_dates_dd_mm_yyyy():
     headers = build_export_header(set())
     values = _values({"nascimento_data": "2020-01-31", "cohort": "2025-03-01"}, headers)

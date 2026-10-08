@@ -545,6 +545,70 @@ async def test_list_cartao_pic_status_invalid_raises_validation_error(make_repo)
     assert len(fake.requests) == 0
 
 
+async def test_list_busca_ativa_single_secretaria_uses_or_is_true(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SMAS"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["or"] == "(busca_ativa_smas_30d_indicador.is.true)"
+
+
+async def test_list_busca_ativa_multi_secretaria_uses_or(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SMAS|SMS"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    assert fake.requests[0].url.params["or"] == (
+        "(busca_ativa_smas_30d_indicador.is.true,busca_ativa_sms_30d_indicador.is.true)"
+    )
+
+
+async def test_list_busca_ativa_sme_ignored_when_mixed(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SME|SMAS"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    # SME has no column: only the SMAS term is emitted.
+    assert fake.requests[0].url.params["or"] == "(busca_ativa_smas_30d_indicador.is.true)"
+
+
+async def test_list_busca_ativa_sme_only_forces_empty(make_repo):
+    repo, fake = make_repo(
+        {"endpoint_participante_protocolos_wide": [resumo_row("1")]}
+    )
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SME"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    # SME has no column: an always-false filter (`id_membro_familia.is.null`).
+    assert fake.requests[0].url.params["id_membro_familia"] == "is.null"
+    assert data == []
+    assert meta.total_rows == 0
+
+
+async def test_list_busca_ativa_invalid_raises_validation_error(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(busca_ativa="XYZ"),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
 async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
     repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
@@ -1918,6 +1982,52 @@ class TestFilterOptions:
         assert [o.id for o in secretarias] == ["SMS"]
 
     @pytest.mark.asyncio
+    async def test_busca_ativa_options_super_admin_returns_all_three(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+        options = await repo.get_filter_options(
+            field="busca_ativa",
+            filters=FilterCriteria(),
+            permissions=SUPER_ADMIN,
+        )
+        # Static options: no DB query.
+        assert len(fake.requests) == 0
+        assert [o.id for o in options] == ["SMAS", "SMS", "SME"]
+
+    @pytest.mark.asyncio
+    async def test_busca_ativa_options_partial_access_intersects_secretarias(
+        self, make_repo
+    ):
+        repo, fake = make_repo(self.make_rows())
+
+        smas = await repo.get_filter_options(
+            field="busca_ativa",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMAS,
+        )
+        assert [o.id for o in smas] == ["SMAS"]
+        assert [o.label for o in smas] == ["Busca Ativa SMAS (30d)"]
+
+        sms = await repo.get_filter_options(
+            field="busca_ativa",
+            filters=FilterCriteria(),
+            permissions=PARTIAL_SMS,
+        )
+        assert [o.id for o in sms] == ["SMS"]
+
+        assert len(fake.requests) == 0  # static, never queries
+
+    @pytest.mark.asyncio
+    async def test_busca_ativa_options_no_access_returns_empty(self, make_repo):
+        repo, fake = make_repo(self.make_rows())
+        options = await repo.get_filter_options(
+            field="busca_ativa",
+            filters=FilterCriteria(),
+            permissions=NO_ACCESS,
+        )
+        assert options == []
+        assert len(fake.requests) == 0
+
+    @pytest.mark.asyncio
     async def test_guards_skip_queries(self, make_repo):
         repo, fake = make_repo(self.make_rows())
 
@@ -2117,6 +2227,44 @@ async def test_export_super_admin_selects_all_and_keeps_every_column(make_repo):
     assert pages[0][0]["sms_vacinacao_pentavalente"] == "Regular"
     assert pages[0][0]["situacao"] == "Atenção"
     assert all(req.url.params.get("select") == "*" for req in fake.requests)
+
+
+@pytest.mark.asyncio
+async def test_export_busca_ativa_rows_selects_identity_only(make_repo):
+    rows = [
+        wide_row(
+            "1",
+            latitude=-22.867801,
+            longitude=-43.2931916,
+            protocolos={"sms_vacinacao_pentavalente": "Regular"},
+        ),
+    ]
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": rows})
+
+    pages = [
+        page
+        async for page in repo.export_busca_ativa_rows(
+            filters=FilterCriteria(),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+            user_token=USER_TOKEN,
+        )
+    ]
+
+    assert [row["id_membro_familia"] for row in pages[0]] == ["1"]
+    assert pages[0][0]["nome"] == "NOME 1"
+    assert pages[0][0]["cpf"] == "00000000001"
+    select = fake.requests[0].url.params["select"]
+    assert select.split(",") == [
+        "id_membro_familia",
+        "cpf",
+        "nome",
+        "nascimento_data",
+        "endereco",
+        "complemento",
+        "bairro",
+        "endereco_sms",
+    ]
 
 
 @pytest.mark.asyncio

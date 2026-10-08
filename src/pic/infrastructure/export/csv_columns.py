@@ -74,6 +74,10 @@ def _translate_cobertura(value: Any) -> str | None:
     return _translate_bool(value, "SIM", "NÃO", "-")
 
 
+def _translate_busca_ativa(value: Any) -> str | None:
+    return _translate_bool(value, "sim", "não", "-")
+
+
 def _parse_endereco_sms(value: Any) -> dict | None:
     """Normalise ``endereco_sms`` (Postgres JSON dict or BigQuery JSON string)."""
     if isinstance(value, str):
@@ -124,6 +128,8 @@ EXPORT_CSV_COLUMNS: list[str] = [
     "cohort",
     "status_bolsa_familia",
     "status_cartao_pic",
+    "busca_ativa_smas_30d",
+    "busca_ativa_sms_30d",
     "latitude",
     "longitude",
     "total_fracao",
@@ -180,6 +186,14 @@ CSV_TRANSFORMATIONS: dict[str, tuple[str, Callable[[Any], Any] | None]] = {
     "bairro_endereco_sms": ("endereco_sms", _extract_endereco_sms("bairro")),
     "status_bolsa_familia": ("has_bolsa_familia", _translate_bolsa_familia),
     "status_cartao_pic": ("has_cartao_pic", _translate_cartao_pic),
+    "busca_ativa_smas_30d": (
+        "busca_ativa_smas_30d_indicador",
+        _translate_busca_ativa,
+    ),
+    "busca_ativa_sms_30d": (
+        "busca_ativa_sms_30d_indicador",
+        _translate_busca_ativa,
+    ),
     "possui_cobertura_clinica_da_familia": (
         "has_cobertura_clinica_familia",
         _translate_cobertura,
