@@ -84,6 +84,15 @@ PROTOCOLO_SECRETARIA = {
     "sms_visitas_domiciliares_puerperio": "SMS",
 }
 
+# Busca ativa filter: secretaria code -> boolean indicator column on
+# `endpoint_participante_protocolos_wide` (true when the participant had busca
+# ativa in the last 30 days). SME has no column yet, so it is intentionally
+# absent from this map (an SME-only filter matches nothing).
+BUSCA_ATIVA_INDICATOR_COLUMNS: dict[str, str] = {
+    "SMAS": "busca_ativa_smas_30d_indicador",
+    "SMS": "busca_ativa_sms_30d_indicador",
+}
+
 # Sort request key -> column used for ordering.
 SORTABLE_COLUMNS = {
     "nome": "nome",

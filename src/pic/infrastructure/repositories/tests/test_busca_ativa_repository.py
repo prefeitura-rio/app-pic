@@ -19,6 +19,7 @@ from src.pic.domain.models.busca_ativa import (
 )
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
+from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.infrastructure.repositories.busca_ativa_repository import (
     PostgrestBuscaAtivaRepository,
 )
@@ -414,70 +415,174 @@ async def test_get_busca_ativa_sme_only_access_returns_empty_without_query(make_
     assert fake.requests == []
 
 
+def _member_ids(count: int) -> list[str]:
+    return [f"{index:011d}" for index in range(count)]
+
+
 @pytest.mark.asyncio
-async def test_get_members_with_busca_ativa_builds_aggregate_query(make_repo):
-    permissions = UserPermissions(
-        cpf="11111111111", is_super_admin=True, secretarias_acesso=[]
-    )
+async def test_get_busca_ativa_for_members_builds_in_query_and_maps_member_id(
+    make_repo,
+):
     repo, fake = make_repo(
         [
-            sms_row(id_membro_familia="111", id_busca_ativa="a"),
-            sms_row(id_membro_familia="222", id_busca_ativa="b"),
+            sms_row(id_membro_familia="00000000001", id_busca_ativa="a"),
+            smas_row(id_membro_familia="00000000002", id_busca_ativa="b"),
         ]
     )
 
-    members = await repo.get_members_with_busca_ativa(
-        ["111", "222"], user_token=USER_TOKEN, permissions=permissions
+    eventos = await repo.get_busca_ativa_for_members(
+        ["00000000001", "00000000002"], user_token=USER_TOKEN
     )
 
-    assert members == {"111", "222"}
+    assert len(fake.requests) == 1
     request = fake.requests[0]
-    assert request.url.params["id_membro_familia"] == "in.(111,222)"
-    assert request.url.params["select"] == "id_membro_familia,count()"
-    assert "fonte" not in request.url.params
+    assert request.url.path == f"/{TABLE}"
+    assert request.url.params["id_membro_familia"] == "in.(00000000001,00000000002)"
+    assert "id_membro_familia" in request.url.params["select"]
+    assert request.url.params.get_list("order") == [
+        "data.desc.nullslast,id_busca_ativa.asc.nullslast"
+    ]
+
+    assert {member_id for member_id, _ in eventos} == {
+        "00000000001",
+        "00000000002",
+    }
+    assert [e.id_busca_ativa for _, e in eventos] == ["a", "b"]
 
 
 @pytest.mark.asyncio
-async def test_get_members_with_busca_ativa_filters_fonte(make_repo):
+async def test_get_busca_ativa_for_members_chunks_large_id_lists(make_repo):
+    repo, fake = make_repo([])
+
+    ids = _member_ids(600)
+    eventos = await repo.get_busca_ativa_for_members(ids, user_token=USER_TOKEN)
+
+    assert eventos == []
+    # 600 ids / 250 per chunk = 3 requests.
+    assert len(fake.requests) == 3
+    for request in fake.requests:
+        value = request.url.params["id_membro_familia"]
+        assert value.startswith("in.(")
+        chunk = value.strip("in.(").strip(")")
+        assert len(chunk.split(",")) <= 250
+
+
+@pytest.mark.asyncio
+async def test_get_busca_ativa_for_members_partial_access_filters_fonte(make_repo):
+    permissions = UserPermissions(
+        cpf="22222222222", is_super_admin=False, secretarias_acesso=["SMS"]
+    )
+    repo, fake = make_repo(
+        [
+            sms_row(id_membro_familia="00000000001", id_busca_ativa="a"),
+            smas_row(id_membro_familia="00000000001", id_busca_ativa="b"),
+        ]
+    )
+
+    eventos = await repo.get_busca_ativa_for_members(
+        ["00000000001"], user_token=USER_TOKEN, permissions=permissions
+    )
+
+    assert fake.requests[0].url.params["fonte"] == "in.(SMS)"
+    assert [e.id_busca_ativa for _, e in eventos] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_get_busca_ativa_for_members_filter_fontes_under_full_access(make_repo):
+    repo, fake = make_repo(
+        [
+            sms_row(id_membro_familia="00000000001", id_busca_ativa="a"),
+            smas_row(id_membro_familia="00000000001", id_busca_ativa="b"),
+        ]
+    )
+
+    eventos = await repo.get_busca_ativa_for_members(
+        ["00000000001"], user_token=USER_TOKEN, fontes=["SMAS"]
+    )
+
+    assert fake.requests[0].url.params["fonte"] == "in.(SMAS)"
+    assert [e.id_busca_ativa for _, e in eventos] == ["b"]
+
+
+@pytest.mark.asyncio
+async def test_get_busca_ativa_for_members_filter_fontes_intersects_access(make_repo):
     permissions = UserPermissions(
         cpf="22222222222", is_super_admin=False, secretarias_acesso=["SMAS"]
     )
     repo, fake = make_repo(
         [
-            sms_row(id_membro_familia="111", id_busca_ativa="a"),
-            smas_row(id_membro_familia="222", id_busca_ativa="b"),
+            sms_row(id_membro_familia="00000000001", id_busca_ativa="a"),
+            smas_row(id_membro_familia="00000000001", id_busca_ativa="b"),
         ]
     )
 
-    members = await repo.get_members_with_busca_ativa(
-        ["111", "222"], user_token=USER_TOKEN, permissions=permissions
+    eventos = await repo.get_busca_ativa_for_members(
+        ["00000000001"],
+        user_token=USER_TOKEN,
+        permissions=permissions,
+        fontes=["SMAS", "SMS"],
     )
 
-    assert members == {"222"}
     assert fake.requests[0].url.params["fonte"] == "in.(SMAS)"
+    assert [e.id_busca_ativa for _, e in eventos] == ["b"]
 
 
 @pytest.mark.asyncio
-async def test_get_members_with_busca_ativa_no_access_returns_none(make_repo):
+async def test_get_busca_ativa_for_members_filter_fontes_disjoint_returns_empty(
+    make_repo,
+):
     permissions = UserPermissions(
-        cpf="33333333333", is_super_admin=False, secretarias_acesso=[]
+        cpf="22222222222", is_super_admin=False, secretarias_acesso=["SMAS"]
     )
-    repo, fake = make_repo([sms_row(id_membro_familia="111")])
+    repo, fake = make_repo([sms_row(), smas_row()])
 
-    members = await repo.get_members_with_busca_ativa(
-        ["111"], user_token=USER_TOKEN, permissions=permissions
+    eventos = await repo.get_busca_ativa_for_members(
+        ["00000000001"],
+        user_token=USER_TOKEN,
+        permissions=permissions,
+        fontes=["SMS"],
     )
 
-    assert members is None
+    assert eventos == []
     assert fake.requests == []
 
 
 @pytest.mark.asyncio
-async def test_get_members_with_busca_ativa_returns_none_on_api_error(make_repo):
+async def test_get_busca_ativa_for_members_no_access_returns_empty_without_query(
+    make_repo,
+):
+    permissions = UserPermissions(
+        cpf="33333333333", is_super_admin=False, secretarias_acesso=[]
+    )
+    repo, fake = make_repo([sms_row(), smas_row()])
+
+    eventos = await repo.get_busca_ativa_for_members(
+        ["00000000001"], user_token=USER_TOKEN, permissions=permissions
+    )
+
+    assert eventos == []
+    assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_get_busca_ativa_for_members_empty_ids_returns_empty_without_query(
+    make_repo,
+):
+    repo, fake = make_repo([sms_row(), smas_row()])
+
+    eventos = await repo.get_busca_ativa_for_members([], user_token=USER_TOKEN)
+
+    assert eventos == []
+    assert fake.requests == []
+
+
+@pytest.mark.asyncio
+async def test_get_busca_ativa_for_members_raises_on_api_error(make_repo):
     repo, fake = make_repo([])
     fake.error_status = 500
     fake.error_body = {"message": "boom", "code": "500"}
 
-    members = await repo.get_members_with_busca_ativa(["111"])
-
-    assert members is None
+    with pytest.raises(PostgrestError):
+        await repo.get_busca_ativa_for_members(
+            ["00000000001"], user_token=USER_TOKEN
+        )

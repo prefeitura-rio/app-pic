@@ -1,8 +1,7 @@
-"""Tests for `ListParticipantsUseCase` (list + busca ativa enrichment)."""
+"""Tests for `ListParticipantsUseCase` (delegation to the repository)."""
 
 import pytest
 
-from src.core.security.permissions_models import UserPermissions
 from src.pic.application.use_cases.list_participants import (
     ListParticipantsUseCase,
 )
@@ -47,119 +46,45 @@ class FakeParticipantRepository:
         bypass_cache=False,
     ):
         self.received = {
+            "filters": filters,
             "pagination": pagination,
+            "sort": sort,
+            "permissions": permissions,
             "user_token": user_token,
+            "bypass_cache": bypass_cache,
         }
         if self._error:
             raise self._error
         return self._items, make_meta()
 
 
-class FakeBuscaAtivaRepository:
-    def __init__(self, members=None):
-        self._members = members
-        self.received: dict = {}
-
-    async def get_members_with_busca_ativa(
-        self, id_membros_familia, *, user_token=None, permissions=None
-    ):
-        self.received = {
-            "ids": id_membros_familia,
-            "user_token": user_token,
-            "permissions": permissions,
-        }
-        return self._members
-
-
 @pytest.mark.asyncio
-async def test_execute_flags_members_with_busca_ativa():
-    participant_repo = FakeParticipantRepository(
-        [make_item("111"), make_item("222")]
-    )
-    busca_repo = FakeBuscaAtivaRepository({"222"})
-    use_case = ListParticipantsUseCase(
-        repository=participant_repo,
-        busca_ativa_repository=busca_repo,
-    )
+async def test_execute_delegates_and_returns_items():
+    repo = FakeParticipantRepository([make_item("111"), make_item("222")])
+    use_case = ListParticipantsUseCase(repository=repo)
 
     result = await use_case.execute(
-        filters=FilterCriteria(),
-        pagination=PaginationParams(),
-        sort=SortParams(),
+        filters=FilterCriteria(status="Ativo"),
+        pagination=PaginationParams(page=1, page_size=50),
+        sort=SortParams(sort_by="nome"),
+        permissions="perms",
         user_token="user-jwt",
+        bypass_cache=True,
     )
 
-    assert [item.has_busca_ativa for item in result.data] == [False, True]
-    assert busca_repo.received["ids"] == ["111", "222"]
-    assert busca_repo.received["user_token"] == "user-jwt"
+    assert [item.id_membro_familia for item in result.data] == ["111", "222"]
+    assert repo.received["filters"].status == "Ativo"
+    assert repo.received["permissions"] == "perms"
+    assert repo.received["user_token"] == "user-jwt"
+    assert repo.received["bypass_cache"] is True
 
 
 @pytest.mark.asyncio
-async def test_execute_forwards_permissions_to_busca_ativa():
-    permissions = UserPermissions(
-        cpf="11111111111", is_admin=False, is_super_admin=False,
-        secretarias_acesso=["SMS"],
-    )
-    use_case = ListParticipantsUseCase(
-        repository=FakeParticipantRepository([make_item("111")]),
-        busca_ativa_repository=FakeBuscaAtivaRepository(set()),
-    )
-
-    await use_case.execute(
-        filters=FilterCriteria(),
-        pagination=PaginationParams(),
-        sort=SortParams(),
-        permissions=permissions,
-    )
-
-    assert use_case._busca_ativa_repository.received["permissions"] is permissions
-
-
-@pytest.mark.asyncio
-async def test_execute_busca_ativa_none_keeps_field_none():
-    use_case = ListParticipantsUseCase(
-        repository=FakeParticipantRepository([make_item("111")]),
-        busca_ativa_repository=FakeBuscaAtivaRepository(None),
-    )
-
+async def test_execute_returns_empty_when_no_items():
+    use_case = ListParticipantsUseCase(repository=FakeParticipantRepository([]))
     result = await use_case.execute(
         filters=FilterCriteria(),
         pagination=PaginationParams(),
         sort=SortParams(),
     )
-
-    assert result.data[0].has_busca_ativa is None
-
-
-@pytest.mark.asyncio
-async def test_execute_skips_enrichment_in_download_mode():
-    participant_repo = FakeParticipantRepository([make_item("111")])
-    busca_repo = FakeBuscaAtivaRepository({"111"})
-    use_case = ListParticipantsUseCase(
-        repository=participant_repo,
-        busca_ativa_repository=busca_repo,
-    )
-
-    result = await use_case.execute(
-        filters=FilterCriteria(),
-        pagination=PaginationParams(page_size=-1),
-        sort=SortParams(),
-    )
-
-    assert result.data[0].has_busca_ativa is None
-    assert busca_repo.received == {}
-
-
-@pytest.mark.asyncio
-async def test_execute_without_busca_ativa_repository_keeps_field_none():
-    use_case = ListParticipantsUseCase(
-        repository=FakeParticipantRepository([make_item("111")]),
-    )
-
-    result = await use_case.execute(
-        filters=FilterCriteria(),
-        pagination=PaginationParams(),
-        sort=SortParams(),
-    )
-
-    assert result.data[0].has_busca_ativa is None
+    assert result.data == []

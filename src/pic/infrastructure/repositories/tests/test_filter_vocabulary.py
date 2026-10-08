@@ -130,3 +130,33 @@ def test_wide_secretaria_options_intersect_access_and_fixed_order():
         allowed_secretarias={"SMS"},
     )
     assert [(o.id, o.label) for o in restricted] == [("SMS", "Saúde (SMS)")]
+
+
+def test_busca_ativa_options_full_access_returns_all_three():
+    options = build_options(FILTER_OPTION_CONFIGS["busca_ativa"], [])
+    assert [(o.id, o.label) for o in options] == [
+        ("SMAS", "Busca Ativa SMAS (30d)"),
+        ("SMS", "Busca Ativa SMS (30d)"),
+        ("SME", "Busca Ativa SME (30d)"),
+    ]
+
+
+def test_busca_ativa_options_intersect_access():
+    options = build_options(
+        FILTER_OPTION_CONFIGS["busca_ativa"], [], allowed_secretarias={"SMAS"}
+    )
+    assert [(o.id, o.label) for o in options] == [("SMAS", "Busca Ativa SMAS (30d)")]
+
+    options = build_options(
+        FILTER_OPTION_CONFIGS["busca_ativa"],
+        [],
+        allowed_secretarias={"SMAS", "SMS"},
+    )
+    assert [o.id for o in options] == ["SMAS", "SMS"]
+
+
+def test_busca_ativa_options_empty_when_no_access():
+    options = build_options(
+        FILTER_OPTION_CONFIGS["busca_ativa"], [], allowed_secretarias=set()
+    )
+    assert options == []

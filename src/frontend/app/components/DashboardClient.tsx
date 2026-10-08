@@ -56,6 +56,86 @@ interface UserInfo {
 const PAGE_SIZE = 50;
 
 /**
+ * Baixa um CSV servido via server-side streaming, com feedback contínuo de
+ * progresso (MB recebidos) e montagem do Blob ao final. Compartilhado pelos
+ * downloads de participantes e de buscas ativas.
+ */
+async function streamCsvDownload(
+	fetchResponse: () => Promise<Response>,
+	toastId: string,
+	filename: string,
+): Promise<void> {
+	const startTime = performance.now();
+
+	try {
+		toast.loading("⏳ Aguardando servidor...", {
+			id: toastId,
+			duration: Infinity,
+		});
+
+		const response = await fetchResponse();
+
+		if (!response.body) {
+			throw new Error("Stream não disponível no response");
+		}
+
+		const reader = response.body.getReader();
+		const chunks: Uint8Array[] = [];
+		let receivedBytes = 0;
+
+		// Leitura do stream chunk a chunk — mostra MB recebidos sem estimativas
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			chunks.push(value);
+			receivedBytes += value.byteLength;
+
+			const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+			toast.loading(`📥 Baixando... ${receivedMB} MB`, {
+				id: toastId,
+				duration: Infinity,
+			});
+		}
+
+		// Montar o Blob a partir dos chunks acumulados
+		const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+		const merged = new Uint8Array(totalLength);
+		let offset = 0;
+		for (const chunk of chunks) {
+			merged.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		const blob = new Blob([merged], { type: "text/csv;charset=utf-8;" });
+
+		// Disparar o download
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = filename;
+
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+
+		const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
+		const fileSize = (blob.size / 1024 / 1024).toFixed(1);
+
+		toast.success(`✅ Download concluído (${fileSize} MB em ${totalTime}s)`, {
+			id: toastId,
+			duration: 6000,
+		});
+	} catch (error) {
+		console.error("Download error:", error);
+		toast.error("❌ Erro ao baixar dados. Tente novamente.", {
+			id: toastId,
+			duration: 5000,
+		});
+	}
+}
+
+/**
  * Main Dashboard Orchestrator Component.
  *
  * Arquitetura Híbrida (OTIMIZADA):
@@ -765,85 +845,42 @@ export function DashboardClient({
 	 * O progresso é calculado com base em bytes_por_linha medido no primeiro chunk real,
 	 * eliminando a dependência de constantes empíricas fixas.
 	 */
-	const handleDownloadParticipants = useCallback(async () => {
-		const startTime = performance.now();
-		const TOAST_ID = "csv-download";
+	const handleDownloadParticipants = useCallback(() => {
+		const timestamp = new Date().toISOString().split("T")[0];
+		const filterCount = Object.keys(professionalFilters).filter(
+			(k) => k !== "bypass_cache",
+		).length;
+		const filename = `participantes_${timestamp}_${filterCount}filters.csv`;
 
-		try {
-			toast.loading("⏳ Aguardando servidor...", {
-				id: TOAST_ID,
-				duration: Infinity,
-			});
+		return streamCsvDownload(
+			() =>
+				apiService.exportParticipants({
+					...professionalFilters,
+					...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
+				}),
+			"csv-download",
+			filename,
+		);
+	}, [professionalFilters, sortBy, sortOrder]);
 
-			const response = await apiService.exportParticipants({
-				...professionalFilters,
-				...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
-			});
+	/**
+	 * Baixa os eventos de busca ativa dos participantes filtrados como CSV
+	 * (1 linha por evento). Mesmo fluxo de streaming do download de
+	 * participantes.
+	 */
+	const handleDownloadBuscaAtiva = useCallback(() => {
+		const timestamp = new Date().toISOString().split("T")[0];
+		const filename = `busca_ativa_${timestamp}.csv`;
 
-			if (!response.body) {
-				throw new Error("Stream não disponível no response");
-			}
-
-			const reader = response.body.getReader();
-			const chunks: Uint8Array[] = [];
-			let receivedBytes = 0;
-
-			// Leitura do stream chunk a chunk — mostra MB recebidos sem estimativas
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				chunks.push(value);
-				receivedBytes += value.byteLength;
-
-				const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-				toast.loading(`📥 Baixando... ${receivedMB} MB`, {
-					id: TOAST_ID,
-					duration: Infinity,
-				});
-			}
-
-			// Montar o Blob a partir dos chunks acumulados
-			const totalLength = chunks.reduce((sum, c) => sum + c.byteLength, 0);
-			const merged = new Uint8Array(totalLength);
-			let offset = 0;
-			for (const chunk of chunks) {
-				merged.set(chunk, offset);
-				offset += chunk.byteLength;
-			}
-			const blob = new Blob([merged], { type: "text/csv;charset=utf-8;" });
-
-			// Disparar o download
-			const url = URL.createObjectURL(blob);
-			const link = document.createElement("a");
-			link.href = url;
-
-			const timestamp = new Date().toISOString().split("T")[0];
-			const filterCount = Object.keys(professionalFilters).filter(
-				(k) => k !== "bypass_cache",
-			).length;
-			const filename = `participantes_${timestamp}_${filterCount}filters.csv`;
-			link.download = filename;
-
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
-
-			const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
-			const fileSize = (blob.size / 1024 / 1024).toFixed(1);
-
-			toast.success(`✅ Download concluído (${fileSize} MB em ${totalTime}s)`, {
-				id: TOAST_ID,
-				duration: 6000,
-			});
-		} catch (error) {
-			console.error("Download error:", error);
-			toast.error("❌ Erro ao baixar dados. Tente novamente.", {
-				id: TOAST_ID,
-				duration: 5000,
-			});
-		}
+		return streamCsvDownload(
+			() =>
+				apiService.exportBuscaAtiva({
+					...professionalFilters,
+					...(sortBy && { sort_by: sortBy, sort_order: sortOrder }),
+				}),
+			"busca-ativa-download",
+			filename,
+		);
 	}, [professionalFilters, sortBy, sortOrder]);
 
 	/**
@@ -1023,6 +1060,7 @@ export function DashboardClient({
 								detailLoading={detailLoading}
 								onRefresh={handleProfessionalRefresh}
 								onDownload={handleDownloadParticipants}
+								onDownloadBuscaAtiva={handleDownloadBuscaAtiva}
 								loading={participantsFetching}
 								pageSize={PAGE_SIZE}
 								sortBy={sortBy}

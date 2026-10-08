@@ -26,6 +26,9 @@ from src.pic.application.use_cases.admin.write import (
     ListUsersUseCase,
     UpsertUserUseCase,
 )
+from src.pic.application.use_cases.export_busca_ativa import (
+    ExportBuscaAtivaUseCase,
+)
 from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
 from src.pic.application.use_cases.get_acordo_resultados import (
     GetAcordoResultadosUseCase,
@@ -145,15 +148,9 @@ def get_debug_repo() -> IDebugRepository:
 
 
 async def get_list_participants_use_case() -> ListParticipantsUseCase:
-    """List use case: participant list + busca ativa enrichment (has flag)."""
-    participant_repo, busca_ativa_repo = await asyncio.gather(
-        get_participant_read_repo(),
-        get_busca_ativa_repo(),
-    )
-    return ListParticipantsUseCase(
-        repository=participant_repo,
-        busca_ativa_repository=busca_ativa_repo,
-    )
+    """List use case: participant list (busca ativa flag comes from the wide row)."""
+    participant_repo = await get_participant_read_repo()
+    return ListParticipantsUseCase(repository=participant_repo)
 
 
 async def get_participant_detail_use_case() -> GetParticipantDetailUseCase:
@@ -221,6 +218,18 @@ async def get_acordo_resultados_use_case() -> GetAcordoResultadosUseCase:
 
 async def get_export_participants_use_case() -> ExportParticipantsUseCase:
     return ExportParticipantsUseCase(repository=await get_participant_read_repo())
+
+
+async def get_export_busca_ativa_use_case() -> ExportBuscaAtivaUseCase:
+    """Busca ativa event export: participant identity (wide) + events (busca ativa)."""
+    participant_repo, busca_ativa_repo = await asyncio.gather(
+        get_participant_read_repo(),
+        get_busca_ativa_repo(),
+    )
+    return ExportBuscaAtivaUseCase(
+        participant_repository=participant_repo,
+        busca_ativa_repository=busca_ativa_repo,
+    )
 
 
 async def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:

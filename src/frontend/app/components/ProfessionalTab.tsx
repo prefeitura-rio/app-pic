@@ -267,6 +267,7 @@ interface ProfessionalTabProps {
 	detailLoading: boolean;
 	onRefresh?: () => void;
 	onDownload?: () => void;
+	onDownloadBuscaAtiva?: () => void;
 	loading?: boolean;
 	pageSize: number;
 	sortBy?: string | null;
@@ -295,6 +296,7 @@ const ProfessionalTabComponent = ({
 	detailLoading,
 	onRefresh,
 	onDownload,
+	onDownloadBuscaAtiva,
 	loading = false,
 	pageSize,
 	sortBy,
@@ -384,6 +386,7 @@ const ProfessionalTabComponent = ({
 				onFilterChange={onFilterChange}
 				onRefresh={onRefresh}
 				onDownload={onDownload}
+				onDownloadBuscaAtiva={onDownloadBuscaAtiva}
 				loading={loading}
 				showSearch
 				totalResults={meta?.total_rows}

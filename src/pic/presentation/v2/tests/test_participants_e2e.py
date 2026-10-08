@@ -20,6 +20,7 @@ from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.presentation.di import (
     get_admin_repo,
     get_busca_ativa_use_case,
+    get_export_busca_ativa_use_case,
     get_export_participants_use_case,
     get_list_participants_use_case,
     get_participant_detail_use_case,
@@ -273,6 +274,56 @@ class FakeExportUseCase:
 
         return ExportOutput(
             columns=["id_membro_familia", "nome"],
+            pages=pages(),
+        )
+
+
+class FakeExportBuscaAtivaUseCase:
+    def __init__(self, error: Exception | None = None, events: list[str] | None = None):
+        self.error = error
+        self.events = events if events is not None else []
+        self.received: dict = {}
+
+    async def execute(
+        self,
+        filters,
+        sort,
+        permissions=None,
+        bypass_cache=False,
+        user_token=None,
+    ):
+        self.received = {
+            "filters": filters,
+            "sort": sort,
+            "user_token": user_token,
+        }
+        self.events.append("export_busca_ativa_use_case")
+        if self.error:
+            raise self.error
+
+        async def pages():
+            yield [
+                {
+                    "id_membro_familia": "00325420412",
+                    "cpf": "111",
+                    "nome": "ANA JULIA",
+                    "nascimento_data": "2020-01-31",
+                    "endereco": "Rua A",
+                    "complemento": None,
+                    "bairro": "Centro",
+                    "endereco_sms": None,
+                    "fonte": "SMAS",
+                    "data": "2026-07-14",
+                    "sms_tipo_publico": None,
+                    "smas_tipo": ["Por telefone"],
+                    "smas_familia_localizada_indicador": True,
+                    "smas_protocolo_violado": [],
+                    "smas_motivo_nao_localizada": [],
+                }
+            ]
+
+        return ExportOutput(
+            columns=["id_membro_familia", "cpf", "nome", "fonte", "data_busca_ativa"],
             pages=pages(),
         )
 
@@ -766,3 +817,46 @@ async def test_export_maps_validation_error_to_422(client, override_export_use_c
         response.json()["detail"]
         == "Protocolo desconhecido: protocolo_inventado"
     )
+
+
+@pytest.fixture
+def override_export_busca_ativa_use_case():
+    events: list[str] = []
+    export_use_case = FakeExportBuscaAtivaUseCase(events=events)
+    app.dependency_overrides[get_export_busca_ativa_use_case] = (
+        lambda: export_use_case
+    )
+    yield export_use_case, events
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_export_busca_ativa_streams_csv(
+    client, override_export_busca_ativa_use_case
+):
+    response = await client.get("/api/v2/participants/busca-ativa/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+
+    body = response.text
+    assert body.startswith("\ufeff")
+    assert body.startswith("\ufeffid_membro_familia;cpf;nome;fonte;data_busca_ativa")
+    assert '"00325420412";"111";"ANA JULIA";"SMAS";"14/07/2026"' in body
+
+    export_use_case, events = override_export_busca_ativa_use_case
+    assert events == ["export_busca_ativa_use_case"]
+    assert export_use_case.received["user_token"] == "fake-access-token"
+
+
+@pytest.mark.asyncio
+async def test_export_busca_ativa_maps_forbidden_error_to_403(
+    client, override_export_busca_ativa_use_case
+):
+    override_export_busca_ativa_use_case[0].error = ForbiddenError("Sem acesso")
+
+    response = await client.get("/api/v2/participants/busca-ativa/export")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Sem acesso"

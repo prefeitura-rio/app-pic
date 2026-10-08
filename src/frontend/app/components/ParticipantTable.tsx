@@ -45,7 +45,7 @@ const SORTABLE_COLUMNS: SortableColumn[] = [
 	{ key: "cartao_pic", label: "Cartão PIC", align: "left" },
 	// Coluna derivada (agregada app-side via endpoint_busca_ativa) — sem
 	// ordenação server-side, logo não clicável.
-	{ key: "busca_ativa", label: "Busca Ativa", align: "center", sortable: false },
+	{ key: "busca_ativa", label: "Busca Ativa (30d)", align: "center", sortable: false },
 	{ key: "total_fracao", label: "Total", align: "center" },
 	{ key: "total_irregular", label: "Total Irreg.", align: "center" },
 	{ key: "assistencia_fracao", label: "Assist.", align: "center" },

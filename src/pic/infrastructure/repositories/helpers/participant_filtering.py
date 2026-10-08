@@ -42,6 +42,7 @@ from src.pic.infrastructure.repositories.helpers.participant_columns import (
     FULL_ACCESS_COLUMNS,
 )
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
+    BUSCA_ATIVA_INDICATOR_COLUMNS,
     FILTER_COLUMN_MAP,
     PROTOCOLO_FILTER_FIELDS,
     PROTOCOLO_SECRETARIA,
@@ -59,6 +60,10 @@ CARTAO_PIC_STATUS_VALUES = {
     "nao_retirou": "false",
     "sem_direito": "null",
 }
+
+# Secretarias selectable in the busca ativa filter (SME included even though it
+# has no indicator column yet — an SME-only selection matches nothing).
+BUSCA_ATIVA_SECRETARIAS = frozenset({"SMAS", "SMS", "SME"})
 
 
 def export_hidden_columns(
@@ -88,6 +93,11 @@ def export_hidden_columns(
         for protocolo_id, secretaria in PROTOCOLO_SECRETARIA.items():
             if secretaria not in allowed:
                 hidden.add(protocolo_id)
+        # Busca ativa indicator columns: only visible to users with access to
+        # the matching secretaria (SME has no column).
+        for secretaria, column in BUSCA_ATIVA_INDICATOR_COLUMNS.items():
+            if secretaria not in allowed:
+                hidden.add(column)
     if not include_coordinates:
         hidden.update({"latitude", "longitude"})
     return hidden
@@ -95,9 +105,15 @@ def export_hidden_columns(
 
 def split_filters(
     filters: FilterCriteria,
-) -> tuple[str | None, list[Any] | None, dict[str, list[str]], dict[str, list[Any]]]:
-    """Split one `FilterCriteria` into (search, situacao, protocolo, column)
-    filters with the exact v1 semantics used by the list pipeline."""
+) -> tuple[
+    str | None,
+    list[Any] | None,
+    dict[str, list[str]],
+    dict[str, list[Any]],
+    list[str] | None,
+]:
+    """Split one `FilterCriteria` into (search, situacao, protocolo, column,
+    busca_ativa) filters with the exact v1 semantics used by the list pipeline."""
     filters_dict = filters.model_dump(exclude_none=True)
     search_term = filters_dict.pop("search", None)
 
@@ -136,7 +152,26 @@ def split_filters(
         if mapped:
             column_filters["has_cartao_pic"] = mapped
 
-    return search_term, situacao_values, protocolo_filters, column_filters
+    busca_ativa_values: list[str] | None = None
+    if "busca_ativa" in filters_dict:
+        raw_busca = clean_values(
+            [str(v).upper() for v in split_values(filters_dict.pop("busca_ativa"))]
+        )
+        if raw_busca:
+            unknown = set(raw_busca) - BUSCA_ATIVA_SECRETARIAS
+            if unknown:
+                raise ValidationError(
+                    f"Valor inválido para busca_ativa: {', '.join(sorted(unknown))}"
+                )
+            busca_ativa_values = raw_busca
+
+    return (
+        search_term,
+        situacao_values,
+        protocolo_filters,
+        column_filters,
+        busca_ativa_values,
+    )
 
 
 def resolve_sort_column(
@@ -288,6 +323,29 @@ def apply_wide_protocolo_filters(
         if terms:
             query = query.or_(",".join(terms))
     return query
+
+
+def apply_busca_ativa_filter(
+    query: AsyncSelectRequestBuilder,
+    secretarias: list[str],
+) -> AsyncSelectRequestBuilder:
+    """Busca ativa filter on `endpoint_participante_protocolos_wide`.
+
+    The wide table has one boolean indicator column per secretaria
+    (`busca_ativa_smas_30d_indicador` / `busca_ativa_sms_30d_indicador`, true
+    when the participant had busca ativa in the last 30 days). Selected
+    secretarias are ORed (`or=(col.is.true,...)`). SME has no column yet, so
+    when no selected secretaria maps to a column the query is forced to match
+    nothing (`id_membro_familia.is.null` — the key is never null).
+    """
+    terms = [
+        f"{column}.is.true"
+        for secretaria in secretarias
+        if (column := BUSCA_ATIVA_INDICATOR_COLUMNS.get(secretaria))
+    ]
+    if not terms:
+        return query.is_("id_membro_familia", "null")
+    return query.or_(",".join(terms))
 
 
 def search_or_term(search_term: str) -> str:

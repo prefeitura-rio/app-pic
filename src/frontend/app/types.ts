@@ -359,7 +359,8 @@ export type FilterFieldKey =
 	| "protocolo_descricoes"
 	| "protocolo_status_list"
 	| "bolsa_familia"
-	| "protocolo_secretarias";
+	| "protocolo_secretarias"
+	| "busca_ativa";
 
 export interface FilterFieldOptionsResponse {
 	field: string;
@@ -618,6 +619,7 @@ export interface ParticipantFilters {
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
 	protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
+	busca_ativa?: string | string[]; // Filtro por busca ativa (SMAS, SMS, SME — multi-select)
 	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)

@@ -15,8 +15,13 @@ permissions to `(secretarias_acesso, full_access)`. Full access reads all
 events; partial access filters `fonte` to the intersection of the user's
 secretarias with `{SMS, SMAS}`; no SMS/SMAS access short-circuits without
 touching the data-proxy.
+
+The per-participant read (`get_busca_ativa`) degrades to `None` on a
+data-proxy failure; the bulk export read (`get_busca_ativa_for_members`)
+raises instead, so a CSV export never silently drops events.
 """
 
+import asyncio
 from typing import Any
 
 from src.pic.application.ports.busca_ativa_repository import (
@@ -58,6 +63,14 @@ _BUSCA_ATIVA_COLUMNS = [
 ]
 
 _BUSCA_ATIVA_SELECT = ",".join(_BUSCA_ATIVA_COLUMNS)
+
+# Bulk select includes the participant identifier so the caller can group
+# events back to their participant. (The per-participant read omits it.)
+_BUSCA_ATIVA_MEMBERS_SELECT = "id_membro_familia," + _BUSCA_ATIVA_SELECT
+
+# Max ids per `id_membro_familia=in.(...)` request: keeps the query URL well
+# within proxy/PostgREST limits (ids are ~11 chars each).
+_BUSCA_ATIVA_IN_CHUNK = 250
 
 
 def _fontes_autorizadas(secretarias_acesso: list[str], full_access: bool) -> list[str] | None:
@@ -139,6 +152,18 @@ class PostgrestBuscaAtivaRepository(BuscaAtivaRepository):
             query = query.filter("fonte", "in", f"({','.join(fontes)})")
         return query
 
+    def _build_members_query(self, ids: list[str], fontes: list[str] | None):
+        query = (
+            self._client.table(TABLE_BUSCA_ATIVA)
+            .select(_BUSCA_ATIVA_MEMBERS_SELECT)
+            .filter("id_membro_familia", "in", f"({','.join(ids)})")
+            .order("data", desc=True, nullsfirst=False)
+            .order("id_busca_ativa", desc=False, nullsfirst=False)
+        )
+        if fontes:
+            query = query.filter("fonte", "in", f"({','.join(fontes)})")
+        return query
+
     async def get_busca_ativa(
         self,
         id_membro_familia: str,
@@ -178,50 +203,64 @@ class PostgrestBuscaAtivaRepository(BuscaAtivaRepository):
         )
         return eventos
 
-    async def get_members_with_busca_ativa(
+    async def get_busca_ativa_for_members(
         self,
-        id_membros_familia: list[str],
+        ids: list[str],
         *,
         user_token: str | None = None,
         permissions: Any = None,
-    ) -> set[str] | None:
+        fontes: list[str] | None = None,
+    ) -> list[tuple[str, BuscaAtivaEvento]]:
         secretarias_acesso, full_access = resolve_access(permissions)
-        fontes = _fontes_autorizadas(secretarias_acesso, full_access)
-        if fontes is not None and not fontes:
-            return None
-
-        ids = [str(id_) for id_ in id_membros_familia if id_]
+        autorizadas = _fontes_autorizadas(secretarias_acesso, full_access)
+        if fontes is None:
+            efetivas = autorizadas
+        elif autorizadas is None:
+            efetivas = sorted(set(fontes) & BUSCA_ATIVA_SECRETARIAS)
+        else:
+            efetivas = sorted(set(autorizadas) & set(fontes))
+        if efetivas is not None and not efetivas:
+            return []
         if not ids:
-            return set()
+            return []
 
-        def _build_aggregate_query():
-            query = (
-                self._client.table(TABLE_BUSCA_ATIVA)
-                .select("id_membro_familia,count()")
-                .filter("id_membro_familia", "in", f"({','.join(ids)})")
-            )
-            if fontes:
-                query = query.filter("fonte", "in", f"({','.join(fontes)})")
-            return query
-
-        try:
-            async with self._client.with_user_token(user_token):
-                rows, _ = await fetch_pages(
-                    self._client,
-                    lambda count=None: _build_aggregate_query(),
-                    limit=None,
-                    with_count=False,
+        async with self._client.with_user_token(user_token):
+            chunks = [
+                ids[index : index + _BUSCA_ATIVA_IN_CHUNK]
+                for index in range(0, len(ids), _BUSCA_ATIVA_IN_CHUNK)
+            ]
+            try:
+                rows_per_chunk = await asyncio.gather(
+                    *(
+                        fetch_pages(
+                            self._client,
+                            lambda count=None, chunk=chunk: self._build_members_query(
+                                chunk, efetivas
+                            ),
+                            limit=None,
+                            with_count=False,
+                        )
+                        for chunk in chunks
+                    )
                 )
-        except PostgrestError as error:
-            logger.warning(
-                f"[busca_ativa] member-set fetch failed for {len(ids)} members: {error}"
-            )
-            return None
+            except PostgrestError as error:
+                logger.warning(
+                    f"[busca_ativa] bulk fetch failed for {len(ids)} member(s): "
+                    f"{error}"
+                )
+                raise
 
-        members = {
-            str(row["id_membro_familia"])
-            for row in rows
-            if row.get("id_membro_familia") is not None
-        }
-        logger.info(f"[busca_ativa] {len(members)}/{len(ids)} member(s) have events")
-        return members
+        resultado: list[tuple[str, BuscaAtivaEvento]] = []
+        for rows, _ in rows_per_chunk:
+            for row in rows:
+                id_membro_familia = row.get("id_membro_familia")
+                if id_membro_familia is None:
+                    continue
+                resultado.append(
+                    (str(id_membro_familia), _row_to_busca_ativa(dict(row)))
+                )
+        logger.info(
+            f"[busca_ativa] bulk fetched {len(resultado)} event(s) for "
+            f"{len(ids)} member(s)"
+        )
+        return resultado
