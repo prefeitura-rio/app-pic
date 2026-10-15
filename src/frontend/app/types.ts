@@ -196,9 +196,6 @@ export interface Participante {
 	source_equipe_familia?: string; // "rmi" (fonte original) | "geo" (fallback geolocalização) | null
 	equipe_familia?: string;
 	has_cobertura_equipe_familia?: boolean;
-
-	// Infraestrutura
-	cpf_particao?: number;
 }
 
 /** V2 listagem enxuta — 14 campos, sem protocolo_listagem */
@@ -231,6 +228,44 @@ export interface DashboardV2Response {
 	can_view_dashboard: boolean;
 }
 
+/** Resumo de regularidade por status (Acordo de Resultados) */
+export interface AcordoStatusResumo {
+	total: number;
+	regulares: number;
+	irregulares: number;
+	percentual_regular: number;
+	percentual_irregular: number;
+}
+
+/** Distribuição genérica por categoria (raça, grupo, RA) */
+export interface AcordoDistribuicaoPublico {
+	categoria: string;
+	total: number;
+}
+
+/** Métricas do Acordo de Resultados 2026 — GET /api/v2/acordo-resultados */
+export interface AcordoResultados {
+	total_participantes: number;
+	ativos: AcordoStatusResumo;
+	inativos: AcordoStatusResumo;
+	protocolos: ProtocoloIndicador[];
+	evolucao_mensal: ResultadoProgramaPoint[];
+	motivos_saida: DistribuicaoMotivoSaida[];
+	distribuicao_raca: AcordoDistribuicaoPublico[];
+	distribuicao_grupo: AcordoDistribuicaoPublico[];
+	distribuicao_ra: AcordoDistribuicaoPublico[];
+	distribuicao_cartao_pic: AcordoDistribuicaoPublico[];
+	distribuicao_bolsa_familia: AcordoDistribuicaoPublico[];
+	meta_regularidade: number;
+	meta_referencia_regularidade: number;
+}
+
+/** Response do GET /api/v2/acordo-resultados */
+export interface AcordoResultadosResponse {
+	data: AcordoResultados;
+	can_view_acordo: boolean;
+}
+
 export interface ProtocoloDetalhes {
 	cpf?: string;
 	id_membro_familia?: string;
@@ -245,7 +280,6 @@ export interface ProtocoloDetalhes {
 	protocolo_irregular?: boolean; // RENOMEADO de protocolo_violado
 	protocolo_data_referencia_particicao?: string; // ISO date string
 	protocolo_status_label?: string;
-	cpf_particao?: number;
 }
 
 // ============================================================================

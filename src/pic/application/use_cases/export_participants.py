@@ -47,12 +47,12 @@ class ExportParticipantsUseCase:
             user_token=user_token,
         )
 
+        columns = self._repository.export_columns(permissions)
+
         try:
             first_page = await anext(pages)
         except StopAsyncIteration:
-            return ExportOutput(columns=self._repository.export_fallback_columns, pages=_empty_pages())
-
-        columns = list(first_page[0].keys()) if first_page else self._repository.export_fallback_columns
+            return ExportOutput(columns=columns, pages=_empty_pages())
 
         async def _all_pages() -> AsyncIterator[list[dict[str, Any]]]:
             if first_page:

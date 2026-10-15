@@ -1,4 +1,3 @@
-
 DASHBOARD_FILTER_OPTIONS_CONFIG: dict[str, dict[str, str]] = {
     "grupos": {"column": "pic_grupo"},
     "cohorts": {"column": "pic_cohort"},
@@ -11,12 +10,37 @@ DASHBOARD_FILTER_OPTIONS_CONFIG: dict[str, dict[str, str]] = {
     "cas_list": {"column": "id_cas", "label_column": "nome_cas"},
     "cras": {"column": "id_cras", "label_column": "nome_cras"},
     "escolas": {"column": "id_escola", "label_column": "nome_escola"},
-    "clinicas": {"column": "id_clinica_familia", "label_column": "nome_clinica_familia"},
-    "equipes_familia": {"column": "id_equipe_familia", "label_column": "nome_equipe_familia"},
+    "clinicas": {
+        "column": "id_clinica_familia",
+        "label_column": "nome_clinica_familia",
+    },
+    "equipes_familia": {
+        "column": "id_equipe_familia",
+        "label_column": "nome_equipe_familia",
+    },
 }
 
 MESES_LABELS: dict[str, str] = {
-    "01": "Jan", "02": "Fev", "03": "Mar", "04": "Abr",
-    "05": "Mai", "06": "Jun", "07": "Jul", "08": "Ago",
-    "09": "Set", "10": "Out", "11": "Nov", "12": "Dez",
+    "01": "Jan",
+    "02": "Fev",
+    "03": "Mar",
+    "04": "Abr",
+    "05": "Mai",
+    "06": "Jun",
+    "07": "Jul",
+    "08": "Ago",
+    "09": "Set",
+    "10": "Out",
+    "11": "Nov",
+    "12": "Dez",
 }
+
+# Acordo de Resultados 2026 — escopo fixo: todos os cohorts até esta data.
+ACORDO_COHORT_CUTOFF = "2026-03-01"
+
+# Meta de regularidade do acordo (%), traçada nos gráficos.
+ACORDO_META_REGULARIDADE_PERCENTUAL = 30.5
+
+# Valor de referência da meta (%), traçado junto da meta no gráfico de
+# evolução da meta de regularidade.
+ACORDO_META_REFERENCIA_PERCENTUAL = 27.5

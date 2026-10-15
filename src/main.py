@@ -14,6 +14,9 @@ from src.core.middlewares.logging import LoggingMiddleware
 from src.core.middlewares.static_cache import NoCacheStaticFilesMiddleware
 from src.pic.infrastructure.postgrest_client.client import close_postgrest_client
 from src.pic.infrastructure.redis_client import close_redis_client
+from src.pic.presentation.v2.acordo_resultados import (
+    router as v2_acordo_resultados_router,
+)
 from src.pic.presentation.v2.admin import router as v2_admin_router
 from src.pic.presentation.v2.dashboard import router as v2_dashboard_router
 from src.pic.presentation.v2.debug import router as v2_debug_router
@@ -140,6 +143,7 @@ app.include_router(api_router)
 app.include_router(v2_participants_router, prefix="/api/v2")
 app.include_router(v2_filters_router, prefix="/api/v2")
 app.include_router(v2_dashboard_router, prefix="/api/v2")
+app.include_router(v2_acordo_resultados_router, prefix="/api/v2")
 app.include_router(v2_admin_router, prefix="/api/v2")
 app.include_router(v2_geospatial_router, prefix="/api/v2")
 if DEBUG_ENDPOINT_ENABLED:
