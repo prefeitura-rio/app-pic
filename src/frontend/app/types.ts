@@ -257,6 +257,7 @@ export interface AcordoResultados {
 	distribuicao_cartao_pic: AcordoDistribuicaoPublico[];
 	distribuicao_bolsa_familia: AcordoDistribuicaoPublico[];
 	meta_regularidade: number;
+	meta_referencia_regularidade: number;
 }
 
 /** Response do GET /api/v2/acordo-resultados */

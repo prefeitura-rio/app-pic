@@ -45,6 +45,7 @@ from src.pic.infrastructure.dashboard.compute_postgrest import (
 )
 from src.pic.infrastructure.dashboard.config import (
     ACORDO_COHORT_CUTOFF,
+    ACORDO_META_REFERENCIA_PERCENTUAL,
     ACORDO_META_REGULARIDADE_PERCENTUAL,
 )
 from src.pic.infrastructure.dashboard.formatting import _format_mes_label
@@ -96,12 +97,12 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
         if not bypass_cache and self._redis is not None:
             cached = await self._get_from_cache(cache_key)
             if cached is not None:
-                logger.info(
-                    f"[acordo] cache HIT ({time.perf_counter() - start:.3f}s)"
-                )
+                logger.info(f"[acordo] cache HIT ({time.perf_counter() - start:.3f}s)")
                 return cached
 
-        logger.info("[acordo] ── CACHE MISS — iniciando queries paralelas ──────────────")
+        logger.info(
+            "[acordo] ── CACHE MISS — iniciando queries paralelas ──────────────"
+        )
         fetch_start = time.perf_counter()
         async with self._client.with_user_token(user_token):
             (
@@ -126,7 +127,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
                 self._fetch_racas(),
             )
         _fetch_elapsed = (time.perf_counter() - fetch_start) * 1000
-        logger.info(f"[acordo] ⏱  TOTAL fetches (paralelo)      : {_fetch_elapsed:7.1f} ms")
+        logger.info(
+            f"[acordo] ⏱  TOTAL fetches (paralelo)      : {_fetch_elapsed:7.1f} ms"
+        )
 
         acordo = _calculate_acordo_resultados(
             totais=totais,
@@ -173,7 +176,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY totais                 : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY totais                 : {_elapsed * 1000:7.1f} ms"
+            )
 
         return [
             {
@@ -190,8 +195,7 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
         _t0 = time.perf_counter()
         try:
             query = self._client.table(_TABLE_CONSOLIDADO).select(
-                "pic_status_inativo_motivo, "
-                "qtd:participante_quantidade.sum()"
+                "pic_status_inativo_motivo, qtd:participante_quantidade.sum()"
             )
             query = query.ilike("pic_status", "inativo")
             result = await self._execute(
@@ -202,7 +206,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY motivos                : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY motivos                : {_elapsed * 1000:7.1f} ms"
+            )
 
         return [
             {
@@ -213,7 +219,7 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
         ]
 
     async def _fetch_grupos(self) -> list[dict[str, Any]]:
-        """GROUP BY pic_grupo."""
+        """GROUP BY pic_grupo (null/vazio → "Não informado")."""
         _t0 = time.perf_counter()
         try:
             result = await self._execute(
@@ -229,12 +235,17 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY grupos                 : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY grupos                 : {_elapsed * 1000:7.1f} ms"
+            )
 
-        return [
-            {"categoria": row.get("pic_grupo"), "qtd": row.get("qtd") or 0}
-            for row in (result.data or [])
-        ]
+        rows = []
+        for row in result.data or []:
+            categoria = row.get("pic_grupo")
+            if not categoria or not str(categoria).strip():
+                categoria = "Não informado"
+            rows.append({"categoria": categoria, "qtd": row.get("qtd") or 0})
+        return rows
 
     async def _fetch_ras(self) -> list[dict[str, Any]]:
         """GROUP BY regiao_administrativa na wide table (count)."""
@@ -250,7 +261,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY ras                    : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY ras                    : {_elapsed * 1000:7.1f} ms"
+            )
 
         return [
             {"categoria": row.get("categoria"), "qtd": row.get("total") or 0}
@@ -272,7 +285,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY cartao_pic            : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY cartao_pic            : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
@@ -303,7 +318,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY bolsa_familia         : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY bolsa_familia         : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
@@ -327,13 +344,16 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
         try:
             result = await self._execute(
                 _apply_filters(
-                    self._client.table(_TABLE_PROTOCOLOS).select(
+                    self._client.table(_TABLE_PROTOCOLOS)
+                    .select(
                         "protocolo_id, "
                         "protocolo_descricao, "
                         "protocolo_secretaria, "
                         "numerador:protocolo_regular_numerador.sum(), "
                         "denominador:protocolo_regular_denominador.sum()"
-                    ).not_.is_("protocolo_id", "null").ilike("pic_status", "ativo"),
+                    )
+                    .not_.is_("protocolo_id", "null")
+                    .ilike("pic_status", "ativo"),
                     {},
                 ).lte("pic_cohort", ACORDO_COHORT_CUTOFF)
             )
@@ -342,34 +362,44 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY protocolos             : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY protocolos             : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
             pid = row.get("protocolo_id")
             if not pid:
                 continue
-            rows.append({
-                "protocolo_id": pid,
-                "protocolo_descricao": row.get("protocolo_descricao") or "",
-                "protocolo_secretaria": row.get("protocolo_secretaria") or "",
-                "numerador": row.get("numerador") or 0,
-                "denominador": row.get("denominador") or 0,
-            })
+            rows.append(
+                {
+                    "protocolo_id": pid,
+                    "protocolo_descricao": row.get("protocolo_descricao") or "",
+                    "protocolo_secretaria": row.get("protocolo_secretaria") or "",
+                    "numerador": row.get("numerador") or 0,
+                    "denominador": row.get("denominador") or 0,
+                }
+            )
         return rows
 
     async def _fetch_series(self) -> list[dict[str, Any]]:
-        """GROUP BY data_referencia_mensal, serie_tipo (evolução mensal)."""
+        """GROUP BY data_referencia_mensal, serie_tipo (evolução mensal).
+
+        Restrito a participantes ativos (`pic_status = ativo`): mesmo escopo
+        dos cards de regularidade por status (só quem ainda está no programa).
+        """
         _t0 = time.perf_counter()
         try:
             result = await self._execute(
                 _apply_filters(
-                    self._client.table(_TABLE_SERIES).select(
+                    self._client.table(_TABLE_SERIES)
+                    .select(
                         "serie_tipo, "
                         "data_referencia_mensal, "
                         "numerador:participante_regular_quantidade.sum(), "
                         "denominador:participante_quantidade.sum()"
-                    ),
+                    )
+                    .ilike("pic_status", "ativo"),
                     {},
                 ).lte("pic_cohort", ACORDO_COHORT_CUTOFF)
             )
@@ -378,7 +408,9 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY series                 : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY series                 : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
@@ -389,16 +421,18 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             mes = str(data)[:7]  # YYYY-MM
             if not mes:
                 continue
-            rows.append({
-                "serie_tipo": serie_tipo,
-                "mes": mes,
-                "numerador": row.get("numerador") or 0,
-                "denominador": row.get("denominador") or 0,
-            })
+            rows.append(
+                {
+                    "serie_tipo": serie_tipo,
+                    "mes": mes,
+                    "numerador": row.get("numerador") or 0,
+                    "denominador": row.get("denominador") or 0,
+                }
+            )
         return rows
 
     async def _fetch_racas(self) -> list[dict[str, Any]]:
-        """GROUP BY raca na wide table (count)."""
+        """GROUP BY raca na wide table (count; null/vazio → "Não informado")."""
         _t0 = time.perf_counter()
         try:
             result = await self._execute(
@@ -411,13 +445,17 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[acordo] ⏱  QUERY racas                  : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[acordo] ⏱  QUERY racas                  : {_elapsed * 1000:7.1f} ms"
+            )
 
-        return [
-            {"categoria": row.get("categoria"), "qtd": row.get("total") or 0}
-            for row in (result.data or [])
-            if row.get("categoria")
-        ]
+        rows = []
+        for row in result.data or []:
+            categoria = row.get("categoria")
+            if not categoria or not str(categoria).strip():
+                categoria = "Não informado"
+            rows.append({"categoria": categoria, "qtd": row.get("total") or 0})
+        return rows
 
     # ------------------------------------------------------------------
     # Execution helper
@@ -448,9 +486,7 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
 
     async def _set_cache(self, key: str, acordo: AcordoResultados) -> None:
         try:
-            await self._redis.set(
-                key, acordo.model_dump_json(), ex=_CACHE_TTL_SECONDS
-            )
+            await self._redis.set(key, acordo.model_dump_json(), ex=_CACHE_TTL_SECONDS)
         except Exception as exc:
             logger.warning(f"[acordo] cache write error (ignoring): {exc}")
 
@@ -460,9 +496,7 @@ class PostgrestAcordoResultadosRepository(IAcordoResultadosRepository):
 # ---------------------------------------------------------------------------
 
 
-def _build_status_resumo(
-    rows: list[dict[str, Any]], ativo: bool
-) -> StatusResumo:
+def _build_status_resumo(rows: list[dict[str, Any]], ativo: bool) -> StatusResumo:
     regular_num = 0
     irregular_num = 0
     den = 0
@@ -604,4 +638,5 @@ def _calculate_acordo_resultados(
         distribuicao_cartao_pic=_distribuicao(cartao_pic),
         distribuicao_bolsa_familia=_distribuicao(bolsa_familia),
         meta_regularidade=ACORDO_META_REGULARIDADE_PERCENTUAL,
+        meta_referencia_regularidade=ACORDO_META_REFERENCIA_PERCENTUAL,
     )

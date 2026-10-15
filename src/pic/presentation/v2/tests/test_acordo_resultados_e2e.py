@@ -40,12 +40,18 @@ from src.pic.presentation.di import get_acordo_resultados_use_case
 FAKE_ACORDO = AcordoResultados(
     total_participantes=14,
     ativos=StatusResumo(
-        total=10, regulares=8, irregulares=2,
-        percentual_regular=80.0, percentual_irregular=20.0,
+        total=10,
+        regulares=8,
+        irregulares=2,
+        percentual_regular=80.0,
+        percentual_irregular=20.0,
     ),
     inativos=StatusResumo(
-        total=4, regulares=3, irregulares=1,
-        percentual_regular=75.0, percentual_irregular=25.0,
+        total=4,
+        regulares=3,
+        irregulares=1,
+        percentual_regular=75.0,
+        percentual_irregular=25.0,
     ),
     protocolos=[
         ProtocoloIndicador(
@@ -178,6 +184,7 @@ async def test_response_contains_all_sections(client):
     assert "distribuicao_cartao_pic" in data
     assert "distribuicao_bolsa_familia" in data
     assert data["meta_regularidade"] == 30.5
+    assert data["meta_referencia_regularidade"] == 27.5
 
 
 @pytest.mark.asyncio

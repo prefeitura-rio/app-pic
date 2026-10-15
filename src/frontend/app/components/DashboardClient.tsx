@@ -975,7 +975,7 @@ export function DashboardClient({
 								className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
 							>
 								<Target className="h-4 w-4 mr-2" />
-								Monitoramento
+								Acordo de Resultados
 							</TabsTrigger>
 						)}
 						<TabsTrigger
