@@ -42,6 +42,7 @@ class AcordoResultados(BaseModel):
     distribuicao_cartao_pic: list[DistribuicaoPublico] = []
     distribuicao_bolsa_familia: list[DistribuicaoPublico] = []
     meta_regularidade: float = 30.5
+    meta_referencia_regularidade: float = 27.5
 
     @classmethod
     def empty(cls) -> "AcordoResultados":

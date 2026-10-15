@@ -14,6 +14,7 @@ interface StatCardProps {
   variant?: "default" | "success" | "warning" | "accent" | "destructive";
   size?: "default" | "sm";
   isLoading?: boolean;
+  centerContent?: boolean;
 }
 
 // Formata número com separador de milhar (pt-BR)
@@ -37,7 +38,8 @@ export function StatCard({
   trend,
   variant = "default",
   size = "default",
-  isLoading = false
+  isLoading = false,
+  centerContent = false
 }: StatCardProps) {
   // Check if icon is a LucideIcon component or JSX element
   const isComponent = typeof icon === 'function';
@@ -62,7 +64,7 @@ export function StatCard({
   return (
     <Card className={`${variantStyles[variant]} border-2 transition-all hover:shadow-lg relative`}>
       {isLoading && <div className="loading-overlay"></div>}
-      <CardContent className={size === "sm" ? "p-4" : "p-6"}>
+      <CardContent className={`${size === "sm" ? "p-4" : "p-6"}${centerContent ? " flex-1 flex flex-col justify-center" : ""}`}>
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <p className={`${size === "sm" ? "text-xs" : "text-sm"} font-medium text-muted-foreground mb-1`}>{title}</p>
