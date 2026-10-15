@@ -7,9 +7,11 @@ import type { ProtocoloIndicador } from "../types";
 export const ProtocoloCard = ({
 	protocolo,
 	loading,
+	centerContent = false,
 }: {
 	protocolo: ProtocoloIndicador;
 	loading?: boolean;
+	centerContent?: boolean;
 }) => {
 	if (protocolo.numerador === 0 && protocolo.denominador === 0) {
 		return null;
@@ -17,7 +19,9 @@ export const ProtocoloCard = ({
 	return (
 		<Card className="relative">
 			{loading && <div className="loading-overlay" />}
-			<CardContent className="p-4">
+			<CardContent
+				className={`p-4${centerContent ? " flex-1 flex flex-col justify-center" : ""}`}
+			>
 				<p className="text-sm font-semibold mb-3 line-clamp-2">
 					{protocolo.protocolo_descricao}
 				</p>

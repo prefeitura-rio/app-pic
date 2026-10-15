@@ -138,6 +138,7 @@ FIXTURES: dict[str, list[dict]] = {
     "grupos": [
         {"pic_grupo": "Criança", "qtd": 5},
         {"pic_grupo": "Gestante", "qtd": 3},
+        {"pic_grupo": None, "qtd": 2},
     ],
     "ras": [
         {"categoria": "Madureira", "total": 7},
@@ -191,6 +192,7 @@ FIXTURES: dict[str, list[dict]] = {
     "racas": [
         {"categoria": "branca", "total": 6},
         {"categoria": "preta", "total": 4},
+        {"categoria": None, "total": 2},
     ],
 }
 
@@ -240,11 +242,18 @@ async def test_get_acordo_resultados_computes_all_sections():
     ]
     assert [m.total for m in acordo.motivos_saida] == [2, 1]
 
-    assert [d.categoria for d in acordo.distribuicao_raca] == ["branca", "preta"]
+    assert [d.categoria for d in acordo.distribuicao_raca] == [
+        "branca",
+        "preta",
+        "Não informado",
+    ]
+    assert [d.total for d in acordo.distribuicao_raca] == [6, 4, 2]
     assert [d.categoria for d in acordo.distribuicao_grupo] == [
         "Criança",
         "Gestante",
+        "Não informado",
     ]
+    assert [d.total for d in acordo.distribuicao_grupo] == [5, 3, 2]
     assert [d.categoria for d in acordo.distribuicao_ra] == [
         "Madureira",
         "Centro",
@@ -264,6 +273,49 @@ async def test_get_acordo_resultados_computes_all_sections():
     assert [d.total for d in acordo.distribuicao_bolsa_familia] == [6, 4, 2]
 
     assert acordo.meta_regularidade == 30.5
+    assert acordo.meta_referencia_regularidade == 27.5
+
+
+@pytest.mark.asyncio
+async def test_grupo_nulo_vira_nao_informado():
+    """Participantes sem pic_grupo entram como fatia 'Não informado'."""
+    repo, _ = _make_repo(
+        {
+            "grupos": [
+                {"pic_grupo": "Criança", "qtd": 140270},
+                {"pic_grupo": None, "qtd": 33743},
+            ]
+        }
+    )
+
+    acordo = await repo.get_acordo_resultados(user_token="jwt", user_id="123")
+
+    assert [d.categoria for d in acordo.distribuicao_grupo] == [
+        "Criança",
+        "Não informado",
+    ]
+    assert sum(d.total for d in acordo.distribuicao_grupo) == 174013
+
+
+@pytest.mark.asyncio
+async def test_raca_nula_vira_nao_informado():
+    """Participantes sem raca entram como categoria 'Não informado'."""
+    repo, _ = _make_repo(
+        {
+            "racas": [
+                {"categoria": "branca", "total": 6},
+                {"categoria": None, "total": 4117},
+            ]
+        }
+    )
+
+    acordo = await repo.get_acordo_resultados(user_token="jwt", user_id="123")
+
+    assert [d.categoria for d in acordo.distribuicao_raca] == [
+        "Não informado",
+        "branca",
+    ]
+    assert sum(d.total for d in acordo.distribuicao_raca) == 4123
 
 
 @pytest.mark.asyncio
@@ -280,9 +332,9 @@ async def test_cohort_cutoff_filter_present_in_all_queries():
                 f"wide table sem cohort.lte: {request.url}"
             )
         elif table in (_TABLE_CONSOLIDADO, _TABLE_PROTOCOLOS, _TABLE_SERIES):
-            assert request.url.params.get_list("pic_cohort") == [
-                "lte.2026-03-01"
-            ], f"{table} sem pic_cohort.lte: {request.url}"
+            assert request.url.params.get_list("pic_cohort") == ["lte.2026-03-01"], (
+                f"{table} sem pic_cohort.lte: {request.url}"
+            )
 
 
 @pytest.mark.asyncio
@@ -301,6 +353,25 @@ async def test_protocolos_restritos_a_ativos():
     for request in protocolos_requests:
         assert request.url.params.get_list("pic_status") == ["ilike.ativo"], (
             f"protocolos sem pic_status=ilike.ativo: {request.url}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_series_restrita_a_ativos():
+    repo, fake = _make_repo(FIXTURES)
+
+    await repo.get_acordo_resultados(user_token="jwt", user_id="123")
+
+    series_requests = [
+        r
+        for r in fake.requests
+        if r.url.path.lstrip("/").split(".")[-1] == _TABLE_SERIES
+    ]
+    assert series_requests, "nenhuma query de series foi disparada"
+
+    for request in series_requests:
+        assert request.url.params.get_list("pic_status") == ["ilike.ativo"], (
+            f"series sem pic_status=ilike.ativo: {request.url}"
         )
 
 
@@ -334,9 +405,9 @@ async def test_cache_miss_writes_to_redis():
 @pytest.mark.asyncio
 async def test_bypass_cache_skips_read_but_writes():
     redis = FakeRedis()
-    redis.store[_make_cache_key("123")] = (
-        AcordoResultados(total_participantes=99).model_dump_json()
-    )
+    redis.store[_make_cache_key("123")] = AcordoResultados(
+        total_participantes=99
+    ).model_dump_json()
     repo, fake = _make_repo(FIXTURES, redis_client=redis)
 
     acordo = await repo.get_acordo_resultados(
@@ -365,6 +436,7 @@ async def test_empty_result_sets_return_zeroed_model():
     assert acordo.distribuicao_cartao_pic == []
     assert acordo.distribuicao_bolsa_familia == []
     assert acordo.meta_regularidade == 30.5
+    assert acordo.meta_referencia_regularidade == 27.5
 
 
 def test_cache_key_isolated_by_user():
