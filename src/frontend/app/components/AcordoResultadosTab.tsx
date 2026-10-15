@@ -3,13 +3,14 @@ import {
 	AlertTriangle,
 	BookOpen,
 	CheckCircle,
+	Flag,
 	Home,
 	Loader2,
 	RefreshCw,
 	Target,
 	Users,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, ReactNode, useState } from "react";
 import {
 	Bar,
 	BarChart,
@@ -41,6 +42,7 @@ import {
 	SelectValue,
 } from "@/app/components/ui/select";
 import type { AcordoDistribuicaoPublico, AcordoResultados } from "../types";
+import { MetaCard } from "./MetaCard";
 import { ProtocoloCard } from "./ProtocoloCard";
 import { StatCard } from "./StatCard";
 
@@ -53,8 +55,11 @@ const PALETA_CATEGORIAS = [
 	"#B560D4FF",
 ];
 
+const COR_NAO_INFORMADO = "#9ca3af";
+
 const CORES_GRUPO: Record<string, string> = {
 	Criança: "#50C49FFF",
+	"Não informado": COR_NAO_INFORMADO,
 };
 
 const CORES_CARTAO_PIC: Record<string, string> = {
@@ -89,8 +94,48 @@ const paletaPorQuantidade = (total: number, paleta: string[]): string[] => {
 	return paleta;
 };
 
+// Janela fixa do gráfico "Evolução da Meta de Regularidade" (mar a dez/2026).
+const MESES_META_REGULARIDADE = [
+	"2026-03",
+	"2026-04",
+	"2026-05",
+	"2026-06",
+	"2026-07",
+	"2026-08",
+	"2026-09",
+	"2026-10",
+	"2026-11",
+	"2026-12",
+];
+
+const MESES_LABELS_META: Record<string, string> = {
+	"01": "Jan",
+	"02": "Fev",
+	"03": "Mar",
+	"04": "Abr",
+	"05": "Mai",
+	"06": "Jun",
+	"07": "Jul",
+	"08": "Ago",
+	"09": "Set",
+	"10": "Out",
+	"11": "Nov",
+	"12": "Dez",
+};
+
+// "2026-11" -> "Nov/26" (mesmo formato do backend)
+const mesLabelLocal = (mes: string): string => {
+	const [ano, numero] = mes.split("-");
+	return `${MESES_LABELS_META[numero] ?? numero}/${ano.slice(2)}`;
+};
+
+// 41.0 -> "41,0"
+const formatPercentual = (valor: number): string =>
+	valor.toFixed(1).replace(".", ",");
+
 const DistribuicaoPie = ({
 	title,
+	subtitle,
 	data,
 	nameKey = "categoria",
 	height = 440,
@@ -99,6 +144,7 @@ const DistribuicaoPie = ({
 	customLegend = false,
 }: {
 	title: string;
+	subtitle?: ReactNode;
 	data: Array<{ categoria?: string; motivo?: string; total?: number }>;
 	nameKey?: string;
 	height?: number;
@@ -113,6 +159,7 @@ const DistribuicaoPie = ({
 		<Card>
 			<CardHeader>
 				<CardTitle>{title}</CardTitle>
+				{subtitle && <CardDescription>{subtitle}</CardDescription>}
 			</CardHeader>
 			<CardContent>
 				<ResponsiveContainer width="100%" height={height}>
@@ -158,9 +205,7 @@ const DistribuicaoPie = ({
 							const color =
 								categoryColors?.[nome] ?? cores[index % cores.length];
 							const percent =
-								total > 0
-									? (((entry.total ?? 0) / total) * 100).toFixed(1)
-									: 0;
+								total > 0 ? (((entry.total ?? 0) / total) * 100).toFixed(1) : 0;
 							return (
 								<div
 									key={index}
@@ -201,6 +246,7 @@ const DistribuicaoBarrasHorizontais = ({
 	height,
 	scaleLog = false,
 	palette,
+	categoryColors,
 }: {
 	title: string;
 	data: AcordoDistribuicaoPublico[];
@@ -208,6 +254,7 @@ const DistribuicaoBarrasHorizontais = ({
 	height?: number;
 	scaleLog?: boolean;
 	palette?: string[];
+	categoryColors?: Record<string, string>;
 }) => (
 	<Card>
 		<CardHeader>
@@ -240,7 +287,13 @@ const DistribuicaoBarrasHorizontais = ({
 					<Bar dataKey="total" name="Participantes" fill={color}>
 						{palette
 							? data.map((d, i) => (
-									<Cell key={d.categoria} fill={palette[i % palette.length]} />
+									<Cell
+										key={d.categoria}
+										fill={
+											categoryColors?.[d.categoria] ??
+											palette[i % palette.length]
+										}
+									/>
 								))
 							: null}
 					</Bar>
@@ -297,6 +350,38 @@ const AcordoResultadosTabComponent = ({
 		SMS: data.protocolos?.filter((p) => p.protocolo_secretaria === "SMS") || [],
 	};
 
+	// ------------------------------------------------------------------
+	// Métricas da seção "Meta de Regularidade"
+	// ------------------------------------------------------------------
+	const metaRegularidade = data.meta_regularidade || 0;
+	const metaReferenciaRegularidade = data.meta_referencia_regularidade ?? 27.5;
+	const percentualHoje = data.ativos?.percentual_regular || 0;
+	const deltaPP = percentualHoje - metaRegularidade;
+	const deltaPPLabel = `${deltaPP >= 0 ? "+" : "-"}${formatPercentual(
+		Math.abs(deltaPP),
+	)} p.p.`;
+
+	const ativosTotal = data.ativos?.total || 0;
+	const ativosRegulares = data.ativos?.regulares || 0;
+	const gapMeta =
+		ativosTotal > 0
+			? Math.round(ativosRegulares - (metaRegularidade / 100) * ativosTotal)
+			: 0;
+	const acimaDaMeta = gapMeta >= 0;
+
+	// Total de participantes (ativos + inativos) exibido no gráfico "Participantes por Situação".
+	const totalParticipantes = ativosTotal + (data.inativos?.total || 0);
+
+	// Série do gráfico "Evolução da Meta de Regularidade": mar a dez/2026,
+	// com meses sem dado como ponto nulo (linha fica vazia).
+	const evolucaoMetaData = MESES_META_REGULARIDADE.map((mes) => {
+		const ponto = data.evolucao_mensal?.find((p) => p.mes === mes);
+		return {
+			mes_label: ponto?.mes_label ?? mesLabelLocal(mes),
+			todos: ponto ? ponto.todos : null,
+		};
+	});
+
 	return (
 		<div className="space-y-8">
 			{/* ===================================================================== */}
@@ -306,7 +391,7 @@ const AcordoResultadosTabComponent = ({
 				<div className="space-y-1">
 					<h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
 						<Target className="h-6 w-6 text-primary" />
-						Monitoramento
+						Acordo de Resultados
 					</h2>
 					<p className="text-sm text-muted-foreground">
 						Dados do programa considerando desde o início até 31 de março de
@@ -344,6 +429,56 @@ const AcordoResultadosTabComponent = ({
 			</div>
 
 			{/* ===================================================================== */}
+			{/* SEÇÃO 0: META DE REGULARIDADE */}
+			{/* ===================================================================== */}
+			<div className="space-y-3">
+				<h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+					<Target className="h-5 w-5 text-primary" />
+					Meta de Regularidade
+				</h2>
+				<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+					<MetaCard
+						title="Meta do Acordo"
+						value={`${formatPercentual(metaRegularidade)}%`}
+						reference={{
+							label: "Valor de referência",
+							value: `${formatPercentual(metaReferenciaRegularidade)}%`,
+						}}
+						description="Meta fixa para todos os ativos até 31/03/2026"
+						icon={<Target className="h-6 w-6" />}
+						isLoading={loading}
+					/>
+					<MetaCard
+						title="Meta Hoje"
+						value={`${formatPercentual(percentualHoje)}%`}
+						description="Ativos regulares dos participantes até 31/03/2026"
+						icon={<Activity className="h-6 w-6" />}
+						trend={{
+							value: deltaPPLabel,
+							isPositive: deltaPP >= 0,
+							label: "VS META",
+						}}
+						isLoading={loading}
+					/>
+					<MetaCard
+						title="Gap para a Meta"
+						value={Math.abs(gapMeta)}
+						description={
+							acimaDaMeta
+								? "Ativos regulares acima do necessário para a meta"
+								: "Ativos regulares faltantes para atingir a meta"
+						}
+						icon={<Flag className="h-6 w-6" />}
+						trend={{
+							value: acimaDaMeta ? "ACIMA DA META" : "ABAIXO DA META",
+							isPositive: acimaDaMeta,
+						}}
+						isLoading={loading}
+					/>
+				</div>
+			</div>
+
+			{/* ===================================================================== */}
 			{/* SEÇÃO 1: REGULARIDADE POR STATUS */}
 			{/* ===================================================================== */}
 			<div className="space-y-6">
@@ -359,22 +494,25 @@ const AcordoResultadosTabComponent = ({
 							description="Participantes ativos nos cohorts do acordo"
 							icon={<Users className="h-6 w-6" />}
 							variant="default"
+							centerContent
 							isLoading={loading}
 						/>
 						<StatCard
 							title="Ativos Regulares"
-							value={`${(data.ativos.percentual_regular || 0).toFixed(1)}%`}
-							description={`${(data.ativos.regulares || 0).toLocaleString("pt-BR")} de ${(data.ativos.total || 0).toLocaleString("pt-BR")} ativos`}
+							value={(data.ativos.regulares || 0).toLocaleString("pt-BR")}
+							description={`${formatPercentual(data.ativos.percentual_regular || 0)}% de ${(data.ativos.total || 0).toLocaleString("pt-BR")} ativos`}
 							icon={<CheckCircle className="h-6 w-6" />}
 							variant="success"
+							centerContent
 							isLoading={loading}
 						/>
 						<StatCard
 							title="Ativos Irregulares"
-							value={`${(data.ativos.percentual_irregular || 0).toFixed(1)}%`}
-							description={`${(data.ativos.irregulares || 0).toLocaleString("pt-BR")} de ${(data.ativos.total || 0).toLocaleString("pt-BR")} ativos`}
+							value={(data.ativos.irregulares || 0).toLocaleString("pt-BR")}
+							description={`${formatPercentual(data.ativos.percentual_irregular || 0)}% de ${(data.ativos.total || 0).toLocaleString("pt-BR")} ativos`}
 							icon={<AlertTriangle className="h-6 w-6" />}
 							variant="destructive"
+							centerContent
 							isLoading={loading}
 						/>
 					</div>
@@ -393,6 +531,7 @@ const AcordoResultadosTabComponent = ({
 							icon={<Users className="h-6 w-6" />}
 							variant="default"
 							size="sm"
+							centerContent
 							isLoading={loading}
 						/>
 						<StatCard
@@ -402,6 +541,7 @@ const AcordoResultadosTabComponent = ({
 							icon={<CheckCircle className="h-6 w-6" />}
 							variant="default"
 							size="sm"
+							centerContent
 							isLoading={loading}
 						/>
 						<StatCard
@@ -411,6 +551,7 @@ const AcordoResultadosTabComponent = ({
 							icon={<AlertTriangle color="white" className="h-6 w-6" />}
 							variant="default"
 							size="sm"
+							centerContent
 							isLoading={loading}
 						/>
 					</div>
@@ -443,6 +584,7 @@ const AcordoResultadosTabComponent = ({
 										key={protocolo.protocolo_id}
 										protocolo={protocolo}
 										loading={loading}
+										centerContent
 									/>
 								))}
 							</div>
@@ -461,6 +603,7 @@ const AcordoResultadosTabComponent = ({
 										key={protocolo.protocolo_id}
 										protocolo={protocolo}
 										loading={loading}
+										centerContent
 									/>
 								))}
 							</div>
@@ -479,6 +622,7 @@ const AcordoResultadosTabComponent = ({
 										key={protocolo.protocolo_id}
 										protocolo={protocolo}
 										loading={loading}
+										centerContent
 									/>
 								))}
 							</div>
@@ -495,8 +639,8 @@ const AcordoResultadosTabComponent = ({
 					<CardHeader>
 						<CardTitle>Evolução Mensal da Regularidade</CardTitle>
 						<CardDescription>
-							Evolução mensal da completude de protocolos por dimensão nos
-							grupos do acordo
+							Evolução mensal da completude de protocolos por dimensão entre os
+							ativos dos grupos do acordo
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -505,7 +649,7 @@ const AcordoResultadosTabComponent = ({
 								data={data.evolucao_mensal}
 								margin={{ top: 10, right: 20, left: 0, bottom: 10 }}
 							>
-								<CartesianGrid strokeDasharray="3 3" />
+								<CartesianGrid strokeDasharray="3 3" horizontal={false} />
 								<XAxis dataKey="mes_label" />
 								<YAxis
 									domain={[0, 100]}
@@ -574,6 +718,82 @@ const AcordoResultadosTabComponent = ({
 			)}
 
 			{/* ===================================================================== */}
+			{/* SEÇÃO 3B: EVOLUÇÃO DA META DE REGULARIDADE (mar a dez, eixo 10-80%) */}
+			{/* ===================================================================== */}
+			{data.evolucao_mensal && data.evolucao_mensal.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Evolução da Meta de Regularidade</CardTitle>
+						<CardDescription>
+							Percentual de ativos regulares de março a dezembro de 2026, com a
+							meta e o valor de referência do acordo
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<ResponsiveContainer width="100%" height={400}>
+							<LineChart
+								data={evolucaoMetaData}
+								margin={{ top: 10, right: 20, left: 0, bottom: 10 }}
+							>
+								<CartesianGrid strokeDasharray="3 3" horizontal={false} />
+								<XAxis dataKey="mes_label" />
+								<YAxis
+									domain={[10, 80]}
+									ticks={[10, 20, 30, 40, 50, 60, 70, 80]}
+									tickFormatter={(value: number) => `${value}%`}
+									label={{
+										value: "% Regular",
+										angle: -90,
+										position: "insideLeft",
+										style: { textAnchor: "middle" },
+									}}
+								/>
+								<Tooltip
+									formatter={(value) =>
+										value == null ? "Sem dados" : `${value}%`
+									}
+								/>
+								<Legend />
+								<ReferenceLine
+									y={metaRegularidade}
+									stroke="#26dc5d"
+									strokeDasharray="6 3"
+									label={{
+										value: `Meta ${formatPercentual(metaRegularidade)}%`,
+										position: "insideRight",
+										fill: "#26dc5d",
+										fontSize: 12,
+										dy: -14,
+									}}
+								/>
+								<ReferenceLine
+									y={metaReferenciaRegularidade}
+									stroke="#f59e0b"
+									strokeDasharray="3 3"
+									label={{
+										value: `Referência ${formatPercentual(metaReferenciaRegularidade)}%`,
+										position: "insideLeft",
+										fill: "#f59e0b",
+										fontSize: 12,
+										dy: 14,
+									}}
+								/>
+								<Line
+									type="monotone"
+									dataKey="todos"
+									name="% Regulares"
+									stroke="#8b5cf6"
+									strokeWidth={2}
+									dot={false}
+									connectNulls={false}
+								/>
+							</LineChart>
+						</ResponsiveContainer>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* ===================================================================== */}
 			{/* SEÇÃO 4: DISTRIBUIÇÕES DE PÚBLICO (PIZZAS) */}
 			{/* ===================================================================== */}
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -612,6 +832,7 @@ const AcordoResultadosTabComponent = ({
 					title="Distribuição por Raça"
 					data={data.distribuicao_raca}
 					palette={PALETA_CATEGORIAS}
+					categoryColors={{ "Não informado": COR_NAO_INFORMADO }}
 					scaleLog
 				/>
 			)}
@@ -640,6 +861,14 @@ const AcordoResultadosTabComponent = ({
 				{((data.ativos?.total ?? 0) > 0 || (data.inativos?.total ?? 0) > 0) && (
 					<DistribuicaoPie
 						title="Participantes por Situação"
+						subtitle={
+							<>
+								Total de participantes:{" "}
+								<span className="font-semibold text-foreground">
+									{totalParticipantes.toLocaleString("pt-BR")}
+								</span>
+							</>
+						}
 						data={[
 							{
 								categoria: "Ativos",
