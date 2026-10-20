@@ -207,6 +207,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                     sort_column=sort_column,
                     sort_descending=sort_descending,
                     busca_ativa_values=busca_ativa_values,
+                    allowed_secretarias=allowed_secretarias,
                     count=count,
                 ),
                 limit=limit,
@@ -479,6 +480,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 sort_column=sort_column,
                 sort_descending=sort_descending,
                 busca_ativa_values=busca_ativa_values,
+                allowed_secretarias=allowed_secretarias,
             )
 
         # The user token context is scoped to each prefetch window (enter and
@@ -553,6 +555,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 sort_column=sort_column,
                 sort_descending=sort_descending,
                 busca_ativa_values=busca_ativa_values,
+                allowed_secretarias=allowed_secretarias,
             )
 
         offset = 0
@@ -670,6 +673,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         search_term=search_term,
                         secretaria_or_terms=secretaria_or_terms,
                         busca_ativa_values=busca_ativa_values,
+                        allowed_secretarias=allowed_secretarias,
                     ),
                     limit=None,
                     with_count=False,
@@ -690,6 +694,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         search_term=search_term,
                         secretaria_or_terms=secretaria_or_terms,
                         busca_ativa_values=busca_ativa_values,
+                        allowed_secretarias=allowed_secretarias,
                     ),
                     limit=None,
                     with_count=False,
@@ -707,6 +712,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         search_term=search_term,
                         secretaria_or_terms=secretaria_or_terms,
                         busca_ativa_values=busca_ativa_values,
+                        allowed_secretarias=allowed_secretarias,
                     ),
                     limit=None,
                     with_count=False,

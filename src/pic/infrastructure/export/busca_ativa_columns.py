@@ -29,6 +29,9 @@ from src.pic.infrastructure.export.csv_columns import (
 from src.pic.infrastructure.repositories.helpers.participant_governance import (
     resolve_access,
 )
+from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
+    BUSCA_ATIVA_SEM_ID,
+)
 
 BUSCA_ATIVA_CSV_COLUMNS: list[str] = [
     "id_membro_familia",
@@ -122,6 +125,11 @@ def selected_fontes_from_filter(raw: str | None) -> list[str] | None:
     if not raw:
         return None
     tokens = re.split(r"[|,]", raw)
+    if any(token.strip().upper() == BUSCA_ATIVA_SEM_ID for token in tokens):
+        # "Sem busca ativa" is not a fonte recorte: the member set has no
+        # (recent) busca ativa, so keep every accessible fonte column and let
+        # the events come back empty naturally (they may still show older ones).
+        return None
     return [
         token.strip().upper()
         for token in tokens

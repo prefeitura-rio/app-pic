@@ -136,6 +136,44 @@ export interface DisparosDashboard {
 	por_jornada: DisparoJornadaResumo[];
 }
 
+/** Totais de busca ativa (Visão Geral) */
+export interface BuscaAtivaTotais {
+	buscas: number;
+	participantes: number;
+}
+
+/** Série mensal de busca ativa por fonte (SMS/SMAS) */
+export interface BuscaAtivaPontoMensal {
+	mes: string;
+	mes_label: string;
+	smas: number;
+	sms: number;
+	total: number;
+}
+
+/** Resultado SMAS por mês, quebrado por desfecho */
+export interface BuscaAtivaDesfechoMensal {
+	mes: string;
+	mes_label: string;
+	desfecho: string;
+	total: number;
+}
+
+/** Distribuição por categoria (tipo SMAS / público SMS) */
+export interface BuscaAtivaCategoria {
+	categoria: string;
+	total: number;
+}
+
+/** Seção "Busca Ativa" da Visão Geral */
+export interface BuscaAtivaDashboard {
+	totais: BuscaAtivaTotais;
+	evolucao_mensal: BuscaAtivaPontoMensal[];
+	smas_desfecho_mensal: BuscaAtivaDesfechoMensal[];
+	smas_tipos: BuscaAtivaCategoria[];
+	sms_publicos: BuscaAtivaCategoria[];
+}
+
 export interface EnderecoSMS {
 	endereco?: string;
 	complemento?: string;
@@ -532,6 +570,11 @@ export interface Dashboard {
 	// SEÇÃO 8: DISPAROS WHATSAPP (snapshot últimos 30 dias)
 	// =========================================================================
 	disparos?: DisparosDashboard | null;
+
+	// =========================================================================
+	// SEÇÃO 9: BUSCA ATIVA (Visão Geral)
+	// =========================================================================
+	busca_ativa?: BuscaAtivaDashboard | null;
 
 	// =========================================================================
 	// METADADOS

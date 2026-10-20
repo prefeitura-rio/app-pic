@@ -9,6 +9,11 @@ from collections import defaultdict
 from typing import Any
 
 from src.pic.domain.models.dashboard import (
+    BuscaAtivaCategoria,
+    BuscaAtivaDashboard,
+    BuscaAtivaDesfechoMensal,
+    BuscaAtivaPontoMensal,
+    BuscaAtivaTotais,
     Dashboard,
     DisparoJornadaResumo,
     DisparosDashboard,
@@ -145,6 +150,102 @@ def _calculate_disparos_metrics(
     )
 
 
+def _calculate_busca_ativa_metrics(
+    busca_ativa: dict[str, Any] | None,
+) -> BuscaAtivaDashboard | None:
+    """Section 9 — Busca Ativa metrics from PostgREST aggregates.
+
+    ``busca_ativa`` is the output of ``_fetch_busca_ativa`` (already aggregated
+    by PostgREST); Python only accumulates repeated rows per key and builds the
+    domain object. Returns ``None`` when the fetch degraded.
+    """
+    if not busca_ativa:
+        return None
+
+    totals = busca_ativa.get("totais") or {}
+
+    evolucao: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"smas": 0, "sms": 0}
+    )
+    for row in busca_ativa.get("mensal") or []:
+        fonte = (row.get("fonte") or "").upper()
+        mes = row.get("mes")
+        if not mes:
+            continue
+        if fonte == "SMAS":
+            evolucao[mes]["smas"] += int(row.get("buscas") or 0)
+        elif fonte == "SMS":
+            evolucao[mes]["sms"] += int(row.get("buscas") or 0)
+
+    evolucao_mensal = [
+        BuscaAtivaPontoMensal(
+            mes=mes,
+            mes_label=_format_mes_label(mes),
+            smas=d["smas"],
+            sms=d["sms"],
+            total=d["smas"] + d["sms"],
+        )
+        for mes, d in sorted(evolucao.items())
+    ]
+
+    # Card "Participantes com busca ativa": sempre o mês mais recente
+    # (max data_referencia_mensal) do recorte — soma dos `participantes` das
+    # linhas mensais desse mês (em vez de acumular todos os meses).
+    mensal_rows = busca_ativa.get("mensal") or []
+    meses_validos = [row.get("mes") for row in mensal_rows if row.get("mes")]
+    mes_max = max(meses_validos) if meses_validos else None
+    participantes_mes_max = (
+        sum(
+            int(row.get("participantes") or 0)
+            for row in mensal_rows
+            if row.get("mes") == mes_max
+        )
+        if mes_max
+        else 0
+    )
+
+    desfecho_agg: dict[tuple[str, str], int] = defaultdict(int)
+    for row in busca_ativa.get("smas_desfecho") or []:
+        mes = row.get("mes")
+        desfecho = row.get("desfecho")
+        if not mes or not desfecho:
+            continue
+        desfecho_agg[(mes, str(desfecho))] += int(row.get("buscas") or 0)
+
+    smas_desfecho_mensal = [
+        BuscaAtivaDesfechoMensal(
+            mes=mes,
+            mes_label=_format_mes_label(mes),
+            desfecho=desfecho,
+            total=total,
+        )
+        for (mes, desfecho), total in sorted(desfecho_agg.items())
+    ]
+
+    def _categorias(rows: list[dict[str, Any]]) -> list[BuscaAtivaCategoria]:
+        agg: dict[str, int] = defaultdict(int)
+        for row in rows:
+            categoria = row.get("categoria")
+            if not categoria:
+                continue
+            agg[str(categoria)] += int(row.get("total") or 0)
+        return [
+            BuscaAtivaCategoria(categoria=categoria, total=total)
+            for categoria, total in sorted(agg.items(), key=lambda x: -x[1])
+        ]
+
+    return BuscaAtivaDashboard(
+        totais=BuscaAtivaTotais(
+            buscas=int(totals.get("buscas") or 0),
+            participantes=participantes_mes_max,
+        ),
+        evolucao_mensal=evolucao_mensal,
+        smas_desfecho_mensal=smas_desfecho_mensal,
+        smas_tipos=_categorias(busca_ativa.get("smas_tipo") or []),
+        sms_publicos=_categorias(busca_ativa.get("sms_publico") or []),
+    )
+
+
 def _calculate_dashboard_metrics(
     consolidado: dict[str, Any],
     protocolos: list[dict[str, Any]],
@@ -152,6 +253,7 @@ def _calculate_dashboard_metrics(
     tempo: dict[str, Any],
     resolucao: list[dict[str, Any]],
     disparos: dict[str, Any] | None = None,
+    busca_ativa: dict[str, Any] | None = None,
     filtro_secretaria: str | None = None,
 ) -> Dashboard:
     """Compute all dashboard sections from PostgREST data.
@@ -169,6 +271,7 @@ def _calculate_dashboard_metrics(
         tempo: {smas, sme, sms} com somas ponderadas pré-calculadas
         resolucao: linhas por (mes, secretaria)
         disparos: output of ``_fetch_disparos`` (None on graceful degradation)
+        busca_ativa: output of ``_fetch_busca_ativa`` (None on graceful degradation)
         filtro_secretaria: Optional secretaria param (SMS|SME|SMAS)
 
     Returns:
@@ -455,6 +558,13 @@ def _calculate_dashboard_metrics(
     t1 = perf_time.perf_counter()
     disparos_dashboard = _calculate_disparos_metrics(disparos, total_participantes)
     logger.info(f"⚡ [postgrest_v2] Seção 8 (disparos): {perf_time.perf_counter() - t1:.3f}s")
+
+    # =========================================================================
+    # SECTION 9 — Busca Ativa (agregados no PostgREST)
+    # =========================================================================
+    t1 = perf_time.perf_counter()
+    busca_ativa_dashboard = _calculate_busca_ativa_metrics(busca_ativa)
+    logger.info(f"⚡ [postgrest_v2] Seção 9 (busca ativa): {perf_time.perf_counter() - t1:.3f}s")
     logger.info(f"⚡ [postgrest_v2] total compute: {perf_time.perf_counter() - t0:.3f}s")
 
     return Dashboard(
@@ -471,5 +581,6 @@ def _calculate_dashboard_metrics(
         distribuicao_tempo_irregularidade=distribuicao_tempo,
         taxa_resolucao_mensal=taxa_resolucao,
         disparos=disparos_dashboard,
+        busca_ativa=busca_ativa_dashboard,
         data_atualizacao=None,
     )

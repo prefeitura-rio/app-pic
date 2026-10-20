@@ -35,6 +35,7 @@ def build_list_query(
     sort_column: str,
     sort_descending: bool,
     busca_ativa_values: list[str] | None = None,
+    allowed_secretarias: set[str] | None = None,
     count: str | None = None,
 ) -> AsyncSelectRequestBuilder:
     # One row per participant on the wide table, so the Content-Range
@@ -48,7 +49,9 @@ def build_list_query(
         query = query.or_(search_or_term(search_term))
     query = apply_wide_protocolo_filters(query, protocolo_filters)
     if busca_ativa_values:
-        query = apply_busca_ativa_filter(query, busca_ativa_values)
+        query = apply_busca_ativa_filter(
+            query, busca_ativa_values, allowed_secretarias
+        )
     if secretaria_or_terms:
         query = query.or_(secretaria_or_terms)
     if situacao_values:
@@ -69,6 +72,7 @@ def build_vocab_query(
     search_term: str | None,
     secretaria_or_terms: str | None,
     busca_ativa_values: list[str] | None = None,
+    allowed_secretarias: set[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """One aggregate (GROUP BY) query for a single option list.
 
@@ -88,7 +92,9 @@ def build_vocab_query(
     }
     query = apply_wide_protocolo_filters(query, protocolo_cascade)
     if busca_ativa_values:
-        query = apply_busca_ativa_filter(query, busca_ativa_values)
+        query = apply_busca_ativa_filter(
+            query, busca_ativa_values, allowed_secretarias
+        )
     if secretaria_or_terms:
         query = query.or_(secretaria_or_terms)
     if search_term:
@@ -106,6 +112,7 @@ def build_wide_aggregate_query(
     search_term: str | None,
     secretaria_or_terms: str | None,
     busca_ativa_values: list[str] | None = None,
+    allowed_secretarias: set[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """Single-row pure-aggregate query over the wide table.
 
@@ -128,7 +135,9 @@ def build_wide_aggregate_query(
     }
     query = apply_wide_protocolo_filters(query, protocolo_cascade)
     if busca_ativa_values:
-        query = apply_busca_ativa_filter(query, busca_ativa_values)
+        query = apply_busca_ativa_filter(
+            query, busca_ativa_values, allowed_secretarias
+        )
     if secretaria_or_terms:
         query = query.or_(secretaria_or_terms)
     if search_term:

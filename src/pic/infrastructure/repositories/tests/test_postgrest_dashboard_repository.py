@@ -13,6 +13,7 @@ Coverage:
 from __future__ import annotations
 
 import json
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -25,6 +26,7 @@ from src.pic.infrastructure.dashboard.compute_postgrest import (
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.config import PostgrestClientConfig
 from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
+    _TABLE_BUSCA_ATIVA,
     _TABLE_CONSOLIDADO,
     _TABLE_DISPAROS,
     _TABLE_PROTOCOLOS,
@@ -32,6 +34,7 @@ from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
     _TABLE_SERIES,
     _TABLE_TEMPO,
     PostgrestDashboardRepository,
+    _busca_ativa_cutoff,
     _make_cache_key,
 )
 
@@ -64,6 +67,7 @@ class FakeDataProxy:
         self.rows_by_table = rows_by_table
         self.requests: list[httpx.Request] = []
         self.disparos_error_status: int | None = None
+        self.busca_ativa_error_status: int | None = None
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "keycloak.example":
@@ -80,6 +84,10 @@ class FakeDataProxy:
         # Special handling for disparos (5 different aggregate responses)
         if table == _TABLE_DISPAROS:
             return self._disparos_response(request)
+
+        # Special handling for busca ativa (5 different aggregate responses)
+        if table == _TABLE_BUSCA_ATIVA:
+            return self._busca_ativa_response(request)
 
         # Special handling for consolidado (has 3 different responses)
         if table == _TABLE_CONSOLIDADO:
@@ -136,6 +144,26 @@ class FakeDataProxy:
         else:
             rows = DISPAROS_TOTALS
         return httpx.Response(200, json=rows, headers=headers, request=request)
+
+    def _busca_ativa_response(self, request: httpx.Request) -> httpx.Response:
+        if self.busca_ativa_error_status is not None:
+            return httpx.Response(
+                self.busca_ativa_error_status,
+                json={"message": "boom"},
+                request=request,
+            )
+        select = request.url.params.get("select", "")
+        if "smas_desfecho" in select:
+            rows = BUSCA_ATIVA_DESFECHO
+        elif "smas_tipo" in select:
+            rows = BUSCA_ATIVA_TIPO
+        elif "sms_tipo_publico" in select:
+            rows = BUSCA_ATIVA_PUBLICO
+        elif "data_referencia_mensal" in select:
+            rows = BUSCA_ATIVA_MENSAL
+        else:
+            rows = BUSCA_ATIVA_TOTALS
+        return httpx.Response(200, json=rows, request=request)
 
 
 def _make_repo(
@@ -236,6 +264,25 @@ RESOLUCAO_ROWS = [
     {"secretaria": "smas", "data_referencia_mensal": "2025-01-01", "numerador": 3, "denominador": 5},
 ]
 
+# Mock de dados AGREGADOS de busca ativa (endpoint_participante_visao_geral_busca_ativa)
+BUSCA_ATIVA_TOTALS = [{"buscas": 40}]
+BUSCA_ATIVA_MENSAL = [
+    {"data_referencia_mensal": "2025-01-01", "fonte": "SMAS", "buscas": 10, "participantes": 8},
+    {"data_referencia_mensal": "2025-01-01", "fonte": "SMS", "buscas": 5, "participantes": 5},
+    {"data_referencia_mensal": "2025-02-01", "fonte": "SMAS", "buscas": 12, "participantes": 9},
+]
+BUSCA_ATIVA_DESFECHO = [
+    {"data_referencia_mensal": "2025-01-01", "smas_desfecho": "localizada", "buscas": 8},
+    {"data_referencia_mensal": "2025-01-01", "smas_desfecho": "nao_localizada", "buscas": 2},
+]
+BUSCA_ATIVA_TIPO = [
+    {"smas_tipo": "telefone", "buscas": 15},
+    {"smas_tipo": "domicilio", "buscas": 7},
+]
+BUSCA_ATIVA_PUBLICO = [
+    {"sms_tipo_publico": "gestante", "buscas": 5},
+]
+
 # Mock de dados AGREGADOS (como viria do PostgREST)
 # FakeDataProxy será inteligente e retornará dados agregados por tabela
 ALL_TABLES: dict[str, list[dict]] = {
@@ -244,6 +291,7 @@ ALL_TABLES: dict[str, list[dict]] = {
     _TABLE_SERIES: SERIES_ROWS,
     _TABLE_TEMPO: TEMPO_ROWS,
     _TABLE_RESOLUCAO: RESOLUCAO_ROWS,
+    _TABLE_BUSCA_ATIVA: BUSCA_ATIVA_TOTALS,  # Placeholder — resolvido por select
 }
 
 # Mock de dados AGREGADOS de disparos (endpoint_whatsapp_disparo)
@@ -914,11 +962,11 @@ class TestRepositoryFetches:
         assert any("is.true" in str(p) for p in params_list)
 
     @pytest.mark.asyncio
-    async def test_thirteen_requests_sent(self):
-        """3 consolidado subfetches + 4 other tables + 6 disparos = 13 requests."""
+    async def test_eighteen_requests_sent(self):
+        """3 consolidado + 4 other tables + 6 disparos + 5 busca ativa = 18."""
         repo, fake = _make_repo(ALL_TABLES)
         await repo.get_dashboard_metrics(filters={})
-        assert len(fake.requests) == 13
+        assert len(fake.requests) == 18
 
     @pytest.mark.asyncio
     async def test_empty_tables_returns_zero_dashboard(self):
@@ -982,7 +1030,7 @@ class TestRepositoryDisparos:
         assert {
             s.status: s.total for s in d.por_jornada[0].status_distribuicao
         } == {"ENTREGUE": 30, "RESPONDIDO": 18, "FALHOU": 2}
-        assert len(fake.requests) == 13
+        assert len(fake.requests) == 18
 
     @pytest.mark.asyncio
     async def test_disparos_query_shapes(self):
@@ -1050,6 +1098,78 @@ class TestRepositoryDisparos:
         assert result.protocolos
 
 
+class TestRepositoryBuscaAtiva:
+    """Busca Ativa fetches (section 9) over endpoint_participante_visao_geral_busca_ativa."""
+
+    @pytest.mark.asyncio
+    async def test_full_pipeline_includes_busca_ativa(self):
+        repo, fake = _make_repo(ALL_TABLES)
+        result = await repo.get_dashboard_metrics(filters={})
+
+        ba = result.busca_ativa
+        assert ba is not None
+
+        # Totais agregados
+        assert ba.totais.buscas == 40
+        # "Participantes com busca ativa" reflete o mês mais recente da série
+        # (2025-02): soma de participantes das linhas desse mês = 9.
+        assert ba.totais.participantes == 9
+
+        # Evolução mensal por fonte
+        por_mes = {p.mes: p for p in ba.evolucao_mensal}
+        assert por_mes["2025-01"].smas == 10
+        assert por_mes["2025-01"].sms == 5
+        assert por_mes["2025-01"].total == 15
+        assert por_mes["2025-02"].smas == 12
+        assert por_mes["2025-02"].sms == 0
+
+        # Resultado SMAS por mês/desfecho
+        assert {(d.desfecho, d.total) for d in ba.smas_desfecho_mensal} == {
+            ("localizada", 8),
+            ("nao_localizada", 2),
+        }
+
+        # Tipos SMAS
+        assert {t.categoria: t.total for t in ba.smas_tipos} == {
+            "telefone": 15,
+            "domicilio": 7,
+        }
+
+        # Públicos SMS
+        assert {p.categoria: p.total for p in ba.sms_publicos} == {"gestante": 5}
+
+    def test_busca_ativa_cutoff_calcula_primeiro_dia_da_janela(self):
+        assert _busca_ativa_cutoff(date(2026, 10, 19)) == "2025-11-01"
+        assert _busca_ativa_cutoff(date(2026, 1, 15)) == "2025-02-01"
+        assert _busca_ativa_cutoff(date(2026, 3, 1)) == "2025-04-01"
+        assert _busca_ativa_cutoff(date(2027, 12, 31)) == "2027-01-01"
+
+    @pytest.mark.asyncio
+    async def test_busca_ativa_queries_limited_to_last_12_months(self):
+        repo, fake = _make_repo(ALL_TABLES)
+        await repo.get_dashboard_metrics(filters={})
+
+        cutoff = _busca_ativa_cutoff()
+        reqs = [
+            r for r in fake.requests if r.url.path.endswith(_TABLE_BUSCA_ATIVA)
+        ]
+        assert len(reqs) == 5
+        for request in reqs:
+            assert request.url.params.get("data_referencia_mensal") == f"gte.{cutoff}"
+
+    @pytest.mark.asyncio
+    async def test_busca_ativa_error_degrades_to_none(self):
+        repo, fake = _make_repo(ALL_TABLES)
+        fake.busca_ativa_error_status = 500
+
+        result = await repo.get_dashboard_metrics(filters={})
+
+        assert result.busca_ativa is None
+        # other sections unaffected
+        assert result.total_participantes == 14
+        assert result.protocolos
+
+
 class TestRepositoryCache:
     """Verify Redis cache read/write/bypass behaviour."""
 
@@ -1088,8 +1208,8 @@ class TestRepositoryCache:
         repo, fake = _make_repo(ALL_TABLES, redis_client=redis)
         await repo.get_dashboard_metrics(filters={}, bypass_cache=True)
         # bypass_cache=True must skip cache read and go to PostgREST
-        # 3 consolidado subfetches + 4 other tables + 6 disparos = 13 requests
-        assert len(fake.requests) == 13
+        # 3 consolidado + 4 other tables + 6 disparos + 5 busca ativa = 18
+        assert len(fake.requests) == 18
 
     @pytest.mark.asyncio
     async def test_bypass_cache_still_writes_cache(self):

@@ -93,6 +93,12 @@ BUSCA_ATIVA_INDICATOR_COLUMNS: dict[str, str] = {
     "SMS": "busca_ativa_sms_30d_indicador",
 }
 
+# Special `busca_ativa` filter value meaning "no busca ativa in the last 30d".
+# Instead of selecting secretarias, it filters participants WITHOUT busca ativa
+# in the secretaria columns the user can actually see (partial access: only
+# the accessible ones; full access: all of them).
+BUSCA_ATIVA_SEM_ID = "SEM_BUSCA"
+
 # Sort request key -> column used for ordering.
 SORTABLE_COLUMNS = {
     "nome": "nome",

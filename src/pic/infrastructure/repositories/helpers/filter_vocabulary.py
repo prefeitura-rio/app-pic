@@ -30,6 +30,7 @@ from typing import Any
 
 from src.pic.domain.models.filters import FilterOption
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
+    BUSCA_ATIVA_SEM_ID,
     PROTOCOLO_SECRETARIA,
     PROTOCOLO_STATUS_COLUMNS,
 )
@@ -179,6 +180,8 @@ BUSCA_ATIVA_LABELS = {
     "SMS": "Busca Ativa SMS (30d)",
     "SME": "Busca Ativa SME (30d)",
 }
+
+BUSCA_ATIVA_SEM_LABEL = "Sem busca ativa nos últimos 30d"
 
 SECRETARIA_ORDER = ["SME", "SMAS", "SMS"]
 
@@ -356,12 +359,19 @@ def _busca_ativa_options(
     allowed_secretarias: set[str] | None,
 ) -> list[FilterOption]:
     """Busca ativa options: the fixed {SMAS, SMS, SME} set intersected with the
-    user's access (`None` = full access → all three)."""
-    return [
+    user's access (`None` = full access → all three), plus the "Sem busca
+    ativa" option when the user can see at least one busca-ativa column
+    (SMAS/SMS under partial access, both under full access)."""
+    options = [
         FilterOption(id=secretaria, label=BUSCA_ATIVA_LABELS[secretaria])
         for secretaria in BUSCA_ATIVA_ORDER
         if allowed_secretarias is None or secretaria in allowed_secretarias
     ]
+    if allowed_secretarias is None or allowed_secretarias & {"SMAS", "SMS"}:
+        options.append(
+            FilterOption(id=BUSCA_ATIVA_SEM_ID, label=BUSCA_ATIVA_SEM_LABEL)
+        )
+    return options
 
 
 def build_options(

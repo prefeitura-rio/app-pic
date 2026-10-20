@@ -43,6 +43,7 @@ from src.pic.infrastructure.repositories.helpers.participant_columns import (
 )
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
     BUSCA_ATIVA_INDICATOR_COLUMNS,
+    BUSCA_ATIVA_SEM_ID,
     FILTER_COLUMN_MAP,
     PROTOCOLO_FILTER_FIELDS,
     PROTOCOLO_SECRETARIA,
@@ -158,7 +159,7 @@ def split_filters(
             [str(v).upper() for v in split_values(filters_dict.pop("busca_ativa"))]
         )
         if raw_busca:
-            unknown = set(raw_busca) - BUSCA_ATIVA_SECRETARIAS
+            unknown = set(raw_busca) - BUSCA_ATIVA_SECRETARIAS - {BUSCA_ATIVA_SEM_ID}
             if unknown:
                 raise ValidationError(
                     f"Valor inválido para busca_ativa: {', '.join(sorted(unknown))}"
@@ -328,6 +329,7 @@ def apply_wide_protocolo_filters(
 def apply_busca_ativa_filter(
     query: AsyncSelectRequestBuilder,
     secretarias: list[str],
+    allowed_secretarias: set[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """Busca ativa filter on `endpoint_participante_protocolos_wide`.
 
@@ -337,7 +339,33 @@ def apply_busca_ativa_filter(
     secretarias are ORed (`or=(col.is.true,...)`). SME has no column yet, so
     when no selected secretaria maps to a column the query is forced to match
     nothing (`id_membro_familia.is.null` — the key is never null).
+
+    When the special ``SEM_BUSCA`` value is present, the filter is negated:
+    the participant must have NO busca ativa in the columns the user can see
+    (`allowed_secretarias=None` means full access → SMAS+SMS; partial access
+    → only the accessible ones). Each accessible column is ANDed as
+    `col.not.is.true` (covers false and null). With no accessible column the
+    filter is a no-op (nothing to restrict).
     """
+    if BUSCA_ATIVA_SEM_ID in secretarias:
+        if allowed_secretarias is None:
+            secretaria_codes = ("SMAS", "SMS")
+        else:
+            secretaria_codes = [
+                secretaria
+                for secretaria in ("SMAS", "SMS")
+                if secretaria in allowed_secretarias
+            ]
+        columns = [
+            BUSCA_ATIVA_INDICATOR_COLUMNS[secretaria]
+            for secretaria in secretaria_codes
+        ]
+        if not columns:
+            return query
+        for column in columns:
+            query = query.not_.is_(column, "true")
+        return query
+
     terms = [
         f"{column}.is.true"
         for secretaria in secretarias
