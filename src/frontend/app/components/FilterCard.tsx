@@ -31,6 +31,9 @@ const CARTAO_PIC_STATUS_OPTIONS = [
 	{ id: "sem_direito", label: "Sem Direito" },
 ];
 
+// Valor especial do filtro de busca ativa ("Sem busca ativa nos últimos 30d").
+const BUSCA_ATIVA_SEM_ID = "SEM_BUSCA";
+
 interface FilterCardProps {
 	filters: ParticipantFilters;
 	onFilterChange: (filters: ParticipantFilters) => void;
@@ -372,9 +375,24 @@ const FilterCardComponent = ({
 										? [filters.busca_ativa]
 										: []
 							}
-							onSelect={(values) =>
-								handleMultiFilterUpdate("busca_ativa", values)
-							}
+							onSelect={(values) => {
+								// "Sem busca ativa" é exclusivo: marcá-lo limpa as
+								// secretarias; marcar uma secretaria com ele ativo o remove.
+								const prev = Array.isArray(filters.busca_ativa)
+									? filters.busca_ativa
+									: filters.busca_ativa
+										? [filters.busca_ativa]
+										: [];
+								const semWasSelected = prev.includes(BUSCA_ATIVA_SEM_ID);
+								const semSelected = values.includes(BUSCA_ATIVA_SEM_ID);
+								let next = values;
+								if (semSelected && !semWasSelected) {
+									next = [BUSCA_ATIVA_SEM_ID];
+								} else if (semWasSelected && semSelected && values.length > 1) {
+									next = values.filter((v) => v !== BUSCA_ATIVA_SEM_ID);
+								}
+								handleMultiFilterUpdate("busca_ativa", next);
+							}}
 							disabled={loading}
 							placeholder="Busca Ativa (30d)"
 							defaultLabel="Todos os Status de Busca Ativa (últimos 30d)"

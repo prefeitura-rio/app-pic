@@ -40,6 +40,9 @@ def test_selected_fontes_from_filter_parses_and_normalizes():
     assert selected_fontes_from_filter("SME") == []
     assert selected_fontes_from_filter("SMAS|SME") == ["SMAS"]
     assert selected_fontes_from_filter("FOO") == []
+    # "Sem busca ativa" is not a fonte recorte → no recorte (None).
+    assert selected_fontes_from_filter("SEM_BUSCA") is None
+    assert selected_fontes_from_filter("SEM_BUSCA|SMAS") is None
 
 
 def test_header_full_access_keeps_every_column():

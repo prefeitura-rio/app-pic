@@ -609,6 +609,50 @@ async def test_list_busca_ativa_invalid_raises_validation_error(make_repo):
     assert len(fake.requests) == 0
 
 
+async def test_list_busca_ativa_sem_full_access_uses_not_is_true(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SEM_BUSCA"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    params = fake.requests[0].url.params
+    # Full access: both SMAS and SMS columns must be not-true.
+    assert params["busca_ativa_smas_30d_indicador"] == "not.is.true"
+    assert params["busca_ativa_sms_30d_indicador"] == "not.is.true"
+    assert "or" not in params
+
+
+async def test_list_busca_ativa_sem_partial_access_uses_accessible_only(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SEM_BUSCA"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=PARTIAL_SMAS,
+    )
+    params = fake.requests[0].url.params
+    # SMAS-only: only the SMAS column is filtered; SMS is out of reach.
+    assert params["busca_ativa_smas_30d_indicador"] == "not.is.true"
+    assert "busca_ativa_sms_30d_indicador" not in params
+
+
+async def test_list_busca_ativa_sem_wins_over_secretarias(make_repo):
+    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
+    await repo.list_participants(
+        filters=FilterCriteria(busca_ativa="SEM_BUSCA|SMAS"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+    params = fake.requests[0].url.params
+    # SEM prevails: negative filter, no OR of selected secretarias.
+    assert params["busca_ativa_smas_30d_indicador"] == "not.is.true"
+    assert params["busca_ativa_sms_30d_indicador"] == "not.is.true"
+    assert "or" not in params
+
+
 async def test_list_search_uses_ilike_or_over_four_columns(make_repo):
     repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
@@ -1991,7 +2035,7 @@ class TestFilterOptions:
         )
         # Static options: no DB query.
         assert len(fake.requests) == 0
-        assert [o.id for o in options] == ["SMAS", "SMS", "SME"]
+        assert [o.id for o in options] == ["SMAS", "SMS", "SME", "SEM_BUSCA"]
 
     @pytest.mark.asyncio
     async def test_busca_ativa_options_partial_access_intersects_secretarias(
@@ -2004,15 +2048,18 @@ class TestFilterOptions:
             filters=FilterCriteria(),
             permissions=PARTIAL_SMAS,
         )
-        assert [o.id for o in smas] == ["SMAS"]
-        assert [o.label for o in smas] == ["Busca Ativa SMAS (30d)"]
+        assert [o.id for o in smas] == ["SMAS", "SEM_BUSCA"]
+        assert [o.label for o in smas] == [
+            "Busca Ativa SMAS (30d)",
+            "Sem busca ativa nos últimos 30d",
+        ]
 
         sms = await repo.get_filter_options(
             field="busca_ativa",
             filters=FilterCriteria(),
             permissions=PARTIAL_SMS,
         )
-        assert [o.id for o in sms] == ["SMS"]
+        assert [o.id for o in sms] == ["SMS", "SEM_BUSCA"]
 
         assert len(fake.requests) == 0  # static, never queries
 
