@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Search } from "lucide-react";
 import { List } from "react-window";
 import { cn } from "@/app/utils/utils";
 import { Button } from "@/app/components/ui/button";
@@ -10,11 +10,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/app/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-} from "@/app/components/ui/command";
 
 interface Option {
   id: string;
@@ -168,13 +163,21 @@ export function VirtualizedMultiSelect({
           align="start"
           style={{ width: triggerWidth > 0 ? Math.max(triggerWidth, 300) : 300 }}
           aria-busy={loading}
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder="Buscar..."
-              value={searchTerm}
-              onValueChange={setSearchInput}
-            />
+          {/* Sem cmdk: o autofocus/scroll do Command era o que fazia a página
+              rolar ao abrir o dropdown (conteúdo portalado no fim do body
+              antes do posicionamento). Input simples, com a mesma aparência. */}
+          <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground">
+            <div className="flex items-center border-b px-3">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <input
+                placeholder="Buscar..."
+                value={searchTerm}
+                onChange={(event) => setSearchInput(event.target.value)}
+                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
 
             {/* Header com ações */}
             {!loading && value.length > 0 && (
@@ -225,7 +228,7 @@ export function VirtualizedMultiSelect({
             )}
 
             {!loading && filteredOptions.length === 0 && (
-              <CommandEmpty>Nenhum resultado.</CommandEmpty>
+              <div className="py-6 text-center text-sm">Nenhum resultado.</div>
             )}
 
             {/* Lista virtualizada */}
@@ -238,7 +241,7 @@ export function VirtualizedMultiSelect({
                 style={{ height: listHeight, width: '100%', overflowX: 'hidden' }}
               />
             )}
-          </Command>
+          </div>
         </PopoverContent>
       </Popover>
     </div>

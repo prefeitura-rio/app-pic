@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Search } from "lucide-react";
 import { List } from "react-window";
 import { cn } from "@/app/utils/utils";
 import { Button } from "@/app/components/ui/button";
@@ -10,12 +10,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/app/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-} from "@/app/components/ui/command";
 
 interface Option {
   id: string;
@@ -156,13 +150,21 @@ export function VirtualizedSelect({
           align="start"
           style={{ width: triggerWidth > 0 ? triggerWidth : 300 }}
           aria-busy={loading}
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder="Buscar..."
-              value={searchTerm}
-              onValueChange={setSearchInput}
-            />
+          {/* Sem cmdk: o autofocus/scroll do Command era o que fazia a página
+              rolar ao abrir o dropdown (conteúdo portalado no fim do body
+              antes do posicionamento). Input simples, com a mesma aparência. */}
+          <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground">
+            <div className="flex items-center border-b px-3">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <input
+                placeholder="Buscar..."
+                value={searchTerm}
+                onChange={(event) => setSearchInput(event.target.value)}
+                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
             {loading && (
               <div className="flex flex-col items-center justify-center gap-1.5 py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -172,18 +174,21 @@ export function VirtualizedSelect({
               </div>
             )}
             {!loading && filteredOptions.length === 0 && (
-              <CommandEmpty>Nenhum resultado.</CommandEmpty>
+              <div className="py-6 text-center text-sm">Nenhum resultado.</div>
             )}
 
             {/* Opção "Todos" fixa no topo (opcional) */}
             {!loading && showAllOption && (
-              <CommandItem
-                value="todos"
-                onSelect={() => {
+              <div
+                className={cn(
+                  "flex items-center cursor-pointer px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground rounded-sm mx-1 my-1",
+                  (value === "todos" || value === "todas" || !value) &&
+                    "bg-accent text-accent-foreground"
+                )}
+                onClick={() => {
                   onSelect("todos");
                   setOpen(false);
                 }}
-                className="mx-1"
               >
                 <Check
                   className={cn(
@@ -192,7 +197,7 @@ export function VirtualizedSelect({
                   )}
                 />
                 {defaultLabel}
-              </CommandItem>
+              </div>
             )}
 
             {/* Lista virtualizada */}
@@ -205,7 +210,7 @@ export function VirtualizedSelect({
                 style={{ height: listHeight, width: '100%', overflowX: 'hidden' }}
               />
             )}
-          </Command>
+          </div>
         </PopoverContent>
       </Popover>
     </div>
