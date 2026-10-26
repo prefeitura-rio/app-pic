@@ -28,6 +28,74 @@ class GeospatialFilterOptions(BaseModel):
     nomes: list[FilterOption] = []
 
 
+class CamadaRegularidadeAggregate(BaseModel):
+    """Agregado de regularidade por região de uma camada territorial.
+
+    Fonte: ``endpoint_participante_visao_geral_consolidado`` (mesma métrica
+    do dashboard: participantes regulares — situação Regular + Atenção —
+    sobre o total de participantes). Vem de uma query agregada do PostgREST
+    (RLS aplicada antes do GROUP BY). O campo ``regiao`` é o identificador
+    da região na coluna de agregação da camada (ex.: nome do bairro,
+    ``"3ª Rio Comprido"`` para RA, código da CAS/CRE/AP).
+    """
+
+    regiao: str
+    total_participantes: int = 0
+    total_regulares: int = 0
+    total_irregulares: int = 0
+
+
+# Coluna do consolidado usada no GROUP BY do PostgREST por camada territorial.
+# "bairro" e "ra" são as camadas implementadas; "cas"/"cre"/"ap" usam os ids
+# das regionalizações (fase 3d do plano de mapas).
+CAMADA_GROUP_COLUMN: dict[str, str] = {
+    "bairro": "bairro",
+    "ra": "regiao_administrativa",
+    "cas": "id_cas",
+    "cre": "id_cre",
+    "ap": "id_ap",
+}
+
+
+class ProtocoloOption(BaseModel):
+    """Opção de filtro de protocolo (fonte: endpoint_participante_visao_geral_protocolos)."""
+
+    protocolo_id: str
+    protocolo_secretaria: str | None = None
+    protocolo_descricao: str | None = None
+
+
+class RegiaoRegularidadeResumo(BaseModel):
+    """Métrica de regularidade (geral ou de um protocolo) numa região (3j)."""
+
+    total_participantes: int = 0
+    total_regulares: int = 0
+    total_irregulares: int = 0
+    taxa_regularidade: float | None = None
+
+
+class RegiaoProtocoloAggregate(RegiaoRegularidadeResumo):
+    """Métrica de um protocolo numa região (fase 3j — cards por protocolo)."""
+
+    protocolo_id: str
+    protocolo_secretaria: str | None = None
+    protocolo_descricao: str | None = None
+
+
+class RegiaoDetalhes(BaseModel):
+    """Detalhes da região clicada: métrica geral + protocolos da região (3j/3k).
+
+    ``protocolo_geral`` (3k) é a métrica do protocolo selecionado em TODAS
+    as regiões (média geral), usada no comparativo "acima/abaixo da média".
+    """
+
+    camada: str
+    regiao: str
+    geral: RegiaoRegularidadeResumo | None = None
+    protocolo_geral: RegiaoRegularidadeResumo | None = None
+    protocolos: list[RegiaoProtocoloAggregate] = []
+
+
 class GeospatialFilters(BaseModel):
     tipo_camada: str | None = None
     categoria: str | None = None
