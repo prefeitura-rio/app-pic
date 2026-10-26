@@ -42,8 +42,13 @@ from typing import Any
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
 from src.pic.domain.models.filters import FilterOption
 from src.pic.domain.models.geospatial import (
+    CAMADA_GROUP_COLUMN,
+    CamadaRegularidadeAggregate,
     GeospatialFilterOptions,
     GeospatialLayer,
+    ProtocoloOption,
+    RegiaoProtocoloAggregate,
+    RegiaoRegularidadeResumo,
 )
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.utils.log import logger
@@ -54,6 +59,16 @@ from src.utils.log import logger
 
 _TABLE = "endpoint_camadas_geoespaciais"
 
+# Tabela consolidado do dashboard (RLS nas 7 colunas de unidade). É a mesma
+# fonte das métricas da Visão Geral: participantes regulares/irregulares por
+# bairro (participante_regular_numerador/denominador).
+_BAIRROS_TABLE = "endpoint_participante_visao_geral_consolidado"
+
+# Mesmo cubo do consolidado, com granularidade de protocolo (FR-007 do fluxo
+# de mapas): métrica própria por protocolo (protocolo_regular_numerador/
+# denominador) — usada quando protocolo_id está selecionado.
+_PROTOCOLOS_TABLE = "endpoint_participante_visao_geral_protocolos"
+
 # Pages fetched concurrently per window (rolling window strategy)
 _FETCH_WINDOW = 2
 
@@ -63,8 +78,16 @@ _PAGE_SIZE = 1000
 # Redis TTL (seconds) — same as participant repository
 _CACHE_TTL = 1800
 
+# Regularidade por camada territorial: TTL igual ao dashboard (30 min). A
+# resposta varia por usuário (RLS) e por camada, então a chave inclui ambos.
+_REGULARIDADE_CACHE_TTL = 1800
+
 _LAYERS_CACHE_PREFIX = "geospatial_layers:"
 _FILTER_CACHE_PREFIX = "geospatial_filter_options:"
+_REGULARIDADE_CACHE_PREFIX = "geospatial_regularidade:v3:"
+_PROTOCOLOS_CACHE_PREFIX = "geospatial_protocolos:v1:"
+_PROTOCOLOS_REGIAO_CACHE_PREFIX = "geospatial_protocolos_regiao:v1:"
+_PROTOCOLO_GERAL_CACHE_PREFIX = "geospatial_protocolo_geral:v1:"
 
 # Columns that map to each filter-option field name
 _FIELD_COLUMN: dict[str, str] = {
@@ -105,6 +128,75 @@ def _make_filter_cache_key(field: str, column_filters: dict[str, object]) -> str
         {"field": field, "filters": column_filters}, sort_keys=True, default=str
     )
     return _FILTER_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _make_regularidade_cache_key(
+    camada: str,
+    user_id: str | None,
+    status: list[str] | None = None,
+    cohortes: list[str] | None = None,
+    protocolo_id: str | None = None,
+) -> str:
+    """Cache key por camada + usuário + filtros: a RLS e os filtros mudam o resultado."""
+    payload = json.dumps(
+        {
+            "camada": camada,
+            "user_id": user_id,
+            "status": sorted(status) if status else None,
+            "cohortes": sorted(cohortes) if cohortes else None,
+            "protocolo_id": protocolo_id,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return _REGULARIDADE_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _make_protocolos_cache_key(user_id: str | None) -> str:
+    payload = json.dumps({"user_id": user_id}, sort_keys=True, default=str)
+    return _PROTOCOLOS_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _make_protocolos_regiao_cache_key(
+    camada: str,
+    regiao: str,
+    user_id: str | None,
+    status: list[str] | None = None,
+    cohortes: list[str] | None = None,
+) -> str:
+    """Cache key dos protocolos de uma região: camada + valor raw + usuário + filtros."""
+    payload = json.dumps(
+        {
+            "camada": camada,
+            "regiao": regiao,
+            "user_id": user_id,
+            "status": sorted(status) if status else None,
+            "cohortes": sorted(cohortes) if cohortes else None,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return _PROTOCOLOS_REGIAO_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _make_protocolo_geral_cache_key(
+    protocolo_id: str,
+    user_id: str | None,
+    status: list[str] | None = None,
+    cohortes: list[str] | None = None,
+) -> str:
+    """Cache key da média geral do protocolo (igual para qualquer região)."""
+    payload = json.dumps(
+        {
+            "protocolo_id": protocolo_id,
+            "user_id": user_id,
+            "status": sorted(status) if status else None,
+            "cohortes": sorted(cohortes) if cohortes else None,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return _PROTOCOLO_GERAL_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +300,307 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             f"filters={list(column_filters.keys())}"
         )
         return layers
+
+    # ------------------------------------------------------------------
+    # IGeospatialRepository — regularidade por camada territorial
+    # ------------------------------------------------------------------
+
+    async def fetch_regularidade_por_camada(
+        self,
+        camada: str,
+        user_token: str | None = None,
+        user_id: str | None = None,
+        bypass_cache: bool = False,
+        status: list[str] | None = None,
+        cohortes: list[str] | None = None,
+        protocolo_id: str | None = None,
+    ) -> list[CamadaRegularidadeAggregate]:
+        """Agrega participantes regulares/irregulares por região da camada.
+
+        Mesma métrica do dashboard (tabela consolidado): a RLS das 7 colunas
+        de unidade é aplicada ANTES do GROUP BY, então o resultado respeita o
+        escopo de permissões do usuário.
+
+        ``camada`` seleciona a coluna do GROUP BY (``CAMADA_GROUP_COLUMN``):
+        bairro → ``bairro``, ra → ``regiao_administrativa``, cas/cre/ap →
+        ``id_cas``/``id_cre``/``id_ap``.
+
+        Filtros opcionais aplicados como WHERE no PostgREST (antes do GROUP BY,
+        multiselect — mesmo padrão da Visão Geral): ``status`` (lista) →
+        ``pic_status=in``; ``cohortes`` (lista de ``"YYYY-MM-DD"``) →
+        ``pic_cohort=in``; ``protocolo_id`` troca a fonte para
+        ``endpoint_participante_visao_geral_protocolos`` com a métrica própria
+        do protocolo (``protocolo_regular_*`` — FR-007).
+
+        Sem ``protocolo_id``: ``regular`` soma ``participante_regular_numerador``
+        (Regular + Atenção) e ``den`` soma ``participante_regular_denominador``
+        (total de participantes) — mesma semântica do dashboard. Com
+        ``protocolo_id``: ``total_irregulares`` = ``den - regular`` (a tabela
+        de protocolos não tem coluna de irregulares).
+
+        Cache Redis por camada + usuário + filtros (a resposta varia por RLS
+        e pelos filtros), TTL 30 min — mesmo padrão do dashboard.
+        """
+        group_column = CAMADA_GROUP_COLUMN.get(camada)
+        if group_column is None:
+            raise ValueError(f"Camada territorial desconhecida: {camada!r}")
+
+        cache_key = _make_regularidade_cache_key(
+            camada, user_id, status, cohortes, protocolo_id
+        )
+
+        if not bypass_cache:
+            cached = await self._get_regularidade_from_cache(cache_key)
+            if cached is not None:
+                return cached
+
+        if protocolo_id:
+            table = _PROTOCOLOS_TABLE
+            select = (
+                f"{group_column},"
+                "regular:protocolo_regular_numerador.sum(),"
+                "den:protocolo_regular_denominador.sum()"
+            )
+        else:
+            table = _BAIRROS_TABLE
+            select = (
+                f"{group_column},"
+                "regular:participante_regular_numerador.sum(),"
+                "den:participante_regular_denominador.sum(),"
+                "irreg:participante_irregular_numerador.sum()"
+            )
+
+        async with self._client.with_user_token(user_token):
+            query = self._client.table(table).select(select)
+            query = query.not_.is_(group_column, "null")
+            if protocolo_id:
+                query = query.eq("protocolo_id", protocolo_id)
+            if status:
+                query = query.in_("pic_status", status)
+            if cohortes:
+                query = query.in_("pic_cohort", cohortes)
+            resp = await query.execute()
+
+        rows: list[dict] = resp.data or []
+        if protocolo_id:
+            aggregates = [
+                CamadaRegularidadeAggregate(
+                    regiao=str(row[group_column]),
+                    total_participantes=int(row.get("den") or 0),
+                    total_regulares=int(row.get("regular") or 0),
+                    total_irregulares=(
+                        int(row.get("den") or 0) - int(row.get("regular") or 0)
+                    ),
+                )
+                for row in rows
+            ]
+        else:
+            aggregates = [
+                CamadaRegularidadeAggregate(
+                    regiao=str(row[group_column]),
+                    total_participantes=int(row.get("den") or 0),
+                    total_regulares=int(row.get("regular") or 0),
+                    total_irregulares=int(row.get("irreg") or 0),
+                )
+                for row in rows
+            ]
+
+        await self._set_regularidade_cache(cache_key, aggregates)
+        logger.info(
+            f"[geospatial] regularidade camada={camada!r}: "
+            f"{len(aggregates)} regiões user_id={user_id!r} "
+            f"status={status!r} cohortes={cohortes!r} "
+            f"protocolo={protocolo_id!r}"
+        )
+        return aggregates
+
+    # ------------------------------------------------------------------
+    # IGeospatialRepository — vocabulário de protocolos (fase 3e)
+    # ------------------------------------------------------------------
+
+    async def fetch_protocolos(
+        self,
+        user_token: str | None = None,
+        user_id: str | None = None,
+        bypass_cache: bool = False,
+    ) -> list[ProtocoloOption]:
+        """Distintos protocolos da visão geral de protocolos (RLS respeitada).
+
+        GROUP BY via ``count()`` no select (mesmo padrão do filter-options).
+        Cache Redis por usuário (o conjunto visível varia por RLS).
+        """
+        cache_key = _make_protocolos_cache_key(user_id)
+
+        if not bypass_cache:
+            cached = await self._get_protocolos_from_cache(cache_key)
+            if cached is not None:
+                return cached
+
+        async with self._client.with_user_token(user_token):
+            query = self._client.table(_PROTOCOLOS_TABLE).select(
+                "protocolo_id,protocolo_secretaria,protocolo_descricao,count()"
+            )
+            query = query.not_.is_("protocolo_id", "null")
+            query = query.order("protocolo_secretaria").order("protocolo_id")
+            resp = await query.execute()
+
+        rows: list[dict] = resp.data or []
+        protocolos = [
+            ProtocoloOption(
+                protocolo_id=str(row["protocolo_id"]),
+                protocolo_secretaria=row.get("protocolo_secretaria"),
+                protocolo_descricao=row.get("protocolo_descricao"),
+            )
+            for row in rows
+            if row.get("protocolo_id") is not None
+        ]
+
+        await self._set_protocolos_cache(cache_key, protocolos)
+        logger.info(
+            f"[geospatial] protocolos: {len(protocolos)} user_id={user_id!r}"
+        )
+        return protocolos
+
+    # ------------------------------------------------------------------
+    # IGeospatialRepository — protocolos de uma região (fase 3j)
+    # ------------------------------------------------------------------
+
+    async def fetch_protocolos_por_regiao(
+        self,
+        camada: str,
+        regiao: str,
+        user_token: str | None = None,
+        user_id: str | None = None,
+        bypass_cache: bool = False,
+        status: list[str] | None = None,
+        cohortes: list[str] | None = None,
+    ) -> list[RegiaoProtocoloAggregate]:
+        """Métricas de todos os protocolos numa região (valor RAW da coluna).
+
+        GROUP BY protocolo_id/secretaria/descricao com filtro ``eq`` na coluna
+        da camada — consulta pequena (≤ número de protocolos), uma página.
+        ``total_irregulares`` = den − regular (a tabela de protocolos não tem
+        coluna de irregulares — mesmo padrão do fetch_regularidade_por_camada).
+        """
+        group_column = CAMADA_GROUP_COLUMN.get(camada)
+        if group_column is None:
+            raise ValueError(f"Camada territorial desconhecida: {camada!r}")
+
+        cache_key = _make_protocolos_regiao_cache_key(
+            camada, regiao, user_id, status, cohortes
+        )
+
+        if not bypass_cache:
+            cached = await self._get_protocolos_regiao_from_cache(cache_key)
+            if cached is not None:
+                return cached
+
+        async with self._client.with_user_token(user_token):
+            query = self._client.table(_PROTOCOLOS_TABLE).select(
+                "protocolo_id,protocolo_secretaria,protocolo_descricao,"
+                "regular:protocolo_regular_numerador.sum(),"
+                "den:protocolo_regular_denominador.sum()"
+            )
+            query = query.eq(group_column, regiao)
+            if status:
+                query = query.in_("pic_status", status)
+            if cohortes:
+                query = query.in_("pic_cohort", cohortes)
+            resp = await query.execute()
+
+        protocolos: list[RegiaoProtocoloAggregate] = []
+        for row in resp.data or []:
+            if row.get("protocolo_id") is None:
+                continue
+            den = int(row.get("den") or 0)
+            regular = int(row.get("regular") or 0)
+            protocolos.append(
+                RegiaoProtocoloAggregate(
+                    protocolo_id=str(row["protocolo_id"]),
+                    protocolo_secretaria=row.get("protocolo_secretaria"),
+                    protocolo_descricao=row.get("protocolo_descricao"),
+                    total_participantes=den,
+                    total_regulares=regular,
+                    total_irregulares=den - regular,
+                    taxa_regularidade=(
+                        round(regular / den * 100, 1) if den > 0 else None
+                    ),
+                )
+            )
+
+        await self._set_protocolos_regiao_cache(cache_key, protocolos)
+        logger.info(
+            f"[geospatial] protocolos por região camada={camada!r} "
+            f"regiao={regiao!r}: {len(protocolos)} user_id={user_id!r} "
+            f"status={status!r} cohortes={cohortes!r}"
+        )
+        return protocolos
+
+    # ------------------------------------------------------------------
+    # IGeospatialRepository — média geral de um protocolo (fase 3k)
+    # ------------------------------------------------------------------
+
+    async def fetch_protocolo_geral(
+        self,
+        protocolo_id: str,
+        user_token: str | None = None,
+        user_id: str | None = None,
+        bypass_cache: bool = False,
+        status: list[str] | None = None,
+        cohortes: list[str] | None = None,
+    ) -> RegiaoRegularidadeResumo | None:
+        """Agrega um protocolo em TODAS as regiões (sem filtro de região).
+
+        Consulta de UMA linha (somas do protocolo + filtros); o resultado
+        independe da região, então o cache é compartilhado entre cliques.
+        ``total_irregulares`` = den − regular (padrão do restante).
+        """
+        cache_key = _make_protocolo_geral_cache_key(
+            protocolo_id, user_id, status, cohortes
+        )
+
+        if not bypass_cache:
+            cached = await self._get_protocolo_geral_from_cache(cache_key)
+            if cached is not None:
+                return cached
+
+        async with self._client.with_user_token(user_token):
+            query = self._client.table(_PROTOCOLOS_TABLE).select(
+                "regular:protocolo_regular_numerador.sum(),"
+                "den:protocolo_regular_denominador.sum()"
+            )
+            query = query.eq("protocolo_id", protocolo_id)
+            if status:
+                query = query.in_("pic_status", status)
+            if cohortes:
+                query = query.in_("pic_cohort", cohortes)
+            resp = await query.execute()
+
+        rows = resp.data or []
+        resumo: RegiaoRegularidadeResumo | None = None
+        if rows:
+            row = rows[0]
+            den = int(row.get("den") or 0)
+            regular = int(row.get("regular") or 0)
+            resumo = RegiaoRegularidadeResumo(
+                total_participantes=den,
+                total_regulares=regular,
+                total_irregulares=den - regular,
+                taxa_regularidade=(
+                    round(regular / den * 100, 1) if den > 0 else None
+                ),
+            )
+
+        # Só cacheia resultado não nulo (None não é cacheável sem sentinela;
+        # protocolo sem linhas é caso raro e a consulta é de 1 linha).
+        if resumo is not None:
+            await self._set_protocolo_geral_cache(cache_key, resumo)
+        logger.info(
+            f"[geospatial] protocolo geral {protocolo_id!r}: "
+            f"{'ok' if resumo else 'sem dados'} user_id={user_id!r} "
+            f"status={status!r} cohortes={cohortes!r}"
+        )
+        return resumo
 
     # ------------------------------------------------------------------
     # IGeospatialRepository — per-field filter vocabulary (lazy)
@@ -448,3 +841,169 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             logger.info(f"[geospatial] filter cache SET (TTL {_CACHE_TTL}s)")
         except Exception as exc:
             logger.warning(f"[geospatial] filter cache write error (ignoring): {exc}")
+
+    # ------------------------------------------------------------------
+    # Redis helpers — regularidade por camada
+    # ------------------------------------------------------------------
+
+    async def _get_regularidade_from_cache(
+        self, key: str
+    ) -> list[CamadaRegularidadeAggregate] | None:
+        if self._redis is None:
+            return None
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+            aggregates = [
+                CamadaRegularidadeAggregate.model_validate(item)
+                for item in json.loads(raw)
+            ]
+            logger.info(
+                f"[geospatial] regularidade cache HIT ({len(aggregates)} rows)"
+            )
+            return aggregates
+        except Exception as exc:
+            logger.warning(f"[geospatial] regularidade cache read error (ignoring): {exc}")
+            return None
+
+    async def _set_regularidade_cache(
+        self, key: str, aggregates: list[CamadaRegularidadeAggregate]
+    ) -> None:
+        if self._redis is None:
+            return
+        try:
+            payload = json.dumps(
+                [agg.model_dump(mode="json") for agg in aggregates]
+            )
+            await self._redis.set(key, payload, ex=_REGULARIDADE_CACHE_TTL)
+            logger.info(
+                f"[geospatial] regularidade cache SET "
+                f"(TTL {_REGULARIDADE_CACHE_TTL}s)"
+            )
+        except Exception as exc:
+            logger.warning(f"[geospatial] regularidade cache write error (ignoring): {exc}")
+
+    # ------------------------------------------------------------------
+    # Redis helpers — protocolos
+    # ------------------------------------------------------------------
+
+    async def _get_protocolos_from_cache(self, key: str) -> list[ProtocoloOption] | None:
+        if self._redis is None:
+            return None
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+            protocolos = [
+                ProtocoloOption.model_validate(item) for item in json.loads(raw)
+            ]
+            logger.info(
+                f"[geospatial] protocolos cache HIT ({len(protocolos)} rows)"
+            )
+            return protocolos
+        except Exception as exc:
+            logger.warning(f"[geospatial] protocolos cache read error (ignoring): {exc}")
+            return None
+
+    async def _set_protocolos_cache(
+        self, key: str, protocolos: list[ProtocoloOption]
+    ) -> None:
+        if self._redis is None:
+            return
+        try:
+            payload = json.dumps(
+                [opt.model_dump(mode="json") for opt in protocolos]
+            )
+            await self._redis.set(key, payload, ex=_CACHE_TTL)
+            logger.info(f"[geospatial] protocolos cache SET (TTL {_CACHE_TTL}s)")
+        except Exception as exc:
+            logger.warning(f"[geospatial] protocolos cache write error (ignoring): {exc}")
+
+    # ------------------------------------------------------------------
+    # Redis helpers — protocolos por região
+    # ------------------------------------------------------------------
+
+    async def _get_protocolos_regiao_from_cache(
+        self, key: str
+    ) -> list[RegiaoProtocoloAggregate] | None:
+        if self._redis is None:
+            return None
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+            protocolos = [
+                RegiaoProtocoloAggregate.model_validate(item)
+                for item in json.loads(raw)
+            ]
+            logger.info(
+                f"[geospatial] protocolos por região cache HIT "
+                f"({len(protocolos)} rows)"
+            )
+            return protocolos
+        except Exception as exc:
+            logger.warning(
+                f"[geospatial] protocolos por região cache read error "
+                f"(ignoring): {exc}"
+            )
+            return None
+
+    async def _set_protocolos_regiao_cache(
+        self, key: str, protocolos: list[RegiaoProtocoloAggregate]
+    ) -> None:
+        if self._redis is None:
+            return
+        try:
+            payload = json.dumps(
+                [agg.model_dump(mode="json") for agg in protocolos]
+            )
+            await self._redis.set(key, payload, ex=_REGULARIDADE_CACHE_TTL)
+            logger.info(
+                f"[geospatial] protocolos por região cache SET "
+                f"(TTL {_REGULARIDADE_CACHE_TTL}s)"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[geospatial] protocolos por região cache write error "
+                f"(ignoring): {exc}"
+            )
+
+    # ------------------------------------------------------------------
+    # Redis helpers — média geral do protocolo
+    # ------------------------------------------------------------------
+
+    async def _get_protocolo_geral_from_cache(
+        self, key: str
+    ) -> RegiaoRegularidadeResumo | None:
+        if self._redis is None:
+            return None
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                return None
+            resumo = RegiaoRegularidadeResumo.model_validate(json.loads(raw))
+            logger.info("[geospatial] protocolo geral cache HIT")
+            return resumo
+        except Exception as exc:
+            logger.warning(
+                f"[geospatial] protocolo geral cache read error (ignoring): {exc}"
+            )
+            return None
+
+    async def _set_protocolo_geral_cache(
+        self, key: str, resumo: RegiaoRegularidadeResumo
+    ) -> None:
+        if self._redis is None:
+            return
+        try:
+            payload = json.dumps(resumo.model_dump(mode="json"))
+            await self._redis.set(key, payload, ex=_REGULARIDADE_CACHE_TTL)
+            logger.info(
+                f"[geospatial] protocolo geral cache SET "
+                f"(TTL {_REGULARIDADE_CACHE_TTL}s)"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[geospatial] protocolo geral cache write error (ignoring): {exc}"
+            )

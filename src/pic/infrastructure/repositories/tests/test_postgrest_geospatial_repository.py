@@ -515,6 +515,541 @@ class TestGetFilterVocabulary:
 
 
 # ---------------------------------------------------------------------------
+# Tests: fetch_regularidade_por_camada
+# ---------------------------------------------------------------------------
+
+
+class FakeRegularidadeDataProxy:
+    """Returns canned aggregate rows for the consolidado table."""
+
+    def __init__(self, rows_by_table: dict[str, list[dict]]) -> None:
+        self.rows_by_table = rows_by_table
+        self.requests: list[httpx.Request] = []
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == "keycloak.example":
+            return httpx.Response(
+                200,
+                json={"access_token": "test-token", "expires_in": 3600},
+            )
+        self.requests.append(request)
+        path = request.url.path.lstrip("/")
+        table = path.split(".")[-1]
+        return httpx.Response(
+            200, json=self.rows_by_table.get(table, []), request=request
+        )
+
+
+def _make_regularidade_repo(
+    rows_by_table: dict[str, list[dict]],
+    redis_client=None,
+) -> tuple[PostgrestGeospatialRepository, FakeRegularidadeDataProxy]:
+    fake = FakeRegularidadeDataProxy(rows_by_table)
+    client = PostgrestClient(CONFIG, transport=httpx.MockTransport(fake))
+    return PostgrestGeospatialRepository(client, redis_client=redis_client), fake
+
+
+class TestFetchRegularidadePorCamada:
+    @pytest.mark.asyncio
+    async def test_bairro_aggregates_from_consolidado(self):
+        rows = [
+            {
+                "bairro": "Vargem Grande",
+                "regular": 327,
+                "den": 734,
+                "irreg": 407,
+            },
+        ]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        result = await repo.fetch_regularidade_por_camada("bairro")
+        assert len(result) == 1
+        agg = result[0]
+        assert agg.regiao == "Vargem Grande"
+        assert agg.total_participantes == 734
+        assert agg.total_regulares == 327
+        assert agg.total_irregulares == 407
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 1
+        select = data_reqs[0].url.params.get("select", "")
+        assert "bairro" in select
+
+    @pytest.mark.asyncio
+    async def test_ra_groups_by_regiao_administrativa(self):
+        rows = [
+            {
+                "regiao_administrativa": "3ª Rio Comprido",
+                "regular": 100,
+                "den": 150,
+                "irreg": 50,
+            },
+        ]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        result = await repo.fetch_regularidade_por_camada("ra")
+        assert result[0].regiao == "3ª Rio Comprido"
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        select = data_reqs[0].url.params.get("select", "")
+        assert "regiao_administrativa" in select
+        params = dict(data_reqs[0].url.params)
+        assert params.get("regiao_administrativa") == "not.is.null"
+
+    @pytest.mark.asyncio
+    async def test_unknown_camada_raises_value_error(self):
+        repo, _ = _make_regularidade_repo({})
+        with pytest.raises(ValueError, match="desconhecida"):
+            await repo.fetch_regularidade_por_camada("municipio")
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_writes_to_redis(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        redis = _make_redis(None)
+        repo, _ = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows},
+            redis_client=redis,
+        )
+        await repo.fetch_regularidade_por_camada("bairro", user_id="cpf")
+        redis.set.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_postgrest(self):
+        cached = [
+            {
+                "regiao": "Centro",
+                "total_participantes": 2,
+                "total_regulares": 1,
+                "total_irregulares": 1,
+            }
+        ]
+        redis = _make_redis(cached)
+        repo, fake = _make_regularidade_repo({}, redis_client=redis)
+        result = await repo.fetch_regularidade_por_camada("bairro", user_id="cpf")
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 0
+        assert result[0].regiao == "Centro"
+
+    @pytest.mark.asyncio
+    async def test_bypass_cache_still_fetches(self):
+        cached = [
+            {
+                "regiao": "Centro",
+                "total_participantes": 2,
+                "total_regulares": 1,
+                "total_irregulares": 1,
+            }
+        ]
+        redis = _make_redis(cached)
+        repo, fake = _make_regularidade_repo(
+            {
+                "endpoint_participante_visao_geral_consolidado": [
+                    {"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}
+                ]
+            },
+            redis_client=redis,
+        )
+        await repo.fetch_regularidade_por_camada(
+            "bairro", user_id="cpf", bypass_cache=True
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) >= 1
+
+    @pytest.mark.asyncio
+    async def test_requests_carry_user_token(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada(
+            "bairro", user_token="user-jwt-789"
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        for req in data_reqs:
+            assert req.headers.get("authorization") == "Bearer user-jwt-789"
+
+    @pytest.mark.asyncio
+    async def test_status_multiselect_filter_applied(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada("bairro", status=["Ativo"])
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = dict(data_reqs[0].url.params)
+        assert params.get("pic_status") == "in.(Ativo)"
+
+    @pytest.mark.asyncio
+    async def test_cohortes_multiselect_filter_applied(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada(
+            "bairro", cohortes=["2025-03-01", "2026-07-01"]
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = data_reqs[0].url.params
+        assert params.get_list("pic_cohort") == [
+            "in.(2025-03-01,2026-07-01)"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_cohorte_unico(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada(
+            "bairro", cohortes=["2025-03-01"]
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = data_reqs[0].url.params
+        assert params.get_list("pic_cohort") == ["in.(2025-03-01)"]
+
+    @pytest.mark.asyncio
+    async def test_protocolo_id_troca_tabela_e_metrica(self):
+        rows = [
+            {
+                "bairro": "Vargem Grande",
+                "regular": 200,
+                "den": 300,
+            }
+        ]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows}
+        )
+        result = await repo.fetch_regularidade_por_camada(
+            "bairro", protocolo_id="sms_vacinacao_pentavalente"
+        )
+        assert len(result) == 1
+        agg = result[0]
+        assert agg.total_participantes == 300
+        assert agg.total_regulares == 200
+        # A tabela de protocolos não tem coluna de irregulares → den - regular
+        assert agg.total_irregulares == 100
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = data_reqs[0].url.params
+        assert params.get("protocolo_id") == "eq.sms_vacinacao_pentavalente"
+        assert "protocolo_regular_numerador.sum()" in params.get("select", "")
+
+    @pytest.mark.asyncio
+    async def test_sem_protocolo_usa_consolidado(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada("bairro")
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        path = data_reqs[0].url.path
+        assert "visao_geral_consolidado" in path
+        assert "protocolo_id" not in data_reqs[0].url.params
+
+
+class TestFetchProtocolos:
+    @pytest.mark.asyncio
+    async def test_retorna_distintos_da_visao_geral_protocolos(self):
+        rows = [
+            {
+                "protocolo_id": "sme_frequencia_escolar",
+                "protocolo_secretaria": "SME",
+                "protocolo_descricao": "Frequência escolar",
+                "count": 100,
+            },
+            {
+                "protocolo_id": "sms_vacinacao_pentavalente",
+                "protocolo_secretaria": "SMS",
+                "protocolo_descricao": "Vacinação",
+                "count": 50,
+            },
+        ]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows}
+        )
+        result = await repo.fetch_protocolos()
+        assert len(result) == 2
+        assert result[0].protocolo_id == "sme_frequencia_escolar"
+        assert result[1].protocolo_secretaria == "SMS"
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        path = data_reqs[0].url.path
+        assert "visao_geral_protocolos" in path
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_postgrest(self):
+        cached = [
+            {
+                "protocolo_id": "sme_frequencia_escolar",
+                "protocolo_secretaria": "SME",
+                "protocolo_descricao": "Frequência escolar",
+            }
+        ]
+        redis = _make_redis(cached)
+        repo, fake = _make_regularidade_repo({}, redis_client=redis)
+        result = await repo.fetch_protocolos(user_id="cpf")
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 0
+        assert result[0].protocolo_id == "sme_frequencia_escolar"
+
+
+class TestFetchProtocolosPorRegiao:
+    @pytest.mark.asyncio
+    async def test_filtra_pela_coluna_da_camada_e_agrega(self):
+        rows = [
+            {
+                "protocolo_id": "sms_vacinacao_pentavalente",
+                "protocolo_secretaria": "SMS",
+                "protocolo_descricao": "Vacinação",
+                "regular": 80,
+                "den": 100,
+            },
+            {
+                "protocolo_id": "sme_frequencia_escolar",
+                "protocolo_secretaria": "SME",
+                "protocolo_descricao": "Frequência escolar",
+                "regular": 0,
+                "den": 0,
+            },
+        ]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows}
+        )
+        result = await repo.fetch_protocolos_por_regiao(
+            camada="bairro",
+            regiao="Centro",
+            user_id="cpf",
+            status=["Ativo"],
+        )
+        assert len(result) == 2
+        primeiro = result[0]
+        assert primeiro.protocolo_id == "sms_vacinacao_pentavalente"
+        assert primeiro.total_participantes == 100
+        assert primeiro.total_regulares == 80
+        assert primeiro.total_irregulares == 20  # den - regular
+        assert primeiro.taxa_regularidade == 80.0
+        # Sem participantes → sem taxa (protocolo sem dados na região)
+        assert result[1].taxa_regularidade is None
+
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 1
+        path = data_reqs[0].url.path
+        assert "visao_geral_protocolos" in path
+        params = dict(data_reqs[0].url.params)
+        assert params.get("bairro") == "eq.Centro"
+        assert params.get("pic_status") == "in.(Ativo)"
+        select = params.get("select", "")
+        assert "protocolo_id" in select
+        assert "protocolo_regular_numerador" in select
+        assert "protocolo_regular_denominador" in select
+
+    @pytest.mark.asyncio
+    async def test_ra_usa_coluna_regiao_administrativa(self):
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": []}
+        )
+        await repo.fetch_protocolos_por_regiao(
+            camada="ra", regiao="3ª Rio Comprido", cohortes=["2025-03-01"]
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = dict(data_reqs[0].url.params)
+        assert params.get("regiao_administrativa") == "eq.3ª Rio Comprido"
+        assert params.get("pic_cohort") == "in.(2025-03-01)"
+
+    @pytest.mark.asyncio
+    async def test_unknown_camada_raises_value_error(self):
+        repo, _ = _make_regularidade_repo({})
+        with pytest.raises(ValueError, match="desconhecida"):
+            await repo.fetch_protocolos_por_regiao(camada="municipio", regiao="X")
+
+    @pytest.mark.asyncio
+    async def test_ignora_linhas_sem_protocolo_id(self):
+        rows = [
+            {"protocolo_id": None, "regular": 1, "den": 1},
+            {
+                "protocolo_id": "sms_vacinacao_pentavalente",
+                "protocolo_secretaria": "SMS",
+                "protocolo_descricao": "Vacinação",
+                "regular": 5,
+                "den": 10,
+            },
+        ]
+        repo, _ = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows}
+        )
+        result = await repo.fetch_protocolos_por_regiao(camada="bairro", regiao="X")
+        assert [p.protocolo_id for p in result] == ["sms_vacinacao_pentavalente"]
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_writes_to_redis(self):
+        rows = [
+            {
+                "protocolo_id": "sms_vacinacao_pentavalente",
+                "protocolo_secretaria": "SMS",
+                "protocolo_descricao": "Vacinação",
+                "regular": 5,
+                "den": 10,
+            }
+        ]
+        redis = _make_redis(None)
+        repo, _ = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows},
+            redis_client=redis,
+        )
+        await repo.fetch_protocolos_por_regiao(
+            camada="bairro", regiao="Centro", user_id="cpf"
+        )
+        redis.set.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_postgrest(self):
+        cached = [
+            {
+                "protocolo_id": "sms_vacinacao_pentavalente",
+                "protocolo_secretaria": "SMS",
+                "protocolo_descricao": "Vacinação",
+                "total_participantes": 10,
+                "total_regulares": 5,
+                "total_irregulares": 5,
+                "taxa_regularidade": 50.0,
+            }
+        ]
+        redis = _make_redis(cached)
+        repo, fake = _make_regularidade_repo({}, redis_client=redis)
+        result = await repo.fetch_protocolos_por_regiao(
+            camada="bairro", regiao="Centro", user_id="cpf"
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 0
+        assert result[0].protocolo_id == "sms_vacinacao_pentavalente"
+        assert result[0].taxa_regularidade == 50.0
+
+
+class TestFetchProtocoloGeral:
+    @pytest.mark.asyncio
+    async def test_agrega_protocolo_sem_filtro_de_regiao(self):
+        rows = [{"regular": 996, "den": 1000}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows}
+        )
+        result = await repo.fetch_protocolo_geral(
+            protocolo_id="smas_acesso_alimentacao",
+            user_id="cpf",
+            status=["Ativo"],
+        )
+        assert result is not None
+        assert result.total_participantes == 1000
+        assert result.total_regulares == 996
+        assert result.total_irregulares == 4  # den - regular
+        assert result.taxa_regularidade == 99.6
+
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 1
+        params = dict(data_reqs[0].url.params)
+        assert params.get("protocolo_id") == "eq.smas_acesso_alimentacao"
+        assert params.get("pic_status") == "in.(Ativo)"
+        # Sem coluna de região na query
+        for col in ("bairro", "regiao_administrativa", "id_cas", "id_cre", "id_ap"):
+            assert col not in params
+
+    @pytest.mark.asyncio
+    async def test_sem_linhas_retorna_none(self):
+        repo, _ = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": []}
+        )
+        result = await repo.fetch_protocolo_geral(protocolo_id="inexistente")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_postgrest(self):
+        cached = {
+            "total_participantes": 1000,
+            "total_regulares": 996,
+            "total_irregulares": 4,
+            "taxa_regularidade": 99.6,
+        }
+        redis = _make_redis(cached)
+        repo, fake = _make_regularidade_repo({}, redis_client=redis)
+        result = await repo.fetch_protocolo_geral(
+            protocolo_id="smas_acesso_alimentacao", user_id="cpf"
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        assert len(data_reqs) == 0
+        assert result is not None
+        assert result.taxa_regularidade == 99.6
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_writes_to_redis(self):
+        rows = [{"regular": 1, "den": 2}]
+        redis = _make_redis(None)
+        repo, _ = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows},
+            redis_client=redis,
+        )
+        await repo.fetch_protocolo_geral(
+            protocolo_id="smas_acesso_alimentacao", user_id="cpf"
+        )
+        redis.set.assert_awaited_once()
+
+    def test_cache_key_depende_de_protocolo_e_filtros(self):
+        from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
+            _make_protocolo_geral_cache_key,
+        )
+
+        base = _make_protocolo_geral_cache_key("p1", "u")
+        assert base != _make_protocolo_geral_cache_key("p2", "u")
+        assert base != _make_protocolo_geral_cache_key("p1", "u2")
+        assert base != _make_protocolo_geral_cache_key("p1", "u", status=["Ativo"])
+        # Ordem das listas não altera a chave
+        assert _make_protocolo_geral_cache_key(
+            "p1", "u", cohortes=["a", "b"]
+        ) == _make_protocolo_geral_cache_key("p1", "u", cohortes=["b", "a"])
+
+
+class TestRegularidadeCacheKey:
+    def test_key_depends_on_camada_and_user(self):
+        from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
+            _make_regularidade_cache_key,
+        )
+
+        assert _make_regularidade_cache_key("bairro", "a") != _make_regularidade_cache_key(
+            "ra", "a"
+        )
+        assert _make_regularidade_cache_key("bairro", "a") != _make_regularidade_cache_key(
+            "bairro", "b"
+        )
+        assert _make_regularidade_cache_key("bairro", "a") == _make_regularidade_cache_key(
+            "bairro", "a"
+        )
+
+    def test_key_depends_on_filters(self):
+        from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
+            _make_regularidade_cache_key,
+        )
+
+        base = _make_regularidade_cache_key("bairro", "a")
+        assert base != _make_regularidade_cache_key("bairro", "a", status=["Ativo"])
+        assert base != _make_regularidade_cache_key(
+            "bairro", "a", cohortes=["2025-03-01"]
+        )
+        assert base != _make_regularidade_cache_key(
+            "bairro", "a", cohortes=["2025-03-01", "2025-04-01"]
+        )
+        assert base != _make_regularidade_cache_key(
+            "bairro", "a", protocolo_id="sms_vacinacao_pentavalente"
+        )
+        assert _make_regularidade_cache_key(
+            "bairro", "a", status=["Ativo"], cohortes=["2025-03-01"]
+        ) == _make_regularidade_cache_key(
+            "bairro", "a", status=["Ativo"], cohortes=["2025-03-01"]
+        )
+        # Ordem das listas não altera a chave (multiselect)
+        assert _make_regularidade_cache_key(
+            "bairro", "a", cohortes=["2025-03-01", "2025-04-01"]
+        ) == _make_regularidade_cache_key(
+            "bairro", "a", cohortes=["2025-04-01", "2025-03-01"]
+        )
+
+
+# ---------------------------------------------------------------------------
 # Tests: cache key helpers
 # ---------------------------------------------------------------------------
 
