@@ -4,6 +4,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertCircle,
+	Activity,
 	BarChart3,
 	Loader2,
 	RefreshCw,
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { AcordoResultadosTab } from "@/app/components/AcordoResultadosTab";
 import { DashboardHeader } from "@/app/components/DashboardHeader";
 import { Footer } from "@/app/components/Footer";
+import { MonitoramentoTab } from "@/app/components/MonitoramentoTab";
 import { OverviewTab } from "@/app/components/OverviewTab";
 import { ProfessionalTab } from "@/app/components/ProfessionalTab";
 import { TermsDialog } from "@/app/components/TermsDialog";
@@ -317,7 +319,7 @@ export function DashboardClient({
 	});
 
 	const [activeTab, setActiveTab] = useState<
-		"overview" | "acordo" | "professional"
+		"overview" | "acordo" | "professional" | "mapas"
 	>(() => {
 		if (typeof window === "undefined" || isFreshLogin) return "professional";
 		try {
@@ -989,13 +991,15 @@ export function DashboardClient({
 					onValueChange={(value) => {
 						// OTIMIZAÇÃO: Usar startTransition para tornar a troca de abas não-bloqueante
 						startTransition(() => {
-							setActiveTab(value as "overview" | "acordo" | "professional");
+							setActiveTab(
+								value as "overview" | "acordo" | "professional" | "mapas",
+							);
 						});
 					}}
 					className="w-full"
 				>
 					<TabsList
-						className={`grid w-full ${canViewDashboard ? "grid-cols-3" : "grid-cols-1"} mb-8 h-auto p-1 bg-muted rounded-md`}
+						className={`grid w-full ${canViewDashboard ? "grid-cols-4" : "grid-cols-1"} mb-8 h-auto p-1 bg-muted rounded-md`}
 					>
 						{canViewDashboard && (
 							<TabsTrigger
@@ -1013,6 +1017,15 @@ export function DashboardClient({
 							>
 								<Target className="h-4 w-4 mr-2" />
 								Acordo de Resultados
+							</TabsTrigger>
+						)}
+						{canViewDashboard && (
+							<TabsTrigger
+								value="mapas"
+								className="rounded-sm px-3 py-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm font-medium transition-all"
+							>
+								<Activity className="h-4 w-4 mr-2" />
+								Monitoramento
 							</TabsTrigger>
 						)}
 						<TabsTrigger
@@ -1043,6 +1056,12 @@ export function DashboardClient({
 								loading={acordoFetching}
 								onRefresh={handleAcordoRefresh}
 							/>
+						</TabsContent>
+					)}
+
+					{canViewDashboard && activeTab === "mapas" && (
+						<TabsContent value="mapas" className="mt-6">
+							<MonitoramentoTab />
 						</TabsContent>
 					)}
 
