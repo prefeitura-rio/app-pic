@@ -10,14 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import { Check, ChevronsUpDown, X } from "lucide-react";
+import { Check, ChevronsUpDown, Search, X } from "lucide-react";
 import { cn } from "@/app/utils/utils";
 
 interface IdMultiSelectProps {
@@ -134,40 +127,58 @@ export function IdMultiSelect({
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-full p-0" align="start">
-            <Command>
-              <CommandInput
-                placeholder="Buscar..."
-                value={search}
-                onValueChange={setSearch}
-              />
-              <CommandEmpty>Nenhum resultado encontrado</CommandEmpty>
-              <CommandGroup className="max-h-64 overflow-auto">
+          <PopoverContent
+            className="w-full p-0"
+            align="start"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+          >
+            {/* Sem cmdk: o autofocus/scroll do Command era o que fazia a página
+                rolar ao abrir o dropdown (conteúdo portalado no fim do body
+                antes do posicionamento). Input simples, com a mesma aparência. */}
+            <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground">
+              <div className="flex items-center border-b px-3">
+                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                <input
+                  placeholder="Buscar..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              {filteredOptions.length === 0 && (
+                <div className="py-6 text-center text-sm">
+                  Nenhum resultado encontrado
+                </div>
+              )}
+              <div className="max-h-64 overflow-auto p-1 text-foreground">
                 {filteredOptions.map((option) => {
-                  const selected = isSelected(option);
+                  const optionIsSelected = isSelected(option);
                   return (
-                    <CommandItem
+                    <div
                       key={option.id}
-                      value={option.id}
-                      onSelect={() => toggleOption(option)}
+                      className={cn(
+                        "flex items-center cursor-pointer px-2 py-1.5 text-sm rounded-sm mx-1 hover:bg-accent hover:text-accent-foreground",
+                        optionIsSelected && "bg-accent/50"
+                      )}
+                      onClick={() => toggleOption(option)}
                     >
                       <Check
                         className={cn(
-                          "mr-2 h-4 w-4",
-                          selected ? "opacity-100" : "opacity-0"
+                          "mr-2 h-4 w-4 shrink-0",
+                          optionIsSelected ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{option.nome}</span>
-                        <span className="text-xs text-muted-foreground">
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium truncate">{option.nome}</span>
+                        <span className="text-xs text-muted-foreground truncate">
                           {option.id}
                         </span>
                       </div>
-                    </CommandItem>
+                    </div>
                   );
                 })}
-              </CommandGroup>
-            </Command>
+              </div>
+            </div>
           </PopoverContent>
         </Popover>
       )}
