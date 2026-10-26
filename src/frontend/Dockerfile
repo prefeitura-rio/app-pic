@@ -1,5 +1,5 @@
 # Base image
-FROM node:23-alpine AS base
+FROM node:22.23.4-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
