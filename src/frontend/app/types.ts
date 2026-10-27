@@ -423,6 +423,18 @@ export interface TempoMedioIrregularidade {
 }
 
 /**
+ * Tempo médio de irregularidade por protocolo (ranking horizontal)
+ */
+export interface TempoMedioIrregularidadeProtocolo {
+	protocolo_id: string; // ex.: "sms_visitas_domiciliares_infantil"
+	protocolo_descricao: string; // Label legível no gráfico
+	protocolo_secretaria: string; // "SMAS", "SME" ou "SMS" (cor da barra)
+	tempo_medio_dias: number; // Tempo médio de irregularidade em dias
+	total_irregulares: number; // Quantidade total de irregularidades do protocolo
+	total_irregulares_abertos: number; // Quantidade ainda em aberto
+}
+
+/**
  * Ponto de taxa de resolução mensal (gráfico de linha)
  */
 export interface TaxaResolucaoMensalPoint {
@@ -469,10 +481,11 @@ export interface Dashboard {
 	distribuicao_motivo_saida: DistribuicaoMotivoSaida[];
 
 	// =========================================================================
-	// SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma)
+	// SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma + ranking por protocolo)
 	// =========================================================================
 	tempo_medio_irregularidade: TempoMedioIrregularidade[];
 	distribuicao_tempo_irregularidade: DistribuicaoTempoIrregularidade[];
+	tempo_medio_irregularidade_protocolo: TempoMedioIrregularidadeProtocolo[];
 
 	// =========================================================================
 	// SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)

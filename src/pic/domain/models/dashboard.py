@@ -38,6 +38,15 @@ class TempoMedioIrregularidade(BaseModel):
     total_irregulares: int = 0
 
 
+class TempoMedioIrregularidadeProtocolo(BaseModel):
+    protocolo_id: str
+    protocolo_descricao: str = ""
+    protocolo_secretaria: str = ""
+    tempo_medio_dias: float = 0.0
+    total_irregulares: int = 0
+    total_irregulares_abertos: int = 0
+
+
 class TaxaResolucaoMensalPoint(BaseModel):
     mes: str
     mes_label: str = ""
@@ -99,6 +108,7 @@ class Dashboard(BaseModel):
     distribuicao_motivo_saida: list[DistribuicaoMotivoSaida] = []
     tempo_medio_irregularidade: list[TempoMedioIrregularidade] = []
     distribuicao_tempo_irregularidade: list[DistribuicaoTempoIrregularidade] = []
+    tempo_medio_irregularidade_protocolo: list[TempoMedioIrregularidadeProtocolo] = []
     taxa_resolucao_mensal: list[TaxaResolucaoMensalPoint] = []
     disparos: DisparosDashboard | None = None
     data_atualizacao: datetime | None = None

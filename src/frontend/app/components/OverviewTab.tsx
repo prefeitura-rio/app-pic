@@ -3,6 +3,8 @@ import {
 	AlertTriangle,
 	BookOpen,
 	CheckCircle,
+	ChevronRight,
+	ChevronUp,
 	Clock,
 	Heart,
 	Home,
@@ -11,7 +13,7 @@ import {
 	TrendingUp,
 	Users,
 } from "lucide-react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import {
 	Bar,
 	BarChart,
@@ -34,6 +36,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
 import type {
 	Dashboard,
 	DashboardFilterValues,
@@ -53,6 +56,48 @@ const PIE_COLORS = [
 	"#06b6d4", // cyan
 	"#84cc16", // lime
 ];
+
+// Cores por secretaria (alinhadas aos cards de tempo médio e ao gráfico de linha)
+const SECRETARIA_LABELS: Record<string, string> = {
+	SMAS: "Assistência Social",
+	SME: "Educação",
+	SMS: "Saúde",
+};
+
+// Estilo dos cards por dimensão (ícone + cores) — reutilizado nos mini-cards
+// de protocolo via protocolo_secretaria (SMAS/SME/SMS, caixa baixa para lookup)
+const SECRETARIA_CARD_STYLE: Record<
+	string,
+	{ icon: typeof Activity; color: string; bgClass: string }
+> = {
+	geral: {
+		icon: Activity,
+		color: "text-primary",
+		bgClass: "bg-card border-border",
+	},
+	smas: {
+		icon: Home,
+		color: "text-success",
+		bgClass: "bg-success/10",
+	},
+	sme: {
+		icon: BookOpen,
+		color: "text-warning",
+		bgClass: "bg-warning/10",
+	},
+	sms: {
+		icon: Heart,
+		color: "text-destructive",
+		bgClass: "bg-destructive/10",
+	},
+};
+
+// Cor dos ícones dos cabeçalhos de dimensão (alinhada à Seção 2 do dashboard)
+const DIMENSAO_HEADER_COLOR: Record<string, string> = {
+	SMAS: "text-green-600",
+	SME: "text-amber-600",
+	SMS: "text-red-600",
+};
 
 interface OverviewTabProps {
 	data: Dashboard | null;
@@ -75,6 +120,21 @@ const OverviewTabComponent = ({
 	onRefresh,
 	loading = false,
 }: OverviewTabProps) => {
+	const selectedSecretaria = filters.secretaria;
+
+	// Secretaria cujos protocolos estão abertos em "Ver detalhes" (null = cards padrão)
+	const [detalhesSecretaria, setDetalhesSecretaria] = useState<string | null>(
+		null,
+	);
+
+	// Ao trocar o filtro de secretaria, volta para a visão padrão dos cards
+	// (ajuste de estado durante o render — padrão recomendado pelo React)
+	const [ultimaSecretaria, setUltimaSecretaria] = useState(selectedSecretaria);
+	if (ultimaSecretaria !== selectedSecretaria) {
+		setUltimaSecretaria(selectedSecretaria);
+		setDetalhesSecretaria(null);
+	}
+
 	/**
 	 * Download dos dados do dashboard como JSON
 	 * Nome do arquivo: visao_geral_YYYY_MM_DD_HH_MM_SS.json
@@ -133,7 +193,6 @@ const OverviewTabComponent = ({
 	};
 
 	// Determinar quais seções mostrar baseado no filtro de secretaria
-	const selectedSecretaria = filters.secretaria;
 	const showSMAS = !selectedSecretaria || selectedSecretaria === "SMAS";
 	const showSME = !selectedSecretaria || selectedSecretaria === "SME";
 	const showSMS = !selectedSecretaria || selectedSecretaria === "SMS";
@@ -343,61 +402,59 @@ const OverviewTabComponent = ({
 						{data.tempo_medio_irregularidade
 							.filter((item) => {
 								if (item.secretaria === "geral") return true;
-								if (item.secretaria === "smas" && showSMAS) return true;
-								if (item.secretaria === "sme" && showSME) return true;
-								if (item.secretaria === "sms" && showSMS) return true;
+								if (item.secretaria === "smas" && showSMAS)
+									return true;
+								if (item.secretaria === "sme" && showSME)
+									return true;
+								if (item.secretaria === "sms" && showSMS)
+									return true;
 								return false;
 							})
 							.map((item) => {
-								const iconMap: Record<
-									string,
-									{ icon: typeof Activity; color: string; bgClass: string }
-								> = {
-									geral: {
-										icon: Activity,
-										color: "text-primary",
-										bgClass: "bg-card border-border",
-									},
-									smas: {
-										icon: Home,
-										color: "text-success",
-										bgClass: "bg-success/10",
-									},
-									sme: {
-										icon: BookOpen,
-										color: "text-warning",
-										bgClass: "bg-warning/10",
-									},
-									sms: {
-										icon: Heart,
-										color: "text-destructive",
-										bgClass: "bg-destructive/10",
-									},
-								};
-								const {
-									icon: IconComponent,
-									color,
-									bgClass,
-								} = iconMap[item.secretaria] || iconMap.geral;
+								const style =
+									SECRETARIA_CARD_STYLE[item.secretaria] ??
+									SECRETARIA_CARD_STYLE.geral;
+								const IconComponent = style.icon;
 
 								return (
 									<Card
 										key={item.secretaria}
-										className={`relative border-2 ${bgClass}`}
+										className={`relative border-2 ${style.bgClass}`}
 									>
 										<LoadingOverlay show={loading} />
 										<CardContent className="p-6">
 											<div className="flex items-center gap-2 mb-2">
-												<IconComponent className={`h-4 w-4 ${color}`} />
-												<p className="text-sm font-medium text-muted-foreground">
+												<IconComponent
+													className={`h-4 w-4 shrink-0 ${style.color}`}
+												/>
+												<p className="text-sm font-medium text-muted-foreground min-w-0 truncate">
 													{item.secretaria_label}
 												</p>
+												{!(item.secretaria === "geral" &&
+													selectedSecretaria) && (
+													<Button
+														variant="ghost"
+														size="sm"
+														className="-my-1.5 -mr-2 ml-auto h-6 shrink-0 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+														onClick={() =>
+															setDetalhesSecretaria(
+																item.secretaria,
+															)
+														}
+													>
+														Ver detalhes
+														<ChevronRight className="ml-0.5 h-3.5 w-3.5" />
+													</Button>
+												)}
 											</div>
 											<p className="text-3xl font-bold text-foreground mb-1">
 												{item.tempo_medio_dias.toFixed(0)} dias
 											</p>
 											<p className="text-xs text-muted-foreground">
-												{item.total_irregulares.toLocaleString("pt-BR")} alertas
+												{item.total_irregulares.toLocaleString(
+													"pt-BR",
+												)}{" "}
+												alertas
 											</p>
 										</CardContent>
 									</Card>
@@ -423,6 +480,113 @@ const OverviewTabComponent = ({
 						</Card>
 					</div>
 				)}
+
+				{/* Painel de protocolos — abre abaixo dos cards por secretaria */}
+				{detalhesSecretaria !== null &&
+					(() => {
+						const isGeral = detalhesSecretaria === "geral";
+						const titulo = isGeral
+							? "Todos os protocolos"
+							: SECRETARIA_LABELS[
+									detalhesSecretaria.toUpperCase()
+								] ?? detalhesSecretaria;
+						const protocolos = (
+							data.tempo_medio_irregularidade_protocolo ?? []
+						).filter(
+							(p) =>
+								isGeral ||
+								p.protocolo_secretaria ===
+									detalhesSecretaria.toUpperCase(),
+						);
+						return (
+							<div className="space-y-4 pt-2">
+								<div className="flex items-center gap-3">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setDetalhesSecretaria(null)}
+									>
+										<ChevronUp className="mr-1 h-4 w-4" />
+										Ocultar protocolos
+									</Button>
+									<p className="text-sm font-medium text-muted-foreground">
+										Tempo médio por protocolo — {titulo}
+									</p>
+								</div>
+								{protocolos.length > 0 ? (
+									<div className="space-y-6">
+										{(["SMAS", "SME", "SMS"] as const)
+											.map((sec) => ({
+												sec,
+												items: protocolos.filter(
+													(p) =>
+														p.protocolo_secretaria === sec,
+												),
+											}))
+											.filter(({ items }) => items.length > 0)
+											.map(({ sec, items }) => {
+												const styleKey = sec.toLowerCase();
+												const style =
+													SECRETARIA_CARD_STYLE[styleKey] ??
+													SECRETARIA_CARD_STYLE.geral;
+												const IconComponent = style.icon;
+												return (
+													<div key={sec} className="space-y-3">
+														<h3 className="text-lg font-bold flex items-center gap-2">
+															<IconComponent
+																className={`h-5 w-5 ${DIMENSAO_HEADER_COLOR[sec] ?? "text-muted-foreground"}`}
+															/>
+															Dimensão{" "}
+															{SECRETARIA_LABELS[sec] ?? sec}
+														</h3>
+														<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+															{items.map((p) => (
+																<Card
+																	key={p.protocolo_id}
+																	className={`relative border-2 ${style.bgClass}`}
+																>
+																	<LoadingOverlay show={loading} />
+																	<CardContent className="p-4">
+																		<p className="text-sm font-semibold line-clamp-2 min-h-[2.5rem] mb-2">
+																			{p.protocolo_descricao ||
+																				p.protocolo_id}
+																		</p>
+																		<p className="text-2xl font-bold text-foreground mb-1">
+																			{p.tempo_medio_dias.toFixed(0)}{" "}
+																			dias
+																		</p>
+																		<p className="text-xs text-muted-foreground">
+																			{p.total_irregulares.toLocaleString(
+																				"pt-BR",
+																			)}{" "}
+																			irregularidades ·{" "}
+																			{p.total_irregulares_abertos.toLocaleString(
+																				"pt-BR",
+																			)}{" "}
+																			em aberto
+																		</p>
+																	</CardContent>
+																</Card>
+															))}
+														</div>
+													</div>
+												);
+											})}
+									</div>
+								) : (
+									<div className="flex items-center justify-center h-[200px] text-muted-foreground">
+										<div className="text-center">
+											<Clock className="h-10 w-10 mx-auto mb-3 opacity-50" />
+											<p className="text-sm">
+												Sem dados de tempo médio por protocolo
+												para {titulo}
+											</p>
+										</div>
+									</div>
+								)}
+							</div>
+						);
+					})()}
 
 				{/* Gráficos de Análise de Tempo - Grid 2x1 */}
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -31,6 +31,7 @@ from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
     _TABLE_RESOLUCAO,
     _TABLE_SERIES,
     _TABLE_TEMPO,
+    _TABLE_TEMPO_PROTOCOLO,
     PostgrestDashboardRepository,
     _make_cache_key,
 )
@@ -64,6 +65,7 @@ class FakeDataProxy:
         self.rows_by_table = rows_by_table
         self.requests: list[httpx.Request] = []
         self.disparos_error_status: int | None = None
+        self.error_tables: set[str] = set()
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "keycloak.example":
@@ -76,6 +78,9 @@ class FakeDataProxy:
         # Extract table name from path
         path = request.url.path.lstrip("/")
         table = path.split(".")[-1]  # Handle schema.table format
+
+        if table in self.error_tables:
+            return httpx.Response(500, json={"message": "boom"}, request=request)
 
         # Special handling for disparos (5 different aggregate responses)
         if table == _TABLE_DISPAROS:
@@ -154,9 +159,9 @@ def _make_repo(
 # Mock de dados AGREGADOS (como viria do PostgREST com .sum())
 CONSOLIDADO_TOTALS = [
     {
-        "regular_num": 10,       # sum(regular_numerador) = 3+7
-        "regular_den": 14,       # sum(regular_denominador) = 4+10
-        "irregular_num": 2,      # sum(irregular_numerador) = 1+1
+        "regular_num": 10,  # sum(regular_numerador) = 3+7
+        "regular_den": 14,  # sum(regular_denominador) = 4+10
+        "irregular_num": 2,  # sum(irregular_numerador) = 1+1
     }
 ]
 
@@ -186,7 +191,7 @@ PROTOCOLOS_ROWS = [
         "protocolo_id": "p_sms",
         "protocolo_descricao": "Vacinação",
         "protocolo_secretaria": "SMS",
-        "numerador": 8,   # sum(protocolo_regular_numerador) = 6+2
+        "numerador": 8,  # sum(protocolo_regular_numerador) = 6+2
         "denominador": 15,  # sum(protocolo_regular_denominador) = 10+5
     },
 ]
@@ -194,10 +199,30 @@ PROTOCOLOS_ROWS = [
 # Mock de dados AGREGADOS por data e tipo
 SERIES_ROWS = [
     # alias:coluna.sum() → PostgREST retorna a chave como o alias definido
-    {"serie_tipo": "geral", "data_referencia_mensal": "2025-01-01", "numerador": 10, "denominador": 14},
-    {"serie_tipo": "sms",  "data_referencia_mensal": "2025-01-01", "numerador": 5,  "denominador": 7},
-    {"serie_tipo": "sme",  "data_referencia_mensal": "2025-01-01", "numerador": 3,  "denominador": 5},
-    {"serie_tipo": "smas", "data_referencia_mensal": "2025-01-01", "numerador": 2,  "denominador": 2},
+    {
+        "serie_tipo": "geral",
+        "data_referencia_mensal": "2025-01-01",
+        "numerador": 10,
+        "denominador": 14,
+    },
+    {
+        "serie_tipo": "sms",
+        "data_referencia_mensal": "2025-01-01",
+        "numerador": 5,
+        "denominador": 7,
+    },
+    {
+        "serie_tipo": "sme",
+        "data_referencia_mensal": "2025-01-01",
+        "numerador": 3,
+        "denominador": 5,
+    },
+    {
+        "serie_tipo": "smas",
+        "data_referencia_mensal": "2025-01-01",
+        "numerador": 2,
+        "denominador": 2,
+    },
 ]
 
 # Mock de dados AGREGADOS (faixas pré-calculadas no banco, PostgREST aplica SUM/AVG)
@@ -205,35 +230,66 @@ SERIES_ROWS = [
 TEMPO_ROWS = [
     {
         # SMAS: média 15 dias, 2 pessoas na faixa 0-30
-        "smas_media":          15.0,
-        "smas_faixa_0_30":     2,
-        "smas_faixa_31_60":    0,
-        "smas_faixa_61_90":    0,
-        "smas_faixa_91_mais":  0,
+        "smas_media": 15.0,
+        "smas_faixa_0_30": 2,
+        "smas_faixa_31_60": 0,
+        "smas_faixa_61_90": 0,
+        "smas_faixa_91_mais": 0,
         # SME: média 45 dias, 0 pessoas (sem irregulares)
-        "sme_media":           45.0,
-        "sme_faixa_0_30":      0,
-        "sme_faixa_31_60":     0,
-        "sme_faixa_61_90":     0,
-        "sme_faixa_91_mais":   0,
+        "sme_media": 45.0,
+        "sme_faixa_0_30": 0,
+        "sme_faixa_31_60": 0,
+        "sme_faixa_61_90": 0,
+        "sme_faixa_91_mais": 0,
         # SMS: média 20 dias, 1 pessoa na faixa 0-30
-        "sms_media":           20.0,
-        "sms_faixa_0_30":      1,
-        "sms_faixa_31_60":     0,
-        "sms_faixa_61_90":     0,
-        "sms_faixa_91_mais":   0,
+        "sms_media": 20.0,
+        "sms_faixa_0_30": 1,
+        "sms_faixa_31_60": 0,
+        "sms_faixa_61_90": 0,
+        "sms_faixa_91_mais": 0,
         # GERAL: pré-agregado no banco (smas+sme+sms)
-        "geral_faixa_0_30":    3,  # 2+0+1
-        "geral_faixa_31_60":   0,
-        "geral_faixa_61_90":   0,
+        "geral_faixa_0_30": 3,  # 2+0+1
+        "geral_faixa_31_60": 0,
+        "geral_faixa_61_90": 0,
         "geral_faixa_91_mais": 0,
     },
 ]
 
 # Mock de dados AGREGADOS por secretaria e data
 RESOLUCAO_ROWS = [
-    {"secretaria": "sms", "data_referencia_mensal": "2025-01-01", "numerador": 8, "denominador": 10},
-    {"secretaria": "smas", "data_referencia_mensal": "2025-01-01", "numerador": 3, "denominador": 5},
+    {
+        "secretaria": "sms",
+        "data_referencia_mensal": "2025-01-01",
+        "numerador": 8,
+        "denominador": 10,
+    },
+    {
+        "secretaria": "smas",
+        "data_referencia_mensal": "2025-01-01",
+        "numerador": 3,
+        "denominador": 5,
+    },
+]
+
+# Mock de dados AGREGADOS por protocolo (endpoint_participante_visao_geral_tempo_irregular_protocolo)
+# PostgREST retorna 1 linha por protocolo com aliases definidos no select
+TEMPO_PROTOCOLO_ROWS = [
+    {
+        "protocolo_id": "sms_vacinacao_pentavalente",
+        "protocolo_descricao": "Vacinação Pentavalente",
+        "protocolo_secretaria": "SMS",
+        "total_irregulares": 300,  # sum(irregularidade_quantidade)
+        "total_irregulares_abertos": 40,  # sum(irregularidade_aberta_quantidade)
+        "total_dias": 45000.0,  # sum(duracao_total_dias) → média 150
+    },
+    {
+        "protocolo_id": "smas_acesso_alimentacao",
+        "protocolo_descricao": "Acesso à Alimentação",
+        "protocolo_secretaria": "SMAS",
+        "total_irregulares": 100,
+        "total_irregulares_abertos": 5,
+        "total_dias": 3000.0,  # → média 30
+    },
 ]
 
 # Mock de dados AGREGADOS (como viria do PostgREST)
@@ -243,6 +299,7 @@ ALL_TABLES: dict[str, list[dict]] = {
     _TABLE_PROTOCOLOS: PROTOCOLOS_ROWS,
     _TABLE_SERIES: SERIES_ROWS,
     _TABLE_TEMPO: TEMPO_ROWS,
+    _TABLE_TEMPO_PROTOCOLO: TEMPO_PROTOCOLO_ROWS,
     _TABLE_RESOLUCAO: RESOLUCAO_ROWS,
 }
 
@@ -257,12 +314,30 @@ DISPAROS_STATUS = [
     {"disparo_status": "FALHOU", "total": 8},
 ]
 DISPAROS_JORNADAS = [
-    {"disparo_jornada": "Mutirão de Vacinação", "participantes": 50, "entregues": 48, "falhas": 2},
-    {"disparo_jornada": "Volta às Aulas", "participantes": 30, "entregues": 29, "falhas": 1},
+    {
+        "disparo_jornada": "Mutirão de Vacinação",
+        "participantes": 50,
+        "entregues": 48,
+        "falhas": 2,
+    },
+    {
+        "disparo_jornada": "Volta às Aulas",
+        "participantes": 30,
+        "entregues": 29,
+        "falhas": 1,
+    },
 ]
 DISPAROS_JORNADAS_STATUSES = [
-    {"disparo_jornada": "Mutirão de Vacinação", "disparo_status": "ENTREGUE", "total": 30},
-    {"disparo_jornada": "Mutirão de Vacinação", "disparo_status": "RESPONDIDO", "total": 18},
+    {
+        "disparo_jornada": "Mutirão de Vacinação",
+        "disparo_status": "ENTREGUE",
+        "total": 30,
+    },
+    {
+        "disparo_jornada": "Mutirão de Vacinação",
+        "disparo_status": "RESPONDIDO",
+        "total": 18,
+    },
     {"disparo_jornada": "Mutirão de Vacinação", "disparo_status": "FALHOU", "total": 2},
     {"disparo_jornada": "Volta às Aulas", "disparo_status": "ENTREGUE", "total": 20},
     {"disparo_jornada": "Volta às Aulas", "disparo_status": "LIDO", "total": 9},
@@ -317,7 +392,11 @@ class TestSection1Indicadores:
     def test_null_values_treated_as_zero(self):
         result = self._compute(
             consolidado={
-                "totals": {"regular_num": None, "regular_den": None, "irregular_num": None},
+                "totals": {
+                    "regular_num": None,
+                    "regular_den": None,
+                    "irregular_num": None,
+                },
                 "safras": [],
                 "motivos": [],
             }
@@ -342,13 +421,17 @@ class TestSection2Protocolos:
     def test_quirk_complement_unrounded(self):
         """percentual_irregular = round(100 - perc_raw, 1), not 100 - round(...)."""
         # 53/100 = 53.0 → complement = 47.0 (trivial)
-        result = self._compute([{
-            "protocolo_id": "p1",
-            "protocolo_descricao": "Proto A",
-            "protocolo_secretaria": "SMS",
-            "numerador": 53,
-            "denominador": 100,
-        }])
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "p1",
+                    "protocolo_descricao": "Proto A",
+                    "protocolo_secretaria": "SMS",
+                    "numerador": 53,
+                    "denominador": 100,
+                }
+            ]
+        )
         p = result.protocolos[0]
         assert p.percentual_regular == 53.0
         assert p.percentual_irregular == 47.0
@@ -356,13 +439,17 @@ class TestSection2Protocolos:
     def test_quirk_complement_precision(self):
         """6/11 = 54.545…% → regular 54.5, irregular 45.5 (not 100 - 54.5 = 45.5 same here,
         but the point is we use the raw value before rounding)."""
-        result = self._compute([{
-            "protocolo_id": "p2",
-            "protocolo_descricao": "Proto B",
-            "protocolo_secretaria": "SME",
-            "numerador": 6,
-            "denominador": 11,
-        }])
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "p2",
+                    "protocolo_descricao": "Proto B",
+                    "protocolo_secretaria": "SME",
+                    "numerador": 6,
+                    "denominador": 11,
+                }
+            ]
+        )
         p = result.protocolos[0]
         raw = 6 / 11 * 100  # 54.545...
         assert p.percentual_regular == round(raw, 1)
@@ -377,45 +464,83 @@ class TestSection2Protocolos:
         mapped by _fetch_protocolos before reaching the compute layer.
         """
         rows = [
-            {"protocolo_id": "p_sms", "protocolo_descricao": "Vacinação", "protocolo_secretaria": "SMS", "numerador": 6, "denominador": 10},
-            {"protocolo_id": "p_sms", "protocolo_descricao": "Vacinação", "protocolo_secretaria": "SMS", "numerador": 2, "denominador": 5},
+            {
+                "protocolo_id": "p_sms",
+                "protocolo_descricao": "Vacinação",
+                "protocolo_secretaria": "SMS",
+                "numerador": 6,
+                "denominador": 10,
+            },
+            {
+                "protocolo_id": "p_sms",
+                "protocolo_descricao": "Vacinação",
+                "protocolo_secretaria": "SMS",
+                "numerador": 2,
+                "denominador": 5,
+            },
         ]
         result = self._compute(rows)
         assert len(result.protocolos) == 1
         p = result.protocolos[0]
-        assert p.numerador == 8    # 6 + 2
+        assert p.numerador == 8  # 6 + 2
         assert p.denominador == 15  # 10 + 5
 
     def test_sorted_by_secretaria_then_descricao(self):
         protocolos = [
-            {"protocolo_id": "b", "protocolo_descricao": "Z Proto", "protocolo_secretaria": "SMS", "numerador": 1, "denominador": 2},
-            {"protocolo_id": "a", "protocolo_descricao": "A Proto", "protocolo_secretaria": "SMAS", "numerador": 1, "denominador": 2},
-            {"protocolo_id": "c", "protocolo_descricao": "M Proto", "protocolo_secretaria": "SMS", "numerador": 1, "denominador": 2},
+            {
+                "protocolo_id": "b",
+                "protocolo_descricao": "Z Proto",
+                "protocolo_secretaria": "SMS",
+                "numerador": 1,
+                "denominador": 2,
+            },
+            {
+                "protocolo_id": "a",
+                "protocolo_descricao": "A Proto",
+                "protocolo_secretaria": "SMAS",
+                "numerador": 1,
+                "denominador": 2,
+            },
+            {
+                "protocolo_id": "c",
+                "protocolo_descricao": "M Proto",
+                "protocolo_secretaria": "SMS",
+                "numerador": 1,
+                "denominador": 2,
+            },
         ]
         result = self._compute(protocolos)
         ids = [p.protocolo_id for p in result.protocolos]
         assert ids == ["a", "c", "b"]  # SMAS first, then SMS A-Z
 
     def test_zero_denominador_gives_zero_percentuals(self):
-        result = self._compute([{
-            "protocolo_id": "p3",
-            "protocolo_descricao": "Proto C",
-            "protocolo_secretaria": "SMS",
-            "numerador": 5,
-            "denominador": 0,
-        }])
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "p3",
+                    "protocolo_descricao": "Proto C",
+                    "protocolo_secretaria": "SMS",
+                    "numerador": 5,
+                    "denominador": 0,
+                }
+            ]
+        )
         p = result.protocolos[0]
         assert p.percentual_regular == 0.0
         assert p.percentual_irregular == 0.0
 
     def test_null_protocolo_id_ignored(self):
-        result = self._compute([{
-            "protocolo_id": None,
-            "protocolo_descricao": "Should be ignored",
-            "protocolo_secretaria": "SMS",
-            "numerador": 5,
-            "denominador": 10,
-        }])
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": None,
+                    "protocolo_descricao": "Should be ignored",
+                    "protocolo_secretaria": "SMS",
+                    "numerador": 5,
+                    "denominador": 10,
+                }
+            ]
+        )
         assert result.protocolos == []
 
 
@@ -432,36 +557,84 @@ class TestSection3Serie:
         )
 
     def test_maps_geral_to_todos(self):
-        result = self._compute([
-            {"serie_tipo": "geral", "mes": "2025-01", "numerador": 10, "denominador": 20},
-        ])
+        result = self._compute(
+            [
+                {
+                    "serie_tipo": "geral",
+                    "mes": "2025-01",
+                    "numerador": 10,
+                    "denominador": 20,
+                },
+            ]
+        )
         assert len(result.resultado_programa) == 1
         assert result.resultado_programa[0].todos == 50.0
 
     def test_maps_sms_sme_smas(self):
-        result = self._compute([
-            {"serie_tipo": "sms",  "mes": "2025-01", "numerador": 5, "denominador": 10},
-            {"serie_tipo": "sme",  "mes": "2025-01", "numerador": 3, "denominador": 6},
-            {"serie_tipo": "smas", "mes": "2025-01", "numerador": 2, "denominador": 4},
-        ])
+        result = self._compute(
+            [
+                {
+                    "serie_tipo": "sms",
+                    "mes": "2025-01",
+                    "numerador": 5,
+                    "denominador": 10,
+                },
+                {
+                    "serie_tipo": "sme",
+                    "mes": "2025-01",
+                    "numerador": 3,
+                    "denominador": 6,
+                },
+                {
+                    "serie_tipo": "smas",
+                    "mes": "2025-01",
+                    "numerador": 2,
+                    "denominador": 4,
+                },
+            ]
+        )
         r = result.resultado_programa[0]
         assert r.saude == 50.0
         assert r.educacao == 50.0
         assert r.assistencia == 50.0
 
     def test_sorted_by_mes_asc(self):
-        result = self._compute([
-            {"serie_tipo": "geral", "mes": "2025-03", "numerador": 1, "denominador": 1},
-            {"serie_tipo": "geral", "mes": "2025-01", "numerador": 1, "denominador": 1},
-            {"serie_tipo": "geral", "mes": "2025-02", "numerador": 1, "denominador": 1},
-        ])
+        result = self._compute(
+            [
+                {
+                    "serie_tipo": "geral",
+                    "mes": "2025-03",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+                {
+                    "serie_tipo": "geral",
+                    "mes": "2025-01",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+                {
+                    "serie_tipo": "geral",
+                    "mes": "2025-02",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+            ]
+        )
         meses = [r.mes for r in result.resultado_programa]
         assert meses == ["2025-01", "2025-02", "2025-03"]
 
     def test_mes_label_formatted(self):
-        result = self._compute([
-            {"serie_tipo": "geral", "mes": "2025-07", "numerador": 1, "denominador": 1},
-        ])
+        result = self._compute(
+            [
+                {
+                    "serie_tipo": "geral",
+                    "mes": "2025-07",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+            ]
+        )
         assert result.resultado_programa[0].mes_label == "Jul/25"
 
 
@@ -478,10 +651,12 @@ class TestSection4Safras:
         )
 
     def test_ativo_vs_inativo(self):
-        result = self._compute([
-            {"cohort": "2025-01-10", "status": "Ativo", "qtd": 5},
-            {"cohort": "2025-01-20", "status": "Inativo", "qtd": 3},
-        ])
+        result = self._compute(
+            [
+                {"cohort": "2025-01-10", "status": "Ativo", "qtd": 5},
+                {"cohort": "2025-01-20", "status": "Inativo", "qtd": 3},
+            ]
+        )
         assert len(result.distribuicao_por_safra) == 1
         s = result.distribuicao_por_safra[0]
         assert s.total_ativos == 5
@@ -490,28 +665,34 @@ class TestSection4Safras:
 
     def test_quirk_null_qtd_fallback_to_1(self):
         """QUIRK 3: NULL qtd → 1."""
-        result = self._compute([
-            {"cohort": "2025-01-01", "status": "Ativo", "qtd": None},
-        ])
+        result = self._compute(
+            [
+                {"cohort": "2025-01-01", "status": "Ativo", "qtd": None},
+            ]
+        )
         assert result.distribuicao_por_safra[0].total_ativos == 1
 
     def test_quirk_non_ativo_counts_as_inativo(self):
         """Any status other than 'ativo' counts as inactive (case-insensitive)."""
-        result = self._compute([
-            {"cohort": "2025-01-01", "status": None, "qtd": 1},
-            {"cohort": "2025-01-01", "status": "desligado", "qtd": 2},
-            {"cohort": "2025-01-01", "status": "ATIVO", "qtd": 3},
-        ])
+        result = self._compute(
+            [
+                {"cohort": "2025-01-01", "status": None, "qtd": 1},
+                {"cohort": "2025-01-01", "status": "desligado", "qtd": 2},
+                {"cohort": "2025-01-01", "status": "ATIVO", "qtd": 3},
+            ]
+        )
         s = result.distribuicao_por_safra[0]
         assert s.total_ativos == 3
         assert s.total_inativos == 3
 
     def test_cohort_sliced_to_yyyy_mm(self):
         """Full date strings should be sliced to YYYY-MM before grouping."""
-        result = self._compute([
-            {"cohort": "2025-01-10", "status": "Ativo", "qtd": 1},
-            {"cohort": "2025-01-20", "status": "Ativo", "qtd": 2},
-        ])
+        result = self._compute(
+            [
+                {"cohort": "2025-01-10", "status": "Ativo", "qtd": 1},
+                {"cohort": "2025-01-20", "status": "Ativo", "qtd": 2},
+            ]
+        )
         # Both belong to the same safra
         assert len(result.distribuicao_por_safra) == 1
         assert result.distribuicao_por_safra[0].total_ativos == 3
@@ -521,10 +702,12 @@ class TestSection4Safras:
         assert result.distribuicao_por_safra[0].safra == "Jul/25"
 
     def test_sorted_asc(self):
-        result = self._compute([
-            {"cohort": "2025-03-01", "status": "Ativo", "qtd": 1},
-            {"cohort": "2025-01-01", "status": "Ativo", "qtd": 1},
-        ])
+        result = self._compute(
+            [
+                {"cohort": "2025-03-01", "status": "Ativo", "qtd": 1},
+                {"cohort": "2025-01-01", "status": "Ativo", "qtd": 1},
+            ]
+        )
         safras = [s.safra for s in result.distribuicao_por_safra]
         assert safras == ["Jan/25", "Mar/25"]
 
@@ -561,19 +744,23 @@ class TestSection5Motivos:
         assert result.distribuicao_motivo_saida[0].motivo == "saída do programa"
 
     def test_sorted_by_total_desc(self):
-        result = self._compute([
-            {"motivo": "A", "qtd": 2},
-            {"motivo": "B", "qtd": 10},
-            {"motivo": "C", "qtd": 5},
-        ])
+        result = self._compute(
+            [
+                {"motivo": "A", "qtd": 2},
+                {"motivo": "B", "qtd": 10},
+                {"motivo": "C", "qtd": 5},
+            ]
+        )
         totais = [m.total for m in result.distribuicao_motivo_saida]
         assert totais == sorted(totais, reverse=True)
 
     def test_null_and_blank_merge_into_nao_informado(self):
-        result = self._compute([
-            {"motivo": None, "qtd": 5},
-            {"motivo": "", "qtd": 3},
-        ])
+        result = self._compute(
+            [
+                {"motivo": None, "qtd": 5},
+                {"motivo": "", "qtd": 3},
+            ]
+        )
         assert len(result.distribuicao_motivo_saida) == 1
         assert result.distribuicao_motivo_saida[0].total == 8
 
@@ -603,20 +790,50 @@ class TestSection6Tempo:
 
     def _tempo(
         self,
-        smas_media=0.0, smas_0_30=0, smas_31_60=0, smas_61_90=0, smas_91=0,
-        sme_media=0.0,  sme_0_30=0,  sme_31_60=0,  sme_61_90=0,  sme_91=0,
-        sms_media=0.0,  sms_0_30=0,  sms_31_60=0,  sms_61_90=0,  sms_91=0,
+        smas_media=0.0,
+        smas_0_30=0,
+        smas_31_60=0,
+        smas_61_90=0,
+        smas_91=0,
+        sme_media=0.0,
+        sme_0_30=0,
+        sme_31_60=0,
+        sme_61_90=0,
+        sme_91=0,
+        sms_media=0.0,
+        sms_0_30=0,
+        sms_31_60=0,
+        sms_61_90=0,
+        sms_91=0,
     ) -> dict:
         """Monta estrutura de tempo na nova forma esperada por compute_postgrest."""
         return {
-            "smas": {"media": smas_media, "faixa_0_30": smas_0_30, "faixa_31_60": smas_31_60, "faixa_61_90": smas_61_90, "faixa_91_mais": smas_91},
-            "sme":  {"media": sme_media,  "faixa_0_30": sme_0_30,  "faixa_31_60": sme_31_60,  "faixa_61_90": sme_61_90,  "faixa_91_mais": sme_91},
-            "sms":  {"media": sms_media,  "faixa_0_30": sms_0_30,  "faixa_31_60": sms_31_60,  "faixa_61_90": sms_61_90,  "faixa_91_mais": sms_91},
+            "smas": {
+                "media": smas_media,
+                "faixa_0_30": smas_0_30,
+                "faixa_31_60": smas_31_60,
+                "faixa_61_90": smas_61_90,
+                "faixa_91_mais": smas_91,
+            },
+            "sme": {
+                "media": sme_media,
+                "faixa_0_30": sme_0_30,
+                "faixa_31_60": sme_31_60,
+                "faixa_61_90": sme_61_90,
+                "faixa_91_mais": sme_91,
+            },
+            "sms": {
+                "media": sms_media,
+                "faixa_0_30": sms_0_30,
+                "faixa_31_60": sms_31_60,
+                "faixa_61_90": sms_61_90,
+                "faixa_91_mais": sms_91,
+            },
             "geral": {
-                "faixa_0_30":    smas_0_30  + sme_0_30  + sms_0_30,
-                "faixa_31_60":   smas_31_60 + sme_31_60 + sms_31_60,
-                "faixa_61_90":   smas_61_90 + sme_61_90 + sms_61_90,
-                "faixa_91_mais": smas_91    + sme_91    + sms_91,
+                "faixa_0_30": smas_0_30 + sme_0_30 + sms_0_30,
+                "faixa_31_60": smas_31_60 + sme_31_60 + sms_31_60,
+                "faixa_61_90": smas_61_90 + sme_61_90 + sms_61_90,
+                "faixa_91_mais": smas_91 + sme_91 + sms_91,
             },
         }
 
@@ -624,8 +841,12 @@ class TestSection6Tempo:
         """Média de smas=30 dias (10 pessoas), sem sme/sms → geral=30 dias, 10 pessoas."""
         tempo = self._tempo(smas_media=30.0, smas_0_30=10)
         result = self._compute(tempo)
-        geral = next(t for t in result.tempo_medio_irregularidade if t.secretaria == "geral")
-        smas  = next(t for t in result.tempo_medio_irregularidade if t.secretaria == "smas")
+        geral = next(
+            t for t in result.tempo_medio_irregularidade if t.secretaria == "geral"
+        )
+        smas = next(
+            t for t in result.tempo_medio_irregularidade if t.secretaria == "smas"
+        )
         assert smas.tempo_medio_dias == 30.0
         assert geral.tempo_medio_dias == 30.0
         assert geral.total_irregulares == 10
@@ -636,12 +857,18 @@ class TestSection6Tempo:
         # sme:  4 pessoas (todas na 31-60)
         # sms:  6 pessoas (todas na 61-90)
         tempo = self._tempo(
-            smas_media=50.0, smas_0_30=1, smas_31_60=1,
-            sme_media=100.0,  sme_31_60=4,
-            sms_media=150.0,  sms_61_90=6,
+            smas_media=50.0,
+            smas_0_30=1,
+            smas_31_60=1,
+            sme_media=100.0,
+            sme_31_60=4,
+            sms_media=150.0,
+            sms_61_90=6,
         )
         result = self._compute(tempo)
-        geral = next(t for t in result.tempo_medio_irregularidade if t.secretaria == "geral")
+        geral = next(
+            t for t in result.tempo_medio_irregularidade if t.secretaria == "geral"
+        )
         assert geral.total_irregulares == 12  # 2 + 4 + 6
         # Média ponderada: (50*2 + 100*4 + 150*6) / 12 = 1400/12 ≈ 116.7
         expected_media = round((50.0 * 2 + 100.0 * 4 + 150.0 * 6) / 12, 1)
@@ -650,9 +877,12 @@ class TestSection6Tempo:
     def test_quirk_filtro_secretaria_restringe_bands(self):
         """QUIRK 6: filtro_secretaria limits bands to [geral, <secretaria>]."""
         tempo = self._tempo(
-            smas_media=30.0, smas_0_30=2,
-            sme_media=45.0,  sme_31_60=4,
-            sms_media=70.0,  sms_61_90=6,
+            smas_media=30.0,
+            smas_0_30=2,
+            sme_media=45.0,
+            sme_31_60=4,
+            sms_media=70.0,
+            sms_61_90=6,
         )
         result = self._compute(tempo, filtro_secretaria="SMS")
         secs = {t.secretaria for t in result.tempo_medio_irregularidade}
@@ -661,26 +891,29 @@ class TestSection6Tempo:
     def test_histograma_faixas_pre_agregadas(self):
         """Histograma usa colunas geral_faixa_* pré-agregadas do banco."""
         tempo = self._tempo(
-            smas_media=15.0, smas_0_30=10,   # 10 pessoas em 0-30
-            sme_media=45.0,  sme_31_60=5,    # 5 pessoas em 31-60
-            sms_media=70.0,  sms_61_90=3,    # 3 pessoas em 61-90
+            smas_media=15.0,
+            smas_0_30=10,  # 10 pessoas em 0-30
+            sme_media=45.0,
+            sme_31_60=5,  # 5 pessoas em 31-60
+            sms_media=70.0,
+            sms_61_90=3,  # 3 pessoas em 61-90
         )
         result = self._compute(tempo)
         hist = {d.faixa: d.count for d in result.distribuicao_tempo_irregularidade}
-        assert hist["0-30"]  == 10
+        assert hist["0-30"] == 10
         assert hist["31-60"] == 5
         assert hist["61-90"] == 3
-        assert hist["90+"]   == 0
+        assert hist["90+"] == 0
 
     def test_histograma_percentual(self):
         """Percentual = count / total_geral * 100."""
         tempo = self._tempo(smas_0_30=1, sme_31_60=3)  # total=4
         result = self._compute(tempo)
         hist = {d.faixa: d.percentual for d in result.distribuicao_tempo_irregularidade}
-        assert hist["0-30"]  == round(1 / 4 * 100, 1)   # 25.0
-        assert hist["31-60"] == round(3 / 4 * 100, 1)   # 75.0
+        assert hist["0-30"] == round(1 / 4 * 100, 1)  # 25.0
+        assert hist["31-60"] == round(3 / 4 * 100, 1)  # 75.0
         assert hist["61-90"] == 0.0
-        assert hist["90+"]   == 0.0
+        assert hist["90+"] == 0.0
 
     def test_histograma_ordenacao_fixa(self):
         result = self._compute({})
@@ -689,9 +922,207 @@ class TestSection6Tempo:
 
     def test_empty_tempo_returns_zeros(self):
         result = self._compute({})
-        geral = next(t for t in result.tempo_medio_irregularidade if t.secretaria == "geral")
+        geral = next(
+            t for t in result.tempo_medio_irregularidade if t.secretaria == "geral"
+        )
         assert geral.tempo_medio_dias == 0.0
         assert geral.total_irregulares == 0
+
+
+class TestSection6BTempoProtocolo:
+    """Section 6B — tempo médio de irregularidade por protocolo (ranking)."""
+
+    def _compute(self, tempo_protocolo, filtro_secretaria=None) -> Dashboard:
+        return _calculate_dashboard_metrics(
+            consolidado={"totals": {}, "safras": [], "motivos": []},
+            protocolos=[],
+            series=[],
+            tempo={},
+            resolucao=[],
+            tempo_protocolo=tempo_protocolo,
+            filtro_secretaria=filtro_secretaria,
+        )
+
+    def test_media_ponderada_correta(self):
+        """tempo_medio_dias = total_dias / total_irregulares (ponderado)."""
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "p1",
+                    "protocolo_descricao": "P1",
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 2,
+                    "total_dias": 250.0,
+                },
+            ]
+        )
+        assert len(result.tempo_medio_irregularidade_protocolo) == 1
+        p = result.tempo_medio_irregularidade_protocolo[0]
+        assert p.tempo_medio_dias == 25.0
+        assert p.total_irregulares == 10
+        assert p.total_irregulares_abertos == 2
+
+    def test_media_arredondada_1_decimal(self):
+        """A média é dividida a partir dos totais (ponderada) e arredondada."""
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "p1",
+                    "protocolo_descricao": "P1",
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 3,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 100.0,
+                },  # 33.333…
+            ]
+        )
+        assert result.tempo_medio_irregularidade_protocolo[0].tempo_medio_dias == 33.3
+
+    def test_ordenado_desc_por_tempo_medio(self):
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "a",
+                    "protocolo_descricao": "A",
+                    "protocolo_secretaria": "SMAS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 300.0,
+                },  # 30d
+                {
+                    "protocolo_id": "b",
+                    "protocolo_descricao": "B",
+                    "protocolo_secretaria": "SME",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 900.0,
+                },  # 90d
+                {
+                    "protocolo_id": "c",
+                    "protocolo_descricao": "C",
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 600.0,
+                },  # 60d
+            ]
+        )
+        medias = [
+            p.tempo_medio_dias for p in result.tempo_medio_irregularidade_protocolo
+        ]
+        assert medias == sorted(medias, reverse=True)
+        assert medias[0] == 90.0
+
+    def test_filtro_secretaria_restringe_protocolos(self):
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "a",
+                    "protocolo_descricao": "A",
+                    "protocolo_secretaria": "SMAS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 100.0,
+                },
+                {
+                    "protocolo_id": "b",
+                    "protocolo_descricao": "B",
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 200.0,
+                },
+            ],
+            filtro_secretaria="SMS",
+        )
+        ids = [p.protocolo_id for p in result.tempo_medio_irregularidade_protocolo]
+        assert ids == ["b"]
+
+    def test_sem_filtro_retorna_todas(self):
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "a",
+                    "protocolo_descricao": "A",
+                    "protocolo_secretaria": "SMAS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 100.0,
+                },
+                {
+                    "protocolo_id": "b",
+                    "protocolo_descricao": "B",
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 10,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 200.0,
+                },
+            ]
+        )
+        assert len(result.tempo_medio_irregularidade_protocolo) == 2
+
+    def test_protocolo_sem_irregulares_omitido(self):
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "a",
+                    "protocolo_descricao": "A",
+                    "protocolo_secretaria": "SMAS",
+                    "total_irregulares": 0,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 0.0,
+                },
+                {
+                    "protocolo_id": "b",
+                    "protocolo_descricao": "B",
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 5,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 50.0,
+                },
+            ]
+        )
+        ids = [p.protocolo_id for p in result.tempo_medio_irregularidade_protocolo]
+        assert ids == ["b"]
+
+    def test_descricao_nula_usa_id(self):
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "a",
+                    "protocolo_descricao": None,
+                    "protocolo_secretaria": "SMS",
+                    "total_irregulares": 5,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 50.0,
+                },
+            ]
+        )
+        assert result.tempo_medio_irregularidade_protocolo[0].protocolo_descricao == "a"
+
+    def test_secretaria_normalizada_upper(self):
+        result = self._compute(
+            [
+                {
+                    "protocolo_id": "a",
+                    "protocolo_descricao": "A",
+                    "protocolo_secretaria": "sms",
+                    "total_irregulares": 5,
+                    "total_irregulares_abertos": 0,
+                    "total_dias": 50.0,
+                },
+            ],
+            filtro_secretaria="SMS",
+        )
+        assert len(result.tempo_medio_irregularidade_protocolo) == 1
+        assert (
+            result.tempo_medio_irregularidade_protocolo[0].protocolo_secretaria == "SMS"
+        )
+
+    def test_lista_vazia_preservada(self):
+        result = self._compute(None)
+        assert result.tempo_medio_irregularidade_protocolo == []
 
 
 class TestSection7Resolucao:
@@ -708,10 +1139,22 @@ class TestSection7Resolucao:
 
     def test_quirk_todos_acumula_todas_secretarias(self):
         """QUIRK 7: TODOS = sum of all secretarias including 'GERAL'."""
-        result = self._compute([
-            {"secretaria": "sms",  "mes": "2025-01", "numerador": 8, "denominador": 10},
-            {"secretaria": "smas", "mes": "2025-01", "numerador": 3, "denominador": 5},
-        ])
+        result = self._compute(
+            [
+                {
+                    "secretaria": "sms",
+                    "mes": "2025-01",
+                    "numerador": 8,
+                    "denominador": 10,
+                },
+                {
+                    "secretaria": "smas",
+                    "mes": "2025-01",
+                    "numerador": 3,
+                    "denominador": 5,
+                },
+            ]
+        )
         r = result.taxa_resolucao_mensal[0]
         # TODOS: num=11, den=15
         assert r.todos == round(11 / 15 * 100, 1)
@@ -719,25 +1162,51 @@ class TestSection7Resolucao:
         assert r.assistencia == round(3 / 5 * 100, 1)
 
     def test_sorted_by_mes_asc(self):
-        result = self._compute([
-            {"secretaria": "sms", "mes": "2025-03", "numerador": 1, "denominador": 1},
-            {"secretaria": "sms", "mes": "2025-01", "numerador": 1, "denominador": 1},
-        ])
+        result = self._compute(
+            [
+                {
+                    "secretaria": "sms",
+                    "mes": "2025-03",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+                {
+                    "secretaria": "sms",
+                    "mes": "2025-01",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+            ]
+        )
         meses = [r.mes for r in result.taxa_resolucao_mensal]
         assert meses == ["2025-01", "2025-03"]
 
     def test_unknown_secretaria_becomes_upper(self):
-        result = self._compute([
-            {"secretaria": "geral", "mes": "2025-01", "numerador": 5, "denominador": 10},
-        ])
+        result = self._compute(
+            [
+                {
+                    "secretaria": "geral",
+                    "mes": "2025-01",
+                    "numerador": 5,
+                    "denominador": 10,
+                },
+            ]
+        )
         # "geral" → "GERAL" and should be accumulated in TODOS too
         r = result.taxa_resolucao_mensal[0]
         assert r.todos == 50.0  # accumulated from "GERAL"
 
     def test_mes_label_formatted(self):
-        result = self._compute([
-            {"secretaria": "sms", "mes": "2025-12", "numerador": 1, "denominador": 1},
-        ])
+        result = self._compute(
+            [
+                {
+                    "secretaria": "sms",
+                    "mes": "2025-12",
+                    "numerador": 1,
+                    "denominador": 1,
+                },
+            ]
+        )
         assert result.taxa_resolucao_mensal[0].mes_label == "Dez/25"
 
 
@@ -751,7 +1220,11 @@ class TestSection8Disparos:
     ) -> Dashboard:
         return _calculate_dashboard_metrics(
             consolidado={
-                "totals": {"regular_num": 10, "regular_den": total_participantes, "irregular_num": 2},
+                "totals": {
+                    "regular_num": 10,
+                    "regular_den": total_participantes,
+                    "irregular_num": 2,
+                },
                 "safras": [],
                 "motivos": [],
             },
@@ -841,7 +1314,8 @@ class TestSection8Disparos:
             }
         )
         assert {
-            s.status: s.total for s in result.disparos.por_jornada[0].status_distribuicao
+            s.status: s.total
+            for s in result.disparos.por_jornada[0].status_distribuicao
         } == {"ENTREGUE": 3, "LIDO": 2}
 
 
@@ -914,11 +1388,11 @@ class TestRepositoryFetches:
         assert any("is.true" in str(p) for p in params_list)
 
     @pytest.mark.asyncio
-    async def test_thirteen_requests_sent(self):
-        """3 consolidado subfetches + 4 other tables + 6 disparos = 13 requests."""
+    async def test_fourteen_requests_sent(self):
+        """3 consolidado subfetches + 5 other tables + 6 disparos = 14 requests."""
         repo, fake = _make_repo(ALL_TABLES)
         await repo.get_dashboard_metrics(filters={})
-        assert len(fake.requests) == 13
+        assert len(fake.requests) == 14
 
     @pytest.mark.asyncio
     async def test_empty_tables_returns_zero_dashboard(self):
@@ -930,11 +1404,80 @@ class TestRepositoryFetches:
     @pytest.mark.asyncio
     async def test_filtro_secretaria_passed_to_compute(self):
         repo, _ = _make_repo(ALL_TABLES)
-        result = await repo.get_dashboard_metrics(
-            filters={}, secretaria="SMS"
-        )
+        result = await repo.get_dashboard_metrics(filters={}, secretaria="SMS")
         secs = {t.secretaria for t in result.tempo_medio_irregularidade}
         assert secs == {"geral", "sms"}
+
+
+class TestRepositoryTempoProtocolo:
+    """Tempo médio por protocolo (section 6B) — fetch best-effort."""
+
+    def _tempo_protocolo_requests(self, fake: FakeDataProxy) -> list[httpx.Request]:
+        return [r for r in fake.requests if r.url.path.endswith(_TABLE_TEMPO_PROTOCOLO)]
+
+    @pytest.mark.asyncio
+    async def test_full_pipeline_populates_ranking(self):
+        repo, _ = _make_repo(ALL_TABLES)
+        result = await repo.get_dashboard_metrics(filters={})
+        ranking = result.tempo_medio_irregularidade_protocolo
+        assert len(ranking) == 2
+        # sms 45000/300=150d vem antes de smas 3000/100=30d
+        assert [p.protocolo_id for p in ranking] == [
+            "sms_vacinacao_pentavalente",
+            "smas_acesso_alimentacao",
+        ]
+        assert ranking[0].tempo_medio_dias == 150.0
+        assert ranking[0].total_irregulares == 300
+        assert ranking[0].total_irregulares_abertos == 40
+
+    @pytest.mark.asyncio
+    async def test_query_shape(self):
+        repo, fake = _make_repo(ALL_TABLES)
+        await repo.get_dashboard_metrics(filters={})
+        reqs = self._tempo_protocolo_requests(fake)
+        assert len(reqs) == 1
+        select = reqs[0].url.params.get("select", "")
+        assert "irregularidade_quantidade.sum()" in select
+        assert "irregularidade_aberta_quantidade.sum()" in select
+        assert "duracao_total_dias.sum()" in select
+        assert "protocolo_id=not.is.null" in str(reqs[0].url.params)
+
+    @pytest.mark.asyncio
+    async def test_filters_forwarded(self):
+        repo, fake = _make_repo(ALL_TABLES)
+        await repo.get_dashboard_metrics(
+            filters={"pic_status": "Ativo", "id_cras": "001"}
+        )
+        reqs = self._tempo_protocolo_requests(fake)
+        params = str(reqs[0].url.params)
+        assert "pic_status=ilike.Ativo" in params
+        assert "id_cras=eq.001" in params
+
+    @pytest.mark.asyncio
+    async def test_error_degrades_to_empty_list(self):
+        repo, fake = _make_repo(ALL_TABLES)
+        fake.error_tables = {_TABLE_TEMPO_PROTOCOLO}
+        result = await repo.get_dashboard_metrics(filters={})
+        assert result.tempo_medio_irregularidade_protocolo == []
+        # demais seções intactas
+        assert result.total_participantes == 14
+        assert result.protocolos
+
+    @pytest.mark.asyncio
+    async def test_table_missing_degrades_to_empty_list(self):
+        repo, _ = _make_repo({})
+        result = await repo.get_dashboard_metrics(filters={})
+        assert result.tempo_medio_irregularidade_protocolo == []
+
+    @pytest.mark.asyncio
+    async def test_secretaria_filter_restricts_ranking(self):
+        repo, _ = _make_repo(ALL_TABLES)
+        result = await repo.get_dashboard_metrics(filters={}, secretaria="SMAS")
+        ranking = result.tempo_medio_irregularidade_protocolo
+        assert [p.protocolo_id for p in ranking] == ["smas_acesso_alimentacao"]
+        # visão por secretaria continua seguindo o QUIRK 6 (geral + smas)
+        secs = {t.secretaria for t in result.tempo_medio_irregularidade}
+        assert secs == {"geral", "smas"}
 
 
 class TestRepositoryDisparos:
@@ -979,10 +1522,12 @@ class TestRepositoryDisparos:
         ]
         assert d.por_jornada[0].taxa_falha == round(2 / 50 * 100, 1)
         # per-jornada status segments
-        assert {
-            s.status: s.total for s in d.por_jornada[0].status_distribuicao
-        } == {"ENTREGUE": 30, "RESPONDIDO": 18, "FALHOU": 2}
-        assert len(fake.requests) == 13
+        assert {s.status: s.total for s in d.por_jornada[0].status_distribuicao} == {
+            "ENTREGUE": 30,
+            "RESPONDIDO": 18,
+            "FALHOU": 2,
+        }
+        assert len(fake.requests) == 14
 
     @pytest.mark.asyncio
     async def test_disparos_query_shapes(self):
@@ -995,21 +1540,16 @@ class TestRepositoryDisparos:
         assert any("disparo_total_quantidade.sum()" in s for s in selects)
         assert any("disparo_status,total:count()" in s for s in selects)
         assert any(
-            "disparo_jornada" in s and "participantes:count()" in s
-            for s in selects
+            "disparo_jornada" in s and "participantes:count()" in s for s in selects
         )
         # per-jornada status segments query
         assert any(
-            "disparo_jornada" in s
-            and "disparo_status" in s
-            and "total:count()" in s
+            "disparo_jornada" in s and "disparo_status" in s and "total:count()" in s
             for s in selects
         )
         # two distinct-count queries, both with Prefer: count=exact
         count_reqs = [
-            r
-            for r in reqs
-            if "id_membro_familia" in r.url.params.get("select", "")
+            r for r in reqs if "id_membro_familia" in r.url.params.get("select", "")
         ]
         assert len(count_reqs) == 2
         for r in count_reqs:
@@ -1058,9 +1598,7 @@ class TestRepositoryCache:
         if cached_payload is None:
             redis.get = AsyncMock(return_value=None)
         else:
-            redis.get = AsyncMock(
-                return_value=json.dumps(cached_payload).encode()
-            )
+            redis.get = AsyncMock(return_value=json.dumps(cached_payload).encode())
         redis.set = AsyncMock()
         return redis
 
@@ -1088,8 +1626,8 @@ class TestRepositoryCache:
         repo, fake = _make_repo(ALL_TABLES, redis_client=redis)
         await repo.get_dashboard_metrics(filters={}, bypass_cache=True)
         # bypass_cache=True must skip cache read and go to PostgREST
-        # 3 consolidado subfetches + 4 other tables + 6 disparos = 13 requests
-        assert len(fake.requests) == 13
+        # 3 consolidado subfetches + 5 other tables + 6 disparos = 14 requests
+        assert len(fake.requests) == 14
 
     @pytest.mark.asyncio
     async def test_bypass_cache_still_writes_cache(self):
