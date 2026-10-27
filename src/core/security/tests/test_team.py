@@ -4,7 +4,7 @@ GROUP = "pic"
 
 
 def payload(**claims):
-    return {"preferred_username": "52998224725", **claims}
+    return {"preferred_username": "52998224725", "reliability_level": "ouro", **claims}
 
 
 def test_member_of_the_team_is_super_admin():
@@ -42,3 +42,14 @@ def test_group_name_is_matched_exactly():
 
 def test_token_without_cpf_gets_nothing():
     assert team_permissions({"groups": ["pic"]}, GROUP) is None
+
+
+def test_member_without_the_gold_level_gets_nothing():
+    for level in ("bronze", "prata", "", None):
+        token = payload(groups=["pic"], reliability_level=level)
+        assert team_permissions(token, GROUP) is None
+
+
+def test_member_with_a_token_without_level_gets_nothing():
+    token = {"preferred_username": "52998224725", "groups": ["pic"]}
+    assert team_permissions(token, GROUP) is None
