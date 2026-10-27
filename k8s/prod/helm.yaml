@@ -141,7 +141,7 @@ spec:
     fullnameOverride: app-pic-frontend-prod
     image:
       repository: ghcr.io/prefeitura-rio/app-pic-frontend
-      tag: stable # {"$imagepolicy": "app-pic:app-pic-frontend-prod:tag"}
+      tag: prod-203 # {"$imagepolicy": "app-pic:app-pic-frontend-prod:tag"}
       pullPolicy: Always
     service:
       port: 80
