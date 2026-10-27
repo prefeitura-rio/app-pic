@@ -38,7 +38,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["src/pic"]
+testpaths = ["src/pic", "src/core"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = ["-v", "--tb=short", "--strict-markers"]
