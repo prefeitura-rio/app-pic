@@ -25,7 +25,7 @@ spec:
     fullnameOverride: app-pic-api
     image:
       repository: ghcr.io/prefeitura-rio/app-pic-api
-      tag: stg-252 # {"$imagepolicy": "app-pic-staging:app-pic-api:tag"}
+      tag: stg-254 # {"$imagepolicy": "app-pic-staging:app-pic-api:tag"}
       pullPolicy: Always
     service:
       port: 80
