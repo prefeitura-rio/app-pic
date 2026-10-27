@@ -143,7 +143,7 @@ spec:
       proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
     image:
       repository: ghcr.io/prefeitura-rio/app-pic-frontend
-      tag: latest # {"$imagepolicy": "app-pic-staging:app-pic-frontend:tag"}
+      tag: stg-202 # {"$imagepolicy": "app-pic-staging:app-pic-frontend:tag"}
       pullPolicy: Always
     service:
       port: 80
