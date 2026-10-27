@@ -12,6 +12,7 @@ from src.pic.domain.models.dashboard import (
     ResultadoProgramaPoint,
     TaxaResolucaoMensalPoint,
     TempoMedioIrregularidade,
+    TempoMedioIrregularidadeProtocolo,
 )
 
 
@@ -28,8 +29,14 @@ def test_dashboard_defaults_empty():
     assert d.distribuicao_motivo_saida == []
     assert d.tempo_medio_irregularidade == []
     assert d.distribuicao_tempo_irregularidade == []
+    assert d.tempo_medio_irregularidade_protocolo == []
     assert d.taxa_resolucao_mensal == []
     assert d.data_atualizacao is None
+
+
+def test_dashboard_empty_tempo_protocolo():
+    d = Dashboard.empty()
+    assert d.tempo_medio_irregularidade_protocolo == []
 
 
 def test_dashboard_minimal():
@@ -174,6 +181,32 @@ def test_tempo_medio_irregularidade():
     assert tm.total_irregulares == 120
 
 
+def test_tempo_medio_irregularidade_protocolo():
+    tmp = TempoMedioIrregularidadeProtocolo(
+        protocolo_id="sms_vacinacao_pentavalente",
+        protocolo_descricao="Vacinação Pentavalente",
+        protocolo_secretaria="SMS",
+        tempo_medio_dias=174.3,
+        total_irregulares=1224,
+        total_irregulares_abertos=506,
+    )
+    assert tmp.protocolo_id == "sms_vacinacao_pentavalente"
+    assert tmp.protocolo_descricao == "Vacinação Pentavalente"
+    assert tmp.protocolo_secretaria == "SMS"
+    assert tmp.tempo_medio_dias == 174.3
+    assert tmp.total_irregulares == 1224
+    assert tmp.total_irregulares_abertos == 506
+
+
+def test_tempo_medio_irregularidade_protocolo_defaults():
+    tmp = TempoMedioIrregularidadeProtocolo(protocolo_id="x")
+    assert tmp.protocolo_descricao == ""
+    assert tmp.protocolo_secretaria == ""
+    assert tmp.tempo_medio_dias == 0.0
+    assert tmp.total_irregulares == 0
+    assert tmp.total_irregulares_abertos == 0
+
+
 def test_taxa_resolucao_mensal_point():
     tr = TaxaResolucaoMensalPoint(
         mes="2025-06",
@@ -200,9 +233,7 @@ def test_disparos_dashboard_models():
         taxa_falha=12.5,
         engajados=35,
         taxa_engajamento=58.3,
-        status_distribuicao=[
-            DisparoStatusDistribuicao(status="ENTREGUE", total=40)
-        ],
+        status_distribuicao=[DisparoStatusDistribuicao(status="ENTREGUE", total=40)],
         por_jornada=[
             DisparoJornadaResumo(
                 jornada="Mutirão de Vacinação",
@@ -260,18 +291,20 @@ def test_dashboard_with_full_sections():
         distribuicao_por_safra=[
             DistribuicaoSafra(safra="Jan/25", total_participantes=500)
         ],
-        distribuicao_motivo_saida=[
-            DistribuicaoMotivoSaida(motivo="Obito", total=5)
-        ],
-        tempo_medio_irregularidade=[
-            TempoMedioIrregularidade(secretaria="geral")
-        ],
+        distribuicao_motivo_saida=[DistribuicaoMotivoSaida(motivo="Obito", total=5)],
+        tempo_medio_irregularidade=[TempoMedioIrregularidade(secretaria="geral")],
         distribuicao_tempo_irregularidade=[
             DistribuicaoTempoIrregularidade(faixa="0-30", count=100)
         ],
-        taxa_resolucao_mensal=[
-            TaxaResolucaoMensalPoint(mes="2025-01")
+        tempo_medio_irregularidade_protocolo=[
+            TempoMedioIrregularidadeProtocolo(
+                protocolo_id="p1",
+                protocolo_descricao="Protocol 1",
+                protocolo_secretaria="SMS",
+                tempo_medio_dias=10.0,
+            )
         ],
+        taxa_resolucao_mensal=[TaxaResolucaoMensalPoint(mes="2025-01")],
         data_atualizacao=datetime(2025, 7, 15, 10, 30, 0),
     )
     assert len(d.protocolos) == 1
@@ -280,5 +313,6 @@ def test_dashboard_with_full_sections():
     assert len(d.distribuicao_motivo_saida) == 1
     assert len(d.tempo_medio_irregularidade) == 1
     assert len(d.distribuicao_tempo_irregularidade) == 1
+    assert len(d.tempo_medio_irregularidade_protocolo) == 1
     assert len(d.taxa_resolucao_mensal) == 1
     assert d.data_atualizacao == datetime(2025, 7, 15, 10, 30, 0)
