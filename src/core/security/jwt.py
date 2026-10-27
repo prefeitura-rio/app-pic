@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.config import env
+from src.core.security.team import team_permissions
 from src.utils.log import logger
 
 security = HTTPBearer()
@@ -146,6 +147,10 @@ async def get_current_user_permissions(
             status_code=403, detail="CPF não encontrado no token de autenticação"
         )
 
+    team = team_permissions(token_payload, env.PIC_TEAM_GROUP)
+    if team is not None:
+        return team
+
     try:
         permissions = await DataManager.get_user_permissions(cpf)
         perm_time = time.perf_counter() - perm_start
@@ -206,6 +211,10 @@ async def get_current_user_permissions_v2(
         raise HTTPException(
             status_code=403, detail="CPF não encontrado no token de autenticação"
         )
+
+    team = team_permissions(token_payload, env.PIC_TEAM_GROUP)
+    if team is not None:
+        return team
 
     try:
         permissions = await HybridAdminRepository().fetch_user_permissions(cpf)
