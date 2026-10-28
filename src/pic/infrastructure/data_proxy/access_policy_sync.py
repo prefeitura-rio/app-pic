@@ -172,7 +172,6 @@ class AccessPolicySync:
         grant_payloads = [
             {
                 "subject": row.subject,
-                "is_admin": row.is_admin,
                 "unit_type": row.unit_type,
                 "unit_id": row.unit_id,
             }
