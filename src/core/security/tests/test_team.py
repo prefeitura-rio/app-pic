@@ -53,3 +53,19 @@ def test_member_without_the_gold_level_gets_nothing():
 def test_member_with_a_token_without_level_gets_nothing():
     token = {"preferred_username": "52998224725", "groups": ["pic"]}
     assert team_permissions(token, GROUP) is None
+
+
+def test_member_without_the_gold_level_gets_permissions_when_gold_is_not_required():
+    for level in ("bronze", "prata", None):
+        token = payload(groups=["pic"], reliability_level=level)
+        assert team_permissions(token, GROUP, require_gold=False) is not None
+
+
+def test_gold_is_required_by_default():
+    token = payload(groups=["pic"], reliability_level="prata")
+    assert team_permissions(token, GROUP) is None
+
+
+def test_group_is_still_required_when_gold_is_not_required():
+    token = payload(groups=["devops"], reliability_level="ouro")
+    assert team_permissions(token, GROUP, require_gold=False) is None
