@@ -98,6 +98,7 @@ async def test_grant_upserts_with_merge_duplicates_and_app_schema_profile():
     payload = json.loads(sent.content)
     assert "schema" not in payload[0]
     assert "is_enabled" not in payload[0]
+    assert payload[0] == {"subject": "12345678900", "unit_type": "cras", "unit_id": "1"}
 
 
 async def test_revoke_deletes_row_filtered_by_pk():
