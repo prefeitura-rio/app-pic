@@ -155,6 +155,9 @@ class UpsertUserUseCase:
         if request.is_super_admin:
             raise ForbiddenError("Criacao de super admins nao e permitida via interface")
 
+        if request.general_view is not None and not permissions.is_super_admin:
+            raise ForbiddenError("Apenas super admins podem conceder a visao geral")
+
         target_ids_dict: dict[str, Any] = {
             "id_cras_list": request.id_cras_list,
             "id_escola_list": request.id_escola_list,
@@ -188,6 +191,8 @@ class UpsertUserUseCase:
             fields["secretarias_acesso"] = request.secretarias_acesso
         if request.notes is not None:
             fields["notes"] = request.notes
+        if request.general_view is not None:
+            fields["general_view"] = request.general_view
 
         is_full_update = (
             request.email is not None or request.nome is not None

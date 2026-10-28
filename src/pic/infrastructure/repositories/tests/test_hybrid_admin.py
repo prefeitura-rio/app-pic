@@ -16,7 +16,7 @@ Data-proxy push (`AccessPolicySync`/`push_and_mark_synced`) is out of scope
 here - it's already covered by
 `data_proxy/tests/test_access_policy_sync.py`. These tests only cover the
 pure local-write logic (`_replace_policy_grants`, `_set_all_policy_enabled`,
-`_sync_super_admin_base_row`).
+`_sync_general_view_row`, `_general_view_enabled`).
 """
 
 from collections.abc import AsyncIterator
@@ -26,7 +26,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.security.permissions_models import IdWithName
-from src.pic.infrastructure.db.models import BASE_UNIT_ID, BASE_UNIT_TYPE, PolicyRow
+from src.pic.infrastructure.db.models import (
+    GENERAL_VIEW_UNIT_ID,
+    GENERAL_VIEW_UNIT_TYPE,
+    PolicyRow,
+)
 from src.pic.infrastructure.repositories.hybrid_admin import (
     HybridAdminRepository,
     _self_heal_lock_for,
@@ -308,60 +312,75 @@ async def test_set_all_policy_enabled_flips_only_rows_that_differ(session):
 
 
 # ----------------------------------------------------------------------
-# _sync_super_admin_base_row
+# _sync_general_view_row / _general_view_enabled
 # ----------------------------------------------------------------------
 
 
-async def test_sync_super_admin_base_row_creates_sentinel_row_when_granted(session):
-    row = await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=True, active=True
+@pytest.mark.parametrize(
+    ("is_super_admin", "general_view", "active", "expected"),
+    [
+        pytest.param(False, False, True, False, id="plain-user"),
+        pytest.param(True, False, True, True, id="super-admin"),
+        pytest.param(False, True, True, True, id="general-view"),
+        pytest.param(True, True, True, True, id="both"),
+        pytest.param(True, False, False, False, id="inactive-super-admin"),
+        pytest.param(False, True, False, False, id="inactive-general-view"),
+    ],
+)
+def test_general_view_is_enabled_only_for_an_active_user_with_the_power(
+    is_super_admin, general_view, active, expected
+):
+    assert (
+        HybridAdminRepository._general_view_enabled(is_super_admin, general_view, active)
+        is expected
+    )
+
+
+async def test_sync_general_view_row_creates_the_wildcard_row_when_enabled(session):
+    row = await HybridAdminRepository._sync_general_view_row(
+        session, CPF, enabled=True
     )
     await session.commit()
 
     assert row is not None
-    assert row.unit_type == BASE_UNIT_TYPE
-    assert row.unit_id == BASE_UNIT_ID
-    assert row.is_admin is True
+    assert row.unit_type == GENERAL_VIEW_UNIT_TYPE == "*"
+    assert row.unit_id == GENERAL_VIEW_UNIT_ID == "*"
+    assert row.is_admin is False
     assert row.is_enabled is True
+    assert row.synced_at is None
 
 
-async def test_sync_super_admin_base_row_is_noop_when_never_granted(session):
-    row = await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=False, active=True
+async def test_sync_general_view_row_is_noop_when_never_enabled(session):
+    row = await HybridAdminRepository._sync_general_view_row(
+        session, CPF, enabled=False
     )
+
     assert row is None
     assert await _all_policy_rows(session) == []
 
 
-async def test_sync_super_admin_base_row_disables_instead_of_deleting(session):
-    await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=True, active=True
-    )
+async def test_sync_general_view_row_disables_instead_of_deleting(session):
+    await HybridAdminRepository._sync_general_view_row(session, CPF, enabled=True)
     await session.commit()
 
-    row = await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=False, active=True
+    row = await HybridAdminRepository._sync_general_view_row(
+        session, CPF, enabled=False
     )
     await session.commit()
 
     assert row is not None
     assert row.is_enabled is False
-    rows = await _all_policy_rows(session)
-    assert len(rows) == 1  # still there, just disabled
+    assert len(await _all_policy_rows(session)) == 1
 
 
-async def test_sync_super_admin_base_row_re_grant_reuses_the_same_row(session):
-    await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=True, active=True
-    )
+async def test_sync_general_view_row_re_enable_reuses_the_same_row(session):
+    await HybridAdminRepository._sync_general_view_row(session, CPF, enabled=True)
     await session.commit()
-    await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=False, active=True
-    )
+    await HybridAdminRepository._sync_general_view_row(session, CPF, enabled=False)
     await session.commit()
 
-    row = await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=True, active=True
+    row = await HybridAdminRepository._sync_general_view_row(
+        session, CPF, enabled=True
     )
     await session.commit()
 
@@ -370,17 +389,14 @@ async def test_sync_super_admin_base_row_re_grant_reuses_the_same_row(session):
     assert len(await _all_policy_rows(session)) == 1
 
 
-async def test_sync_super_admin_base_row_stays_disabled_when_inactive(session):
-    """A request that grants is_super_admin=True and active=False at the
-    same time (both fields live on the same edit form) must never leave
-    the RLS-bypass row enabled."""
-    row = await HybridAdminRepository._sync_super_admin_base_row(
-        session, CPF, is_super_admin=True, active=False
-    )
+async def test_sync_general_view_row_returns_none_when_nothing_changes(session):
+    await HybridAdminRepository._sync_general_view_row(session, CPF, enabled=True)
     await session.commit()
 
-    assert row is not None
-    assert row.is_enabled is False
+    assert (
+        await HybridAdminRepository._sync_general_view_row(session, CPF, enabled=True)
+        is None
+    )
 
 
 # ----------------------------------------------------------------------

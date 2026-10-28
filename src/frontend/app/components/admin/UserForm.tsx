@@ -63,6 +63,8 @@ export function UserForm({
   const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false);
   // Não há UI para promover/rebaixar super admin neste formulário; apenas preserva o valor existente.
   const isSuperAdmin = user?.is_super_admin ?? false;
+  const canSetGeneralView = currentUser?.is_super_admin ?? false;
+  const [generalView, setGeneralView] = useState(user?.general_view ?? false);
   const [notes, setNotes] = useState(user?.notes ?? "");
 
   const [selectedCras, setSelectedCras] = useState<IdWithName[]>(user?.id_cras_list ?? []);
@@ -106,6 +108,7 @@ export function UserForm({
         secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
+        ...(canSetGeneralView ? { general_view: generalView } : {}),
         id_cras_list: selectedCras,
         id_escola_list: selectedEscolas,
         id_cre_list: selectedCres,
@@ -127,6 +130,7 @@ export function UserForm({
         secretaria: secretaria || null,
         is_admin: isAdmin,
         is_super_admin: isSuperAdmin,
+        ...(canSetGeneralView ? { general_view: generalView } : {}),
         id_cras_list: selectedCras,
         id_escola_list: selectedEscolas,
         id_cre_list: selectedCres,
@@ -268,6 +272,29 @@ export function UserForm({
               </Label>
               <p className="text-sm text-muted-foreground">
                 Pode gerenciar outros usuários (apenas com subset de seus IDs)
+              </p>
+            </div>
+          </div>
+
+          {/* General View Checkbox */}
+          <div className="flex items-start gap-3" title="Visão geral: o usuário vê todas as unidades do painel, sem restrição por unidade">
+            <Checkbox
+              id="general_view"
+              checked={generalView || isSuperAdmin}
+              onCheckedChange={(checked) => setGeneralView(checked as boolean)}
+              disabled={isLoading || isSuperAdmin || !canSetGeneralView}
+              className="mt-1"
+            />
+            <div className="flex-1 space-y-1">
+              <Label
+                htmlFor="general_view"
+                className="text-sm font-medium leading-none cursor-pointer"
+                title="Marque para conceder a visão geral do painel"
+              >
+                Visão geral
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Vê todas as unidades do painel, sem restrição por unidade
               </p>
             </div>
           </div>
