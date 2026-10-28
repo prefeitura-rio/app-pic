@@ -147,7 +147,9 @@ async def get_current_user_permissions(
             status_code=403, detail="CPF não encontrado no token de autenticação"
         )
 
-    team = team_permissions(token_payload, env.PIC_TEAM_GROUP)
+    team = team_permissions(
+        token_payload, env.PIC_TEAM_GROUP, env.PIC_TEAM_REQUIRE_GOLD
+    )
     if team is not None:
         return team
 
@@ -212,7 +214,9 @@ async def get_current_user_permissions_v2(
             status_code=403, detail="CPF não encontrado no token de autenticação"
         )
 
-    team = team_permissions(token_payload, env.PIC_TEAM_GROUP)
+    team = team_permissions(
+        token_payload, env.PIC_TEAM_GROUP, env.PIC_TEAM_REQUIRE_GOLD
+    )
     if team is not None:
         return team
 
