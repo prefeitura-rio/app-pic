@@ -25,7 +25,7 @@ spec:
     fullnameOverride: app-pic-api-prod
     image:
       repository: ghcr.io/prefeitura-rio/app-pic-api
-      tag: prod-253 # {"$imagepolicy": "app-pic:app-pic-api-prod:tag"}
+      tag: prod-256 # {"$imagepolicy": "app-pic:app-pic-api-prod:tag"}
       pullPolicy: Always
     service:
       port: 80
