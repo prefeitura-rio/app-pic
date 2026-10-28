@@ -152,7 +152,7 @@ async def test_push_mixes_grants_and_revokes_into_post_and_delete():
 async def test_grant_push_chunks_by_body_budget(monkeypatch):
     """Grant batches are split by serialized body size (never by row count
     or unit_type), keeping every POST under the data-proxy's body limit."""
-    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 200)
+    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 130)
     handler = fake_data_proxy()
     sync = make_sync(handler)
     rows = [grant_row(id=i, unit_id=str(i)) for i in range(1, 6)]
@@ -160,12 +160,12 @@ async def test_grant_push_chunks_by_body_budget(monkeypatch):
     pushed = await sync.push(rows)
 
     assert set(pushed) == set(rows)
-    # ~82 bytes of JSON per row -> two rows per 200-byte chunk.
+    # ~62 bytes of JSON per row -> two rows per 130-byte chunk.
     assert len(handler.requests) == 3
     for req in handler.requests:
         assert req.method == "POST"
         body = json.loads(req.content)
-        assert sum(len(json.dumps(row)) for row in body) <= 200
+        assert sum(len(json.dumps(row)) for row in body) <= 130
     unit_ids = {
         p["unit_id"] for req in handler.requests for p in json.loads(req.content)
     }
@@ -267,7 +267,7 @@ async def test_grant_chunk_failure_pushes_only_successful_chunks(monkeypatch):
     """One failed POST chunk leaves only its own rows unsynced; the
     remaining chunks still complete (the next self-heal retries the failed
     ones)."""
-    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 200)
+    monkeypatch.setattr(access_policy_sync, "_UPSERT_CHUNK_BYTES", 130)
     statuses = iter([500, 201, 201])
 
     async def handler(request: httpx.Request) -> httpx.Response:
