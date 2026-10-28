@@ -43,6 +43,7 @@ class UserAccessRecord(BaseModel):
     secretaria: str | None = None
     is_admin: bool = False
     is_super_admin: bool = False
+    general_view: bool = False
     permission: str | None = None
 
     id_cras_list: list[IdWithName] | None = None
@@ -70,6 +71,7 @@ class UpsertUserRequest(BaseModel):
     secretaria: str | None = None
     is_admin: bool = False
     is_super_admin: bool = False
+    general_view: bool | None = None
 
     id_cras_list: list[IdWithName] | None = None
     id_escola_list: list[IdWithName] | None = None

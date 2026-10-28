@@ -672,6 +672,7 @@ export interface UserAccessRecord {
 	secretaria?: string | null;
 	is_admin: boolean;
 	is_super_admin: boolean;
+	general_view?: boolean;
 	permission?: string | null;
 
 	id_cras_list?: IdWithName[] | null;
@@ -703,6 +704,7 @@ export interface CreateUserRequest {
 	secretaria?: string | null;
 	is_admin?: boolean;
 	is_super_admin?: boolean;
+	general_view?: boolean;
 
 	id_cras_list?: IdWithName[] | null;
 	id_escola_list?: IdWithName[] | null;
@@ -729,6 +731,7 @@ export interface UpdateUserRequest {
 	secretaria?: string | null;
 	is_admin?: boolean | null;
 	is_super_admin?: boolean | null;
+	general_view?: boolean;
 
 	id_cras_list?: IdWithName[] | null;
 	id_escola_list?: IdWithName[] | null;
