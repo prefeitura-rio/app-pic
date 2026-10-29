@@ -528,7 +528,11 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 )
             )
 
-        await self._set_protocolos_regiao_cache(cache_key, protocolos)
+        # Não cacheia lista vazia: logo após um deploy/sync, um "sem dados"
+        # ficaria preso no Redis por 30 min (consulta é barata e o caso é
+        # raro — mesmo critério do protocolo geral).
+        if protocolos:
+            await self._set_protocolos_regiao_cache(cache_key, protocolos)
         logger.info(
             f"[geospatial] protocolos por região camada={camada!r} "
             f"regiao={regiao!r}: {len(protocolos)} user_id={user_id!r} "
