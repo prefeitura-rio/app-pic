@@ -84,6 +84,21 @@ PROTOCOLO_SECRETARIA = {
     "sms_visitas_domiciliares_puerperio": "SMS",
 }
 
+# Busca ativa filter: secretaria code -> boolean indicator column on
+# `endpoint_participante_protocolos_wide` (true when the participant had busca
+# ativa in the last 30 days). SME has no column yet, so it is intentionally
+# absent from this map (an SME-only filter matches nothing).
+BUSCA_ATIVA_INDICATOR_COLUMNS: dict[str, str] = {
+    "SMAS": "busca_ativa_smas_30d_indicador",
+    "SMS": "busca_ativa_sms_30d_indicador",
+}
+
+# Special `busca_ativa` filter value meaning "no busca ativa in the last 30d".
+# Instead of selecting secretarias, it filters participants WITHOUT busca ativa
+# in the secretaria columns the user can actually see (partial access: only
+# the accessible ones; full access: all of them).
+BUSCA_ATIVA_SEM_ID = "SEM_BUSCA"
+
 # Sort request key -> column used for ordering.
 SORTABLE_COLUMNS = {
     "nome": "nome",
@@ -124,4 +139,7 @@ LIST_ITEM_FIELDS = [
     "total_protocolos_irregular",
     "raca",
     "has_cartao_pic",
+    # Enriched app-side (aggregate query over endpoint_busca_ativa) — no
+    # matching column on the wide table, so the mapper reads None here.
+    "has_busca_ativa",
 ]

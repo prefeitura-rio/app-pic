@@ -399,3 +399,104 @@ class TestSortRows:
         rows = [{"idade": 5}, {"idade": 1}]
         governance.sort_rows(rows, "idade", descending=True)
         assert rows == [{"idade": 5}, {"idade": 1}]
+
+
+class TestComputeBuscaAtivaIndicator:
+    def test_full_access_ors_sms_and_smas(self):
+        assert (
+            governance.compute_busca_ativa_indicator(
+                {
+                    "busca_ativa_sms_30d_indicador": False,
+                    "busca_ativa_smas_30d_indicador": True,
+                },
+                full_access=True,
+                secretarias_acesso=[],
+            )
+            is True
+        )
+        assert (
+            governance.compute_busca_ativa_indicator(
+                {
+                    "busca_ativa_sms_30d_indicador": False,
+                    "busca_ativa_smas_30d_indicador": False,
+                },
+                full_access=True,
+                secretarias_acesso=[],
+            )
+            is False
+        )
+
+    def test_sms_only_uses_sms_column(self):
+        row = {
+            "busca_ativa_sms_30d_indicador": True,
+            "busca_ativa_smas_30d_indicador": False,
+        }
+        assert (
+            governance.compute_busca_ativa_indicator(
+                row, full_access=False, secretarias_acesso=["SMS"]
+            )
+            is True
+        )
+        row["busca_ativa_sms_30d_indicador"] = False
+        assert (
+            governance.compute_busca_ativa_indicator(
+                row, full_access=False, secretarias_acesso=["SMS"]
+            )
+            is False
+        )
+
+    def test_smas_only_uses_smas_column(self):
+        row = {
+            "busca_ativa_sms_30d_indicador": True,
+            "busca_ativa_smas_30d_indicador": False,
+        }
+        assert (
+            governance.compute_busca_ativa_indicator(
+                row, full_access=False, secretarias_acesso=["SMAS"]
+            )
+            is False
+        )
+        row["busca_ativa_smas_30d_indicador"] = True
+        assert (
+            governance.compute_busca_ativa_indicator(
+                row, full_access=False, secretarias_acesso=["SMAS"]
+            )
+            is True
+        )
+
+    def test_sme_only_returns_none(self):
+        row = {
+            "busca_ativa_sms_30d_indicador": True,
+            "busca_ativa_smas_30d_indicador": True,
+        }
+        assert (
+            governance.compute_busca_ativa_indicator(
+                row, full_access=False, secretarias_acesso=["SME"]
+            )
+            is None
+        )
+
+    def test_no_access_returns_none(self):
+        row = {
+            "busca_ativa_sms_30d_indicador": True,
+            "busca_ativa_smas_30d_indicador": True,
+        }
+        assert (
+            governance.compute_busca_ativa_indicator(
+                row, full_access=False, secretarias_acesso=[]
+            )
+            is None
+        )
+
+    def test_null_columns_treated_as_false(self):
+        assert (
+            governance.compute_busca_ativa_indicator(
+                {
+                    "busca_ativa_sms_30d_indicador": None,
+                    "busca_ativa_smas_30d_indicador": None,
+                },
+                full_access=True,
+                secretarias_acesso=[],
+            )
+            is False
+        )

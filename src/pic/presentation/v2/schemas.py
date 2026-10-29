@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from src.pic.domain.models.acordo_resultados import AcordoResultados
 from src.pic.domain.models.admin import UserAccessRecord
+from src.pic.domain.models.busca_ativa import BuscaAtivaEvento
 from src.pic.domain.models.dashboard import Dashboard
 from src.pic.domain.models.filters import FilterOption
 from src.pic.domain.models.geospatial import GeospatialFilterOptions, GeospatialLayer
@@ -18,6 +19,17 @@ class ParticipantListResponse(BaseModel):
 
 class ParticipantDetailResponse(BaseModel):
     data: Participante
+
+
+class BuscaAtivaPageMeta(BaseModel):
+    offset: int
+    limit: int
+    has_more: bool
+
+
+class BuscaAtivaPageResponse(BaseModel):
+    data: list[BuscaAtivaEvento]
+    meta: BuscaAtivaPageMeta
 
 
 class AdminUsersResponse(BaseModel):

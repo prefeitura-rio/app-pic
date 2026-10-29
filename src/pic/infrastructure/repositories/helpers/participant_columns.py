@@ -58,6 +58,8 @@ BASE_LIST_COLUMNS = [
     "status",
     "raca",
     "has_cartao_pic",
+    "busca_ativa_smas_30d_indicador",
+    "busca_ativa_sms_30d_indicador",
 ]
 
 # Full-access extras returned verbatim from the resumo table.
@@ -68,6 +70,20 @@ FULL_ACCESS_COLUMNS = [
     "educacao_fracao",
     "saude_fracao",
     "total_protocolos_irregular",
+]
+
+# Busca ativa export: only the identity/address columns are needed from the
+# wide table (the events come from `endpoint_busca_ativa`). Selecting just
+# these keeps the payload tiny vs `select("*")` (hundreds of protocol columns).
+BUSCA_ATIVA_EXPORT_COLUMNS = [
+    "id_membro_familia",
+    "cpf",
+    "nome",
+    "nascimento_data",
+    "endereco",
+    "complemento",
+    "bairro",
+    "endereco_sms",
 ]
 
 # CSV export column policy: every export fetches `select("*")` and the

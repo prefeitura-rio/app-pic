@@ -78,6 +78,21 @@ class ParticipantRepository(ABC):
         """
 
     @abstractmethod
+    def export_busca_ativa_rows(
+        self,
+        filters: FilterCriteria,
+        sort: SortParams,
+        permissions: Any = None,
+        user_token: str | None = None,
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Yield pages of identity/address rows for the busca ativa export.
+
+        Same filter/sort/governance semantics as `export_wide_rows`, but with a
+        reduced select (identity/address only) — the busca ativa events are
+        joined in-app from `endpoint_busca_ativa`.
+        """
+
+    @abstractmethod
     def export_columns(self, permissions: Any = None) -> list[str]:
         """Return the deterministic, visibility-filtered CSV header.
 
