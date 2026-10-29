@@ -61,6 +61,7 @@ import { GeospatialMapView } from "./GeospatialMapView";
 import { ParticipantTable } from "./ParticipantTable";
 import { ProtocoloItem } from "./ProtocoloItem";
 import { BuscaAtivaSection } from "./busca-ativa/BuscaAtivaSection";
+import { formatDateOnly, parseDateOnlyLocal } from "@/app/utils/utils";
 
 // Função para renderizar o grupo com emoji (consistente com VirtualizedParticipantTable)
 const renderGrupo = (grupo?: string) => {
@@ -187,7 +188,9 @@ const calcularIdadeDetalhada = (
 	dataNascimento: string,
 	dataReferencia: Date,
 ) => {
-	const nascimento = new Date(dataNascimento);
+	// Date-only "YYYY-MM-DD" parseado como meia-noite LOCAL: parsear com
+	// `new Date(iso)` desloca -3h (UTC) e pode errar o dia/idade em 1.
+	const nascimento = parseDateOnlyLocal(dataNascimento) ?? new Date(dataNascimento);
 
 	let anos = dataReferencia.getFullYear() - nascimento.getFullYear();
 	let meses = dataReferencia.getMonth() - nascimento.getMonth();
@@ -662,7 +665,7 @@ const ProfessionalTabComponent = ({
 													? `${selectedParticipant.idade} anos (${maskDate(selectedParticipant.nascimento_data)})`
 													: selectedParticipant.idade != null &&
 													  selectedParticipant.nascimento_data
-														? `${selectedParticipant.idade} anos (${new Date(selectedParticipant.nascimento_data).toLocaleDateString("pt-BR")})`
+														? `${selectedParticipant.idade} anos (${formatDateOnly(selectedParticipant.nascimento_data)})`
 														: selectedParticipant.idade != null
 															? `${selectedParticipant.idade} anos`
 															: "-"}
