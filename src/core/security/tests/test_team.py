@@ -16,6 +16,9 @@ def test_member_of_the_team_is_super_admin():
     assert permissions.is_super_admin
     assert permissions.permission == "super_admin"
     assert permissions.active
+    # Acesso total por secretaria: sem isso os gates do dashboard/acordo
+    # zerariam a visão do super admin (secretaria_acesso != "TODOS").
+    assert permissions.secretarias_acesso == ["SME", "SMS", "SMAS"]
 
 
 def test_member_of_other_groups_too_is_super_admin():

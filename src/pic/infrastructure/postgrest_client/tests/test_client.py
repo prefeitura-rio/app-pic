@@ -218,3 +218,25 @@ async def test_close_postgrest_client_resets_singleton(monkeypatch):
     assert second is not first
 
     await close_postgrest_client()
+
+
+@pytest.mark.asyncio
+async def test_filtro_com_espaco_vai_como_porcento_20():
+    """Regressão do '+' na query: o gateway nginx/njs do staging entrega '+'
+    literal ao PostgREST, então espaços em filtros precisam ir como '%20'."""
+    handler = fake_data_proxy()
+    client = PostgrestClient(CONFIG, transport=httpx.MockTransport(handler))
+
+    async with client.with_user_token("good-token"):
+        query = (
+            client.table("endpoint_participante_visao_geral_protocolos")
+            .select("protocolo_id")
+            .eq("bairro", "Senador Camará")
+        )
+        await query.execute()
+
+    sent = handler.requests[-1]
+    assert b"+" not in sent.url.query
+    assert b"eq.Senador%20Camar%C3%A1" in sent.url.query
+
+    await client.aclose()
