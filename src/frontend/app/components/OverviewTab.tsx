@@ -885,7 +885,6 @@ const OverviewTabComponent = ({
 			<BuscaAtivaVisaoGeralSection
 				data={data.busca_ativa}
 				showSMAS={showSMAS}
-				showSMS={showSMS}
 				loading={loading}
 			/>
 		</div>

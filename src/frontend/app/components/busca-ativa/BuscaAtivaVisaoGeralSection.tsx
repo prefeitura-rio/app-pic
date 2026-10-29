@@ -42,7 +42,6 @@ const PALETA_CATEGORIAS = [
 ];
 
 const COR_SMAS = "#3b82f6";
-const COR_SMS = "#10b981";
 
 // A busca ativa da SMAS começa a ser acompanhada em mar/2026.
 const SMAS_MES_INICIAL = "2026-03";
@@ -77,7 +76,6 @@ function corDesfecho(desfecho: string, index: number): string {
 interface BuscaAtivaVisaoGeralSectionProps {
 	data?: BuscaAtivaDashboard | null;
 	showSMAS?: boolean;
-	showSMS?: boolean;
 	loading?: boolean;
 }
 
@@ -217,7 +215,6 @@ function CategoriaDonut({
 export function BuscaAtivaVisaoGeralSection({
 	data,
 	showSMAS = true,
-	showSMS = true,
 	loading = false,
 }: BuscaAtivaVisaoGeralSectionProps) {
 	const desfecho = useMemo(
@@ -240,7 +237,6 @@ export function BuscaAtivaVisaoGeralSection({
 
 	const { totais } = data;
 	const temEvolucaoSMAS = evolucaoSMAS.some((p) => p.smas > 0);
-	const temEvolucaoSMS = data.evolucao_mensal.some((p) => p.sms > 0);
 	const temDesfecho = desfecho.data.length > 0;
 
 	return (
@@ -273,79 +269,40 @@ export function BuscaAtivaVisaoGeralSection({
 				/>
 			</div>
 
-			{/* Evolução mensal por fonte (SMAS × SMS, gráficos separados) */}
-			{(showSMAS || showSMS) && (
-				<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-					{showSMAS && (
-						<Card className="relative">
-							<CardHeader>
-								<CardTitle className="text-lg">
-									Evolução Mensal — SMAS
-								</CardTitle>
-								<CardDescription>
-									Buscas ativas da Assistência Social (desde Mar/26)
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								{temEvolucaoSMAS ? (
-									<ResponsiveContainer width="100%" height={300}>
-										<LineChart data={evolucaoSMAS}>
-											<CartesianGrid strokeDasharray="3 3" />
-											<XAxis dataKey="mes_label" interval={1} />
-											<YAxis allowDecimals={false} />
-											<Tooltip />
-											<Line
-												type="monotone"
-												dataKey="smas"
-												name="SMAS"
-												stroke={COR_SMAS}
-												strokeWidth={2}
-												dot={false}
-											/>
-										</LineChart>
-									</ResponsiveContainer>
-								) : (
-									<EmptyChart height={300} />
-								)}
-							</CardContent>
-						</Card>
-					)}
-
-					{showSMS && (
-						<Card className="relative">
-							<CardHeader>
-								<CardTitle className="text-lg">
-									Evolução Mensal — SMS
-								</CardTitle>
-								<CardDescription>
-									Buscas ativas da Saúde ao longo do tempo
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								{temEvolucaoSMS ? (
-									<ResponsiveContainer width="100%" height={300}>
-										<LineChart data={data.evolucao_mensal}>
-											<CartesianGrid strokeDasharray="3 3" />
-											<XAxis dataKey="mes_label" interval={1} />
-											<YAxis allowDecimals={false} />
-											<Tooltip />
-											<Line
-												type="monotone"
-												dataKey="sms"
-												name="SMS"
-												stroke={COR_SMS}
-												strokeWidth={2}
-												dot={false}
-											/>
-										</LineChart>
-									</ResponsiveContainer>
-								) : (
-									<EmptyChart height={300} />
-								)}
-							</CardContent>
-						</Card>
-					)}
-				</div>
+			{/* Evolução mensal — SMAS */}
+			{showSMAS && (
+				<Card className="relative">
+					<CardHeader>
+						<CardTitle className="text-lg">
+							Evolução Mensal — SMAS
+						</CardTitle>
+						<CardDescription>
+							Buscas ativas da Assistência Social (desde Mar/26)
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{temEvolucaoSMAS ? (
+							<ResponsiveContainer width="100%" height={300}>
+								<LineChart data={evolucaoSMAS}>
+									<CartesianGrid strokeDasharray="3 3" />
+									<XAxis dataKey="mes_label" interval={1} />
+									<YAxis allowDecimals={false} />
+									<Tooltip />
+									<Line
+										type="monotone"
+										dataKey="smas"
+										name="SMAS"
+										stroke={COR_SMAS}
+										strokeWidth={2}
+										dot={false}
+									/>
+								</LineChart>
+							</ResponsiveContainer>
+						) : (
+							<EmptyChart height={300} />
+						)}
+					</CardContent>
+				</Card>
 			)}
 
 			{/* Resultado SMAS por mês */}
@@ -384,24 +341,12 @@ export function BuscaAtivaVisaoGeralSection({
 			)}
 
 			{/* Tipos de busca */}
-			{(showSMAS || showSMS) && (
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-					{showSMAS && (
-						<CategoriaDonut
-							title="Tipos de Busca — SMAS"
-							description="Buscas da Assistência por tipo"
-							data={data.smas_tipos}
-						/>
-					)}
-
-					{showSMS && (
-						<CategoriaDonut
-							title="Público da Visita — SMS"
-							description="Buscas da Saúde por público"
-							data={data.sms_publicos}
-						/>
-					)}
-				</div>
+			{showSMAS && (
+				<CategoriaDonut
+					title="Tipos de Busca — SMAS"
+					description="Buscas da Assistência por tipo"
+					data={data.smas_tipos}
+				/>
 			)}
 		</div>
 	);
