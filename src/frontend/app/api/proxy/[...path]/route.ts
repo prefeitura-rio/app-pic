@@ -27,6 +27,7 @@ const API_URL = process.env.API_URL;
 const STREAM_PATHS = [
 	"api/v1/participants/export",
 	"api/v2/participants/export",
+	"api/v2/participants/busca-ativa/export",
 ];
 
 function isStreamPath(path: string): boolean {

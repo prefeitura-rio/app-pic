@@ -18,6 +18,9 @@ Semantics are a faithful port of
 
 from typing import Any
 
+from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
+    BUSCA_ATIVA_INDICATOR_COLUMNS,
+)
 from src.utils.constants import SECRETARIA_COLUMN_PREFIX
 
 ALL_SECRETARIAS = frozenset({"SME", "SMS", "SMAS"})
@@ -62,6 +65,31 @@ def _is_true(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"true", "1", "sim", "yes"}
     return False
+
+
+def compute_busca_ativa_indicator(
+    row: dict[str, Any],
+    full_access: bool,
+    secretarias_acesso: list[str],
+) -> bool | None:
+    """Derive `has_busca_ativa` from the wide-table 30d indicator columns.
+
+    - Full access: `sms OR smas`.
+    - Partial access: OR over the accessible SMS/SMAS columns only.
+    - No SMS/SMAS access: `None` (the list badge renders "-").
+    """
+    if full_access:
+        allowed = {"SMS", "SMAS"}
+    else:
+        allowed = set(secretarias_acesso) & {"SMS", "SMAS"}
+    if not allowed:
+        return None
+    columns = [
+        BUSCA_ATIVA_INDICATOR_COLUMNS[secretaria]
+        for secretaria in ("SMAS", "SMS")
+        if secretaria in allowed
+    ]
+    return any(_is_true(row.get(column)) for column in columns)
 
 
 def _counters(protocolos: list[dict[str, Any]]) -> dict[str, int]:

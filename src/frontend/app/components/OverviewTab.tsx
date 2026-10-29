@@ -44,6 +44,7 @@ import type {
 import { DashboardFilterCard } from "./DashboardFilterCard";
 import { ProtocoloCard } from "./ProtocoloCard";
 import { StatCard } from "./StatCard";
+import { BuscaAtivaVisaoGeralSection } from "./busca-ativa/BuscaAtivaVisaoGeralSection";
 
 // Cores para o gráfico de pizza (ordem: crianca=vermelho, cadunico=amarelo, gravidez=verde, obito=azul)
 const PIE_COLORS = [
@@ -1041,6 +1042,15 @@ const OverviewTabComponent = ({
 					</CardContent>
 				</Card>
 			</div>
+
+			{/* ===================================================================== */}
+			{/* SEÇÃO 9: BUSCA ATIVA */}
+			{/* ===================================================================== */}
+			<BuscaAtivaVisaoGeralSection
+				data={data.busca_ativa}
+				showSMAS={showSMAS}
+				loading={loading}
+			/>
 		</div>
 	);
 };

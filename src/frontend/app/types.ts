@@ -61,6 +61,52 @@ export interface Disparo {
 	metadados?: DisparoMetadados | null;
 }
 
+/** Unidade de saúde (clínica da família/equipe) da busca ativa SMS */
+export interface BuscaAtivaUnidadeSMS {
+	nome?: string | null;
+	regional?: string | null;
+	equipe_nome?: string | null;
+}
+
+/** Equipamento de assistência social (CRAS/CAS) da busca ativa SMAS */
+export interface BuscaAtivaUnidadeSMAS {
+	nome?: string | null;
+	regional?: string | null;
+}
+
+/** Unidade responsável pela busca ativa (sme não é exposto) */
+export interface BuscaAtivaUnidadeReferenciada {
+	sms?: BuscaAtivaUnidadeSMS | null;
+	smas?: BuscaAtivaUnidadeSMAS | null;
+}
+
+/** Um evento de busca ativa do participante (endpoint_busca_ativa) */
+export interface BuscaAtivaEvento {
+	id_busca_ativa?: string | null;
+	fonte?: string | null; // SMS | SMAS
+	data?: string | null; // ISO date (YYYY-MM-DD)
+	sms_tipo_publico?: string | null; // apenas SMS (não exibido)
+	smas_tipo?: string[] | null; // apenas SMAS (ex.: ["Por telefone"])
+	smas_familia_localizada_indicador?: boolean | null; // apenas SMAS
+	smas_protocolo_violado?: string[] | null; // apenas SMAS
+	smas_motivo_nao_localizada?: string[] | null; // apenas SMAS
+	processed_at?: string | null; // ISO datetime
+	unidade_referenciada?: BuscaAtivaUnidadeReferenciada | null;
+}
+
+/** Metadados de uma página de eventos de busca ativa */
+export interface BuscaAtivaPageMeta {
+	offset: number;
+	limit: number;
+	has_more: boolean;
+}
+
+/** Resposta paginada da rota GET /api/v2/participants/{id}/busca-ativa */
+export interface BuscaAtivaPageResponse {
+	data: BuscaAtivaEvento[];
+	meta: BuscaAtivaPageMeta;
+}
+
 /** Contagem de disparos por status (seção de disparos do dashboard) */
 export interface DisparoStatusDistribuicao {
 	status?: string | null;
@@ -90,6 +136,44 @@ export interface DisparosDashboard {
 	taxa_engajamento: number;
 	status_distribuicao: DisparoStatusDistribuicao[];
 	por_jornada: DisparoJornadaResumo[];
+}
+
+/** Totais de busca ativa (Visão Geral) */
+export interface BuscaAtivaTotais {
+	buscas: number;
+	participantes: number;
+}
+
+/** Série mensal de busca ativa por fonte (SMS/SMAS) */
+export interface BuscaAtivaPontoMensal {
+	mes: string;
+	mes_label: string;
+	smas: number;
+	sms: number;
+	total: number;
+}
+
+/** Resultado SMAS por mês, quebrado por desfecho */
+export interface BuscaAtivaDesfechoMensal {
+	mes: string;
+	mes_label: string;
+	desfecho: string;
+	total: number;
+}
+
+/** Distribuição por categoria (tipo SMAS / público SMS) */
+export interface BuscaAtivaCategoria {
+	categoria: string;
+	total: number;
+}
+
+/** Seção "Busca Ativa" da Visão Geral */
+export interface BuscaAtivaDashboard {
+	totais: BuscaAtivaTotais;
+	evolucao_mensal: BuscaAtivaPontoMensal[];
+	smas_desfecho_mensal: BuscaAtivaDesfechoMensal[];
+	smas_tipos: BuscaAtivaCategoria[];
+	sms_publicos: BuscaAtivaCategoria[];
 }
 
 export interface EnderecoSMS {
@@ -140,6 +224,9 @@ export interface Participante {
 
 	// Disparos de WhatsApp (campanhas HSM)
 	disparos?: Disparo[] | null;
+
+	// Eventos de busca ativa (SMS/SMAS) — primeira página (20) embutida
+	busca_ativa?: BuscaAtivaEvento[] | null;
 
 	// Protocolos - Contadores gerais
 	total_protocolos?: number;
@@ -217,6 +304,7 @@ export interface ParticipanteListItem {
 	saude_fracao?: string;
 	total_protocolos_irregular?: number;
 	has_cartao_pic?: boolean | null;
+	has_busca_ativa?: boolean | null; // enriquecido app-side (eventos em endpoint_busca_ativa)
 }
 
 /** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
@@ -312,7 +400,8 @@ export type FilterFieldKey =
 	| "protocolo_descricoes"
 	| "protocolo_status_list"
 	| "bolsa_familia"
-	| "protocolo_secretarias";
+	| "protocolo_secretarias"
+	| "busca_ativa";
 
 export interface FilterFieldOptionsResponse {
 	field: string;
@@ -498,6 +587,11 @@ export interface Dashboard {
 	disparos?: DisparosDashboard | null;
 
 	// =========================================================================
+	// SEÇÃO 9: BUSCA ATIVA (Visão Geral)
+	// =========================================================================
+	busca_ativa?: BuscaAtivaDashboard | null;
+
+	// =========================================================================
 	// METADADOS
 	// =========================================================================
 	data_atualizacao?: string;
@@ -584,6 +678,7 @@ export interface ParticipantFilters {
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
 	protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
+	busca_ativa?: string | string[]; // Filtro por busca ativa (SMAS, SMS, SME — multi-select)
 	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
@@ -685,6 +780,7 @@ export interface UserAccessRecord {
 	secretaria?: string | null;
 	is_admin: boolean;
 	is_super_admin: boolean;
+	general_view?: boolean;
 	permission?: string | null;
 
 	id_cras_list?: IdWithName[] | null;
@@ -716,6 +812,7 @@ export interface CreateUserRequest {
 	secretaria?: string | null;
 	is_admin?: boolean;
 	is_super_admin?: boolean;
+	general_view?: boolean;
 
 	id_cras_list?: IdWithName[] | null;
 	id_escola_list?: IdWithName[] | null;
@@ -742,6 +839,7 @@ export interface UpdateUserRequest {
 	secretaria?: string | null;
 	is_admin?: boolean | null;
 	is_super_admin?: boolean | null;
+	general_view?: boolean;
 
 	id_cras_list?: IdWithName[] | null;
 	id_escola_list?: IdWithName[] | null;

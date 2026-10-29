@@ -44,3 +44,6 @@ ACORDO_META_REGULARIDADE_PERCENTUAL = 30.5
 # Valor de referência da meta (%), traçado junto da meta no gráfico de
 # evolução da meta de regularidade.
 ACORDO_META_REFERENCIA_PERCENTUAL = 27.5
+# Busca Ativa (Visão Geral) - janela de dados exibida na seção: últimos N
+# meses a partir de hoje (corte aplicado em todas as queries da seção).
+BUSCA_ATIVA_JANELA_MESES = 12

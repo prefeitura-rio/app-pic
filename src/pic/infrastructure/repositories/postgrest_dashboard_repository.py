@@ -33,6 +33,7 @@ import asyncio
 import hashlib
 import json
 import time
+from datetime import date
 from typing import Any
 
 import httpx
@@ -44,6 +45,7 @@ from src.pic.domain.models.dashboard import Dashboard
 from src.pic.infrastructure.dashboard.compute_postgrest import (
     _calculate_dashboard_metrics,
 )
+from src.pic.infrastructure.dashboard.config import BUSCA_ATIVA_JANELA_MESES
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.utils.log import logger
@@ -58,6 +60,7 @@ _TABLE_TEMPO = "endpoint_participante_visao_geral_tempo_irregular"
 _TABLE_TEMPO_PROTOCOLO = "endpoint_participante_visao_geral_tempo_irregular_protocolo"
 _TABLE_RESOLUCAO = "endpoint_participante_visao_geral_resolucao_alertas"
 _TABLE_DISPAROS = "endpoint_whatsapp_disparo"
+_TABLE_BUSCA_ATIVA = "endpoint_participante_visao_geral_busca_ativa"
 
 # Filters of the dashboard screen that map to columns present on the raw
 # disparos table. Keys are the filter names used by the other sections;
@@ -104,6 +107,23 @@ _CACHE_TTL_SECONDS = 1800  # 30 minutes (session lifetime)
 def _escape_ilike(value: str) -> str:
     """Escape ILIKE wildcards so the value matches literally."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _busca_ativa_cutoff(today: date | None = None) -> str:
+    """Primeiro dia do mês que inicia a janela da busca ativa (ISO date).
+
+    Janela de ``BUSCA_ATIVA_JANELA_MESES`` meses inclusive, terminando no mês
+    de *today* (por padrão, hoje). Ex.: today = 2026-10-19 com janela 12 →
+    ``2025-11-01`` (nov/2025 … out/2026).
+    """
+    today = today or date.today()
+    total_months = (
+        today.year * 12
+        + (today.month - 1)
+        - (BUSCA_ATIVA_JANELA_MESES - 1)
+    )
+    year, month_zero_based = divmod(total_months, 12)
+    return date(year, month_zero_based + 1, 1).isoformat()
 
 
 def _apply_filters(
@@ -245,6 +265,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 resolucao,
                 tempo_protocolo,
                 disparos,
+                busca_ativa,
             ) = await asyncio.gather(
                 self._fetch_consolidado(filters),
                 self._fetch_protocolos(filters),
@@ -253,6 +274,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 self._fetch_resolucao(filters),
                 self._fetch_tempo_protocolo(filters),
                 self._fetch_disparos(filters),
+                self._fetch_busca_ativa(filters),
             )
         _fetch_elapsed = (time.perf_counter() - fetch_start) * 1000
         logger.info(
@@ -269,6 +291,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
             resolucao=resolucao,
             tempo_protocolo=tempo_protocolo,
             disparos=disparos,
+            busca_ativa=busca_ativa,
             filtro_secretaria=secretaria,
         )
         _calc_elapsed = (time.perf_counter() - calc_start) * 1000
@@ -926,6 +949,175 @@ class PostgrestDashboardRepository(IDashboardRepository):
             for row in (result.data or [])
             if row.get("disparo_jornada") and row.get("disparo_status")
         ]
+
+    # ------------------------------------------------------------------
+    # Busca Ativa (section 9)
+    # ------------------------------------------------------------------
+
+    async def _fetch_busca_ativa_totals(
+        self, filters: dict[str, object], cutoff: str
+    ) -> dict[str, int]:
+        """Buscas acumuladas: SUM sobre o recorte filtrado (uma linha)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select("buscas:busca_ativa_quantidade.sum()")
+                .gte("data_referencia_mensal", cutoff)
+                .limit(1),
+                filters,
+            )
+        )
+        row = result.data[0] if result.data else {}
+        return {"buscas": int(row.get("buscas") or 0)}
+
+    async def _fetch_busca_ativa_mensal(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Série mensal por fonte (GROUP BY data_referencia_mensal, fonte)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select(
+                    "data_referencia_mensal, fonte, "
+                    "buscas:busca_ativa_quantidade.sum(), "
+                    "participantes:participante_com_busca_ativa_quantidade.sum()"
+                )
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("fonte", "null"),
+                filters,
+            )
+        )
+        rows: list[dict[str, Any]] = []
+        for row in result.data or []:
+            data = row.get("data_referencia_mensal")
+            fonte = row.get("fonte")
+            if not data or not fonte:
+                continue
+            rows.append(
+                {
+                    "mes": str(data)[:7],
+                    "fonte": str(fonte).upper(),
+                    "buscas": int(row.get("buscas") or 0),
+                    "participantes": int(row.get("participantes") or 0),
+                }
+            )
+        return rows
+
+    async def _fetch_busca_ativa_smas_desfecho(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Resultado SMAS por mês e desfecho (GROUP BY data, smas_desfecho)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select(
+                    "data_referencia_mensal, smas_desfecho, "
+                    "buscas:busca_ativa_quantidade.sum()"
+                )
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("smas_desfecho", "null"),
+                filters,
+            )
+        )
+        rows: list[dict[str, Any]] = []
+        for row in result.data or []:
+            data = row.get("data_referencia_mensal")
+            desfecho = row.get("smas_desfecho")
+            if not data or not desfecho:
+                continue
+            rows.append(
+                {
+                    "mes": str(data)[:7],
+                    "desfecho": str(desfecho),
+                    "buscas": int(row.get("buscas") or 0),
+                }
+            )
+        return rows
+
+    async def _fetch_busca_ativa_smas_tipo(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Distribuição SMAS por tipo (GROUP BY smas_tipo)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select("smas_tipo, buscas:busca_ativa_quantidade.sum()")
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("smas_tipo", "null"),
+                filters,
+            )
+        )
+        return [
+            {
+                "categoria": str(row.get("smas_tipo")),
+                "total": int(row.get("buscas") or 0),
+            }
+            for row in (result.data or [])
+            if row.get("smas_tipo")
+        ]
+
+    async def _fetch_busca_ativa_sms_publico(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Distribuição SMS por público (GROUP BY sms_tipo_publico)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select("sms_tipo_publico, buscas:busca_ativa_quantidade.sum()")
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("sms_tipo_publico", "null"),
+                filters,
+            )
+        )
+        return [
+            {
+                "categoria": str(row.get("sms_tipo_publico")),
+                "total": int(row.get("buscas") or 0),
+            }
+            for row in (result.data or [])
+            if row.get("sms_tipo_publico")
+        ]
+
+    async def _fetch_busca_ativa(
+        self, filters: dict[str, object]
+    ) -> dict[str, Any] | None:
+        """Busca Ativa metrics (Visão Geral) from
+        `endpoint_participante_visao_geral_busca_ativa`.
+
+        Five aggregate queries (SUM + GROUP BY server-side — never raw rows),
+        all limited to the last ``BUSCA_ATIVA_JANELA_MESES`` months, run
+        concurrently: totals, monthly series by fonte, SMAS desfecho by month,
+        SMAS tipo and SMS público. Degrades to `None` on any PostgREST error
+        (the dashboard keeps serving the other sections).
+        """
+        _t0 = time.perf_counter()
+        cutoff = _busca_ativa_cutoff()
+        try:
+            totais, mensal, desfecho, tipo, publico = await asyncio.gather(
+                self._fetch_busca_ativa_totals(filters, cutoff),
+                self._fetch_busca_ativa_mensal(filters, cutoff),
+                self._fetch_busca_ativa_smas_desfecho(filters, cutoff),
+                self._fetch_busca_ativa_smas_tipo(filters, cutoff),
+                self._fetch_busca_ativa_sms_publico(filters, cutoff),
+            )
+        except PostgrestError as exc:
+            logger.warning(
+                f"[dashboard] busca ativa fetch failed (degrading to None): {exc}"
+            )
+            return None
+        finally:
+            _elapsed = time.perf_counter() - _t0
+            logger.info(
+                f"[dashboard] ⏱  QUERY busca ativa (5 paralelas): {_elapsed * 1000:7.1f} ms"
+            )
+
+        return {
+            "totais": totais,
+            "mensal": mensal,
+            "smas_desfecho": desfecho,
+            "smas_tipo": tipo,
+            "sms_publico": publico,
+        }
 
     # ------------------------------------------------------------------
     # Execution helper

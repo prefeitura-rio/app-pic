@@ -31,11 +31,15 @@ const CARTAO_PIC_STATUS_OPTIONS = [
 	{ id: "sem_direito", label: "Sem Direito" },
 ];
 
+// Valor especial do filtro de busca ativa ("Sem busca ativa nos últimos 30d").
+const BUSCA_ATIVA_SEM_ID = "SEM_BUSCA";
+
 interface FilterCardProps {
 	filters: ParticipantFilters;
 	onFilterChange: (filters: ParticipantFilters) => void;
 	onRefresh?: () => void;
 	onDownload?: () => void;
+	onDownloadBuscaAtiva?: () => void;
 	loading?: boolean;
 	showSearch?: boolean;
 	totalResults?: number;
@@ -49,6 +53,7 @@ const FilterCardComponent = ({
 	onFilterChange,
 	onRefresh,
 	onDownload,
+	onDownloadBuscaAtiva,
 	loading = false,
 	showSearch = false,
 	totalResults,
@@ -171,6 +176,18 @@ const FilterCardComponent = ({
 						>
 							<Download className="h-3 w-3 mr-1" />
 							Baixar Dados
+						</Button>
+					)}
+					{onDownloadBuscaAtiva && (
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onDownloadBuscaAtiva}
+							className="h-8 text-xs"
+							disabled={loading}
+						>
+							<Download className="h-3 w-3 mr-1" />
+							Baixar buscas ativas
 						</Button>
 					)}
 					<Button
@@ -345,6 +362,40 @@ const FilterCardComponent = ({
 							disabled={loading}
 							placeholder="Status do Cartão PIC"
 							defaultLabel="Todos os Status de Cartão PIC"
+						/>
+
+						{/* Busca Ativa - Multi-select */}
+						<LazyFilterMultiSelect
+							field="busca_ativa"
+							filters={filters}
+							value={
+								Array.isArray(filters.busca_ativa)
+									? filters.busca_ativa
+									: filters.busca_ativa
+										? [filters.busca_ativa]
+										: []
+							}
+							onSelect={(values) => {
+								// "Sem busca ativa" é exclusivo: marcá-lo limpa as
+								// secretarias; marcar uma secretaria com ele ativo o remove.
+								const prev = Array.isArray(filters.busca_ativa)
+									? filters.busca_ativa
+									: filters.busca_ativa
+										? [filters.busca_ativa]
+										: [];
+								const semWasSelected = prev.includes(BUSCA_ATIVA_SEM_ID);
+								const semSelected = values.includes(BUSCA_ATIVA_SEM_ID);
+								let next = values;
+								if (semSelected && !semWasSelected) {
+									next = [BUSCA_ATIVA_SEM_ID];
+								} else if (semWasSelected && semSelected && values.length > 1) {
+									next = values.filter((v) => v !== BUSCA_ATIVA_SEM_ID);
+								}
+								handleMultiFilterUpdate("busca_ativa", next);
+							}}
+							disabled={loading}
+							placeholder="Busca Ativa (30d)"
+							defaultLabel="Todos os Status de Busca Ativa (últimos 30d)"
 						/>
 
 						{/* Secretaria de Protocolo */}

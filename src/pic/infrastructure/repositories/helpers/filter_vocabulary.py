@@ -30,6 +30,7 @@ from typing import Any
 
 from src.pic.domain.models.filters import FilterOption
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
+    BUSCA_ATIVA_SEM_ID,
     PROTOCOLO_SECRETARIA,
     PROTOCOLO_STATUS_COLUMNS,
 )
@@ -155,6 +156,11 @@ FILTER_OPTION_CONFIGS: dict[str, dict[str, Any]] = {
         "filter_key": "protocolo_secretaria",
         "needs_access": True,
     },
+    "busca_ativa": {
+        "kind": "busca_ativa",
+        "filter_key": "busca_ativa",
+        "needs_access": True,
+    },
 }
 
 BOLSA_FAMILIA_LABELS = {True: "Com Bolsa Família", False: "Sem Bolsa Família"}
@@ -164,6 +170,18 @@ SECRETARIA_LABELS = {
     "SMAS": "Assistência (SMAS)",
     "SMS": "Saúde (SMS)",
 }
+
+# Busca ativa filter: fixed secretaria set (SME has no column yet, but is still
+# offered for future-proofing), intersected with the user's access.
+BUSCA_ATIVA_ORDER = ["SMAS", "SMS", "SME"]
+
+BUSCA_ATIVA_LABELS = {
+    "SMAS": "Busca Ativa SMAS (30d)",
+    "SMS": "Busca Ativa SMS (30d)",
+    "SME": "Busca Ativa SME (30d)",
+}
+
+BUSCA_ATIVA_SEM_LABEL = "Sem busca ativa nos últimos 30d"
 
 SECRETARIA_ORDER = ["SME", "SMAS", "SMS"]
 
@@ -337,6 +355,25 @@ def _static_status_options() -> list[FilterOption]:
     return [FilterOption(id=value, label=value) for value in values]
 
 
+def _busca_ativa_options(
+    allowed_secretarias: set[str] | None,
+) -> list[FilterOption]:
+    """Busca ativa options: the fixed {SMAS, SMS, SME} set intersected with the
+    user's access (`None` = full access → all three), plus the "Sem busca
+    ativa" option when the user can see at least one busca-ativa column
+    (SMAS/SMS under partial access, both under full access)."""
+    options = [
+        FilterOption(id=secretaria, label=BUSCA_ATIVA_LABELS[secretaria])
+        for secretaria in BUSCA_ATIVA_ORDER
+        if allowed_secretarias is None or secretaria in allowed_secretarias
+    ]
+    if allowed_secretarias is None or allowed_secretarias & {"SMAS", "SMS"}:
+        options.append(
+            FilterOption(id=BUSCA_ATIVA_SEM_ID, label=BUSCA_ATIVA_SEM_LABEL)
+        )
+    return options
+
+
 def build_options(
     config: dict[str, Any],
     rows: list[dict[str, Any]],
@@ -357,4 +394,6 @@ def build_options(
         return _secretaria_options(rows, allowed_secretarias)
     if kind == "static_status":
         return _static_status_options()
+    if kind == "busca_ativa":
+        return _busca_ativa_options(allowed_secretarias)
     raise ValueError(f"Unknown filter option kind: {kind}")

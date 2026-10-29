@@ -96,6 +96,50 @@ class DisparosDashboard(BaseModel):
     por_jornada: list[DisparoJornadaResumo] = []
 
 
+class BuscaAtivaTotais(BaseModel):
+    """Totais da busca ativa: buscas acumuladas e participantes no mês mais
+    recente (max data_referencia_mensal) do recorte filtrado."""
+
+    buscas: int = 0
+    participantes: int = 0
+
+
+class BuscaAtivaPontoMensal(BaseModel):
+    """Série mensal de busca ativa por fonte (SMS/SMAS)."""
+
+    mes: str
+    mes_label: str = ""
+    smas: int = 0
+    sms: int = 0
+    total: int = 0
+
+
+class BuscaAtivaDesfechoMensal(BaseModel):
+    """Resultado SMAS por mês, quebrado por desfecho."""
+
+    mes: str
+    mes_label: str = ""
+    desfecho: str
+    total: int = 0
+
+
+class BuscaAtivaCategoria(BaseModel):
+    """Distribuição por categoria (tipo SMAS / público SMS)."""
+
+    categoria: str
+    total: int = 0
+
+
+class BuscaAtivaDashboard(BaseModel):
+    """Seção "Busca Ativa" da Visão Geral (agregada via PostgREST)."""
+
+    totais: BuscaAtivaTotais = BuscaAtivaTotais()
+    evolucao_mensal: list[BuscaAtivaPontoMensal] = []
+    smas_desfecho_mensal: list[BuscaAtivaDesfechoMensal] = []
+    smas_tipos: list[BuscaAtivaCategoria] = []
+    sms_publicos: list[BuscaAtivaCategoria] = []
+
+
 class Dashboard(BaseModel):
     total_participantes: int = 0
     total_regulares: int = 0
@@ -111,6 +155,7 @@ class Dashboard(BaseModel):
     tempo_medio_irregularidade_protocolo: list[TempoMedioIrregularidadeProtocolo] = []
     taxa_resolucao_mensal: list[TaxaResolucaoMensalPoint] = []
     disparos: DisparosDashboard | None = None
+    busca_ativa: BuscaAtivaDashboard | None = None
     data_atualizacao: datetime | None = None
 
     @classmethod
