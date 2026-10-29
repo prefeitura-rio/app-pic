@@ -2,6 +2,8 @@
 // BACKEND RESPONSE TYPES (matching src/api/v1/schemas.py)
 // ============================================================================
 
+import type { Feature, FeatureCollection, Geometry } from "geojson";
+
 export interface PaginationMeta {
 	page: number;
 	page_size: number;
@@ -765,6 +767,7 @@ export interface UserAccessRecord {
 	secretaria?: string | null;
 	is_admin: boolean;
 	is_super_admin: boolean;
+	general_view?: boolean;
 	permission?: string | null;
 
 	id_cras_list?: IdWithName[] | null;
@@ -796,6 +799,7 @@ export interface CreateUserRequest {
 	secretaria?: string | null;
 	is_admin?: boolean;
 	is_super_admin?: boolean;
+	general_view?: boolean;
 
 	id_cras_list?: IdWithName[] | null;
 	id_escola_list?: IdWithName[] | null;
@@ -822,6 +826,7 @@ export interface UpdateUserRequest {
 	secretaria?: string | null;
 	is_admin?: boolean | null;
 	is_super_admin?: boolean | null;
+	general_view?: boolean;
 
 	id_cras_list?: IdWithName[] | null;
 	id_escola_list?: IdWithName[] | null;
@@ -983,6 +988,98 @@ export type GeospatialFilterVocabularyResponse = GeospatialFilterOptions;
 export interface GeospatialFilterFieldOptionsResponse {
 	field: string;
 	options: FilterOptionItem[];
+}
+
+/**
+ * POC — Visualização Geográfica (aba "Mapas").
+ * Limites oficiais de bairros vindos do datario (GET /api/v2/geospatial/bairros).
+ */
+export interface BairroFeatureProperties {
+	id_bairro: string;
+	nome: string;
+	nome_regiao_administrativa: string;
+}
+
+export type BairroFeature = Feature<Geometry, BairroFeatureProperties>;
+
+export type BairrosGeoJSONResponse = FeatureCollection<
+	Geometry,
+	BairroFeatureProperties
+>;
+
+/**
+ * Visualização Geográfica — regularidade por camada territorial
+ * (GET /api/v2/geospatial/regularidade?camada=bairro|ra).
+ */
+export type CamadaTerritorial = "bairro" | "ra" | "cas" | "cre" | "ap";
+
+export interface RegiaoRegularidadeProperties {
+	id?: string | null; // id oficial da região (id_bairro ou id_regiao_administrativa)
+	nome: string;
+	nome_regiao_administrativa?: string | null; // apenas na camada "bairro"
+	total_participantes?: number | null;
+	total_regulares?: number | null; // Regular + Atenção (mesma métrica do dashboard)
+	total_irregulares?: number | null;
+	taxa_regularidade?: number | null; // 0-100; null = sem dados
+}
+
+export type RegiaoRegularidadeFeature = Feature<
+	Geometry,
+	RegiaoRegularidadeProperties
+>;
+
+export interface RegiaoRegularidadeMeta {
+	camada: CamadaTerritorial;
+	total_regioes: number;
+	regioes_com_dados: number;
+	regioes_sem_dados: number;
+	agregados_sem_geometria: string[];
+}
+
+export type RegiaoRegularidadeResponse = FeatureCollection<
+	Geometry,
+	RegiaoRegularidadeProperties
+> & {
+	meta: RegiaoRegularidadeMeta;
+};
+
+/**
+ * Detalhes da região clicada (fase 3j): métrica geral + protocolos da região.
+ * GET /api/v2/geospatial/regiao/detalhes
+ */
+export interface RegiaoRegularidadeResumo {
+	total_participantes: number;
+	total_regulares: number;
+	total_irregulares: number;
+	taxa_regularidade: number | null;
+}
+
+export interface RegiaoProtocoloMetrica extends RegiaoRegularidadeResumo {
+	protocolo_id: string;
+	protocolo_secretaria: string | null;
+	protocolo_descricao: string | null;
+}
+
+export interface RegiaoDetalhesResponse {
+	camada: CamadaTerritorial;
+	regiao: string;
+	geral: RegiaoRegularidadeResumo | null;
+	/** Métrica do protocolo selecionado em TODAS as regiões (média geral, 3k). */
+	protocolo_geral: RegiaoRegularidadeResumo | null;
+	protocolos: RegiaoProtocoloMetrica[];
+}
+
+/**
+ * Filtro de protocolo do mapa (GET /api/v2/geospatial/protocolos).
+ */
+export interface ProtocoloOption {
+	protocolo_id: string;
+	protocolo_secretaria?: string | null;
+	protocolo_descricao?: string | null;
+}
+
+export interface ProtocolosResponse {
+	protocolos: ProtocoloOption[];
 }
 
 /**

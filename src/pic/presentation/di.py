@@ -40,6 +40,9 @@ from src.pic.application.use_cases.get_dashboard import GetDashboardUseCase
 from src.pic.application.use_cases.get_debug_participant import (
     GetDebugParticipantUseCase,
 )
+from src.pic.application.use_cases.get_detalhes_regiao import (
+    GetDetalhesRegiaoUseCase,
+)
 from src.pic.application.use_cases.get_filter_options import (
     GetFilterOptionsUseCase,
 )
@@ -54,6 +57,10 @@ from src.pic.application.use_cases.get_geospatial_layers import (
 )
 from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
+)
+from src.pic.application.use_cases.get_protocolos import GetProtocolosUseCase
+from src.pic.application.use_cases.get_regularidade_por_camada import (
+    GetRegularidadePorCamadaUseCase,
 )
 from src.pic.application.use_cases.list_participants import ListParticipantsUseCase
 from src.pic.infrastructure.export.file_parser import UserImportFileParser
@@ -242,6 +249,18 @@ async def get_geospatial_filter_vocabulary_use_case() -> GetGeospatialFilterVoca
 
 async def get_geospatial_filter_options_use_case() -> GetGeospatialFilterOptionsUseCase:
     return GetGeospatialFilterOptionsUseCase(repository=await get_geospatial_repo())
+
+
+async def get_regularidade_por_camada_use_case() -> GetRegularidadePorCamadaUseCase:
+    return GetRegularidadePorCamadaUseCase(repository=await get_geospatial_repo())
+
+
+async def get_protocolos_use_case() -> GetProtocolosUseCase:
+    return GetProtocolosUseCase(repository=await get_geospatial_repo())
+
+
+async def get_detalhes_regiao_use_case() -> GetDetalhesRegiaoUseCase:
+    return GetDetalhesRegiaoUseCase(repository=await get_geospatial_repo())
 
 
 def get_debug_participant_use_case() -> GetDebugParticipantUseCase:

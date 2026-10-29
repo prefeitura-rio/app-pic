@@ -55,6 +55,12 @@ USE_LOCAL_API = (
 # RMI OAuth2 Configuration (Keycloak)
 RMI_ISSUER = getenv_or_action(env_name="RMI_ISSUER", action="raise")
 RMI_AUDIENCE = getenv_or_action(env_name="RMI_AUDIENCE", action="raise")
+
+PIC_TEAM_GROUP = getenv_or_action(env_name="PIC_TEAM_GROUP", default="pic", action="raise")
+PIC_TEAM_REQUIRE_GOLD = (
+    getenv_or_action(env_name="PIC_TEAM_REQUIRE_GOLD", default="true", action="raise")
+    != "false"
+)
 # JWKS URL with fallback to standard Keycloak endpoint
 RMI_JWKS_URL = getenv_or_action(
     env_name="RMI_JWKS_URL",

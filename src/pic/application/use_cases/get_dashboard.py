@@ -35,7 +35,11 @@ class GetDashboardUseCase:
         has_bolsa_familia: bool | None = None,
         bypass_cache: bool = False,
     ) -> DashboardOutput:
-        if permissions and permissions.secretaria_acesso != "TODOS":
+        if (
+            permissions
+            and not permissions.is_super_admin
+            and permissions.secretaria_acesso != "TODOS"
+        ):
             return DashboardOutput(
                 data=Dashboard.empty(),
                 can_view_dashboard=False,

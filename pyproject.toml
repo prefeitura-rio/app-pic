@@ -26,6 +26,7 @@ dependencies = [
   "asyncpg>=0.31.0",
   "alembic>=1.19.1",
   "postgrest>=2.31.0",
+  "basedosdados>=2.0.3",
 ]
 
 [dependency-groups]
@@ -38,7 +39,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["src/pic"]
+testpaths = ["src/pic", "src/core"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = ["-v", "--tb=short", "--strict-markers"]

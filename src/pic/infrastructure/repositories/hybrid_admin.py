@@ -52,8 +52,8 @@ from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.infrastructure.data_proxy.access_policy_sync import push_and_mark_synced
 from src.pic.infrastructure.db.engine import get_session
 from src.pic.infrastructure.db.models import (
-    BASE_UNIT_ID,
-    BASE_UNIT_TYPE,
+    GENERAL_VIEW_UNIT_ID,
+    GENERAL_VIEW_UNIT_TYPE,
     PolicyRow,
     User,
 )
@@ -152,7 +152,7 @@ class HybridAdminRepository(IAdminRepository):
                     PolicyRow.schema == SCHEMA,
                     PolicyRow.subject == cpf,
                     PolicyRow.is_enabled.is_(True),
-                    PolicyRow.unit_type != BASE_UNIT_TYPE,
+                    PolicyRow.unit_type != GENERAL_VIEW_UNIT_TYPE,
                 )
             )
             ids_by_unit_type: dict[str, list[str]] = {}
@@ -333,7 +333,7 @@ class HybridAdminRepository(IAdminRepository):
                 select(PolicyRow.subject, PolicyRow.unit_type, PolicyRow.unit_id).where(
                     PolicyRow.schema == SCHEMA,
                     PolicyRow.is_enabled.is_(True),
-                    PolicyRow.unit_type != BASE_UNIT_TYPE,
+                    PolicyRow.unit_type != GENERAL_VIEW_UNIT_TYPE,
                 )
             )
             ids_by_subject: dict[str, dict[str, list[str]]] = {}
@@ -353,6 +353,7 @@ class HybridAdminRepository(IAdminRepository):
                 "secretaria": user.secretaria,
                 "is_admin": user.is_admin,
                 "is_super_admin": user.is_super_admin,
+                "general_view": user.is_super_admin or user.general_view,
                 "permission": calculate_permission(user.is_admin, user.is_super_admin),
                 "secretarias_acesso": list(user.secretarias_acesso or []),
                 "active": user.active,
@@ -393,7 +394,7 @@ class HybridAdminRepository(IAdminRepository):
                     PolicyRow.schema == SCHEMA,
                     PolicyRow.subject == cpf,
                     PolicyRow.is_enabled.is_(True),
-                    PolicyRow.unit_type != BASE_UNIT_TYPE,
+                    PolicyRow.unit_type != GENERAL_VIEW_UNIT_TYPE,
                 )
             )
             ids_by_unit_type: dict[str, list[str]] = {}
@@ -408,6 +409,7 @@ class HybridAdminRepository(IAdminRepository):
                 "secretaria": user.secretaria,
                 "is_admin": user.is_admin,
                 "is_super_admin": user.is_super_admin,
+                "general_view": user.is_super_admin or user.general_view,
                 "permission": calculate_permission(user.is_admin, user.is_super_admin),
                 "secretarias_acesso": list(user.secretarias_acesso or []),
                 "active": user.active,
@@ -524,6 +526,7 @@ class HybridAdminRepository(IAdminRepository):
             "secretarias_acesso",
             "is_admin",
             "is_super_admin",
+            "general_view",
             "active",
             "notes",
         }
@@ -629,38 +632,32 @@ class HybridAdminRepository(IAdminRepository):
         return changed
 
     @staticmethod
-    async def _sync_super_admin_base_row(
-        session, cpf: str, is_super_admin: bool, active: bool
+    async def _sync_general_view_row(
+        session, cpf: str, enabled: bool
     ) -> PolicyRow | None:
-        """Create, re-enable, or disable the sentinel "base" row
-        (`unit_type=unit_id=BASE_UNIT_TYPE`, `is_admin=true`) that grants
-        data-proxy RLS bypass for a super_admin. The row is only enabled
-        when the subject is both a super_admin and active — a request that
-        sets `is_super_admin=True` and `active=False` at the same time
-        (both fields live on the same edit form) must never leave the
-        bypass row enabled. Returns the row if it changed, else None. See
-        plan.md section 4."""
-        enabled = is_super_admin and active
+        """Create, re-enable, or disable the wildcard grant
+        (`unit_type=unit_id=GENERAL_VIEW_UNIT_TYPE`) that the data-proxy reads as
+        every row of the schema. Returns the row if it changed, else None."""
         result = await session.execute(
             select(PolicyRow).where(
                 PolicyRow.schema == SCHEMA,
                 PolicyRow.subject == cpf,
-                PolicyRow.unit_type == BASE_UNIT_TYPE,
-                PolicyRow.unit_id == BASE_UNIT_ID,
+                PolicyRow.unit_type == GENERAL_VIEW_UNIT_TYPE,
+                PolicyRow.unit_id == GENERAL_VIEW_UNIT_ID,
             )
         )
         row = result.scalar_one_or_none()
 
         if row is None:
-            if not is_super_admin:
+            if not enabled:
                 return None
             row = PolicyRow(
                 schema=SCHEMA,
                 subject=cpf,
-                is_admin=True,
-                is_enabled=enabled,
-                unit_type=BASE_UNIT_TYPE,
-                unit_id=BASE_UNIT_ID,
+                is_admin=False,
+                is_enabled=True,
+                unit_type=GENERAL_VIEW_UNIT_TYPE,
+                unit_id=GENERAL_VIEW_UNIT_ID,
                 synced_at=None,
             )
             session.add(row)
@@ -671,6 +668,34 @@ class HybridAdminRepository(IAdminRepository):
             row.synced_at = None
             return row
         return None
+
+    @staticmethod
+    def _general_view_enabled(
+        is_super_admin: bool, general_view: bool, active: bool
+    ) -> bool:
+        return bool(active and (is_super_admin or general_view))
+
+    @classmethod
+    async def _apply_general_view(
+        cls, session, cpf: str, changed: list[PolicyRow]
+    ) -> None:
+        """Make the wildcard grant match the user's flags: enabled for an
+        active user that is a super admin or has the general view. Replaces
+        the row in `changed` when an earlier step already changed it, so one
+        upsert never carries the same row twice."""
+        flags = (
+            await session.execute(
+                select(User.is_super_admin, User.general_view, User.active).where(
+                    User.cpf == cpf
+                )
+            )
+        ).one()
+        row = await cls._sync_general_view_row(
+            session, cpf, enabled=cls._general_view_enabled(*flags)
+        )
+        if row is not None:
+            changed[:] = [r for r in changed if r is not row]
+            changed.append(row)
 
     @staticmethod
     async def _push_eager(rows: list[PolicyRow]) -> None:
@@ -729,12 +754,8 @@ class HybridAdminRepository(IAdminRepository):
                     session, cpf, user_fields["active"]
                 )
 
-            if "is_super_admin" in user_fields:
-                base_row = await self._sync_super_admin_base_row(
-                    session, cpf, user_fields["is_super_admin"], active=is_enabled
-                )
-                if base_row is not None:
-                    changed.append(base_row)
+            if {"is_super_admin", "general_view", "active"} & user_fields.keys():
+                await self._apply_general_view(session, cpf, changed)
 
             await session.commit()
         logger.info(f"Usuario {cpf} atualizado (Postgres)")
@@ -766,12 +787,8 @@ class HybridAdminRepository(IAdminRepository):
                 session, cpf, id_lists, is_enabled=user_fields["active"]
             )
 
-            if user_fields["is_super_admin"]:
-                base_row = await self._sync_super_admin_base_row(
-                    session, cpf, is_super_admin=True, active=user_fields["active"]
-                )
-                if base_row is not None:
-                    changed.append(base_row)
+            if user_fields["is_super_admin"] or user_fields.get("general_view"):
+                await self._apply_general_view(session, cpf, changed)
 
             await session.commit()
         logger.info(f"Usuario {cpf} criado (Postgres)")
