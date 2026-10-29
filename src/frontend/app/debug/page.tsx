@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiService } from "@/app/services/api";
+import { formatDateOnly } from "@/app/utils/utils";
 import { DebugProtocolo, DebugProtocoloMetadata } from "@/app/types";
 import { DEBUG_PAGE_ENABLED } from "./config";
 import { Button } from "@/components/ui/button";
@@ -389,7 +390,7 @@ export default function DebugPage() {
                         <div className="flex gap-2">
                           <span className="text-muted-foreground font-mono text-xs inline-block w-[160px]">nascimento_data:</span>
                           <span className="font-medium">
-                            {participant.nascimento_data ? new Date(participant.nascimento_data).toLocaleDateString('pt-BR') : "null"}
+                            {participant.nascimento_data ? formatDateOnly(participant.nascimento_data) : "null"}
                           </span>
                         </div>
                         <div className="flex gap-2">

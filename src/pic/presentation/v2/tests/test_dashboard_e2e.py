@@ -12,6 +12,7 @@ Scenarios covered:
     5. Each dashboard section present in the response body
     6. bypass_cache=true query param accepted without error
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -34,6 +35,7 @@ from src.pic.domain.models.dashboard import (
     ResultadoProgramaPoint,
     TaxaResolucaoMensalPoint,
     TempoMedioIrregularidade,
+    TempoMedioIrregularidadeProtocolo,
 )
 from src.pic.presentation.di import get_dashboard_use_case
 
@@ -88,10 +90,28 @@ FAKE_DASHBOARD = Dashboard(
         )
     ],
     distribuicao_tempo_irregularidade=[
-        DistribuicaoTempoIrregularidade(faixa="0-30",  faixa_label="0-30 dias",  count=3, percentual=100.0),
-        DistribuicaoTempoIrregularidade(faixa="31-60", faixa_label="31-60 dias", count=0, percentual=0.0),
-        DistribuicaoTempoIrregularidade(faixa="61-90", faixa_label="61-90 dias", count=0, percentual=0.0),
-        DistribuicaoTempoIrregularidade(faixa="90+",   faixa_label="90+ dias",   count=0, percentual=0.0),
+        DistribuicaoTempoIrregularidade(
+            faixa="0-30", faixa_label="0-30 dias", count=3, percentual=100.0
+        ),
+        DistribuicaoTempoIrregularidade(
+            faixa="31-60", faixa_label="31-60 dias", count=0, percentual=0.0
+        ),
+        DistribuicaoTempoIrregularidade(
+            faixa="61-90", faixa_label="61-90 dias", count=0, percentual=0.0
+        ),
+        DistribuicaoTempoIrregularidade(
+            faixa="90+", faixa_label="90+ dias", count=0, percentual=0.0
+        ),
+    ],
+    tempo_medio_irregularidade_protocolo=[
+        TempoMedioIrregularidadeProtocolo(
+            protocolo_id="sms_visitas_domiciliares_infantil",
+            protocolo_descricao="Visitas domiciliares (infantil)",
+            protocolo_secretaria="SMS",
+            tempo_medio_dias=47.2,
+            total_irregulares=1830,
+            total_irregulares_abertos=742,
+        )
     ],
     taxa_resolucao_mensal=[
         TaxaResolucaoMensalPoint(
@@ -224,8 +244,26 @@ async def test_response_contains_all_sections(client):
     assert "distribuicao_motivo_saida" in data
     assert "tempo_medio_irregularidade" in data
     assert "distribuicao_tempo_irregularidade" in data
+    assert "tempo_medio_irregularidade_protocolo" in data
     assert "taxa_resolucao_mensal" in data
     assert "disparos" in data
+
+
+@pytest.mark.asyncio
+async def test_tempo_protocolo_structure(client):
+    """tempo_medio_irregularidade_protocolo carries the ranking fields."""
+    response = await client.get("/api/v2/dashboard")
+    data = response.json()["data"]
+    ranking = data["tempo_medio_irregularidade_protocolo"]
+    assert isinstance(ranking, list)
+    assert len(ranking) == 1
+    item = ranking[0]
+    assert item["protocolo_id"] == "sms_visitas_domiciliares_infantil"
+    assert item["protocolo_descricao"] == "Visitas domiciliares (infantil)"
+    assert item["protocolo_secretaria"] == "SMS"
+    assert item["tempo_medio_dias"] == 47.2
+    assert item["total_irregulares"] == 1830
+    assert item["total_irregulares_abertos"] == 742
 
 
 @pytest.mark.asyncio
@@ -257,6 +295,7 @@ async def test_get_dashboard_no_secretaria_access(override_auth_no_access):
     body = response.json()
     assert body["can_view_dashboard"] is False
     assert body["data"]["total_participantes"] == 0
+    assert body["data"]["tempo_medio_irregularidade_protocolo"] == []
 
 
 @pytest.mark.asyncio
@@ -326,4 +365,6 @@ async def test_protocolo_percentual_complement(client):
     # FAKE_DASHBOARD was constructed with 8/15: raw = 53.333...
     # percentual_regular=53.3, percentual_irregular=46.7 (not 100-53.3=46.7, but
     # round(100-53.333..., 1)=46.7 — same here, but the model carries the right values)
-    assert p["percentual_regular"] + p["percentual_irregular"] == pytest.approx(100.0, abs=0.2)
+    assert p["percentual_regular"] + p["percentual_irregular"] == pytest.approx(
+        100.0, abs=0.2
+    )
