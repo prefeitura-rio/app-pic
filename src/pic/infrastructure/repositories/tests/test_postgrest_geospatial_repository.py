@@ -855,6 +855,21 @@ class TestFetchProtocolosPorRegiao:
         assert params.get("pic_cohort") == "in.(2025-03-01)"
 
     @pytest.mark.asyncio
+    async def test_lista_vazia_nao_escreve_cache(self):
+        """Regressão: resultado vazio não pode ficar preso no cache por 30 min
+        (ex.: logo após deploy/sync da tabela de protocolos)."""
+        redis = _make_redis(None)
+        repo, _ = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": []},
+            redis_client=redis,
+        )
+        result = await repo.fetch_protocolos_por_regiao(
+            camada="bairro", regiao="Centro", user_id="cpf"
+        )
+        assert result == []
+        redis.set.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_unknown_camada_raises_value_error(self):
         repo, _ = _make_regularidade_repo({})
         with pytest.raises(ValueError, match="desconhecida"):

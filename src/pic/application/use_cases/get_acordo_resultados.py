@@ -22,7 +22,11 @@ class GetAcordoResultadosUseCase:
         user_token: str | None = None,
         bypass_cache: bool = False,
     ) -> AcordoResultadosOutput:
-        if permissions and permissions.secretaria_acesso != "TODOS":
+        if (
+            permissions
+            and not permissions.is_super_admin
+            and permissions.secretaria_acesso != "TODOS"
+        ):
             return AcordoResultadosOutput(
                 data=AcordoResultados.empty(),
                 can_view_acordo=False,
