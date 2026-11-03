@@ -5,12 +5,14 @@ anywhere in this module.
 
 Design notes:
 
-- Five tables serve the seven dashboard sections. All share the same filter
+- Six tables serve the eight dashboard sections. All share the same filter
   columns, so the same filter-building helper is applied to every query.
   WhatsApp disparos metrics (section 8) come from the raw
   `endpoint_whatsapp_disparo` table via five aggregate queries (GROUP BY done
   server-side — no pagination), accepting only the filter columns that exist
-  on that table; failures degrade to `disparos=None`.
+  on that table; failures degrade to `disparos=None`. Section 6B (tempo por
+  protocolo) reads `endpoint_participante_visao_geral_tempo_irregular_protocolo`
+  and also degrades gracefully (empty list) when the table is missing.
 - The data-proxy enforces row-level security server-side when the request
   carries the end-user JWT (`with_user_token`). The *secretaria* query param
   does NOT filter rows — it only affects which secretaria bands appear in
@@ -31,6 +33,7 @@ import asyncio
 import hashlib
 import json
 import time
+from datetime import date
 from typing import Any
 
 import httpx
@@ -42,6 +45,7 @@ from src.pic.domain.models.dashboard import Dashboard
 from src.pic.infrastructure.dashboard.compute_postgrest import (
     _calculate_dashboard_metrics,
 )
+from src.pic.infrastructure.dashboard.config import BUSCA_ATIVA_JANELA_MESES
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.utils.log import logger
@@ -53,8 +57,10 @@ _TABLE_CONSOLIDADO = "endpoint_participante_visao_geral_consolidado"
 _TABLE_PROTOCOLOS = "endpoint_participante_visao_geral_protocolos"
 _TABLE_SERIES = "endpoint_participante_visao_geral_series"
 _TABLE_TEMPO = "endpoint_participante_visao_geral_tempo_irregular"
+_TABLE_TEMPO_PROTOCOLO = "endpoint_participante_visao_geral_tempo_irregular_protocolo"
 _TABLE_RESOLUCAO = "endpoint_participante_visao_geral_resolucao_alertas"
 _TABLE_DISPAROS = "endpoint_whatsapp_disparo"
+_TABLE_BUSCA_ATIVA = "endpoint_participante_visao_geral_busca_ativa"
 
 # Filters of the dashboard screen that map to columns present on the raw
 # disparos table. Keys are the filter names used by the other sections;
@@ -81,17 +87,19 @@ _DISPARO_FILTER_MAPPING: dict[str, str] = {
 
 # Columns that must match exactly (no ILIKE).  Date columns and unit IDs are
 # compared with exact equality; everything else is case-insensitive text.
-_EXACT_COLUMNS: frozenset[str] = frozenset({
-    "id_cre",
-    "id_ap",
-    "id_cas",
-    "id_cras",
-    "id_escola",
-    "id_clinica_familia",
-    "id_equipe_familia",
-    "pic_cohort",
-    "cohort",
-})
+_EXACT_COLUMNS: frozenset[str] = frozenset(
+    {
+        "id_cre",
+        "id_ap",
+        "id_cas",
+        "id_cras",
+        "id_escola",
+        "id_clinica_familia",
+        "id_equipe_familia",
+        "pic_cohort",
+        "cohort",
+    }
+)
 
 _CACHE_TTL_SECONDS = 1800  # 30 minutes (session lifetime)
 
@@ -99,6 +107,23 @@ _CACHE_TTL_SECONDS = 1800  # 30 minutes (session lifetime)
 def _escape_ilike(value: str) -> str:
     """Escape ILIKE wildcards so the value matches literally."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _busca_ativa_cutoff(today: date | None = None) -> str:
+    """Primeiro dia do mês que inicia a janela da busca ativa (ISO date).
+
+    Janela de ``BUSCA_ATIVA_JANELA_MESES`` meses inclusive, terminando no mês
+    de *today* (por padrão, hoje). Ex.: today = 2026-10-19 com janela 12 →
+    ``2025-11-01`` (nov/2025 … out/2026).
+    """
+    today = today or date.today()
+    total_months = (
+        today.year * 12
+        + (today.month - 1)
+        - (BUSCA_ATIVA_JANELA_MESES - 1)
+    )
+    year, month_zero_based = divmod(total_months, 12)
+    return date(year, month_zero_based + 1, 1).isoformat()
 
 
 def _apply_filters(
@@ -227,7 +252,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 return cached
 
         # 2. Concurrent fetches -----------------------------------------------
-        logger.info("[dashboard] ── CACHE MISS — iniciando queries paralelas ──────────────")
+        logger.info(
+            "[dashboard] ── CACHE MISS — iniciando queries paralelas ──────────────"
+        )
         fetch_start = time.perf_counter()
         async with self._client.with_user_token(user_token):
             (
@@ -236,17 +263,23 @@ class PostgrestDashboardRepository(IDashboardRepository):
                 series,
                 tempo,
                 resolucao,
+                tempo_protocolo,
                 disparos,
+                busca_ativa,
             ) = await asyncio.gather(
                 self._fetch_consolidado(filters),
                 self._fetch_protocolos(filters),
                 self._fetch_series(filters),
                 self._fetch_tempo(filters),
                 self._fetch_resolucao(filters),
+                self._fetch_tempo_protocolo(filters),
                 self._fetch_disparos(filters),
+                self._fetch_busca_ativa(filters),
             )
         _fetch_elapsed = (time.perf_counter() - fetch_start) * 1000
-        logger.info(f"[dashboard] ⏱  TOTAL fetches (paralelo)      : {_fetch_elapsed:7.1f} ms  ← gargalo real = query mais lenta acima")
+        logger.info(
+            f"[dashboard] ⏱  TOTAL fetches (paralelo)      : {_fetch_elapsed:7.1f} ms  ← gargalo real = query mais lenta acima"
+        )
 
         # 3. Compute metrics (agregações já feitas em SQL) --------------------
         calc_start = time.perf_counter()
@@ -256,25 +289,33 @@ class PostgrestDashboardRepository(IDashboardRepository):
             series=series,
             tempo=tempo,
             resolucao=resolucao,
+            tempo_protocolo=tempo_protocolo,
             disparos=disparos,
+            busca_ativa=busca_ativa,
             filtro_secretaria=secretaria,
         )
         _calc_elapsed = (time.perf_counter() - calc_start) * 1000
-        logger.info(f"[dashboard] ⏱  COMPUTE métricas Python       : {_calc_elapsed:7.1f} ms")
+        logger.info(
+            f"[dashboard] ⏱  COMPUTE métricas Python       : {_calc_elapsed:7.1f} ms"
+        )
 
         # 4. Write cache -------------------------------------------------------
         if self._redis is not None:
             await self._set_cache(cache_key, dashboard)
 
         _total_elapsed = (time.perf_counter() - start) * 1000
-        logger.info(f"[dashboard] ══ TOTAL repositório               : {_total_elapsed:7.1f} ms ══════════════")
+        logger.info(
+            f"[dashboard] ══ TOTAL repositório               : {_total_elapsed:7.1f} ms ══════════════"
+        )
         return dashboard
 
     # ------------------------------------------------------------------
     # Five private fetches (one per table) + consolidado subfetches
     # ------------------------------------------------------------------
 
-    async def _fetch_consolidado_totals(self, filters: dict[str, object]) -> dict[str, int]:
+    async def _fetch_consolidado_totals(
+        self, filters: dict[str, object]
+    ) -> dict[str, int]:
         """Aggregate totals: SUM(numerador/denominador/irregular).
 
         Returns 1 row with sums aggregated by PostgREST.
@@ -283,20 +324,26 @@ class PostgrestDashboardRepository(IDashboardRepository):
         try:
             result = await self._execute(
                 _apply_filters(
-                    self._client.table(_TABLE_CONSOLIDADO).select(
+                    self._client.table(_TABLE_CONSOLIDADO)
+                    .select(
                         "regular_num:participante_regular_numerador.sum(), "
                         "regular_den:participante_regular_denominador.sum(), "
                         "irregular_num:participante_irregular_numerador.sum()"
-                    ).limit(1),
+                    )
+                    .limit(1),
                     filters,
                 )
             )
         except PostgrestError as exc:
-            logger.error(f"[dashboard] consolidado_totals fetch failed: {exc}", exc_info=True)
+            logger.error(
+                f"[dashboard] consolidado_totals fetch failed: {exc}", exc_info=True
+            )
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY consolidado_totals      : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY consolidado_totals      : {_elapsed * 1000:7.1f} ms"
+            )
 
         row = result.data[0] if result.data else {}
         return {
@@ -305,7 +352,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             "irregular_num": row.get("irregular_num") or 0,
         }
 
-    async def _fetch_consolidado_safras(self, filters: dict[str, object]) -> list[dict[str, Any]]:
+    async def _fetch_consolidado_safras(
+        self, filters: dict[str, object]
+    ) -> list[dict[str, Any]]:
         """Aggregate safras: GROUP BY pic_cohort, pic_status.
 
         Returns ~30 rows with SUM(participante_quantidade).
@@ -315,19 +364,21 @@ class PostgrestDashboardRepository(IDashboardRepository):
             result = await self._execute(
                 _apply_filters(
                     self._client.table(_TABLE_CONSOLIDADO).select(
-                        "pic_cohort, "
-                        "pic_status, "
-                        "qtd:participante_quantidade.sum()"
+                        "pic_cohort, pic_status, qtd:participante_quantidade.sum()"
                     ),
                     filters,
                 )
             )
         except PostgrestError as exc:
-            logger.error(f"[dashboard] consolidado_safras fetch failed: {exc}", exc_info=True)
+            logger.error(
+                f"[dashboard] consolidado_safras fetch failed: {exc}", exc_info=True
+            )
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY consolidado_safras      : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY consolidado_safras      : {_elapsed * 1000:7.1f} ms"
+            )
 
         return [
             {
@@ -339,7 +390,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             if row.get("pic_cohort")
         ]
 
-    async def _fetch_consolidado_motivos(self, filters: dict[str, object]) -> list[dict[str, Any]]:
+    async def _fetch_consolidado_motivos(
+        self, filters: dict[str, object]
+    ) -> list[dict[str, Any]]:
         """Aggregate motivos: GROUP BY pic_status_inativo_motivo (filtered to inativo).
 
         Returns ~50 rows with SUM(participante_quantidade).
@@ -347,19 +400,20 @@ class PostgrestDashboardRepository(IDashboardRepository):
         _t0 = time.perf_counter()
         try:
             query = self._client.table(_TABLE_CONSOLIDADO).select(
-                "pic_status_inativo_motivo, "
-                "qtd:participante_quantidade.sum()"
+                "pic_status_inativo_motivo, qtd:participante_quantidade.sum()"
             )
             query = query.ilike("pic_status", "inativo")
-            result = await self._execute(
-                _apply_filters(query, filters)
-            )
+            result = await self._execute(_apply_filters(query, filters))
         except PostgrestError as exc:
-            logger.error(f"[dashboard] consolidado_motivos fetch failed: {exc}", exc_info=True)
+            logger.error(
+                f"[dashboard] consolidado_motivos fetch failed: {exc}", exc_info=True
+            )
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY consolidado_motivos     : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY consolidado_motivos     : {_elapsed * 1000:7.1f} ms"
+            )
 
         return [
             {
@@ -383,7 +437,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             self._fetch_consolidado_safras(filters),
             self._fetch_consolidado_motivos(filters),
         )
-        logger.info(f"[dashboard] ⏱  GRUPO consolidado (3 paralelas)  : {(time.perf_counter() - _t0) * 1000:7.1f} ms")
+        logger.info(
+            f"[dashboard] ⏱  GRUPO consolidado (3 paralelas)  : {(time.perf_counter() - _t0) * 1000:7.1f} ms"
+        )
         return {
             "totals": totals,
             "safras": safras,
@@ -406,13 +462,15 @@ class PostgrestDashboardRepository(IDashboardRepository):
         try:
             result = await self._execute(
                 _apply_filters(
-                    self._client.table(_TABLE_PROTOCOLOS).select(
+                    self._client.table(_TABLE_PROTOCOLOS)
+                    .select(
                         "protocolo_id, "
                         "protocolo_descricao, "
                         "protocolo_secretaria, "
                         "numerador:protocolo_regular_numerador.sum(), "
                         "denominador:protocolo_regular_denominador.sum()"
-                    ).not_.is_("protocolo_id", "null"),
+                    )
+                    .not_.is_("protocolo_id", "null"),
                     filters,
                 )
             )
@@ -421,25 +479,27 @@ class PostgrestDashboardRepository(IDashboardRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY protocolos              : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY protocolos              : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
             pid = row.get("protocolo_id")
             if not pid:
                 continue
-            rows.append({
-                "protocolo_id": pid,
-                "protocolo_descricao": row.get("protocolo_descricao") or "",
-                "protocolo_secretaria": row.get("protocolo_secretaria") or "",
-                "numerador": row.get("numerador") or 0,
-                "denominador": row.get("denominador") or 0,
-            })
+            rows.append(
+                {
+                    "protocolo_id": pid,
+                    "protocolo_descricao": row.get("protocolo_descricao") or "",
+                    "protocolo_secretaria": row.get("protocolo_secretaria") or "",
+                    "numerador": row.get("numerador") or 0,
+                    "denominador": row.get("denominador") or 0,
+                }
+            )
         return rows
 
-    async def _fetch_series(
-        self, filters: dict[str, object]
-    ) -> list[dict[str, Any]]:
+    async def _fetch_series(self, filters: dict[str, object]) -> list[dict[str, Any]]:
         """Section 3 — Série temporal agregada por tipo e mês.
 
         Aggregation: GROUP BY data_referencia_mensal, serie_tipo.
@@ -468,7 +528,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY series                  : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY series                  : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
@@ -479,12 +541,14 @@ class PostgrestDashboardRepository(IDashboardRepository):
             mes = str(data)[:7]  # YYYY-MM
             if not mes:
                 continue
-            rows.append({
-                "serie_tipo": serie_tipo,
-                "mes": mes,
-                "numerador": row.get("numerador") or 0,
-                "denominador": row.get("denominador") or 0,
-            })
+            rows.append(
+                {
+                    "serie_tipo": serie_tipo,
+                    "mes": mes,
+                    "numerador": row.get("numerador") or 0,
+                    "denominador": row.get("denominador") or 0,
+                }
+            )
         return rows
 
     async def _fetch_tempo(self, filters: dict[str, object]) -> dict[str, Any]:
@@ -508,7 +572,8 @@ class PostgrestDashboardRepository(IDashboardRepository):
         try:
             result = await self._execute(
                 _apply_filters(
-                    self._client.table(_TABLE_TEMPO).select(
+                    self._client.table(_TABLE_TEMPO)
+                    .select(
                         # SMAS
                         "smas_media:smas_duracao_media_valor.avg(), "
                         "smas_faixa_0_30:smas_irregularidade_faixa_0_30.sum(), "
@@ -532,7 +597,8 @@ class PostgrestDashboardRepository(IDashboardRepository):
                         "geral_faixa_31_60:geral_irregularidade_faixa_31_60.sum(), "
                         "geral_faixa_61_90:geral_irregularidade_faixa_61_90.sum(), "
                         "geral_faixa_91_mais:geral_irregularidade_faixa_91_mais.sum()"
-                    ).limit(1),
+                    )
+                    .limit(1),
                     filters,
                 )
             )
@@ -541,38 +607,106 @@ class PostgrestDashboardRepository(IDashboardRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY tempo                   : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY tempo                   : {_elapsed * 1000:7.1f} ms"
+            )
 
         row = (result.data or [{}])[0]
         return {
             "smas": {
-                "media":          float(row.get("smas_media") or 0.0),
-                "faixa_0_30":     int(row.get("smas_faixa_0_30") or 0),
-                "faixa_31_60":    int(row.get("smas_faixa_31_60") or 0),
-                "faixa_61_90":    int(row.get("smas_faixa_61_90") or 0),
-                "faixa_91_mais":  int(row.get("smas_faixa_91_mais") or 0),
+                "media": float(row.get("smas_media") or 0.0),
+                "faixa_0_30": int(row.get("smas_faixa_0_30") or 0),
+                "faixa_31_60": int(row.get("smas_faixa_31_60") or 0),
+                "faixa_61_90": int(row.get("smas_faixa_61_90") or 0),
+                "faixa_91_mais": int(row.get("smas_faixa_91_mais") or 0),
             },
             "sme": {
-                "media":          float(row.get("sme_media") or 0.0),
-                "faixa_0_30":     int(row.get("sme_faixa_0_30") or 0),
-                "faixa_31_60":    int(row.get("sme_faixa_31_60") or 0),
-                "faixa_61_90":    int(row.get("sme_faixa_61_90") or 0),
-                "faixa_91_mais":  int(row.get("sme_faixa_91_mais") or 0),
+                "media": float(row.get("sme_media") or 0.0),
+                "faixa_0_30": int(row.get("sme_faixa_0_30") or 0),
+                "faixa_31_60": int(row.get("sme_faixa_31_60") or 0),
+                "faixa_61_90": int(row.get("sme_faixa_61_90") or 0),
+                "faixa_91_mais": int(row.get("sme_faixa_91_mais") or 0),
             },
             "sms": {
-                "media":          float(row.get("sms_media") or 0.0),
-                "faixa_0_30":     int(row.get("sms_faixa_0_30") or 0),
-                "faixa_31_60":    int(row.get("sms_faixa_31_60") or 0),
-                "faixa_61_90":    int(row.get("sms_faixa_61_90") or 0),
-                "faixa_91_mais":  int(row.get("sms_faixa_91_mais") or 0),
+                "media": float(row.get("sms_media") or 0.0),
+                "faixa_0_30": int(row.get("sms_faixa_0_30") or 0),
+                "faixa_31_60": int(row.get("sms_faixa_31_60") or 0),
+                "faixa_61_90": int(row.get("sms_faixa_61_90") or 0),
+                "faixa_91_mais": int(row.get("sms_faixa_91_mais") or 0),
             },
             "geral": {
-                "faixa_0_30":     int(row.get("geral_faixa_0_30") or 0),
-                "faixa_31_60":    int(row.get("geral_faixa_31_60") or 0),
-                "faixa_61_90":    int(row.get("geral_faixa_61_90") or 0),
-                "faixa_91_mais":  int(row.get("geral_faixa_91_mais") or 0),
+                "faixa_0_30": int(row.get("geral_faixa_0_30") or 0),
+                "faixa_31_60": int(row.get("geral_faixa_31_60") or 0),
+                "faixa_61_90": int(row.get("geral_faixa_61_90") or 0),
+                "faixa_91_mais": int(row.get("geral_faixa_91_mais") or 0),
             },
         }
+
+    async def _fetch_tempo_protocolo(
+        self, filters: dict[str, object]
+    ) -> list[dict[str, Any]]:
+        """Section 6B — Tempo irregular pré-agregado por protocolo.
+
+        PostgREST agrega SUM() por protocolo (1 linha por protocolo por
+        combinação de filtros). A média ponderada
+        ``total_dias / total_irregulares`` é calculada no compute — usar
+        AVG() direto de ``duracao_media_episodio_dias`` seria uma média de
+        médias (errada).
+
+        Best-effort: falha ou tabela ausente degrada para lista vazia (a
+        seção exibe "Sem dados" sem afetar o restante do dashboard).
+
+        Returns:
+            [{"protocolo_id", "protocolo_descricao", "protocolo_secretaria",
+              "total_irregulares", "total_irregulares_abertos",
+              "total_dias"}, ...]
+        """
+        _t0 = time.perf_counter()
+        try:
+            result = await self._execute(
+                _apply_filters(
+                    self._client.table(_TABLE_TEMPO_PROTOCOLO)
+                    .select(
+                        "protocolo_id, "
+                        "protocolo_descricao, "
+                        "protocolo_secretaria, "
+                        "total_irregulares:irregularidade_quantidade.sum(), "
+                        "total_irregulares_abertos:irregularidade_aberta_quantidade.sum(), "
+                        "total_dias:duracao_total_dias.sum()"
+                    )
+                    .not_.is_("protocolo_id", "null"),
+                    filters,
+                )
+            )
+        except PostgrestError as exc:
+            logger.warning(
+                f"[dashboard] tempo_protocolo fetch failed (degrading to []): {exc}"
+            )
+            return []
+        finally:
+            _elapsed = time.perf_counter() - _t0
+            logger.info(
+                f"[dashboard] ⏱  QUERY tempo_protocolo        : {_elapsed * 1000:7.1f} ms"
+            )
+
+        rows = []
+        for row in result.data or []:
+            pid = row.get("protocolo_id")
+            if not pid:
+                continue
+            rows.append(
+                {
+                    "protocolo_id": pid,
+                    "protocolo_descricao": row.get("protocolo_descricao") or "",
+                    "protocolo_secretaria": row.get("protocolo_secretaria") or "",
+                    "total_irregulares": int(row.get("total_irregulares") or 0),
+                    "total_irregulares_abertos": int(
+                        row.get("total_irregulares_abertos") or 0
+                    ),
+                    "total_dias": float(row.get("total_dias") or 0.0),
+                }
+            )
+        return rows
 
     async def _fetch_resolucao(
         self, filters: dict[str, object]
@@ -591,12 +725,14 @@ class PostgrestDashboardRepository(IDashboardRepository):
         try:
             result = await self._execute(
                 _apply_filters(
-                    self._client.table(_TABLE_RESOLUCAO).select(
+                    self._client.table(_TABLE_RESOLUCAO)
+                    .select(
                         "secretaria, "
                         "data_referencia_mensal, "
                         "numerador:alerta_resolvido_numerador.sum(), "
                         "denominador:alerta_numerador.sum()"
-                    ).not_.is_("secretaria", "null"),
+                    )
+                    .not_.is_("secretaria", "null"),
                     filters,
                 )
             )
@@ -605,7 +741,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             raise
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY resolucao               : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY resolucao               : {_elapsed * 1000:7.1f} ms"
+            )
 
         rows = []
         for row in result.data or []:
@@ -616,12 +754,14 @@ class PostgrestDashboardRepository(IDashboardRepository):
             mes = str(data)[:7]
             if not mes:
                 continue
-            rows.append({
-                "secretaria": secretaria,
-                "mes": mes,
-                "numerador": row.get("numerador") or 0,
-                "denominador": row.get("denominador") or 0,
-            })
+            rows.append(
+                {
+                    "secretaria": secretaria,
+                    "mes": mes,
+                    "numerador": row.get("numerador") or 0,
+                    "denominador": row.get("denominador") or 0,
+                }
+            )
         return rows
 
     # ------------------------------------------------------------------
@@ -637,7 +777,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             if source in filters and filters[source] is not None
         }
 
-    async def _fetch_disparos(self, filters: dict[str, object]) -> dict[str, Any] | None:
+    async def _fetch_disparos(
+        self, filters: dict[str, object]
+    ) -> dict[str, Any] | None:
         """WhatsApp disparos metrics (dashboard section 8).
 
         Six aggregate queries on `endpoint_whatsapp_disparo`, all executed
@@ -678,7 +820,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
             return None
         finally:
             _elapsed = time.perf_counter() - _t0
-            logger.info(f"[dashboard] ⏱  QUERY disparos (6 paralelas)   : {_elapsed * 1000:7.1f} ms")
+            logger.info(
+                f"[dashboard] ⏱  QUERY disparos (6 paralelas)   : {_elapsed * 1000:7.1f} ms"
+            )
 
         return {
             "totals": totals,
@@ -695,11 +839,13 @@ class PostgrestDashboardRepository(IDashboardRepository):
         """30d totals: SUM over the whole filtered table (single row)."""
         result = await self._execute(
             _apply_filters(
-                self._client.table(_TABLE_DISPAROS).select(
+                self._client.table(_TABLE_DISPAROS)
+                .select(
                     "total:disparo_total_quantidade.sum(), "
                     "entregues:disparo_entregues_quantidade.sum(), "
                     "falhas:disparo_falhas_quantidade.sum()"
-                ).limit(1),
+                )
+                .limit(1),
                 filters,
             )
         )
@@ -728,9 +874,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
         )
         query = query.not_.is_("disparo_status", "null")
         if statuses:
-            query = query.filter(
-                "disparo_status", "in", f"({','.join(statuses)})"
-            )
+            query = query.filter("disparo_status", "in", f"({','.join(statuses)})")
         result = await self._execute(_apply_filters(query, filters))
         return result.count or 0
 
@@ -807,6 +951,175 @@ class PostgrestDashboardRepository(IDashboardRepository):
         ]
 
     # ------------------------------------------------------------------
+    # Busca Ativa (section 9)
+    # ------------------------------------------------------------------
+
+    async def _fetch_busca_ativa_totals(
+        self, filters: dict[str, object], cutoff: str
+    ) -> dict[str, int]:
+        """Buscas acumuladas: SUM sobre o recorte filtrado (uma linha)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select("buscas:busca_ativa_quantidade.sum()")
+                .gte("data_referencia_mensal", cutoff)
+                .limit(1),
+                filters,
+            )
+        )
+        row = result.data[0] if result.data else {}
+        return {"buscas": int(row.get("buscas") or 0)}
+
+    async def _fetch_busca_ativa_mensal(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Série mensal por fonte (GROUP BY data_referencia_mensal, fonte)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select(
+                    "data_referencia_mensal, fonte, "
+                    "buscas:busca_ativa_quantidade.sum(), "
+                    "participantes:participante_com_busca_ativa_quantidade.sum()"
+                )
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("fonte", "null"),
+                filters,
+            )
+        )
+        rows: list[dict[str, Any]] = []
+        for row in result.data or []:
+            data = row.get("data_referencia_mensal")
+            fonte = row.get("fonte")
+            if not data or not fonte:
+                continue
+            rows.append(
+                {
+                    "mes": str(data)[:7],
+                    "fonte": str(fonte).upper(),
+                    "buscas": int(row.get("buscas") or 0),
+                    "participantes": int(row.get("participantes") or 0),
+                }
+            )
+        return rows
+
+    async def _fetch_busca_ativa_smas_desfecho(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Resultado SMAS por mês e desfecho (GROUP BY data, smas_desfecho)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select(
+                    "data_referencia_mensal, smas_desfecho, "
+                    "buscas:busca_ativa_quantidade.sum()"
+                )
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("smas_desfecho", "null"),
+                filters,
+            )
+        )
+        rows: list[dict[str, Any]] = []
+        for row in result.data or []:
+            data = row.get("data_referencia_mensal")
+            desfecho = row.get("smas_desfecho")
+            if not data or not desfecho:
+                continue
+            rows.append(
+                {
+                    "mes": str(data)[:7],
+                    "desfecho": str(desfecho),
+                    "buscas": int(row.get("buscas") or 0),
+                }
+            )
+        return rows
+
+    async def _fetch_busca_ativa_smas_tipo(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Distribuição SMAS por tipo (GROUP BY smas_tipo)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select("smas_tipo, buscas:busca_ativa_quantidade.sum()")
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("smas_tipo", "null"),
+                filters,
+            )
+        )
+        return [
+            {
+                "categoria": str(row.get("smas_tipo")),
+                "total": int(row.get("buscas") or 0),
+            }
+            for row in (result.data or [])
+            if row.get("smas_tipo")
+        ]
+
+    async def _fetch_busca_ativa_sms_publico(
+        self, filters: dict[str, object], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Distribuição SMS por público (GROUP BY sms_tipo_publico)."""
+        result = await self._execute(
+            _apply_filters(
+                self._client.table(_TABLE_BUSCA_ATIVA)
+                .select("sms_tipo_publico, buscas:busca_ativa_quantidade.sum()")
+                .gte("data_referencia_mensal", cutoff)
+                .not_.is_("sms_tipo_publico", "null"),
+                filters,
+            )
+        )
+        return [
+            {
+                "categoria": str(row.get("sms_tipo_publico")),
+                "total": int(row.get("buscas") or 0),
+            }
+            for row in (result.data or [])
+            if row.get("sms_tipo_publico")
+        ]
+
+    async def _fetch_busca_ativa(
+        self, filters: dict[str, object]
+    ) -> dict[str, Any] | None:
+        """Busca Ativa metrics (Visão Geral) from
+        `endpoint_participante_visao_geral_busca_ativa`.
+
+        Five aggregate queries (SUM + GROUP BY server-side — never raw rows),
+        all limited to the last ``BUSCA_ATIVA_JANELA_MESES`` months, run
+        concurrently: totals, monthly series by fonte, SMAS desfecho by month,
+        SMAS tipo and SMS público. Degrades to `None` on any PostgREST error
+        (the dashboard keeps serving the other sections).
+        """
+        _t0 = time.perf_counter()
+        cutoff = _busca_ativa_cutoff()
+        try:
+            totais, mensal, desfecho, tipo, publico = await asyncio.gather(
+                self._fetch_busca_ativa_totals(filters, cutoff),
+                self._fetch_busca_ativa_mensal(filters, cutoff),
+                self._fetch_busca_ativa_smas_desfecho(filters, cutoff),
+                self._fetch_busca_ativa_smas_tipo(filters, cutoff),
+                self._fetch_busca_ativa_sms_publico(filters, cutoff),
+            )
+        except PostgrestError as exc:
+            logger.warning(
+                f"[dashboard] busca ativa fetch failed (degrading to None): {exc}"
+            )
+            return None
+        finally:
+            _elapsed = time.perf_counter() - _t0
+            logger.info(
+                f"[dashboard] ⏱  QUERY busca ativa (5 paralelas): {_elapsed * 1000:7.1f} ms"
+            )
+
+        return {
+            "totais": totais,
+            "mensal": mensal,
+            "smas_desfecho": desfecho,
+            "smas_tipo": tipo,
+            "sms_publico": publico,
+        }
+
+    # ------------------------------------------------------------------
     # Execution helper
     # ------------------------------------------------------------------
 
@@ -828,7 +1141,9 @@ class PostgrestDashboardRepository(IDashboardRepository):
         try:
             raw = await self._redis.get(key)
             if raw is None:
-                logger.info(f"[dashboard] ⏱  CACHE redis GET (miss)      : {(time.perf_counter() - _t0) * 1000:7.1f} ms")
+                logger.info(
+                    f"[dashboard] ⏱  CACHE redis GET (miss)      : {(time.perf_counter() - _t0) * 1000:7.1f} ms"
+                )
                 return None
             _t_deserialize = time.perf_counter()
             data = json.loads(raw)

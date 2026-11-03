@@ -53,7 +53,7 @@ class PostgrestClient:
         self._http_client = httpx.AsyncClient(
             base_url=config.base_url,
             event_hooks={
-                "request": [self._auth.on_request],
+                "request": [self._encode_query_spaces, self._auth.on_request],
                 "response": [self._auth.on_response],
             },
             timeout=20.0,
@@ -68,6 +68,20 @@ class PostgrestClient:
     def table(self, name: str) -> AsyncRequestBuilder:
         """Return a query builder for one table/view in the configured schema."""
         return self._postgrest.from_(name)
+
+    async def _encode_query_spaces(self, request: httpx.Request) -> None:
+        """Reescreve '+' como '%20' na query string.
+
+        O httpx codifica espaços de `params` como '+'. O PostgREST decodifica
+        '+' como espaço quando a requisição chega DIRETA (docker local), mas
+        o gateway nginx/njs do data-proxy em staging entrega '+' literal —
+        então um filtro com espaço (ex.: `bairro=eq.Senador Camará`) não casa
+        nada lá. '%20' funciona nos dois caminhos. Nenhum valor legítimo dos
+        nossos filtros contém '+' (nomes de região/protocolo, ids, datas).
+        """
+        query = request.url.query
+        if b"+" in query:
+            request.url = request.url.copy_with(query=query.replace(b"+", b"%20"))
 
     @asynccontextmanager
     async def with_user_token(

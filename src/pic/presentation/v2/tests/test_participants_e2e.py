@@ -5,14 +5,22 @@ from src.core.security.jwt import get_current_user_permissions_v2, verify_jwt
 from src.core.security.permissions_models import UserPermissions
 from src.main import app
 from src.pic.application.use_cases.export_participants import ExportOutput
+from src.pic.application.use_cases.get_busca_ativa import BuscaAtivaPage
 from src.pic.application.use_cases.list_participants import ParticipantListOutput
 from src.pic.domain.errors import ForbiddenError, NotFoundError, ValidationError
+from src.pic.domain.models.busca_ativa import (
+    BuscaAtivaEvento,
+    BuscaAtivaUnidadeReferenciada,
+    BuscaAtivaUnidadeSMAS,
+)
 from src.pic.domain.models.disparo import Disparo, DisparoMetadados
 from src.pic.domain.models.pagination import PaginationMeta
 from src.pic.domain.models.participante import Participante, ParticipanteListItem
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.presentation.di import (
     get_admin_repo,
+    get_busca_ativa_use_case,
+    get_export_busca_ativa_use_case,
     get_export_participants_use_case,
     get_list_participants_use_case,
     get_participant_detail_use_case,
@@ -35,6 +43,7 @@ LIST_ITEM_FIELDS = [
     "total_protocolos_irregular",
     "raca",
     "has_cartao_pic",
+    "has_busca_ativa",
 ]
 
 PROFILING_FIELDS = [
@@ -136,6 +145,22 @@ def sample_detail() -> Participante:
                 indicador_falha=False,
                 metadados=DisparoMetadados(
                     total_ultimos_30d=3, entregues_30d=3, falhas_30d=0
+                ),
+            )
+        ],
+        busca_ativa=[
+            BuscaAtivaEvento(
+                id_busca_ativa="abc123",
+                fonte="SMAS",
+                data="2026-07-14",
+                smas_tipo=["Por telefone"],
+                smas_familia_localizada_indicador=False,
+                smas_protocolo_violado=["Acesso a CPF ou Certidão de Nascimento"],
+                smas_motivo_nao_localizada=["Endereço não encontrado"],
+                unidade_referenciada=BuscaAtivaUnidadeReferenciada(
+                    smas=BuscaAtivaUnidadeSMAS(
+                        nome="CRAS Madureira", regional="AP 3.3"
+                    )
                 ),
             )
         ],
@@ -249,6 +274,56 @@ class FakeExportUseCase:
 
         return ExportOutput(
             columns=["id_membro_familia", "nome"],
+            pages=pages(),
+        )
+
+
+class FakeExportBuscaAtivaUseCase:
+    def __init__(self, error: Exception | None = None, events: list[str] | None = None):
+        self.error = error
+        self.events = events if events is not None else []
+        self.received: dict = {}
+
+    async def execute(
+        self,
+        filters,
+        sort,
+        permissions=None,
+        bypass_cache=False,
+        user_token=None,
+    ):
+        self.received = {
+            "filters": filters,
+            "sort": sort,
+            "user_token": user_token,
+        }
+        self.events.append("export_busca_ativa_use_case")
+        if self.error:
+            raise self.error
+
+        async def pages():
+            yield [
+                {
+                    "id_membro_familia": "00325420412",
+                    "cpf": "111",
+                    "nome": "ANA JULIA",
+                    "nascimento_data": "2020-01-31",
+                    "endereco": "Rua A",
+                    "complemento": None,
+                    "bairro": "Centro",
+                    "endereco_sms": None,
+                    "fonte": "SMAS",
+                    "data": "2026-07-14",
+                    "sms_tipo_publico": None,
+                    "smas_tipo": ["Por telefone"],
+                    "smas_familia_localizada_indicador": True,
+                    "smas_protocolo_violado": [],
+                    "smas_motivo_nao_localizada": [],
+                }
+            ]
+
+        return ExportOutput(
+            columns=["id_membro_familia", "cpf", "nome", "fonte", "data_busca_ativa"],
             pages=pages(),
         )
 
@@ -459,6 +534,25 @@ async def test_detail_returns_full_envelope(client, override_use_cases):
     assert disparos[0]["status"] == "ENTREGUE"
     assert disparos[0]["metadados"]["total_ultimos_30d"] == 3
 
+    # Busca ativa serializada dentro do objeto do participante.
+    busca_ativa = data["busca_ativa"]
+    assert len(busca_ativa) == 1
+    assert set(busca_ativa[0].keys()) == {
+        "id_busca_ativa",
+        "fonte",
+        "data",
+        "sms_tipo_publico",
+        "smas_tipo",
+        "smas_familia_localizada_indicador",
+        "smas_protocolo_violado",
+        "smas_motivo_nao_localizada",
+        "processed_at",
+        "unidade_referenciada",
+    }
+    assert busca_ativa[0]["fonte"] == "SMAS"
+    assert busca_ativa[0]["unidade_referenciada"]["smas"]["nome"] == "CRAS Madureira"
+    assert busca_ativa[0]["unidade_referenciada"]["sms"] is None
+
     _, detail_use_case, _ = override_use_cases
     assert detail_use_case.received["user_token"] == "fake-access-token"
     assert detail_use_case.received["id_membro_familia"] == "00325420412"
@@ -510,6 +604,162 @@ async def test_participants_require_authentication(override_use_cases):
         response = await ac.get("/api/v2/participants")
 
     assert response.status_code == 401
+
+
+class FakeBuscaAtivaUseCase:
+    def __init__(self, page=None, error=None):
+        self.page = page
+        self.error = error
+        self.received: dict = {}
+
+    async def execute(
+        self,
+        id_membro_familia,
+        *,
+        offset=0,
+        limit=20,
+        user_token=None,
+        permissions=None,
+    ):
+        self.received = {
+            "id_membro_familia": id_membro_familia,
+            "offset": offset,
+            "limit": limit,
+            "user_token": user_token,
+            "permissions": permissions,
+        }
+        if self.error:
+            raise self.error
+        return self.page
+
+
+def make_busca_ativa_page():
+    return BuscaAtivaPage(
+        data=[
+            BuscaAtivaEvento(
+                id_busca_ativa="abc123",
+                fonte="SMAS",
+                data="2026-07-14",
+                smas_tipo=["Por telefone"],
+                smas_familia_localizada_indicador=False,
+                smas_protocolo_violado=["Acesso a CPF ou Certidão de Nascimento"],
+                smas_motivo_nao_localizada=["Endereço não encontrado"],
+            )
+        ],
+        offset=0,
+        limit=20,
+        has_more=False,
+    )
+
+
+def override_busca_ativa(use_case):
+    app.dependency_overrides[get_busca_ativa_use_case] = lambda: use_case
+    app.dependency_overrides[get_admin_repo] = lambda: FakeAdminRepo()
+
+
+@pytest.mark.asyncio
+async def test_busca_ativa_returns_page_envelope(override_auth):
+    use_case = FakeBuscaAtivaUseCase(page=make_busca_ativa_page())
+    override_busca_ativa(use_case)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get(
+            "/api/v2/participants/00325420412/busca-ativa",
+            params={"offset": "20", "limit": "20"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body.keys()) == {"data", "meta"}
+    assert body["meta"] == {"offset": 0, "limit": 20, "has_more": False}
+    assert len(body["data"]) == 1
+    assert body["data"][0]["fonte"] == "SMAS"
+    assert use_case.received["id_membro_familia"] == "00325420412"
+    assert use_case.received["offset"] == 20
+    assert use_case.received["limit"] == 20
+    assert use_case.received["user_token"] == "fake-jwt-token"
+
+
+@pytest.mark.asyncio
+async def test_busca_ativa_defaults_offset_and_limit(override_auth):
+    use_case = FakeBuscaAtivaUseCase(page=make_busca_ativa_page())
+    override_busca_ativa(use_case)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/participants/00325420412/busca-ativa")
+
+    assert response.status_code == 200
+    assert use_case.received["offset"] == 0
+    assert use_case.received["limit"] == 20
+
+
+@pytest.mark.asyncio
+async def test_busca_ativa_none_maps_to_502(override_auth):
+    use_case = FakeBuscaAtivaUseCase(page=None)
+    override_busca_ativa(use_case)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/participants/00325420412/busca-ativa")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Falha ao carregar eventos de busca ativa"
+
+
+@pytest.mark.asyncio
+async def test_busca_ativa_maps_postgrest_error_to_502(override_auth):
+    use_case = FakeBuscaAtivaUseCase(error=PostgrestError("data-proxy down"))
+    override_busca_ativa(use_case)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/participants/00325420412/busca-ativa")
+
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"offset": "-1"},
+        {"limit": "0"},
+        {"limit": "101"},
+    ],
+)
+async def test_busca_ativa_validates_offset_and_limit(override_auth, params):
+    use_case = FakeBuscaAtivaUseCase(page=make_busca_ativa_page())
+    override_busca_ativa(use_case)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get(
+            "/api/v2/participants/00325420412/busca-ativa", params=params
+        )
+
+    assert response.status_code == 422
 
 
 @pytest.fixture
@@ -567,3 +817,46 @@ async def test_export_maps_validation_error_to_422(client, override_export_use_c
         response.json()["detail"]
         == "Protocolo desconhecido: protocolo_inventado"
     )
+
+
+@pytest.fixture
+def override_export_busca_ativa_use_case():
+    events: list[str] = []
+    export_use_case = FakeExportBuscaAtivaUseCase(events=events)
+    app.dependency_overrides[get_export_busca_ativa_use_case] = (
+        lambda: export_use_case
+    )
+    yield export_use_case, events
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_export_busca_ativa_streams_csv(
+    client, override_export_busca_ativa_use_case
+):
+    response = await client.get("/api/v2/participants/busca-ativa/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+
+    body = response.text
+    assert body.startswith("\ufeff")
+    assert body.startswith("\ufeffid_membro_familia;cpf;nome;fonte;data_busca_ativa")
+    assert '"00325420412";"111";"ANA JULIA";"SMAS";"14/07/2026"' in body
+
+    export_use_case, events = override_export_busca_ativa_use_case
+    assert events == ["export_busca_ativa_use_case"]
+    assert export_use_case.received["user_token"] == "fake-access-token"
+
+
+@pytest.mark.asyncio
+async def test_export_busca_ativa_maps_forbidden_error_to_403(
+    client, override_export_busca_ativa_use_case
+):
+    override_export_busca_ativa_use_case[0].error = ForbiddenError("Sem acesso")
+
+    response = await client.get("/api/v2/participants/busca-ativa/export")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Sem acesso"

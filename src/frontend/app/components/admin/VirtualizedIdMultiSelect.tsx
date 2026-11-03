@@ -5,18 +5,12 @@ import { IdWithName } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Search } from "lucide-react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-} from "@/components/ui/command";
-import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/app/utils/utils";
 import { List } from "react-window";
 
@@ -192,13 +186,24 @@ export function VirtualizedIdMultiSelect({
               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[600px] p-0" align="start">
-            <Command shouldFilter={false}>
-              <CommandInput
-                placeholder="Buscar..."
-                value={search}
-                onValueChange={setSearch}
-              />
+          <PopoverContent
+            className="w-[600px] p-0"
+            align="start"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+          >
+            {/* Sem cmdk: o autofocus/scroll do Command era o que fazia a página
+                rolar ao abrir o dropdown (conteúdo portalado no fim do body
+                antes do posicionamento). Input simples, com a mesma aparência. */}
+            <div className="flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground">
+              <div className="flex items-center border-b px-3">
+                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                <input
+                  placeholder="Buscar..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
               {loading && (
                 <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -206,7 +211,9 @@ export function VirtualizedIdMultiSelect({
                 </div>
               )}
               {!loading && filteredOptions.length === 0 && (
-                <CommandEmpty>Nenhum resultado encontrado</CommandEmpty>
+                <div className="py-6 text-center text-sm">
+                  Nenhum resultado encontrado
+                </div>
               )}
               {!loading && filteredOptions.length > 0 && (
                 <List
@@ -217,7 +224,7 @@ export function VirtualizedIdMultiSelect({
                   style={{ height: listHeight, width: '100%' }}
                 />
               )}
-            </Command>
+            </div>
           </PopoverContent>
         </Popover>
       )}

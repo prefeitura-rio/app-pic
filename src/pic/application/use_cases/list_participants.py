@@ -23,7 +23,10 @@ class ParticipantListOutput:
 
 
 class ListParticipantsUseCase:
-    def __init__(self, repository: ParticipantRepository):
+    def __init__(
+        self,
+        repository: ParticipantRepository,
+    ):
         self._repository = repository
 
     async def execute(

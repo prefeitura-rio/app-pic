@@ -104,3 +104,22 @@ async def test_execute_no_permissions_object():
         user_id=None,
         bypass_cache=False,
     )
+
+
+@pytest.mark.asyncio
+async def test_execute_super_admin_sem_secretarias_acessa():
+    """Super admins (ex.: grupo pic) podem ter secretarias_acesso vazias —
+    o gate deve liberar por is_super_admin, sem depender de "TODOS"."""
+    use_case, fake_repo = _make_use_case()
+
+    super_admin_sem_secretarias = UserPermissions(
+        cpf="12345678900",
+        is_admin=True,
+        is_super_admin=True,
+        secretarias_acesso=[],
+    )
+
+    output = await use_case.execute(permissions=super_admin_sem_secretarias)
+
+    assert output.can_view_acordo is True
+    fake_repo.get_acordo_resultados.assert_awaited_once()

@@ -9,6 +9,11 @@ from collections import defaultdict
 from typing import Any
 
 from src.pic.domain.models.dashboard import (
+    BuscaAtivaCategoria,
+    BuscaAtivaDashboard,
+    BuscaAtivaDesfechoMensal,
+    BuscaAtivaPontoMensal,
+    BuscaAtivaTotais,
     Dashboard,
     DisparoJornadaResumo,
     DisparosDashboard,
@@ -20,6 +25,7 @@ from src.pic.domain.models.dashboard import (
     ResultadoProgramaPoint,
     TaxaResolucaoMensalPoint,
     TempoMedioIrregularidade,
+    TempoMedioIrregularidadeProtocolo,
 )
 from src.pic.infrastructure.dashboard.formatting import _format_mes_label
 from src.utils.log import logger
@@ -36,10 +42,10 @@ _MAPA_SECRETARIA_LABEL: dict[str, str] = {
 }
 
 _FAIXAS_TEMPO: list[tuple[str, str, float, float]] = [
-    ("0-30",  "0-30 dias",  0.0,  30.0),
+    ("0-30", "0-30 dias", 0.0, 30.0),
     ("31-60", "31-60 dias", 31.0, 60.0),
     ("61-90", "61-90 dias", 61.0, 90.0),
-    ("90+",   "90+ dias",   91.0, float("inf")),
+    ("90+", "90+ dias", 91.0, float("inf")),
 ]
 
 
@@ -98,16 +104,12 @@ def _calculate_disparos_metrics(
     _STATUSES_ENTREGA_EFETIVA = {"ENTREGUE", "RESPONDIDO", "LIDO"}
     status_total = sum(s.total for s in status_distribuicao)
     entregues_efetivos = sum(
-        s.total
-        for s in status_distribuicao
-        if s.status in _STATUSES_ENTREGA_EFETIVA
+        s.total for s in status_distribuicao if s.status in _STATUSES_ENTREGA_EFETIVA
     )
-    falhas_status = sum(
-        s.total for s in status_distribuicao if s.status == "FALHOU"
-    )
+    falhas_status = sum(s.total for s in status_distribuicao if s.status == "FALHOU")
 
     statuses_por_jornada: dict[str, list[DisparoStatusDistribuicao]] = {}
-    for row in (disparos.get("jornadas_statuses") or []):
+    for row in disparos.get("jornadas_statuses") or []:
         statuses_por_jornada.setdefault(row.get("jornada"), []).append(
             DisparoStatusDistribuicao(
                 status=row.get("status"),
@@ -145,13 +147,111 @@ def _calculate_disparos_metrics(
     )
 
 
+def _calculate_busca_ativa_metrics(
+    busca_ativa: dict[str, Any] | None,
+) -> BuscaAtivaDashboard | None:
+    """Section 9 — Busca Ativa metrics from PostgREST aggregates.
+
+    ``busca_ativa`` is the output of ``_fetch_busca_ativa`` (already aggregated
+    by PostgREST); Python only accumulates repeated rows per key and builds the
+    domain object. Returns ``None`` when the fetch degraded.
+    """
+    if not busca_ativa:
+        return None
+
+    totals = busca_ativa.get("totais") or {}
+
+    evolucao: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"smas": 0, "sms": 0}
+    )
+    for row in busca_ativa.get("mensal") or []:
+        fonte = (row.get("fonte") or "").upper()
+        mes = row.get("mes")
+        if not mes:
+            continue
+        if fonte == "SMAS":
+            evolucao[mes]["smas"] += int(row.get("buscas") or 0)
+        elif fonte == "SMS":
+            evolucao[mes]["sms"] += int(row.get("buscas") or 0)
+
+    evolucao_mensal = [
+        BuscaAtivaPontoMensal(
+            mes=mes,
+            mes_label=_format_mes_label(mes),
+            smas=d["smas"],
+            sms=d["sms"],
+            total=d["smas"] + d["sms"],
+        )
+        for mes, d in sorted(evolucao.items())
+    ]
+
+    # Card "Participantes com busca ativa": sempre o mês mais recente
+    # (max data_referencia_mensal) do recorte — soma dos `participantes` das
+    # linhas mensais desse mês (em vez de acumular todos os meses).
+    mensal_rows = busca_ativa.get("mensal") or []
+    meses_validos = [row.get("mes") for row in mensal_rows if row.get("mes")]
+    mes_max = max(meses_validos) if meses_validos else None
+    participantes_mes_max = (
+        sum(
+            int(row.get("participantes") or 0)
+            for row in mensal_rows
+            if row.get("mes") == mes_max
+        )
+        if mes_max
+        else 0
+    )
+
+    desfecho_agg: dict[tuple[str, str], int] = defaultdict(int)
+    for row in busca_ativa.get("smas_desfecho") or []:
+        mes = row.get("mes")
+        desfecho = row.get("desfecho")
+        if not mes or not desfecho:
+            continue
+        desfecho_agg[(mes, str(desfecho))] += int(row.get("buscas") or 0)
+
+    smas_desfecho_mensal = [
+        BuscaAtivaDesfechoMensal(
+            mes=mes,
+            mes_label=_format_mes_label(mes),
+            desfecho=desfecho,
+            total=total,
+        )
+        for (mes, desfecho), total in sorted(desfecho_agg.items())
+    ]
+
+    def _categorias(rows: list[dict[str, Any]]) -> list[BuscaAtivaCategoria]:
+        agg: dict[str, int] = defaultdict(int)
+        for row in rows:
+            categoria = row.get("categoria")
+            if not categoria:
+                continue
+            agg[str(categoria)] += int(row.get("total") or 0)
+        return [
+            BuscaAtivaCategoria(categoria=categoria, total=total)
+            for categoria, total in sorted(agg.items(), key=lambda x: -x[1])
+        ]
+
+    return BuscaAtivaDashboard(
+        totais=BuscaAtivaTotais(
+            buscas=int(totals.get("buscas") or 0),
+            participantes=participantes_mes_max,
+        ),
+        evolucao_mensal=evolucao_mensal,
+        smas_desfecho_mensal=smas_desfecho_mensal,
+        smas_tipos=_categorias(busca_ativa.get("smas_tipo") or []),
+        sms_publicos=_categorias(busca_ativa.get("sms_publico") or []),
+    )
+
+
 def _calculate_dashboard_metrics(
     consolidado: dict[str, Any],
     protocolos: list[dict[str, Any]],
     series: list[dict[str, Any]],
     tempo: dict[str, Any],
     resolucao: list[dict[str, Any]],
+    tempo_protocolo: list[dict[str, Any]] | None = None,
     disparos: dict[str, Any] | None = None,
+    busca_ativa: dict[str, Any] | None = None,
     filtro_secretaria: str | None = None,
 ) -> Dashboard:
     """Compute all dashboard sections from PostgREST data.
@@ -168,13 +268,17 @@ def _calculate_dashboard_metrics(
         series: linhas por (mes, serie_tipo)
         tempo: {smas, sme, sms} com somas ponderadas pré-calculadas
         resolucao: linhas por (mes, secretaria)
+        tempo_protocolo: linhas por protocolo_id (section 6B); None/[] quando
+            a fonte degradou
         disparos: output of ``_fetch_disparos`` (None on graceful degradation)
+        busca_ativa: output of ``_fetch_busca_ativa`` (None on graceful degradation)
         filtro_secretaria: Optional secretaria param (SMS|SME|SMAS)
 
     Returns:
         Fully populated ``Dashboard`` domain object.
     """
     import time as perf_time
+
     t0 = perf_time.perf_counter()
 
     # =========================================================================
@@ -369,7 +473,9 @@ def _calculate_dashboard_metrics(
                 float(tempo.get(s, {}).get("media") or 0.0) * total_por_sec[s]
                 for s in ("smas", "sme", "sms")
             )
-            media = round(soma_pond / total_geral_calc, 1) if total_geral_calc > 0 else 0.0
+            media = (
+                round(soma_pond / total_geral_calc, 1) if total_geral_calc > 0 else 0.0
+            )
             total = total_geral_calc
         else:
             media = round(float(tempo.get(sec, {}).get("media") or 0.0), 1)
@@ -387,10 +493,10 @@ def _calculate_dashboard_metrics(
     # Usa as colunas geral_irregularidade_faixa_* que já agregam smas+sme+sms
     geral = tempo.get("geral", {})
     faixa_counts: dict[str, int] = {
-        "0-30":  int(geral.get("faixa_0_30") or 0),
+        "0-30": int(geral.get("faixa_0_30") or 0),
         "31-60": int(geral.get("faixa_31_60") or 0),
         "61-90": int(geral.get("faixa_61_90") or 0),
-        "90+":   int(geral.get("faixa_91_mais") or 0),
+        "90+": int(geral.get("faixa_91_mais") or 0),
     }
     total_geral = sum(faixa_counts.values())
 
@@ -402,11 +508,49 @@ def _calculate_dashboard_metrics(
                 faixa=faixa_key,
                 faixa_label=faixa_label,
                 count=count,
-                percentual=round(count / total_geral * 100, 1) if total_geral > 0 else 0.0,
+                percentual=round(count / total_geral * 100, 1)
+                if total_geral > 0
+                else 0.0,
             )
         )
 
     logger.info(f"⚡ [postgrest_v2] Seção 6: {perf_time.perf_counter() - t1:.3f}s")
+
+    # =========================================================================
+    # SECTION 6B — Tempo médio de irregularidade por protocolo (ranking)
+    # =========================================================================
+    t1 = perf_time.perf_counter()
+
+    # QUIRK 6B: filtro_secretaria restringe os protocolos exibidos no ranking
+    filtro_sec_upper = (filtro_secretaria or "").strip().upper()
+
+    tempo_protocolo_lista: list[TempoMedioIrregularidadeProtocolo] = []
+    for row in tempo_protocolo or []:
+        pid = row.get("protocolo_id")
+        qtd = int(row.get("total_irregulares") or 0)
+        if not pid or qtd <= 0:
+            continue
+        sec = (row.get("protocolo_secretaria") or "").strip().upper()
+        if filtro_sec_upper and sec != filtro_sec_upper:
+            continue
+        total_dias = float(row.get("total_dias") or 0.0)
+        tempo_protocolo_lista.append(
+            TempoMedioIrregularidadeProtocolo(
+                protocolo_id=pid,
+                protocolo_descricao=row.get("protocolo_descricao") or pid,
+                protocolo_secretaria=sec,
+                tempo_medio_dias=round(total_dias / qtd, 1) if qtd > 0 else 0.0,
+                total_irregulares=qtd,
+                total_irregulares_abertos=int(
+                    row.get("total_irregulares_abertos") or 0
+                ),
+            )
+        )
+
+    # Ranking: maior → menor tempo médio (topo = pior protocolo)
+    tempo_protocolo_lista.sort(key=lambda p: p.tempo_medio_dias, reverse=True)
+
+    logger.info(f"⚡ [postgrest_v2] Seção 6B: {perf_time.perf_counter() - t1:.3f}s")
 
     # =========================================================================
     # SECTION 7 — Taxa de resolução mensal (dados pré-agregados)
@@ -455,6 +599,13 @@ def _calculate_dashboard_metrics(
     t1 = perf_time.perf_counter()
     disparos_dashboard = _calculate_disparos_metrics(disparos, total_participantes)
     logger.info(f"⚡ [postgrest_v2] Seção 8 (disparos): {perf_time.perf_counter() - t1:.3f}s")
+
+    # =========================================================================
+    # SECTION 9 — Busca Ativa (agregados no PostgREST)
+    # =========================================================================
+    t1 = perf_time.perf_counter()
+    busca_ativa_dashboard = _calculate_busca_ativa_metrics(busca_ativa)
+    logger.info(f"⚡ [postgrest_v2] Seção 9 (busca ativa): {perf_time.perf_counter() - t1:.3f}s")
     logger.info(f"⚡ [postgrest_v2] total compute: {perf_time.perf_counter() - t0:.3f}s")
 
     return Dashboard(
@@ -469,7 +620,9 @@ def _calculate_dashboard_metrics(
         distribuicao_motivo_saida=distribuicao_motivos,
         tempo_medio_irregularidade=tempo_medio_lista,
         distribuicao_tempo_irregularidade=distribuicao_tempo,
+        tempo_medio_irregularidade_protocolo=tempo_protocolo_lista,
         taxa_resolucao_mensal=taxa_resolucao,
         disparos=disparos_dashboard,
+        busca_ativa=busca_ativa_dashboard,
         data_atualizacao=None,
     )

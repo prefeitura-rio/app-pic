@@ -1,8 +1,11 @@
 import type {
 	AcordoResultadosResponse,
+	BairrosGeoJSONResponse,
 	BatchImportResult,
 	BatchPermissionsRequest,
 	BatchPermissionsResult,
+	BuscaAtivaPageResponse,
+	CamadaTerritorial,
 	CreateUserRequest,
 	DashboardFilterValues,
 	DashboardV2Response,
@@ -21,6 +24,9 @@ import type {
 	ParticipanteListItem,
 	ParticipantFilters,
 	ProtocoloDetalhes,
+	ProtocolosResponse,
+	RegiaoDetalhesResponse,
+	RegiaoRegularidadeResponse,
 	UnitType,
 	UserAccessRecord,
 } from "../types";
@@ -306,6 +312,26 @@ export const apiService = {
 	},
 
 	/**
+	 * V2 — Página de eventos de busca ativa de um participante.
+	 */
+	async getBuscaAtivaV2(
+		idMembroFamilia: string,
+		offset: number = 0,
+		limit: number = 20,
+	): Promise<BuscaAtivaPageResponse> {
+		const params = new URLSearchParams({
+			offset: offset.toString(),
+			limit: limit.toString(),
+		});
+		const url = `${BASE_URL}/api/v2/participants/${idMembroFamilia}/busca-ativa?${params.toString()}`;
+
+		const fetchFn = () => fetch(url, { cache: "no-store" });
+		const res = await fetchFn();
+
+		return handleResponse<BuscaAtivaPageResponse>(res, fetchFn);
+	},
+
+	/**
 	 * V2 — Opções de um único campo de filtro (lazy por dropdown).
 	 * Aceita filtros ativos para cascateamento contextual.
 	 */
@@ -386,6 +412,43 @@ export const apiService = {
 	): Promise<Response> {
 		const params = buildFilterParams(filters);
 		const url = `${BASE_URL}/api/v2/participants/export?${params.toString()}`;
+
+		const response = await fetch(url, { cache: "no-store" });
+
+		if (response.status === 401) {
+			const refreshed = await tryRefreshToken();
+			if (refreshed) {
+				const retry = await fetch(url, { cache: "no-store" });
+				if (!retry.ok) {
+					window.location.href = "/login";
+					throw new Error("Unauthorized");
+				}
+				return retry;
+			}
+			window.location.href = "/login";
+			throw new Error("Unauthorized");
+		}
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(`Export Error ${response.status}: ${errorText}`);
+		}
+
+		return response;
+	},
+
+	/**
+	 * Export the busca ativa events of all filtered participants as a streaming
+	 * CSV download (one row per event).
+	 *
+	 * Same streaming contract as `exportParticipants` — returns a Response with
+	 * a ReadableStream body; the caller consumes it via response.blob().
+	 */
+	async exportBuscaAtiva(
+		filters: ParticipantFilters = {},
+	): Promise<Response> {
+		const params = buildFilterParams(filters);
+		const url = `${BASE_URL}/api/v2/participants/busca-ativa/export?${params.toString()}`;
 
 		const response = await fetch(url, { cache: "no-store" });
 
@@ -723,5 +786,126 @@ export const apiService = {
 		const res = await fetchFn();
 
 		return handleResponse<GeospatialFilterFieldOptionsResponse>(res, fetchFn);
+	},
+
+	/**
+	 * POC — Limites oficiais de bairros (datario) em GeoJSON.
+	 * GET /api/v2/geospatial/bairros
+	 *
+	 * @param bypassCache - Forçar consulta fresca ao datario (default: usa cache do backend)
+	 */
+	async getBairros(bypassCache: boolean = false): Promise<BairrosGeoJSONResponse> {
+		const params = new URLSearchParams();
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/geospatial/bairros${
+			params.size > 0 ? `?${params.toString()}` : ""
+		}`;
+		const fetchFn = () => fetch(url, { cache: "no-store" });
+		const res = await fetchFn();
+
+		return handleResponse<BairrosGeoJSONResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Regularidade agregada por camada territorial (escala própria de cores).
+	 * GET /api/v2/geospatial/regularidade?camada=bairro|ra|cas|cre|ap
+	 *
+	 * @param camada - Camada territorial: "bairro", "ra" (Região Administrativa),
+	 *   "cas", "cre" ou "ap"
+	 * @param filters - Filtros multiselect (mesmo padrão da Visão Geral):
+	 *   statuses (Ativo/Inativo) e cohortes (meses de ingresso "YYYY-MM-DD");
+	 *   protocoloId troca a fonte da métrica
+	 * @param bypassCache - Forçar refresh (agregado PostgREST + geometria estática)
+	 */
+	async getRegularidadePorCamada(
+		camada: CamadaTerritorial,
+		filters: {
+			statuses?: string[];
+			cohortes?: string[];
+			protocoloId?: string;
+		} = {},
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<RegiaoRegularidadeResponse> {
+		const params = new URLSearchParams({ camada });
+		for (const status of filters.statuses ?? []) {
+			params.append("status", status);
+		}
+		for (const cohorte of filters.cohortes ?? []) {
+			params.append("cohortes", cohorte);
+		}
+		if (filters.protocoloId) {
+			params.append("protocolo_id", filters.protocoloId);
+		}
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/geospatial/regularidade?${params.toString()}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<RegiaoRegularidadeResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Vocabulário de protocolos para o filtro do mapa.
+	 * GET /api/v2/geospatial/protocolos
+	 */
+	async getProtocolos(
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<ProtocolosResponse> {
+		const params = new URLSearchParams();
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/geospatial/protocolos${
+			params.size > 0 ? `?${params.toString()}` : ""
+		}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<ProtocolosResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Detalhes da região clicada: métrica geral + protocolos da região (3j).
+	 * GET /api/v2/geospatial/regiao/detalhes
+	 */
+	async getRegiaoDetalhes(
+		camada: CamadaTerritorial,
+		regiao: string,
+		filters: {
+			statuses?: string[];
+			cohortes?: string[];
+			protocoloId?: string;
+		} = {},
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<RegiaoDetalhesResponse> {
+		const params = new URLSearchParams({ camada, regiao });
+		for (const status of filters.statuses ?? []) {
+			params.append("status", status);
+		}
+		for (const cohorte of filters.cohortes ?? []) {
+			params.append("cohortes", cohorte);
+		}
+		if (filters.protocoloId) {
+			params.append("protocolo_id", filters.protocoloId);
+		}
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/geospatial/regiao/detalhes?${params.toString()}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<RegiaoDetalhesResponse>(res, fetchFn);
 	},
 };

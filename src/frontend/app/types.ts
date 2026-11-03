@@ -2,6 +2,8 @@
 // BACKEND RESPONSE TYPES (matching src/api/v1/schemas.py)
 // ============================================================================
 
+import type { Feature, FeatureCollection, Geometry } from "geojson";
+
 export interface PaginationMeta {
 	page: number;
 	page_size: number;
@@ -59,6 +61,52 @@ export interface Disparo {
 	metadados?: DisparoMetadados | null;
 }
 
+/** Unidade de saúde (clínica da família/equipe) da busca ativa SMS */
+export interface BuscaAtivaUnidadeSMS {
+	nome?: string | null;
+	regional?: string | null;
+	equipe_nome?: string | null;
+}
+
+/** Equipamento de assistência social (CRAS/CAS) da busca ativa SMAS */
+export interface BuscaAtivaUnidadeSMAS {
+	nome?: string | null;
+	regional?: string | null;
+}
+
+/** Unidade responsável pela busca ativa (sme não é exposto) */
+export interface BuscaAtivaUnidadeReferenciada {
+	sms?: BuscaAtivaUnidadeSMS | null;
+	smas?: BuscaAtivaUnidadeSMAS | null;
+}
+
+/** Um evento de busca ativa do participante (endpoint_busca_ativa) */
+export interface BuscaAtivaEvento {
+	id_busca_ativa?: string | null;
+	fonte?: string | null; // SMS | SMAS
+	data?: string | null; // ISO date (YYYY-MM-DD)
+	sms_tipo_publico?: string | null; // apenas SMS (não exibido)
+	smas_tipo?: string[] | null; // apenas SMAS (ex.: ["Por telefone"])
+	smas_familia_localizada_indicador?: boolean | null; // apenas SMAS
+	smas_protocolo_violado?: string[] | null; // apenas SMAS
+	smas_motivo_nao_localizada?: string[] | null; // apenas SMAS
+	processed_at?: string | null; // ISO datetime
+	unidade_referenciada?: BuscaAtivaUnidadeReferenciada | null;
+}
+
+/** Metadados de uma página de eventos de busca ativa */
+export interface BuscaAtivaPageMeta {
+	offset: number;
+	limit: number;
+	has_more: boolean;
+}
+
+/** Resposta paginada da rota GET /api/v2/participants/{id}/busca-ativa */
+export interface BuscaAtivaPageResponse {
+	data: BuscaAtivaEvento[];
+	meta: BuscaAtivaPageMeta;
+}
+
 /** Contagem de disparos por status (seção de disparos do dashboard) */
 export interface DisparoStatusDistribuicao {
 	status?: string | null;
@@ -88,6 +136,44 @@ export interface DisparosDashboard {
 	taxa_engajamento: number;
 	status_distribuicao: DisparoStatusDistribuicao[];
 	por_jornada: DisparoJornadaResumo[];
+}
+
+/** Totais de busca ativa (Visão Geral) */
+export interface BuscaAtivaTotais {
+	buscas: number;
+	participantes: number;
+}
+
+/** Série mensal de busca ativa por fonte (SMS/SMAS) */
+export interface BuscaAtivaPontoMensal {
+	mes: string;
+	mes_label: string;
+	smas: number;
+	sms: number;
+	total: number;
+}
+
+/** Resultado SMAS por mês, quebrado por desfecho */
+export interface BuscaAtivaDesfechoMensal {
+	mes: string;
+	mes_label: string;
+	desfecho: string;
+	total: number;
+}
+
+/** Distribuição por categoria (tipo SMAS / público SMS) */
+export interface BuscaAtivaCategoria {
+	categoria: string;
+	total: number;
+}
+
+/** Seção "Busca Ativa" da Visão Geral */
+export interface BuscaAtivaDashboard {
+	totais: BuscaAtivaTotais;
+	evolucao_mensal: BuscaAtivaPontoMensal[];
+	smas_desfecho_mensal: BuscaAtivaDesfechoMensal[];
+	smas_tipos: BuscaAtivaCategoria[];
+	sms_publicos: BuscaAtivaCategoria[];
 }
 
 export interface EnderecoSMS {
@@ -138,6 +224,9 @@ export interface Participante {
 
 	// Disparos de WhatsApp (campanhas HSM)
 	disparos?: Disparo[] | null;
+
+	// Eventos de busca ativa (SMS/SMAS) — primeira página (20) embutida
+	busca_ativa?: BuscaAtivaEvento[] | null;
 
 	// Protocolos - Contadores gerais
 	total_protocolos?: number;
@@ -215,6 +304,7 @@ export interface ParticipanteListItem {
 	saude_fracao?: string;
 	total_protocolos_irregular?: number;
 	has_cartao_pic?: boolean | null;
+	has_busca_ativa?: boolean | null; // enriquecido app-side (eventos em endpoint_busca_ativa)
 }
 
 /** V2 detalhe — response do GET /api/v2/participants/{id_membro_familia} */
@@ -310,7 +400,8 @@ export type FilterFieldKey =
 	| "protocolo_descricoes"
 	| "protocolo_status_list"
 	| "bolsa_familia"
-	| "protocolo_secretarias";
+	| "protocolo_secretarias"
+	| "busca_ativa";
 
 export interface FilterFieldOptionsResponse {
 	field: string;
@@ -421,6 +512,18 @@ export interface TempoMedioIrregularidade {
 }
 
 /**
+ * Tempo médio de irregularidade por protocolo (ranking horizontal)
+ */
+export interface TempoMedioIrregularidadeProtocolo {
+	protocolo_id: string; // ex.: "sms_visitas_domiciliares_infantil"
+	protocolo_descricao: string; // Label legível no gráfico
+	protocolo_secretaria: string; // "SMAS", "SME" ou "SMS" (cor da barra)
+	tempo_medio_dias: number; // Tempo médio de irregularidade em dias
+	total_irregulares: number; // Quantidade total de irregularidades do protocolo
+	total_irregulares_abertos: number; // Quantidade ainda em aberto
+}
+
+/**
  * Ponto de taxa de resolução mensal (gráfico de linha)
  */
 export interface TaxaResolucaoMensalPoint {
@@ -467,10 +570,11 @@ export interface Dashboard {
 	distribuicao_motivo_saida: DistribuicaoMotivoSaida[];
 
 	// =========================================================================
-	// SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma)
+	// SEÇÃO 6: TEMPO DE IRREGULARIDADE (cards + histograma + ranking por protocolo)
 	// =========================================================================
 	tempo_medio_irregularidade: TempoMedioIrregularidade[];
 	distribuicao_tempo_irregularidade: DistribuicaoTempoIrregularidade[];
+	tempo_medio_irregularidade_protocolo: TempoMedioIrregularidadeProtocolo[];
 
 	// =========================================================================
 	// SEÇÃO 7: TAXA DE RESOLUÇÃO MENSAL (gráfico de linha)
@@ -481,6 +585,11 @@ export interface Dashboard {
 	// SEÇÃO 8: DISPAROS WHATSAPP (snapshot últimos 30 dias)
 	// =========================================================================
 	disparos?: DisparosDashboard | null;
+
+	// =========================================================================
+	// SEÇÃO 9: BUSCA ATIVA (Visão Geral)
+	// =========================================================================
+	busca_ativa?: BuscaAtivaDashboard | null;
 
 	// =========================================================================
 	// METADADOS
@@ -569,6 +678,7 @@ export interface ParticipantFilters {
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
 	protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
+	busca_ativa?: string | string[]; // Filtro por busca ativa (SMAS, SMS, SME — multi-select)
 	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
@@ -888,6 +998,98 @@ export type GeospatialFilterVocabularyResponse = GeospatialFilterOptions;
 export interface GeospatialFilterFieldOptionsResponse {
 	field: string;
 	options: FilterOptionItem[];
+}
+
+/**
+ * POC — Visualização Geográfica (aba "Mapas").
+ * Limites oficiais de bairros vindos do datario (GET /api/v2/geospatial/bairros).
+ */
+export interface BairroFeatureProperties {
+	id_bairro: string;
+	nome: string;
+	nome_regiao_administrativa: string;
+}
+
+export type BairroFeature = Feature<Geometry, BairroFeatureProperties>;
+
+export type BairrosGeoJSONResponse = FeatureCollection<
+	Geometry,
+	BairroFeatureProperties
+>;
+
+/**
+ * Visualização Geográfica — regularidade por camada territorial
+ * (GET /api/v2/geospatial/regularidade?camada=bairro|ra).
+ */
+export type CamadaTerritorial = "bairro" | "ra" | "cas" | "cre" | "ap";
+
+export interface RegiaoRegularidadeProperties {
+	id?: string | null; // id oficial da região (id_bairro ou id_regiao_administrativa)
+	nome: string;
+	nome_regiao_administrativa?: string | null; // apenas na camada "bairro"
+	total_participantes?: number | null;
+	total_regulares?: number | null; // Regular + Atenção (mesma métrica do dashboard)
+	total_irregulares?: number | null;
+	taxa_regularidade?: number | null; // 0-100; null = sem dados
+}
+
+export type RegiaoRegularidadeFeature = Feature<
+	Geometry,
+	RegiaoRegularidadeProperties
+>;
+
+export interface RegiaoRegularidadeMeta {
+	camada: CamadaTerritorial;
+	total_regioes: number;
+	regioes_com_dados: number;
+	regioes_sem_dados: number;
+	agregados_sem_geometria: string[];
+}
+
+export type RegiaoRegularidadeResponse = FeatureCollection<
+	Geometry,
+	RegiaoRegularidadeProperties
+> & {
+	meta: RegiaoRegularidadeMeta;
+};
+
+/**
+ * Detalhes da região clicada (fase 3j): métrica geral + protocolos da região.
+ * GET /api/v2/geospatial/regiao/detalhes
+ */
+export interface RegiaoRegularidadeResumo {
+	total_participantes: number;
+	total_regulares: number;
+	total_irregulares: number;
+	taxa_regularidade: number | null;
+}
+
+export interface RegiaoProtocoloMetrica extends RegiaoRegularidadeResumo {
+	protocolo_id: string;
+	protocolo_secretaria: string | null;
+	protocolo_descricao: string | null;
+}
+
+export interface RegiaoDetalhesResponse {
+	camada: CamadaTerritorial;
+	regiao: string;
+	geral: RegiaoRegularidadeResumo | null;
+	/** Métrica do protocolo selecionado em TODAS as regiões (média geral, 3k). */
+	protocolo_geral: RegiaoRegularidadeResumo | null;
+	protocolos: RegiaoProtocoloMetrica[];
+}
+
+/**
+ * Filtro de protocolo do mapa (GET /api/v2/geospatial/protocolos).
+ */
+export interface ProtocoloOption {
+	protocolo_id: string;
+	protocolo_secretaria?: string | null;
+	protocolo_descricao?: string | null;
+}
+
+export interface ProtocolosResponse {
+	protocolos: ProtocoloOption[];
 }
 
 /**

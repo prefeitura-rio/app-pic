@@ -42,6 +42,7 @@ FilterField = Literal[
     "protocolo_status_list",
     "bolsa_familia",
     "protocolo_secretarias",
+    "busca_ativa",
 ]
 
 
@@ -67,6 +68,7 @@ class _FilterFields(BaseModel):
     protocolo_status_list: list[FilterOption] = []
     bolsa_familia: list[FilterOption] = []
     protocolo_secretarias: list[FilterOption] = []
+    busca_ativa: list[FilterOption] = []
 
 
 class FilterCascade(_FilterFields):
@@ -102,3 +104,4 @@ class FilterCriteria(BaseModel):
     protocolo_status: str | None = None
     protocolo_secretaria: str | None = None
     cartao_pic_status: str | None = None
+    busca_ativa: str | None = None

@@ -8,7 +8,13 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from src.core.security.jwt import CurrentUserPermissionsV2, security, verify_jwt
 from src.pic.application.ports.admin_repository import IAdminRepository
+from src.pic.application.use_cases.export_busca_ativa import (
+    ExportBuscaAtivaUseCase,
+)
 from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
+from src.pic.application.use_cases.get_busca_ativa import (
+    GetBuscaAtivaEventsUseCase,
+)
 from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
@@ -17,10 +23,15 @@ from src.pic.domain.errors import ForbiddenError, NotFoundError
 from src.pic.domain.errors import ValidationError as DomainValidationError
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.domain.models.pagination import PaginationParams, SortParams
+from src.pic.infrastructure.export.busca_ativa_columns import (
+    transform_busca_ativa_row,
+)
 from src.pic.infrastructure.export.csv_generator import rows_to_csv_chunks
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.presentation.di import (
     get_admin_repo,
+    get_busca_ativa_use_case,
+    get_export_busca_ativa_use_case,
     get_export_participants_use_case,
     get_list_participants_use_case,
     get_participant_detail_use_case,
@@ -30,6 +41,7 @@ from src.pic.presentation.v2._helpers import (
     log_postgrest_error,
 )
 from src.pic.presentation.v2.schemas import (
+    BuscaAtivaPageResponse,
     ParticipantDetailResponse,
     ParticipantListResponse,
 )
@@ -185,6 +197,85 @@ async def export_participants_csv_v2(
 
 
 @router.get(
+    "/participants/busca-ativa/export",
+    summary="Exportar eventos de busca ativa dos participantes filtrados (V2)",
+)
+async def export_busca_ativa_csv_v2(
+    permissions: CurrentUserPermissionsV2,
+    credentials: HTTPAuthorizationCredentials = Security(security),
+    filters: FilterCriteria = Depends(),
+    sort: SortParams = Depends(),
+    bypass_cache: bool = Query(False, description="Forcar refresh do cache"),
+    data_proxy_token: str | None = Header(
+        None,
+        alias="X-Access-Token",
+        description=(
+            "Access token (Keycloak) repassado ao data-proxy (PostgREST); "
+            "sem ele, usa o id_token do Authorization"
+        ),
+    ),
+    admin_repo: IAdminRepository = Depends(get_admin_repo),
+    use_case: ExportBuscaAtivaUseCase = Depends(get_export_busca_ativa_use_case),
+):
+    export_start = time.perf_counter()
+    logger.info("V2 busca ativa CSV export started")
+
+    await _EXPORT_SEMAPHORE.acquire()
+
+    try:
+        result = await use_case.execute(
+            filters=filters,
+            sort=sort,
+            permissions=permissions,
+            bypass_cache=bypass_cache,
+            user_token=data_proxy_user_token(
+                data_proxy_token, credentials.credentials
+            ),
+        )
+    except DomainValidationError as e:
+        _EXPORT_SEMAPHORE.release()
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ForbiddenError as e:
+        _EXPORT_SEMAPHORE.release()
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except PostgrestError as e:
+        _EXPORT_SEMAPHORE.release()
+        log_postgrest_error(e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:
+        _EXPORT_SEMAPHORE.release()
+        logger.error(f"Error exporting busca ativa CSV: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    fetch_time = time.perf_counter() - export_start
+    logger.info(
+        f"V2 busca ativa export ready to stream in {fetch_time:.2f}s "
+        f"({len(result.columns)} columns)"
+    )
+
+    async def _stream():
+        try:
+            async for chunk in rows_to_csv_chunks(
+                result.pages, result.columns, transform=transform_busca_ativa_row
+            ):
+                yield chunk
+        finally:
+            _EXPORT_SEMAPHORE.release()
+
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    filename = f"busca_ativa_{timestamp}.csv"
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get(
     "/participants/{id_membro_familia}",
     summary="Detalhes de um participante (V2)",
     response_model=ParticipantDetailResponse,
@@ -231,3 +322,66 @@ async def get_participant_detail(
     logger.info(f"V2 participant detail endpoint completed in {elapsed:.3f}s")
 
     return ParticipantDetailResponse(data=result)
+
+
+@router.get(
+    "/participants/{id_membro_familia}/busca-ativa",
+    summary="Eventos de busca ativa de um participante (V2, paginado)",
+    response_model=BuscaAtivaPageResponse,
+)
+async def get_participant_busca_ativa(
+    id_membro_familia: str,
+    permissions: CurrentUserPermissionsV2,
+    credentials: HTTPAuthorizationCredentials = Security(security),
+    offset: int = Query(
+        0, ge=0, description="Quantos eventos pular (mais recentes primeiro)"
+    ),
+    limit: int = Query(20, ge=1, le=100, description="Tamanho da página"),
+    data_proxy_token: str | None = Header(
+        None,
+        alias="X-Access-Token",
+        description=(
+            "Access token (Keycloak) repassado ao data-proxy (PostgREST); "
+            "sem ele, usa o id_token do Authorization"
+        ),
+    ),
+    use_case: GetBuscaAtivaEventsUseCase = Depends(get_busca_ativa_use_case),
+):
+    endpoint_start = time.perf_counter()
+    logger.info(
+        f"V2 participant busca-ativa endpoint started: {id_membro_familia} "
+        f"(offset={offset}, limit={limit})"
+    )
+
+    try:
+        result = await use_case.execute(
+            id_membro_familia=id_membro_familia,
+            offset=offset,
+            limit=limit,
+            permissions=permissions,
+            user_token=data_proxy_user_token(data_proxy_token, credentials.credentials),
+        )
+    except PostgrestError as e:
+        log_postgrest_error(e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    if result is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Falha ao carregar eventos de busca ativa",
+        )
+
+    elapsed = time.perf_counter() - endpoint_start
+    logger.info(
+        f"V2 participant busca-ativa endpoint completed in {elapsed:.3f}s "
+        f"({len(result.data)} eventos, has_more={result.has_more})"
+    )
+
+    return BuscaAtivaPageResponse(
+        data=result.data,
+        meta={
+            "offset": result.offset,
+            "limit": result.limit,
+            "has_more": result.has_more,
+        },
+    )

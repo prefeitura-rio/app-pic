@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiService } from "@/app/services/api";
+import { useCurrentUserCache } from "@/app/hooks/useCurrentUserCache";
 import type {
 	DashboardFilterValues,
 	FilterFieldKey,
@@ -38,6 +39,7 @@ const FIELD_OWN_FILTER_KEYS: Record<FilterFieldKey, string> = {
 	protocolo_status_list: "protocolo_status",
 	bolsa_familia: "has_bolsa_familia",
 	protocolo_secretarias: "protocolo_secretaria",
+	busca_ativa: "busca_ativa",
 };
 
 // Filtros que o backend ignora no cálculo de opções (não entram na assinatura).
@@ -96,8 +98,15 @@ export function useFilterFieldOptions(
 
 	const lastFetchedKeyRef = useRef<string | null>(null);
 
+	// As opções de filtro dependem do acesso do usuário (ex.: busca ativa,
+	// secretarias de protocolo). Sem a identidade do usuário no queryKey, o
+	// cache do React Query (staleTime: Infinity) vazaria as opções de um
+	// usuário com acesso total para um usuário segmentado na mesma sessão.
+	const currentUser = useCurrentUserCache();
+	const userId = currentUser?.cpf;
+
 	const query = useQuery({
-		queryKey: ["filterFieldOptions", field],
+		queryKey: ["filterFieldOptions", field, userId],
 		queryFn: async () => {
 			const snapshot = filtersRef.current;
 			const data = await apiService.getFilterFieldOptions(field, snapshot);
