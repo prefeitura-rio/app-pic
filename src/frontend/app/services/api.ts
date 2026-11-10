@@ -17,6 +17,9 @@ import type {
 	GeospatialFilterVocabularyResponse,
 	GeospatialLayersResponse,
 	IdWithName,
+	MonitoringGroupResponse,
+	MonitoringProtocolsResponse,
+	MonitoringSeriesResponse,
 	PaginatedResponse,
 	PaginatedResponseV2,
 	ParticipantDetailResponse,
@@ -816,8 +819,9 @@ export const apiService = {
 	 * @param camada - Camada territorial: "bairro", "ra" (Região Administrativa),
 	 *   "cas", "cre" ou "ap"
 	 * @param filters - Filtros multiselect (mesmo padrão da Visão Geral):
-	 *   statuses (Ativo/Inativo) e cohortes (meses de ingresso "YYYY-MM-DD");
-	 *   protocoloId troca a fonte da métrica
+	 *   statuses (Ativo/Inativo), cohortes (meses de ingresso "YYYY-MM-DD"),
+	 *   grupo (Criança/Gestante/Puérpera) e hasBolsaFamilia (beneficiários
+	 *   do Bolsa Família); protocoloId troca a fonte da métrica
 	 * @param bypassCache - Forçar refresh (agregado PostgREST + geometria estática)
 	 */
 	async getRegularidadePorCamada(
@@ -826,6 +830,8 @@ export const apiService = {
 			statuses?: string[];
 			cohortes?: string[];
 			protocoloId?: string;
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
 		} = {},
 		bypassCache: boolean = false,
 		signal?: AbortSignal,
@@ -839,6 +845,12 @@ export const apiService = {
 		}
 		if (filters.protocoloId) {
 			params.append("protocolo_id", filters.protocoloId);
+		}
+		for (const g of filters.grupo ?? []) {
+			params.append("grupo", g);
+		}
+		if (typeof filters.hasBolsaFamilia === "boolean") {
+			params.append("has_bolsa_familia", filters.hasBolsaFamilia.toString());
 		}
 		if (bypassCache) {
 			params.append("bypass_cache", "true");
@@ -884,6 +896,8 @@ export const apiService = {
 			statuses?: string[];
 			cohortes?: string[];
 			protocoloId?: string;
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
 		} = {},
 		bypassCache: boolean = false,
 		signal?: AbortSignal,
@@ -898,6 +912,12 @@ export const apiService = {
 		if (filters.protocoloId) {
 			params.append("protocolo_id", filters.protocoloId);
 		}
+		for (const g of filters.grupo ?? []) {
+			params.append("grupo", g);
+		}
+		if (typeof filters.hasBolsaFamilia === "boolean") {
+			params.append("has_bolsa_familia", filters.hasBolsaFamilia.toString());
+		}
 		if (bypassCache) {
 			params.append("bypass_cache", "true");
 		}
@@ -907,5 +927,157 @@ export const apiService = {
 		const res = await fetchFn();
 
 		return handleResponse<RegiaoDetalhesResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Acompanhamento — evolução semanal do grupo (total/ativos/inativos por
+	 * semana + motivos de inativação da última semana).
+	 * GET /api/v2/monitoring/group
+	 *
+	 * @param filters - Mesmos filtros do mapa (status, safra, grupo, Bolsa
+	 *   Família) + o recorte territorial da região selecionada no mapa
+	 *   (camada + valor exibido; o backend resolve o valor RAW da coluna).
+	 *   Sem camada/regiao, a série é da cidade inteira.
+	 * @param bypassCache - Forçar refresh (cache do backend é 1 h)
+	 */
+	async getMonitoringGroup(
+		filters: {
+			statuses?: string[];
+			cohortes?: string[];
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
+			camada?: CamadaTerritorial;
+			regiao?: string;
+		} = {},
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<MonitoringGroupResponse> {
+		const params = new URLSearchParams();
+		for (const status of filters.statuses ?? []) {
+			params.append("status", status);
+		}
+		for (const cohorte of filters.cohortes ?? []) {
+			params.append("cohort", cohorte);
+		}
+		for (const g of filters.grupo ?? []) {
+			params.append("grupo", g);
+		}
+		if (typeof filters.hasBolsaFamilia === "boolean") {
+			params.append("has_bolsa_familia", filters.hasBolsaFamilia.toString());
+		}
+		if (filters.camada && filters.regiao) {
+			params.append("camada", filters.camada);
+			params.append("regiao", filters.regiao);
+		}
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/monitoring/group?${params.toString()}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<MonitoringGroupResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Acompanhamento — evolução semanal de UM protocolo (desfechos por status).
+	 * GET /api/v2/monitoring/series
+	 *
+	 * @param protocoloId - Protocolo (obrigatório)
+	 * @param filters - Mesmos filtros do mapa + camada/regiões da seleção
+	 *   (repetir o parâmetro `regiao` soma as regiões — OR na coluna).
+	 */
+	async getMonitoringSeries(
+		protocoloId: string,
+		filters: {
+			statuses?: string[];
+			cohortes?: string[];
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
+			camada?: CamadaTerritorial;
+			regioes?: string[];
+		} = {},
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<MonitoringSeriesResponse> {
+		const params = new URLSearchParams({ protocolo: protocoloId });
+		for (const status of filters.statuses ?? []) {
+			params.append("status", status);
+		}
+		for (const cohorte of filters.cohortes ?? []) {
+			params.append("cohort", cohorte);
+		}
+		for (const g of filters.grupo ?? []) {
+			params.append("grupo", g);
+		}
+		if (typeof filters.hasBolsaFamilia === "boolean") {
+			params.append("has_bolsa_familia", filters.hasBolsaFamilia.toString());
+		}
+		if (filters.camada && filters.regioes && filters.regioes.length > 0) {
+			params.append("camada", filters.camada);
+			for (const regiao of filters.regioes) {
+				params.append("regiao", regiao);
+			}
+		}
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/monitoring/series?${params.toString()}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<MonitoringSeriesResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Acompanhamento — tabela de todos os protocolos numa semana.
+	 * GET /api/v2/monitoring/protocols
+	 *
+	 * @param filters - Filtros + camada/regiao + weekStart (default: última)
+	 */
+	async getMonitoringProtocols(
+		filters: {
+			statuses?: string[];
+			cohortes?: string[];
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
+			camada?: CamadaTerritorial;
+			regiao?: string;
+			weekStart?: string;
+		} = {},
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<MonitoringProtocolsResponse> {
+		const params = new URLSearchParams();
+		for (const status of filters.statuses ?? []) {
+			params.append("status", status);
+		}
+		for (const cohorte of filters.cohortes ?? []) {
+			params.append("cohort", cohorte);
+		}
+		for (const g of filters.grupo ?? []) {
+			params.append("grupo", g);
+		}
+		if (typeof filters.hasBolsaFamilia === "boolean") {
+			params.append("has_bolsa_familia", filters.hasBolsaFamilia.toString());
+		}
+		if (filters.camada && filters.regiao) {
+			params.append("camada", filters.camada);
+			params.append("regiao", filters.regiao);
+		}
+		if (filters.weekStart) {
+			params.append("week_start", filters.weekStart);
+		}
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/monitoring/protocols?${params.toString()}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<MonitoringProtocolsResponse>(res, fetchFn);
 	},
 };

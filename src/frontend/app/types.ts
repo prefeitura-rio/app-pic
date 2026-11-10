@@ -1083,6 +1083,101 @@ export interface RegiaoDetalhesResponse {
 }
 
 /**
+ * Acompanhamento semanal (evolução temporal do grupo) — GET /api/v2/monitoring/*
+ */
+export interface MonitoringMeta {
+	latest_week_start: string | null;
+	latest_snapshot_date: string | null;
+	latest_is_partial: boolean;
+	available_weeks: string[];
+	missing_weeks: string[];
+	/** Início da janela estável: primeira semana da sequência contínua mais recente. */
+	window_start: string | null;
+	weeks_count: number;
+	has_data: boolean;
+}
+
+export interface MonitoringGroupPoint {
+	week_start: string;
+	snapshot_date: string | null;
+	total: number;
+	ativo: number;
+	inativo: number;
+}
+
+export interface MonitoringMotivo {
+	motivo: string;
+	total: number;
+}
+
+export interface MonitoringGroupResponse {
+	can_view_monitoring: boolean;
+	meta: MonitoringMeta;
+	series: MonitoringGroupPoint[];
+	motivos: MonitoringMotivo[];
+}
+
+/** Métrica do protocolo dentro de um status (Ativo/Inativo) numa semana. */
+export interface MonitoringStatusSlice {
+	total: number;
+	regular: number;
+	atencao: number;
+	regular_total: number;
+	irregular: number;
+}
+
+export interface MonitoringProtocolPoint {
+	week_start: string;
+	snapshot_date: string | null;
+	total: number;
+	nao_aplica: number;
+	regular: number;
+	atencao: number;
+	regular_total: number;
+	nao_priorizado: number;
+	irregular: number;
+	outros: number;
+	regular_pct: number | null;
+	irregular_pct: number | null;
+	by_status: Record<string, MonitoringStatusSlice>;
+}
+
+export interface MonitoringProtocolOption {
+	id: string;
+	descricao: string | null;
+	secretaria: string | null;
+}
+
+export interface MonitoringSeriesResponse {
+	can_view_monitoring: boolean;
+	protocolo: MonitoringProtocolOption | null;
+	meta: MonitoringMeta;
+	series: MonitoringProtocolPoint[];
+}
+
+/** Uma linha da tabela "todos os protocolos" (valores por protocolo). */
+export interface MonitoringProtocolSummary {
+	protocolo_id: string;
+	protocolo_descricao: string | null;
+	protocolo_secretaria: string | null;
+	total: number;
+	nao_aplica: number;
+	regular: number;
+	atencao: number;
+	regular_total: number;
+	regular_pct: number | null;
+	irregular: number;
+	irregular_pct: number | null;
+}
+
+export interface MonitoringProtocolsResponse {
+	can_view_monitoring: boolean;
+	week_start: string | null;
+	snapshot_date: string | null;
+	protocols: MonitoringProtocolSummary[];
+}
+
+/**
  * Filtro de protocolo do mapa (GET /api/v2/geospatial/protocolos).
  */
 export interface ProtocoloOption {
