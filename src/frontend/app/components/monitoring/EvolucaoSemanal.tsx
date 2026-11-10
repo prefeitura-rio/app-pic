@@ -32,7 +32,7 @@ import {
 	RefreshCw,
 	Users,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -155,7 +155,9 @@ export const EvolucaoSemanal = memo(function EvolucaoSemanal({
 			cohortes: cohortes.length > 0 ? cohortes : undefined,
 			grupo: grupos.length > 0 ? grupos : undefined,
 			hasBolsaFamilia,
-			camada,
+			// Sem região a série é da cidade inteira — a camada não muda o
+			// resultado nem entra na chave (evita refetch/cache duplicados).
+			camada: regioes.length > 0 ? camada : undefined,
 			regioes: regioes.length > 0 ? regioes : undefined,
 		}),
 		[statuses, cohortes, grupos, hasBolsaFamilia, camada, regioes],
@@ -169,7 +171,7 @@ export const EvolucaoSemanal = memo(function EvolucaoSemanal({
 	} = useQuery({
 		queryKey: [
 			"monitoringSeries",
-			camada,
+			regioes.length > 0 ? camada : undefined,
 			regioes,
 			statuses,
 			cohortes,
@@ -280,17 +282,23 @@ export const EvolucaoSemanal = memo(function EvolucaoSemanal({
 			: null;
 	const corTaxa = taxaToHex(taxaAtual);
 
-	const onApplyRange = (de: string, ate: string) => setRange({ de, ate });
-	const atalhoRange = (tipo: "12" | "tudo") => {
-		if (semanasEstaveis.length === 0) {
-			return;
-		}
-		const de =
-			tipo === "12"
-				? semanasEstaveis[Math.max(0, semanasEstaveis.length - 12)]
-				: semanasEstaveis[0];
-		setRange({ de, ate: semanasEstaveis[semanasEstaveis.length - 1] });
-	};
+	const onApplyRange = useCallback(
+		(de: string, ate: string) => setRange({ de, ate }),
+		[],
+	);
+	const atalhoRange = useCallback(
+		(tipo: "12" | "tudo") => {
+			if (semanasEstaveis.length === 0) {
+				return;
+			}
+			const de =
+				tipo === "12"
+					? semanasEstaveis[Math.max(0, semanasEstaveis.length - 12)]
+					: semanasEstaveis[0];
+			setRange({ de, ate: semanasEstaveis[semanasEstaveis.length - 1] });
+		},
+		[semanasEstaveis],
+	);
 
 	// Export CSV da tabela semanal (mesmas linhas/métricas da tabela).
 	const linhasTabela = useMemo(

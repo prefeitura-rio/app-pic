@@ -43,6 +43,7 @@ import {
 	semanaLabel,
 	snapshotLabel,
 } from "./format";
+import { ativoIrr, ativoReg, inativos } from "./semana";
 
 const dataCurta = new Intl.DateTimeFormat("pt-BR", {
 	day: "2-digit",
@@ -92,9 +93,9 @@ function dadosSemana(serie: MonitoringProtocolPoint[]): DadoSemana[] {
 		total: p.total,
 		regPct: p.regular_pct,
 		irrPct: p.irregular_pct,
-		ativoReg: p.by_status["Ativo"]?.regular_total ?? 0,
-		ativoIrr: p.by_status["Ativo"]?.irregular ?? 0,
-		inativos: p.by_status["Inativo"]?.total ?? 0,
+		ativoReg: ativoReg(p),
+		ativoIrr: ativoIrr(p),
+		inativos: inativos(p),
 		ativos: p.by_status["Ativo"]?.total ?? 0,
 	}));
 }
@@ -358,10 +359,10 @@ function GraficoLinhas({
 				aria-label={ariaLabel}
 			>
 				<ResponsiveContainer
-	width="100%"
-	height="100%"
-	initialDimension={DIMENSAO_INICIAL}
->
+					width="100%"
+					height="100%"
+					initialDimension={DIMENSAO_INICIAL}
+				>
 					<LineChart
 						data={dados}
 						margin={{ top: 28, right: 16, left: 0, bottom: 0 }}
@@ -503,10 +504,10 @@ export const TaxaSemanalChart = memo(function TaxaSemanalChart({
 				}
 			>
 				<ResponsiveContainer
-	width="100%"
-	height="100%"
-	initialDimension={DIMENSAO_INICIAL}
->
+					width="100%"
+					height="100%"
+					initialDimension={DIMENSAO_INICIAL}
+				>
 					<LineChart
 						data={dados}
 						margin={{ top: 36, right: 16, left: 0, bottom: 0 }}

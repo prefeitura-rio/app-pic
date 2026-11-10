@@ -498,6 +498,17 @@ export const MonitoramentoTab = () => {
 		setSelecaoKeys([]);
 	}, []);
 
+	// Trocar um filtro multiselect limpa a seleção do mapa (o destaque
+	// nunca fica "sobrando" com filtros diferentes) e aplica o valor
+	// ordenado (chave de cache estável no backend/front).
+	const aoMudarMultiselect = useCallback(
+		(setter: (v: string[]) => void) => (v: string[]) => {
+			setSelecaoKeys([]);
+			setter(ordenarFiltros(v));
+		},
+		[],
+	);
+
 	const clearFilters = () => {
 		setStatuses([]);
 		setCohortes([]);
@@ -614,10 +625,7 @@ export const MonitoramentoTab = () => {
 								field="status_list"
 								filters={lazyFilters}
 								value={statuses}
-								onSelect={(v) => {
-									setSelecaoKeys([]);
-									setStatuses(ordenarFiltros(v));
-								}}
+								onSelect={aoMudarMultiselect(setStatuses)}
 								disabled={isFetching}
 								placeholder="Status"
 								defaultLabel="Todos os Status"
@@ -627,10 +635,7 @@ export const MonitoramentoTab = () => {
 								field="cohorts"
 								filters={lazyFilters}
 								value={cohortes}
-								onSelect={(v) => {
-									setSelecaoKeys([]);
-									setCohortes(ordenarFiltros(v));
-								}}
+								onSelect={aoMudarMultiselect(setCohortes)}
 								disabled={isFetching}
 								placeholder="Meses de Ingresso"
 								defaultLabel="Todos os Meses de Ingresso"
@@ -640,10 +645,7 @@ export const MonitoramentoTab = () => {
 								field="grupos"
 								filters={lazyFilters}
 								value={grupos}
-								onSelect={(v) => {
-									setSelecaoKeys([]);
-									setGrupos(ordenarFiltros(v));
-								}}
+								onSelect={aoMudarMultiselect(setGrupos)}
 								disabled={isFetching}
 								placeholder="Grupos"
 								defaultLabel="Todos os Grupos"
