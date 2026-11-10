@@ -16,11 +16,13 @@ import pytest
 
 from src.pic.application.use_cases.get_regularidade_por_camada import (
     GetRegularidadePorCamadaUseCase,
+)
+from src.pic.domain.models.geospatial import CamadaRegularidadeAggregate
+from src.pic.domain.models.territorio import (
     normalize_bairro_nome,
     normalize_codigo,
     normalize_ra_nome,
 )
-from src.pic.domain.models.geospatial import CamadaRegularidadeAggregate
 
 
 def _agg(regiao: str, regulares: int, irregulares: int) -> CamadaRegularidadeAggregate:

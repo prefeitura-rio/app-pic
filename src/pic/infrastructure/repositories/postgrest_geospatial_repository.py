@@ -42,7 +42,6 @@ from typing import Any
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
 from src.pic.domain.models.filters import FilterOption
 from src.pic.domain.models.geospatial import (
-    CAMADA_GROUP_COLUMN,
     CamadaRegularidadeAggregate,
     GeospatialFilterOptions,
     GeospatialLayer,
@@ -50,6 +49,7 @@ from src.pic.domain.models.geospatial import (
     RegiaoProtocoloAggregate,
     RegiaoRegularidadeResumo,
 )
+from src.pic.domain.models.territorio import CAMADA_COLUMN
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.utils.log import logger
 
@@ -337,7 +337,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         de unidade é aplicada ANTES do GROUP BY, então o resultado respeita o
         escopo de permissões do usuário.
 
-        ``camada`` seleciona a coluna do GROUP BY (``CAMADA_GROUP_COLUMN``):
+        ``camada`` seleciona a coluna do GROUP BY (``CAMADA_COLUMN``):
         bairro → ``bairro``, ra → ``regiao_administrativa``, cas/cre/ap →
         ``id_cas``/``id_cre``/``id_ap``.
 
@@ -359,7 +359,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         Cache Redis por camada + usuário + filtros (a resposta varia por RLS
         e pelos filtros), TTL 30 min — mesmo padrão do dashboard.
         """
-        group_column = CAMADA_GROUP_COLUMN.get(camada)
+        group_column = CAMADA_COLUMN.get(camada)
         if group_column is None:
             raise ValueError(f"Camada territorial desconhecida: {camada!r}")
 
@@ -511,7 +511,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         ``total_irregulares`` = den − regular (a tabela de protocolos não tem
         coluna de irregulares — mesmo padrão do fetch_regularidade_por_camada).
         """
-        group_column = CAMADA_GROUP_COLUMN.get(camada)
+        group_column = CAMADA_COLUMN.get(camada)
         if group_column is None:
             raise ValueError(f"Camada territorial desconhecida: {camada!r}")
 

@@ -20,14 +20,11 @@ protocolo selecionado usa ``protocolo_geral`` para o comparativo.
 import asyncio
 
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
-from src.pic.application.use_cases.get_regularidade_por_camada import (
-    _CAMADAS_SUPORTADAS,
-    _NORMALIZERS,
-)
 from src.pic.domain.models.geospatial import (
     RegiaoDetalhes,
     RegiaoRegularidadeResumo,
 )
+from src.pic.domain.models.territorio import CAMADAS_SUPORTADAS, NORMALIZERS
 from src.utils.log import logger
 
 
@@ -64,12 +61,12 @@ class GetDetalhesRegiaoUseCase:
         grupo: list[str] | None = None,
         has_bolsa_familia: bool | None = None,
     ) -> RegiaoDetalhes:
-        if camada not in _CAMADAS_SUPORTADAS:
+        if camada not in CAMADAS_SUPORTADAS:
             raise ValueError(
-                f"Camada {camada!r} não suportada (esperado: {_CAMADAS_SUPORTADAS})"
+                f"Camada {camada!r} não suportada (esperado: {CAMADAS_SUPORTADAS})"
             )
 
-        normalize = _NORMALIZERS[camada]
+        normalize = NORMALIZERS[camada]
         key = normalize(regiao)
         if not key:
             raise ValueError(f"Região inválida para a camada {camada!r}: {regiao!r}")

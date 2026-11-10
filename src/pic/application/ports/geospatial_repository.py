@@ -36,8 +36,8 @@ class IGeospatialRepository(ABC):
         """Regularidade agregada por região da camada (RLS aplicada pelo PostgREST).
 
         ``camada`` define a coluna do GROUP BY no consolidado (ver
-        ``CAMADA_GROUP_COLUMN``): ``"bairro"``, ``"ra"``, ``"cas"``, ``"cre"``
-        ou ``"ap"``.
+        ``CAMADA_COLUMN`` em ``domain/models/territorio.py``): ``"bairro"``,
+        ``"ra"``, ``"cas"``, ``"cre"`` ou ``"ap"``.
 
         Filtros opcionais (multiselect — mesmo padrão da Visão Geral):
         - ``status``: lista de ``"Ativo"``/``"Inativo"`` → ``pic_status=in.(...)``
