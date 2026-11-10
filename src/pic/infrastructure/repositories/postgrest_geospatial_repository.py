@@ -42,7 +42,6 @@ from typing import Any
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
 from src.pic.domain.models.filters import FilterOption
 from src.pic.domain.models.geospatial import (
-    CAMADA_GROUP_COLUMN,
     CamadaRegularidadeAggregate,
     GeospatialFilterOptions,
     GeospatialLayer,
@@ -50,6 +49,7 @@ from src.pic.domain.models.geospatial import (
     RegiaoProtocoloAggregate,
     RegiaoRegularidadeResumo,
 )
+from src.pic.domain.models.territorio import CAMADA_COLUMN
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.utils.log import logger
 
@@ -136,6 +136,8 @@ def _make_regularidade_cache_key(
     status: list[str] | None = None,
     cohortes: list[str] | None = None,
     protocolo_id: str | None = None,
+    grupo: list[str] | None = None,
+    has_bolsa_familia: bool | None = None,
 ) -> str:
     """Cache key por camada + usuário + filtros: a RLS e os filtros mudam o resultado."""
     payload = json.dumps(
@@ -145,6 +147,8 @@ def _make_regularidade_cache_key(
             "status": sorted(status) if status else None,
             "cohortes": sorted(cohortes) if cohortes else None,
             "protocolo_id": protocolo_id,
+            "grupo": sorted(grupo) if grupo else None,
+            "has_bolsa_familia": has_bolsa_familia,
         },
         sort_keys=True,
         default=str,
@@ -163,6 +167,8 @@ def _make_protocolos_regiao_cache_key(
     user_id: str | None,
     status: list[str] | None = None,
     cohortes: list[str] | None = None,
+    grupo: list[str] | None = None,
+    has_bolsa_familia: bool | None = None,
 ) -> str:
     """Cache key dos protocolos de uma região: camada + valor raw + usuário + filtros."""
     payload = json.dumps(
@@ -172,11 +178,15 @@ def _make_protocolos_regiao_cache_key(
             "user_id": user_id,
             "status": sorted(status) if status else None,
             "cohortes": sorted(cohortes) if cohortes else None,
+            "grupo": sorted(grupo) if grupo else None,
+            "has_bolsa_familia": has_bolsa_familia,
         },
         sort_keys=True,
         default=str,
     )
-    return _PROTOCOLOS_REGIAO_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+    return (
+        _PROTOCOLOS_REGIAO_CACHE_PREFIX + hashlib.sha256(payload.encode()).hexdigest()
+    )
 
 
 def _make_protocolo_geral_cache_key(
@@ -184,6 +194,8 @@ def _make_protocolo_geral_cache_key(
     user_id: str | None,
     status: list[str] | None = None,
     cohortes: list[str] | None = None,
+    grupo: list[str] | None = None,
+    has_bolsa_familia: bool | None = None,
 ) -> str:
     """Cache key da média geral do protocolo (igual para qualquer região)."""
     payload = json.dumps(
@@ -192,6 +204,8 @@ def _make_protocolo_geral_cache_key(
             "user_id": user_id,
             "status": sorted(status) if status else None,
             "cohortes": sorted(cohortes) if cohortes else None,
+            "grupo": sorted(grupo) if grupo else None,
+            "has_bolsa_familia": has_bolsa_familia,
         },
         sort_keys=True,
         default=str,
@@ -314,6 +328,8 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
         protocolo_id: str | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> list[CamadaRegularidadeAggregate]:
         """Agrega participantes regulares/irregulares por região da camada.
 
@@ -321,14 +337,16 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         de unidade é aplicada ANTES do GROUP BY, então o resultado respeita o
         escopo de permissões do usuário.
 
-        ``camada`` seleciona a coluna do GROUP BY (``CAMADA_GROUP_COLUMN``):
+        ``camada`` seleciona a coluna do GROUP BY (``CAMADA_COLUMN``):
         bairro → ``bairro``, ra → ``regiao_administrativa``, cas/cre/ap →
         ``id_cas``/``id_cre``/``id_ap``.
 
         Filtros opcionais aplicados como WHERE no PostgREST (antes do GROUP BY,
         multiselect — mesmo padrão da Visão Geral): ``status`` (lista) →
         ``pic_status=in``; ``cohortes`` (lista de ``"YYYY-MM-DD"``) →
-        ``pic_cohort=in``; ``protocolo_id`` troca a fonte para
+        ``pic_cohort=in``; ``grupo`` (lista) → ``pic_grupo=in``;
+        ``has_bolsa_familia`` (bool) → ``has_bolsa_familia=eq``;
+        ``protocolo_id`` troca a fonte para
         ``endpoint_participante_visao_geral_protocolos`` com a métrica própria
         do protocolo (``protocolo_regular_*`` — FR-007).
 
@@ -341,12 +359,18 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         Cache Redis por camada + usuário + filtros (a resposta varia por RLS
         e pelos filtros), TTL 30 min — mesmo padrão do dashboard.
         """
-        group_column = CAMADA_GROUP_COLUMN.get(camada)
+        group_column = CAMADA_COLUMN.get(camada)
         if group_column is None:
             raise ValueError(f"Camada territorial desconhecida: {camada!r}")
 
         cache_key = _make_regularidade_cache_key(
-            camada, user_id, status, cohortes, protocolo_id
+            camada,
+            user_id,
+            status,
+            cohortes,
+            protocolo_id,
+            grupo,
+            has_bolsa_familia,
         )
 
         if not bypass_cache:
@@ -379,6 +403,10 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 query = query.in_("pic_status", status)
             if cohortes:
                 query = query.in_("pic_cohort", cohortes)
+            if grupo:
+                query = query.in_("pic_grupo", grupo)
+            if has_bolsa_familia is not None:
+                query = query.eq("has_bolsa_familia", has_bolsa_familia)
             resp = await query.execute()
 
         rows: list[dict] = resp.data or []
@@ -410,7 +438,8 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             f"[geospatial] regularidade camada={camada!r}: "
             f"{len(aggregates)} regiões user_id={user_id!r} "
             f"status={status!r} cohortes={cohortes!r} "
-            f"protocolo={protocolo_id!r}"
+            f"protocolo={protocolo_id!r} grupo={grupo!r} "
+            f"bolsa={has_bolsa_familia!r}"
         )
         return aggregates
 
@@ -456,9 +485,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         ]
 
         await self._set_protocolos_cache(cache_key, protocolos)
-        logger.info(
-            f"[geospatial] protocolos: {len(protocolos)} user_id={user_id!r}"
-        )
+        logger.info(f"[geospatial] protocolos: {len(protocolos)} user_id={user_id!r}")
         return protocolos
 
     # ------------------------------------------------------------------
@@ -474,6 +501,8 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         bypass_cache: bool = False,
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> list[RegiaoProtocoloAggregate]:
         """Métricas de todos os protocolos numa região (valor RAW da coluna).
 
@@ -482,12 +511,18 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         ``total_irregulares`` = den − regular (a tabela de protocolos não tem
         coluna de irregulares — mesmo padrão do fetch_regularidade_por_camada).
         """
-        group_column = CAMADA_GROUP_COLUMN.get(camada)
+        group_column = CAMADA_COLUMN.get(camada)
         if group_column is None:
             raise ValueError(f"Camada territorial desconhecida: {camada!r}")
 
         cache_key = _make_protocolos_regiao_cache_key(
-            camada, regiao, user_id, status, cohortes
+            camada,
+            regiao,
+            user_id,
+            status,
+            cohortes,
+            grupo,
+            has_bolsa_familia,
         )
 
         if not bypass_cache:
@@ -506,6 +541,10 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 query = query.in_("pic_status", status)
             if cohortes:
                 query = query.in_("pic_cohort", cohortes)
+            if grupo:
+                query = query.in_("pic_grupo", grupo)
+            if has_bolsa_familia is not None:
+                query = query.eq("has_bolsa_familia", has_bolsa_familia)
             resp = await query.execute()
 
         protocolos: list[RegiaoProtocoloAggregate] = []
@@ -536,7 +575,8 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         logger.info(
             f"[geospatial] protocolos por região camada={camada!r} "
             f"regiao={regiao!r}: {len(protocolos)} user_id={user_id!r} "
-            f"status={status!r} cohortes={cohortes!r}"
+            f"status={status!r} cohortes={cohortes!r} grupo={grupo!r} "
+            f"bolsa={has_bolsa_familia!r}"
         )
         return protocolos
 
@@ -552,6 +592,8 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         bypass_cache: bool = False,
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> RegiaoRegularidadeResumo | None:
         """Agrega um protocolo em TODAS as regiões (sem filtro de região).
 
@@ -560,7 +602,12 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         ``total_irregulares`` = den − regular (padrão do restante).
         """
         cache_key = _make_protocolo_geral_cache_key(
-            protocolo_id, user_id, status, cohortes
+            protocolo_id,
+            user_id,
+            status,
+            cohortes,
+            grupo,
+            has_bolsa_familia,
         )
 
         if not bypass_cache:
@@ -578,6 +625,10 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 query = query.in_("pic_status", status)
             if cohortes:
                 query = query.in_("pic_cohort", cohortes)
+            if grupo:
+                query = query.in_("pic_grupo", grupo)
+            if has_bolsa_familia is not None:
+                query = query.eq("has_bolsa_familia", has_bolsa_familia)
             resp = await query.execute()
 
         rows = resp.data or []
@@ -590,9 +641,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 total_participantes=den,
                 total_regulares=regular,
                 total_irregulares=den - regular,
-                taxa_regularidade=(
-                    round(regular / den * 100, 1) if den > 0 else None
-                ),
+                taxa_regularidade=(round(regular / den * 100, 1) if den > 0 else None),
             )
 
         # Só cacheia resultado não nulo (None não é cacheável sem sentinela;
@@ -602,7 +651,8 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         logger.info(
             f"[geospatial] protocolo geral {protocolo_id!r}: "
             f"{'ok' if resumo else 'sem dados'} user_id={user_id!r} "
-            f"status={status!r} cohortes={cohortes!r}"
+            f"status={status!r} cohortes={cohortes!r} grupo={grupo!r} "
+            f"bolsa={has_bolsa_familia!r}"
         )
         return resumo
 
@@ -665,7 +715,10 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         results = await asyncio.gather(
             *(
                 self.get_filter_options(
-                    f, column_filters={}, user_token=user_token, bypass_cache=bypass_cache
+                    f,
+                    column_filters={},
+                    user_token=user_token,
+                    bypass_cache=bypass_cache,
                 )
                 for f in fields
             )
@@ -715,13 +768,13 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             return layers
 
         # --- Calculate remaining pages ---
-        remaining_offsets = list(
-            range(_PAGE_SIZE, total_count, _PAGE_SIZE)
-        )
+        remaining_offsets = list(range(_PAGE_SIZE, total_count, _PAGE_SIZE))
 
         # --- Rolling window: fetch _FETCH_WINDOW pages at a time ---
         for window_start in range(0, len(remaining_offsets), _FETCH_WINDOW):
-            window_offsets = remaining_offsets[window_start: window_start + _FETCH_WINDOW]
+            window_offsets = remaining_offsets[
+                window_start : window_start + _FETCH_WINDOW
+            ]
             responses = await asyncio.gather(
                 *(
                     self._execute_page(column_filters=column_filters, offset=off)
@@ -803,9 +856,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             logger.warning(f"[geospatial] layers cache read error (ignoring): {exc}")
             return None
 
-    async def _set_layers_cache(
-        self, key: str, layers: list[GeospatialLayer]
-    ) -> None:
+    async def _set_layers_cache(self, key: str, layers: list[GeospatialLayer]) -> None:
         if self._redis is None:
             return
         try:
@@ -834,9 +885,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             logger.warning(f"[geospatial] filter cache read error (ignoring): {exc}")
             return None
 
-    async def _set_filter_cache(
-        self, key: str, options: list[FilterOption]
-    ) -> None:
+    async def _set_filter_cache(self, key: str, options: list[FilterOption]) -> None:
         if self._redis is None:
             return
         try:
@@ -863,12 +912,12 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 CamadaRegularidadeAggregate.model_validate(item)
                 for item in json.loads(raw)
             ]
-            logger.info(
-                f"[geospatial] regularidade cache HIT ({len(aggregates)} rows)"
-            )
+            logger.info(f"[geospatial] regularidade cache HIT ({len(aggregates)} rows)")
             return aggregates
         except Exception as exc:
-            logger.warning(f"[geospatial] regularidade cache read error (ignoring): {exc}")
+            logger.warning(
+                f"[geospatial] regularidade cache read error (ignoring): {exc}"
+            )
             return None
 
     async def _set_regularidade_cache(
@@ -877,22 +926,23 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         if self._redis is None:
             return
         try:
-            payload = json.dumps(
-                [agg.model_dump(mode="json") for agg in aggregates]
-            )
+            payload = json.dumps([agg.model_dump(mode="json") for agg in aggregates])
             await self._redis.set(key, payload, ex=_REGULARIDADE_CACHE_TTL)
             logger.info(
-                f"[geospatial] regularidade cache SET "
-                f"(TTL {_REGULARIDADE_CACHE_TTL}s)"
+                f"[geospatial] regularidade cache SET (TTL {_REGULARIDADE_CACHE_TTL}s)"
             )
         except Exception as exc:
-            logger.warning(f"[geospatial] regularidade cache write error (ignoring): {exc}")
+            logger.warning(
+                f"[geospatial] regularidade cache write error (ignoring): {exc}"
+            )
 
     # ------------------------------------------------------------------
     # Redis helpers — protocolos
     # ------------------------------------------------------------------
 
-    async def _get_protocolos_from_cache(self, key: str) -> list[ProtocoloOption] | None:
+    async def _get_protocolos_from_cache(
+        self, key: str
+    ) -> list[ProtocoloOption] | None:
         if self._redis is None:
             return None
         try:
@@ -902,12 +952,12 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
             protocolos = [
                 ProtocoloOption.model_validate(item) for item in json.loads(raw)
             ]
-            logger.info(
-                f"[geospatial] protocolos cache HIT ({len(protocolos)} rows)"
-            )
+            logger.info(f"[geospatial] protocolos cache HIT ({len(protocolos)} rows)")
             return protocolos
         except Exception as exc:
-            logger.warning(f"[geospatial] protocolos cache read error (ignoring): {exc}")
+            logger.warning(
+                f"[geospatial] protocolos cache read error (ignoring): {exc}"
+            )
             return None
 
     async def _set_protocolos_cache(
@@ -916,13 +966,13 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         if self._redis is None:
             return
         try:
-            payload = json.dumps(
-                [opt.model_dump(mode="json") for opt in protocolos]
-            )
+            payload = json.dumps([opt.model_dump(mode="json") for opt in protocolos])
             await self._redis.set(key, payload, ex=_CACHE_TTL)
             logger.info(f"[geospatial] protocolos cache SET (TTL {_CACHE_TTL}s)")
         except Exception as exc:
-            logger.warning(f"[geospatial] protocolos cache write error (ignoring): {exc}")
+            logger.warning(
+                f"[geospatial] protocolos cache write error (ignoring): {exc}"
+            )
 
     # ------------------------------------------------------------------
     # Redis helpers — protocolos por região
@@ -942,14 +992,12 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
                 for item in json.loads(raw)
             ]
             logger.info(
-                f"[geospatial] protocolos por região cache HIT "
-                f"({len(protocolos)} rows)"
+                f"[geospatial] protocolos por região cache HIT ({len(protocolos)} rows)"
             )
             return protocolos
         except Exception as exc:
             logger.warning(
-                f"[geospatial] protocolos por região cache read error "
-                f"(ignoring): {exc}"
+                f"[geospatial] protocolos por região cache read error (ignoring): {exc}"
             )
             return None
 
@@ -959,9 +1007,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         if self._redis is None:
             return
         try:
-            payload = json.dumps(
-                [agg.model_dump(mode="json") for agg in protocolos]
-            )
+            payload = json.dumps([agg.model_dump(mode="json") for agg in protocolos])
             await self._redis.set(key, payload, ex=_REGULARIDADE_CACHE_TTL)
             logger.info(
                 f"[geospatial] protocolos por região cache SET "

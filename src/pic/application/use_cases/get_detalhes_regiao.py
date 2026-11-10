@@ -20,14 +20,11 @@ protocolo selecionado usa ``protocolo_geral`` para o comparativo.
 import asyncio
 
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
-from src.pic.application.use_cases.get_regularidade_por_camada import (
-    _CAMADAS_SUPORTADAS,
-    _NORMALIZERS,
-)
 from src.pic.domain.models.geospatial import (
     RegiaoDetalhes,
     RegiaoRegularidadeResumo,
 )
+from src.pic.domain.models.territorio import CAMADAS_SUPORTADAS, NORMALIZERS
 from src.utils.log import logger
 
 
@@ -61,18 +58,18 @@ class GetDetalhesRegiaoUseCase:
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
         protocolo_id: str | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> RegiaoDetalhes:
-        if camada not in _CAMADAS_SUPORTADAS:
+        if camada not in CAMADAS_SUPORTADAS:
             raise ValueError(
-                f"Camada {camada!r} não suportada (esperado: {_CAMADAS_SUPORTADAS})"
+                f"Camada {camada!r} não suportada (esperado: {CAMADAS_SUPORTADAS})"
             )
 
-        normalize = _NORMALIZERS[camada]
+        normalize = NORMALIZERS[camada]
         key = normalize(regiao)
         if not key:
-            raise ValueError(
-                f"Região inválida para a camada {camada!r}: {regiao!r}"
-            )
+            raise ValueError(f"Região inválida para a camada {camada!r}: {regiao!r}")
 
         # 1) Métrica geral da região: reusa os agregados do consolidado
         # (mesma query/cache do mapa sem protocolo) e localiza o valor RAW
@@ -89,6 +86,8 @@ class GetDetalhesRegiaoUseCase:
                     status=status,
                     cohortes=cohortes,
                     protocolo_id=None,
+                    grupo=grupo,
+                    has_bolsa_familia=has_bolsa_familia,
                 ),
                 self._repository.fetch_protocolo_geral(
                     protocolo_id=protocolo_id,
@@ -97,6 +96,8 @@ class GetDetalhesRegiaoUseCase:
                     bypass_cache=bypass_cache,
                     status=status,
                     cohortes=cohortes,
+                    grupo=grupo,
+                    has_bolsa_familia=has_bolsa_familia,
                 ),
             )
         else:
@@ -108,6 +109,8 @@ class GetDetalhesRegiaoUseCase:
                 status=status,
                 cohortes=cohortes,
                 protocolo_id=None,
+                grupo=grupo,
+                has_bolsa_familia=has_bolsa_familia,
             )
             protocolo_geral = None
 
@@ -137,6 +140,8 @@ class GetDetalhesRegiaoUseCase:
                 bypass_cache=bypass_cache,
                 status=status,
                 cohortes=cohortes,
+                grupo=grupo,
+                has_bolsa_familia=has_bolsa_familia,
             )
         protocolos.sort(
             key=lambda p: (p.protocolo_secretaria or "", p.protocolo_descricao or "")

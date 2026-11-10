@@ -17,6 +17,7 @@ import type {
 	GeospatialFilterVocabularyResponse,
 	GeospatialLayersResponse,
 	IdWithName,
+	MonitoringSeriesResponse,
 	PaginatedResponse,
 	PaginatedResponseV2,
 	ParticipantDetailResponse,
@@ -208,6 +209,33 @@ function buildFilterParams(
 	});
 
 	return params;
+}
+
+/**
+ * Filtros compartilhados do mapa (status, safra, grupo, Bolsa Família),
+ * repetíveis — usados pelos endpoints do geospatial e do Acompanhamento.
+ */
+function appendFiltrosCompartilhados(
+	params: URLSearchParams,
+	filters: {
+		statuses?: string[];
+		cohortes?: string[];
+		grupo?: string[];
+		hasBolsaFamilia?: boolean;
+	},
+): void {
+	for (const status of filters.statuses ?? []) {
+		params.append("status", status);
+	}
+	for (const cohorte of filters.cohortes ?? []) {
+		params.append("cohortes", cohorte);
+	}
+	for (const g of filters.grupo ?? []) {
+		params.append("grupo", g);
+	}
+	if (typeof filters.hasBolsaFamilia === "boolean") {
+		params.append("has_bolsa_familia", filters.hasBolsaFamilia.toString());
+	}
 }
 
 /**
@@ -816,8 +844,9 @@ export const apiService = {
 	 * @param camada - Camada territorial: "bairro", "ra" (Região Administrativa),
 	 *   "cas", "cre" ou "ap"
 	 * @param filters - Filtros multiselect (mesmo padrão da Visão Geral):
-	 *   statuses (Ativo/Inativo) e cohortes (meses de ingresso "YYYY-MM-DD");
-	 *   protocoloId troca a fonte da métrica
+	 *   statuses (Ativo/Inativo), cohortes (meses de ingresso "YYYY-MM-DD"),
+	 *   grupo (Criança/Gestante/Puérpera) e hasBolsaFamilia (beneficiários
+	 *   do Bolsa Família); protocoloId troca a fonte da métrica
 	 * @param bypassCache - Forçar refresh (agregado PostgREST + geometria estática)
 	 */
 	async getRegularidadePorCamada(
@@ -826,17 +855,14 @@ export const apiService = {
 			statuses?: string[];
 			cohortes?: string[];
 			protocoloId?: string;
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
 		} = {},
 		bypassCache: boolean = false,
 		signal?: AbortSignal,
 	): Promise<RegiaoRegularidadeResponse> {
 		const params = new URLSearchParams({ camada });
-		for (const status of filters.statuses ?? []) {
-			params.append("status", status);
-		}
-		for (const cohorte of filters.cohortes ?? []) {
-			params.append("cohortes", cohorte);
-		}
+		appendFiltrosCompartilhados(params, filters);
 		if (filters.protocoloId) {
 			params.append("protocolo_id", filters.protocoloId);
 		}
@@ -884,17 +910,14 @@ export const apiService = {
 			statuses?: string[];
 			cohortes?: string[];
 			protocoloId?: string;
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
 		} = {},
 		bypassCache: boolean = false,
 		signal?: AbortSignal,
 	): Promise<RegiaoDetalhesResponse> {
 		const params = new URLSearchParams({ camada, regiao });
-		for (const status of filters.statuses ?? []) {
-			params.append("status", status);
-		}
-		for (const cohorte of filters.cohortes ?? []) {
-			params.append("cohortes", cohorte);
-		}
+		appendFiltrosCompartilhados(params, filters);
 		if (filters.protocoloId) {
 			params.append("protocolo_id", filters.protocoloId);
 		}
@@ -907,5 +930,45 @@ export const apiService = {
 		const res = await fetchFn();
 
 		return handleResponse<RegiaoDetalhesResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Acompanhamento — evolução semanal de UM protocolo (desfechos por status).
+	 * GET /api/v2/monitoring/series
+	 *
+	 * @param protocoloId - Protocolo (obrigatório; "geral" = regularidade geral)
+	 * @param filters - Mesmos filtros do mapa + camada/regiões da seleção
+	 *   (repetir o parâmetro `regiao` soma as regiões — OR na coluna).
+	 */
+	async getMonitoringSeries(
+		protocoloId: string,
+		filters: {
+			statuses?: string[];
+			cohortes?: string[];
+			grupo?: string[];
+			hasBolsaFamilia?: boolean;
+			camada?: CamadaTerritorial;
+			regioes?: string[];
+		} = {},
+		bypassCache: boolean = false,
+		signal?: AbortSignal,
+	): Promise<MonitoringSeriesResponse> {
+		const params = new URLSearchParams({ protocolo: protocoloId });
+		appendFiltrosCompartilhados(params, filters);
+		if (filters.camada && filters.regioes && filters.regioes.length > 0) {
+			params.append("camada", filters.camada);
+			for (const regiao of filters.regioes) {
+				params.append("regiao", regiao);
+			}
+		}
+		if (bypassCache) {
+			params.append("bypass_cache", "true");
+		}
+
+		const url = `${BASE_URL}/api/v2/monitoring/series?${params.toString()}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<MonitoringSeriesResponse>(res, fetchFn);
 	},
 };

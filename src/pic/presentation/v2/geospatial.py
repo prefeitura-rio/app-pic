@@ -197,6 +197,20 @@ async def get_regularidade_por_camada(
             "protocolo (ex.: 'sms_vacinacao_pentavalente')"
         ),
     ),
+    grupo: list[str] | None = Query(
+        None,
+        description=(
+            "Filtra por grupo do participante (pic_grupo=in) — multiselect, "
+            "mesmo padrão da Visão Geral (ex.: grupo=Criança)"
+        ),
+    ),
+    has_bolsa_familia: bool | None = Query(
+        None,
+        description=(
+            "Filtra por beneficiários do Bolsa Família "
+            "(has_bolsa_familia=eq) — ex.: has_bolsa_familia=true"
+        ),
+    ),
     credentials: HTTPAuthorizationCredentials = Security(security),
     data_proxy_token: str | None = Header(
         None,
@@ -219,8 +233,10 @@ async def get_regularidade_por_camada(
     estáticos commitados (snapshot datario para bairro/ra; data.rio para
     cas/cre/ap). ``taxa_regularidade`` é None quando a região não tem
     participantes no escopo do usuário. Filtros opcionais (multiselect, mesmo
-    padrão da Visão Geral): ``status`` (Ativo/Inativo) e ``cohortes`` (meses
-    de ingresso). Sem ``status`` ou ``cohortes``, nenhum filtro é aplicado.
+    padrão da Visão Geral): ``status`` (Ativo/Inativo), ``cohortes`` (meses
+    de ingresso), ``grupo`` (Criança/Gestante/Puérpera) e
+    ``has_bolsa_familia`` (beneficiários do Bolsa Família). Sem nenhum filtro,
+    nenhuma restrição é aplicada.
     """
     try:
         result = await use_case.execute(
@@ -231,6 +247,8 @@ async def get_regularidade_por_camada(
             status=list(status) if status else None,
             cohortes=[c.isoformat() for c in cohortes] if cohortes else None,
             protocolo_id=protocolo_id,
+            grupo=list(grupo) if grupo else None,
+            has_bolsa_familia=has_bolsa_familia,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -330,6 +348,20 @@ async def get_regiao_detalhes(
             "para o comparativo acima/abaixo da média (3k)"
         ),
     ),
+    grupo: list[str] | None = Query(
+        None,
+        description=(
+            "Filtra por grupo do participante (pic_grupo=in) — multiselect, "
+            "mesmo padrão da Visão Geral (ex.: grupo=Criança)"
+        ),
+    ),
+    has_bolsa_familia: bool | None = Query(
+        None,
+        description=(
+            "Filtra por beneficiários do Bolsa Família "
+            "(has_bolsa_familia=eq) — ex.: has_bolsa_familia=true"
+        ),
+    ),
     credentials: HTTPAuthorizationCredentials = Security(security),
     data_proxy_token: str | None = Header(
         None,
@@ -347,8 +379,8 @@ async def get_regiao_detalhes(
     Alimenta o card de detalhes da região clicada: sem protocolo selecionado
     o frontend exibe os cards por protocolo; com protocolo selecionado monta
     o comparativo com a média geral do protocolo (``protocolo_geral``).
-    Filtros multiselect (``status``/``cohortes``) respeitados; RLS aplicada
-    pelo data-proxy.
+    Filtros multiselect (``status``/``cohortes``/``grupo``) e
+    ``has_bolsa_familia`` respeitados; RLS aplicada pelo data-proxy.
     """
     try:
         result = await use_case.execute(
@@ -360,6 +392,8 @@ async def get_regiao_detalhes(
             status=list(status) if status else None,
             cohortes=[c.isoformat() for c in cohortes] if cohortes else None,
             protocolo_id=protocolo_id,
+            grupo=list(grupo) if grupo else None,
+            has_bolsa_familia=has_bolsa_familia,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -371,9 +405,7 @@ async def get_regiao_detalhes(
         camada=result.camada,
         regiao=result.regiao,
         geral=(
-            RegiaoRegularidadeResumoModel(
-                **result.geral.model_dump()
-            )
+            RegiaoRegularidadeResumoModel(**result.geral.model_dump())
             if result.geral
             else None
         ),
@@ -383,8 +415,7 @@ async def get_regiao_detalhes(
             else None
         ),
         protocolos=[
-            RegiaoProtocoloMetricaModel(**p.model_dump())
-            for p in result.protocolos
+            RegiaoProtocoloMetricaModel(**p.model_dump()) for p in result.protocolos
         ],
     )
 
