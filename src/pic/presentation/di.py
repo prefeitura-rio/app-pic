@@ -10,6 +10,7 @@ from src.pic.application.ports.disparos_repository import (
     DisparosRepository,
 )
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
+from src.pic.application.ports.monitoring_repository import IMonitoringRepository
 from src.pic.application.ports.participant_repository import (
     ParticipantRepository,
 )
@@ -55,6 +56,12 @@ from src.pic.application.use_cases.get_geospatial_filter_vocabulary import (
 from src.pic.application.use_cases.get_geospatial_layers import (
     GetGeospatialLayersUseCase,
 )
+from src.pic.application.use_cases.get_monitoring import (
+    GetMonitoringFiltersUseCase,
+    GetMonitoringGroupUseCase,
+    GetMonitoringProtocolSeriesUseCase,
+    GetMonitoringProtocolsUseCase,
+)
 from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
 )
@@ -87,6 +94,9 @@ from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
 from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
     PostgrestGeospatialRepository,
 )
+from src.pic.infrastructure.repositories.postgrest_monitoring_repository import (
+    PostgrestMonitoringRepository,
+)
 from src.pic.infrastructure.repositories.postgrest_participant_repository import (
     PostgrestParticipantRepository,
 )
@@ -102,9 +112,7 @@ async def get_participant_read_repo() -> ParticipantRepository:
         get_postgrest_client(),
         get_redis_client(),
     )
-    return PostgrestParticipantRepository(
-        postgrest_client, redis_client=redis_client
-    )
+    return PostgrestParticipantRepository(postgrest_client, redis_client=redis_client)
 
 
 async def get_dashboard_repo() -> IDashboardRepository:
@@ -243,7 +251,9 @@ async def get_geospatial_layers_use_case() -> GetGeospatialLayersUseCase:
     return GetGeospatialLayersUseCase(repository=await get_geospatial_repo())
 
 
-async def get_geospatial_filter_vocabulary_use_case() -> GetGeospatialFilterVocabularyUseCase:
+async def get_geospatial_filter_vocabulary_use_case() -> (
+    GetGeospatialFilterVocabularyUseCase
+):
     return GetGeospatialFilterVocabularyUseCase(repository=await get_geospatial_repo())
 
 
@@ -261,6 +271,42 @@ async def get_protocolos_use_case() -> GetProtocolosUseCase:
 
 async def get_detalhes_regiao_use_case() -> GetDetalhesRegiaoUseCase:
     return GetDetalhesRegiaoUseCase(repository=await get_geospatial_repo())
+
+
+async def get_monitoring_repo() -> IMonitoringRepository:
+    """Repositório do Acompanhamento semanal (PostgREST + Redis lazy)."""
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return PostgrestMonitoringRepository(postgrest_client, redis_client=redis_client)
+
+
+async def get_monitoring_filters_use_case() -> GetMonitoringFiltersUseCase:
+    return GetMonitoringFiltersUseCase(repository=await get_monitoring_repo())
+
+
+async def get_monitoring_group_use_case() -> GetMonitoringGroupUseCase:
+    return GetMonitoringGroupUseCase(
+        repository=await get_monitoring_repo(),
+        geo_repository=await get_geospatial_repo(),
+    )
+
+
+async def get_monitoring_protocol_series_use_case() -> (
+    GetMonitoringProtocolSeriesUseCase
+):
+    return GetMonitoringProtocolSeriesUseCase(
+        repository=await get_monitoring_repo(),
+        geo_repository=await get_geospatial_repo(),
+    )
+
+
+async def get_monitoring_protocols_use_case() -> GetMonitoringProtocolsUseCase:
+    return GetMonitoringProtocolsUseCase(
+        repository=await get_monitoring_repo(),
+        geo_repository=await get_geospatial_repo(),
+    )
 
 
 def get_debug_participant_use_case() -> GetDebugParticipantUseCase:
