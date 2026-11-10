@@ -158,9 +158,7 @@ def sample_detail() -> Participante:
                 smas_protocolo_violado=["Acesso a CPF ou Certidão de Nascimento"],
                 smas_motivo_nao_localizada=["Endereço não encontrado"],
                 unidade_referenciada=BuscaAtivaUnidadeReferenciada(
-                    smas=BuscaAtivaUnidadeSMAS(
-                        nome="CRAS Madureira", regional="AP 3.3"
-                    )
+                    smas=BuscaAtivaUnidadeSMAS(nome="CRAS Madureira", regional="AP 3.3")
                 ),
             )
         ],
@@ -432,13 +430,18 @@ async def test_list_falls_back_to_id_token_without_access_token_header(
 
 
 @pytest.mark.asyncio
-async def test_policy_self_heal_runs_before_list_read(client, override_use_cases):
+async def test_policy_self_heal_disabled_since_sprint_19(client, override_use_cases):
+    # O self-heal automático de políticas foi desabilitado intencionalmente no
+    # "Deploy sprint 19" (commit 441a633): as chamadas em get_participants,
+    # export e detail ficaram comentadas por problemas em produção. Este teste
+    # documenta o comportamento ATUAL e evita uma reativação acidental sem
+    # decisão consciente.
     response = await client.get("/api/v2/participants")
 
     assert response.status_code == 200
     _, _, admin_repo = override_use_cases
-    assert admin_repo.self_heal_cpfs == ["12345678900"]
-    assert admin_repo.events == ["self_heal", "list_use_case"]
+    assert admin_repo.self_heal_cpfs == []
+    assert admin_repo.events == ["list_use_case"]
 
 
 @pytest.mark.asyncio
@@ -813,19 +816,14 @@ async def test_export_maps_validation_error_to_422(client, override_export_use_c
     response = await client.get("/api/v2/participants/export")
 
     assert response.status_code == 422
-    assert (
-        response.json()["detail"]
-        == "Protocolo desconhecido: protocolo_inventado"
-    )
+    assert response.json()["detail"] == "Protocolo desconhecido: protocolo_inventado"
 
 
 @pytest.fixture
 def override_export_busca_ativa_use_case():
     events: list[str] = []
     export_use_case = FakeExportBuscaAtivaUseCase(events=events)
-    app.dependency_overrides[get_export_busca_ativa_use_case] = (
-        lambda: export_use_case
-    )
+    app.dependency_overrides[get_export_busca_ativa_use_case] = lambda: export_use_case
     yield export_use_case, events
     app.dependency_overrides.clear()
 
