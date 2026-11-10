@@ -57,10 +57,7 @@ from src.pic.application.use_cases.get_geospatial_layers import (
     GetGeospatialLayersUseCase,
 )
 from src.pic.application.use_cases.get_monitoring import (
-    GetMonitoringFiltersUseCase,
-    GetMonitoringGroupUseCase,
     GetMonitoringProtocolSeriesUseCase,
-    GetMonitoringProtocolsUseCase,
 )
 from src.pic.application.use_cases.get_participant_detail import (
     GetParticipantDetailUseCase,
@@ -282,28 +279,10 @@ async def get_monitoring_repo() -> IMonitoringRepository:
     return PostgrestMonitoringRepository(postgrest_client, redis_client=redis_client)
 
 
-async def get_monitoring_filters_use_case() -> GetMonitoringFiltersUseCase:
-    return GetMonitoringFiltersUseCase(repository=await get_monitoring_repo())
-
-
-async def get_monitoring_group_use_case() -> GetMonitoringGroupUseCase:
-    return GetMonitoringGroupUseCase(
-        repository=await get_monitoring_repo(),
-        geo_repository=await get_geospatial_repo(),
-    )
-
-
 async def get_monitoring_protocol_series_use_case() -> (
     GetMonitoringProtocolSeriesUseCase
 ):
     return GetMonitoringProtocolSeriesUseCase(
-        repository=await get_monitoring_repo(),
-        geo_repository=await get_geospatial_repo(),
-    )
-
-
-async def get_monitoring_protocols_use_case() -> GetMonitoringProtocolsUseCase:
-    return GetMonitoringProtocolsUseCase(
         repository=await get_monitoring_repo(),
         geo_repository=await get_geospatial_repo(),
     )

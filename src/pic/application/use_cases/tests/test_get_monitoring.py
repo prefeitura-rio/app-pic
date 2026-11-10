@@ -1,10 +1,8 @@
-"""Unit tests for the monitoring use cases (Acompanhamento semanal).
+"""Unit tests for the monitoring use case (Acompanhamento semanal).
 
 Covers:
-    - group: agregação total/ativo/inativo por semana + motivos
     - series: regular_total (regular+atenção), percentuais, by_status
-    - protocols: descoberta da última semana quando week_start é None
-    - meta: semanas disponíveis/faltantes, última parcial
+    - meta: semanas disponíveis/faltantes, última parcial, janela estável
     - permissão: mesma regra do dashboard (can_view_monitoring=False)
     - recorte territorial: resolução do valor RAW via agregados do consolidado
     - região sem dados → resultado vazio sem consultar a tabela semanal
@@ -17,19 +15,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.pic.application.use_cases.get_monitoring import (
-    GetMonitoringGroupUseCase,
     GetMonitoringProtocolSeriesUseCase,
-    GetMonitoringProtocolsUseCase,
     _build_meta,
     _pct,
 )
 from src.pic.domain.models.geospatial import CamadaRegularidadeAggregate
 from src.pic.domain.models.monitoring import (
-    GroupWeekRow,
     MonitoringFilters,
-    MotivoInativoRow,
     ProtocolWeekRow,
-    ProtocolWeekSummaryRow,
 )
 
 
@@ -38,10 +31,6 @@ def _permissions(access: str = "TODOS", super_admin: bool = True):
     perms.is_super_admin = super_admin
     perms.secretaria_acesso = access
     return perms
-
-
-def _group_row(week: str, status: str, qtd: int, snapshot: str | None = None):
-    return GroupWeekRow(week_start=week, snapshot_date=snapshot, status=status, qtd=qtd)
 
 
 def _protocol_row(
@@ -66,15 +55,6 @@ def _protocol_row(
     )
 
 
-def _make_group_uc(rows=None, motivos=None, geo_aggs=None):
-    repo = MagicMock()
-    repo.fetch_group_series = AsyncMock(return_value=rows or [])
-    repo.fetch_motivos = AsyncMock(return_value=motivos or [])
-    geo = MagicMock()
-    geo.fetch_regularidade_por_camada = AsyncMock(return_value=geo_aggs or [])
-    return GetMonitoringGroupUseCase(repository=repo, geo_repository=geo), repo, geo
-
-
 def _make_series_uc(rows=None, geo_aggs=None):
     repo = MagicMock()
     repo.fetch_protocol_series = AsyncMock(return_value=rows or [])
@@ -82,19 +62,6 @@ def _make_series_uc(rows=None, geo_aggs=None):
     geo.fetch_regularidade_por_camada = AsyncMock(return_value=geo_aggs or [])
     return (
         GetMonitoringProtocolSeriesUseCase(repository=repo, geo_repository=geo),
-        repo,
-        geo,
-    )
-
-
-def _make_protocols_uc(rows=None, latest=None, geo_aggs=None):
-    repo = MagicMock()
-    repo.fetch_protocols_summary = AsyncMock(return_value=rows or [])
-    repo.fetch_latest_week = AsyncMock(return_value=latest)
-    geo = MagicMock()
-    geo.fetch_regularidade_por_camada = AsyncMock(return_value=geo_aggs or [])
-    return (
-        GetMonitoringProtocolsUseCase(repository=repo, geo_repository=geo),
         repo,
         geo,
     )
@@ -163,88 +130,6 @@ class TestHelpers:
         assert meta.has_data is False
         assert meta.available_weeks == []
         assert meta.window_start is None
-
-
-# ---------------------------------------------------------------------------
-# Group
-# ---------------------------------------------------------------------------
-
-
-class TestGroup:
-    @pytest.mark.asyncio
-    async def test_aggregates_and_motivos(self):
-        uc, repo, _geo = _make_group_uc(
-            rows=[
-                _group_row("2026-10-19", "Ativo", 10, "2026-10-25"),
-                _group_row("2026-10-19", "Inativo", 3, "2026-10-25"),
-                _group_row("2026-10-26", "Ativo", 12, "2026-11-01"),
-            ],
-            motivos=[
-                MotivoInativoRow(motivo="motivo a", qtd=2),
-                MotivoInativoRow(motivo=None, qtd=1),
-            ],
-        )
-        result = await uc.execute(
-            filters=MonitoringFilters(), permissions=_permissions()
-        )
-
-        assert result.can_view_monitoring is True
-        assert len(result.series) == 2
-        assert result.series[0].total == 13
-        assert result.series[0].ativo == 10
-        assert result.series[0].inativo == 3
-        assert result.motivos == [
-            type(result.motivos[0])(motivo="motivo a", total=2),
-            type(result.motivos[0])(motivo="Não informado", total=1),
-        ]
-        # motivos consultados com a última semana da série
-        repo.fetch_motivos.assert_awaited_once_with(
-            "2026-10-26", MonitoringFilters(), None, None, False
-        )
-
-    @pytest.mark.asyncio
-    async def test_denied_without_dashboard_access(self):
-        uc, repo, _geo = _make_group_uc()
-        result = await uc.execute(
-            filters=MonitoringFilters(),
-            permissions=_permissions(access="SMS", super_admin=False),
-        )
-        assert result.can_view_monitoring is False
-        assert result.series == []
-        repo.fetch_group_series.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_empty_when_no_rows(self):
-        uc, repo, _geo = _make_group_uc(rows=[])
-        result = await uc.execute(
-            filters=MonitoringFilters(), permissions=_permissions()
-        )
-        assert result.meta.has_data is False
-        assert result.series == []
-        assert result.motivos == []
-        repo.fetch_motivos.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_series_trimmed_to_stable_window(self):
-        """Séries fora da janela estável não vão na resposta (payload menor);
-        meta.available_weeks continua completo."""
-        uc, _repo, _geo = _make_group_uc(
-            rows=[
-                _group_row("2026-06-01", "Ativo", 10, "2026-06-06"),
-                # lacunas em 06-08 e 06-15
-                _group_row("2026-06-22", "Ativo", 12, "2026-06-27"),
-                _group_row("2026-06-29", "Ativo", 14, "2026-07-04"),
-            ]
-        )
-        result = await uc.execute(
-            filters=MonitoringFilters(), permissions=_permissions()
-        )
-        assert result.meta.window_start == "2026-06-22"
-        assert [p.week_start for p in result.series] == [
-            "2026-06-22",
-            "2026-06-29",
-        ]
-        assert "2026-06-01" in result.meta.available_weeks
 
 
 # ---------------------------------------------------------------------------
@@ -354,62 +239,6 @@ class TestSeries:
 
 
 # ---------------------------------------------------------------------------
-# Protocols
-# ---------------------------------------------------------------------------
-
-
-class TestProtocols:
-    @pytest.mark.asyncio
-    async def test_uses_latest_week_when_week_start_is_none(self):
-        uc, repo, _geo = _make_protocols_uc(
-            latest="2026-10-26",
-            rows=[
-                ProtocolWeekSummaryRow(
-                    protocolo_id="sme_frequencia_escolar",
-                    protocolo_descricao="Frequência escolar",
-                    protocolo_secretaria="SME",
-                    snapshot_date="2026-11-01",
-                    qtd=100,
-                    regular=70,
-                    atencao=10,
-                    irregular=20,
-                )
-            ],
-        )
-        result = await uc.execute(
-            filters=MonitoringFilters(), permissions=_permissions()
-        )
-        repo.fetch_latest_week.assert_awaited_once()
-        assert result.week_start == "2026-10-26"
-        assert result.snapshot_date == "2026-11-01"
-        proto = result.protocols[0]
-        assert proto.regular_total == 80
-        assert proto.regular_pct == 80.0
-        assert proto.irregular_pct == 20.0
-
-    @pytest.mark.asyncio
-    async def test_explicit_week_skips_discovery(self):
-        uc, repo, _geo = _make_protocols_uc(rows=[])
-        result = await uc.execute(
-            filters=MonitoringFilters(),
-            permissions=_permissions(),
-            week_start="2026-10-19",
-        )
-        repo.fetch_latest_week.assert_not_awaited()
-        assert result.week_start == "2026-10-19"
-        assert result.protocols == []
-
-    @pytest.mark.asyncio
-    async def test_empty_when_no_latest_week(self):
-        uc, repo, _geo = _make_protocols_uc(latest=None)
-        result = await uc.execute(
-            filters=MonitoringFilters(), permissions=_permissions()
-        )
-        assert result.week_start is None
-        repo.fetch_protocols_summary.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
 # Recorte territorial (seleção do mapa)
 # ---------------------------------------------------------------------------
 
@@ -417,8 +246,8 @@ class TestProtocols:
 class TestTerritorial:
     @pytest.mark.asyncio
     async def test_resolves_raw_region_and_filters_weekly_table(self):
-        uc, repo, _geo = _make_group_uc(
-            rows=[_group_row("2026-10-26", "Ativo", 5)],
+        uc, repo, _geo = _make_series_uc(
+            rows=[_protocol_row("2026-10-26", "Ativo", 5, 0)],
             geo_aggs=[
                 CamadaRegularidadeAggregate(
                     regiao="3ª Rio Comprido", total_participantes=10
@@ -426,11 +255,13 @@ class TestTerritorial:
             ],
         )
         result = await uc.execute(
+            protocolo_id="x",
             filters=MonitoringFilters(camada="ra", regiao=["Rio Comprido"]),
             permissions=_permissions(),
         )
         # O repositório semanal recebe o valor RAW descoberto no consolidado
-        repo.fetch_group_series.assert_awaited_once_with(
+        repo.fetch_protocol_series.assert_awaited_once_with(
+            "x",
             MonitoringFilters(camada="ra", regiao=["3ª Rio Comprido"]),
             None,
             None,
@@ -442,8 +273,8 @@ class TestTerritorial:
     async def test_resolves_multiple_regions_ordered(self):
         """Multiselect: cada nome exibido vira RAW; a lista sai ordenada e
         deduplicada para o ``in`` (OR) da tabela semanal."""
-        uc, repo, _geo = _make_group_uc(
-            rows=[_group_row("2026-10-26", "Ativo", 5)],
+        uc, repo, _geo = _make_series_uc(
+            rows=[_protocol_row("2026-10-26", "Ativo", 5, 0)],
             geo_aggs=[
                 CamadaRegularidadeAggregate(
                     regiao="3ª Rio Comprido", total_participantes=10
@@ -454,12 +285,14 @@ class TestTerritorial:
             ],
         )
         result = await uc.execute(
+            protocolo_id="x",
             filters=MonitoringFilters(
                 camada="ra", regiao=["Santa Teresa", "Rio Comprido", "Rio Comprido"]
             ),
             permissions=_permissions(),
         )
-        repo.fetch_group_series.assert_awaited_once_with(
+        repo.fetch_protocol_series.assert_awaited_once_with(
+            "x",
             MonitoringFilters(camada="ra", regiao=["3ª Rio Comprido", "Santa Teresa"]),
             None,
             None,
@@ -471,19 +304,21 @@ class TestTerritorial:
     async def test_partial_missing_region_keeps_found(self):
         """Uma região sem dados é descartada; a que existe segue para a
         tabela semanal (contribui zero para a união)."""
-        uc, repo, _geo = _make_group_uc(
-            rows=[_group_row("2026-10-26", "Ativo", 5)],
+        uc, repo, _geo = _make_series_uc(
+            rows=[_protocol_row("2026-10-26", "Ativo", 5, 0)],
             geo_aggs=[
                 CamadaRegularidadeAggregate(regiao="Centro", total_participantes=10)
             ],
         )
         result = await uc.execute(
+            protocolo_id="x",
             filters=MonitoringFilters(
                 camada="bairro", regiao=["Inexistente", "Centro"]
             ),
             permissions=_permissions(),
         )
-        repo.fetch_group_series.assert_awaited_once_with(
+        repo.fetch_protocol_series.assert_awaited_once_with(
+            "x",
             MonitoringFilters(camada="bairro", regiao=["Centro"]),
             None,
             None,
@@ -493,7 +328,7 @@ class TestTerritorial:
 
     @pytest.mark.asyncio
     async def test_region_without_data_returns_empty_without_weekly_query(self):
-        uc, repo, _geo = _make_group_uc(
+        uc, repo, _geo = _make_series_uc(
             geo_aggs=[
                 CamadaRegularidadeAggregate(
                     regiao="Outro Bairro", total_participantes=10
@@ -501,16 +336,17 @@ class TestTerritorial:
             ]
         )
         result = await uc.execute(
+            protocolo_id="x",
             filters=MonitoringFilters(camada="bairro", regiao=["Inexistente"]),
             permissions=_permissions(),
         )
         assert result.meta.has_data is False
         assert result.series == []
-        repo.fetch_group_series.assert_not_awaited()
+        repo.fetch_protocol_series.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_all_missing_regions_returns_empty(self):
-        uc, repo, _geo = _make_group_uc(
+        uc, repo, _geo = _make_series_uc(
             geo_aggs=[
                 CamadaRegularidadeAggregate(
                     regiao="Outro Bairro", total_participantes=10
@@ -518,35 +354,40 @@ class TestTerritorial:
             ]
         )
         result = await uc.execute(
+            protocolo_id="x",
             filters=MonitoringFilters(camada="bairro", regiao=["A", "B"]),
             permissions=_permissions(),
         )
         assert result.meta.has_data is False
         assert result.series == []
-        repo.fetch_group_series.assert_not_awaited()
+        repo.fetch_protocol_series.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_invalid_camada_raises(self):
-        uc, _repo, _geo = _make_group_uc()
+        uc, _repo, _geo = _make_series_uc()
         with pytest.raises(ValueError):
             await uc.execute(
+                protocolo_id="x",
                 filters=MonitoringFilters(camada="x", regiao=["y"]),
                 permissions=_permissions(),
             )
 
     @pytest.mark.asyncio
     async def test_blank_regions_raise(self):
-        uc, _repo, _geo = _make_group_uc()
+        uc, _repo, _geo = _make_series_uc()
         with pytest.raises(ValueError):
             await uc.execute(
+                protocolo_id="x",
                 filters=MonitoringFilters(camada="bairro", regiao=["", " "]),
                 permissions=_permissions(),
             )
 
     @pytest.mark.asyncio
     async def test_no_territorial_skips_geo_repository(self):
-        uc, repo, geo = _make_group_uc(rows=[])
-        await uc.execute(filters=MonitoringFilters(), permissions=_permissions())
+        uc, repo, geo = _make_series_uc(rows=[])
+        await uc.execute(
+            protocolo_id="x", filters=MonitoringFilters(), permissions=_permissions()
+        )
         geo.fetch_regularidade_por_camada.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -554,8 +395,8 @@ class TestTerritorial:
         """bypass_cache do usuário vale para a tabela semanal, não para a
         resolução do valor RAW (agregação pesada do mapa permanece
         cacheável)."""
-        uc, repo, geo = _make_group_uc(
-            rows=[_group_row("2026-10-26", "Ativo", 5)],
+        uc, repo, geo = _make_series_uc(
+            rows=[_protocol_row("2026-10-26", "Ativo", 5, 0)],
             geo_aggs=[
                 CamadaRegularidadeAggregate(
                     regiao="3ª Rio Comprido", total_participantes=10
@@ -563,6 +404,7 @@ class TestTerritorial:
             ],
         )
         await uc.execute(
+            protocolo_id="x",
             filters=MonitoringFilters(camada="ra", regiao=["Rio Comprido"]),
             permissions=_permissions(),
             bypass_cache=True,
@@ -571,7 +413,8 @@ class TestTerritorial:
         assert (
             geo.fetch_regularidade_por_camada.call_args.kwargs["bypass_cache"] is False
         )
-        repo.fetch_group_series.assert_awaited_once_with(
+        repo.fetch_protocol_series.assert_awaited_once_with(
+            "x",
             MonitoringFilters(camada="ra", regiao=["3ª Rio Comprido"]),
             None,
             None,
