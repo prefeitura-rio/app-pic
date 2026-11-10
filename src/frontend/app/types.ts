@@ -1097,26 +1097,6 @@ export interface MonitoringMeta {
 	has_data: boolean;
 }
 
-export interface MonitoringGroupPoint {
-	week_start: string;
-	snapshot_date: string | null;
-	total: number;
-	ativo: number;
-	inativo: number;
-}
-
-export interface MonitoringMotivo {
-	motivo: string;
-	total: number;
-}
-
-export interface MonitoringGroupResponse {
-	can_view_monitoring: boolean;
-	meta: MonitoringMeta;
-	series: MonitoringGroupPoint[];
-	motivos: MonitoringMotivo[];
-}
-
 /** Métrica do protocolo dentro de um status (Ativo/Inativo) numa semana. */
 export interface MonitoringStatusSlice {
 	total: number;
@@ -1153,28 +1133,6 @@ export interface MonitoringSeriesResponse {
 	protocolo: MonitoringProtocolOption | null;
 	meta: MonitoringMeta;
 	series: MonitoringProtocolPoint[];
-}
-
-/** Uma linha da tabela "todos os protocolos" (valores por protocolo). */
-export interface MonitoringProtocolSummary {
-	protocolo_id: string;
-	protocolo_descricao: string | null;
-	protocolo_secretaria: string | null;
-	total: number;
-	nao_aplica: number;
-	regular: number;
-	atencao: number;
-	regular_total: number;
-	regular_pct: number | null;
-	irregular: number;
-	irregular_pct: number | null;
-}
-
-export interface MonitoringProtocolsResponse {
-	can_view_monitoring: boolean;
-	week_start: string | null;
-	snapshot_date: string | null;
-	protocols: MonitoringProtocolSummary[];
 }
 
 /**
