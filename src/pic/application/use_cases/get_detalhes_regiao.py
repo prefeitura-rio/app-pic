@@ -61,6 +61,8 @@ class GetDetalhesRegiaoUseCase:
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
         protocolo_id: str | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> RegiaoDetalhes:
         if camada not in _CAMADAS_SUPORTADAS:
             raise ValueError(
@@ -70,9 +72,7 @@ class GetDetalhesRegiaoUseCase:
         normalize = _NORMALIZERS[camada]
         key = normalize(regiao)
         if not key:
-            raise ValueError(
-                f"Região inválida para a camada {camada!r}: {regiao!r}"
-            )
+            raise ValueError(f"Região inválida para a camada {camada!r}: {regiao!r}")
 
         # 1) Métrica geral da região: reusa os agregados do consolidado
         # (mesma query/cache do mapa sem protocolo) e localiza o valor RAW
@@ -89,6 +89,8 @@ class GetDetalhesRegiaoUseCase:
                     status=status,
                     cohortes=cohortes,
                     protocolo_id=None,
+                    grupo=grupo,
+                    has_bolsa_familia=has_bolsa_familia,
                 ),
                 self._repository.fetch_protocolo_geral(
                     protocolo_id=protocolo_id,
@@ -97,6 +99,8 @@ class GetDetalhesRegiaoUseCase:
                     bypass_cache=bypass_cache,
                     status=status,
                     cohortes=cohortes,
+                    grupo=grupo,
+                    has_bolsa_familia=has_bolsa_familia,
                 ),
             )
         else:
@@ -108,6 +112,8 @@ class GetDetalhesRegiaoUseCase:
                 status=status,
                 cohortes=cohortes,
                 protocolo_id=None,
+                grupo=grupo,
+                has_bolsa_familia=has_bolsa_familia,
             )
             protocolo_geral = None
 
@@ -137,6 +143,8 @@ class GetDetalhesRegiaoUseCase:
                 bypass_cache=bypass_cache,
                 status=status,
                 cohortes=cohortes,
+                grupo=grupo,
+                has_bolsa_familia=has_bolsa_familia,
             )
         protocolos.sort(
             key=lambda p: (p.protocolo_secretaria or "", p.protocolo_descricao or "")

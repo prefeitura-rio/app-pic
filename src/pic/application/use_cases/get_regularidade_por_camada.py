@@ -113,6 +113,8 @@ class GetRegularidadePorCamadaUseCase:
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
         protocolo_id: str | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> RegularidadePorCamadaOutput:
         if camada not in _CAMADAS_SUPORTADAS:
             raise ValueError(
@@ -132,6 +134,8 @@ class GetRegularidadePorCamadaUseCase:
                 status=status,
                 cohortes=cohortes,
                 protocolo_id=protocolo_id,
+                grupo=grupo,
+                has_bolsa_familia=has_bolsa_familia,
             ),
             _fetch_geometria(camada),
         )
@@ -178,9 +182,7 @@ class GetRegularidadePorCamadaUseCase:
             )
 
         # Agregados sem geometria correspondente na camada
-        nomes_geometria = {
-            normalize(f["properties"][nome_field]) for f in geometrias
-        }
+        nomes_geometria = {normalize(f["properties"][nome_field]) for f in geometrias}
         agregados_sem_geometria = sorted(
             agg.regiao
             for agg in aggregates
