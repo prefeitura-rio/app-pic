@@ -84,6 +84,8 @@ class TestGetDetalhesRegiao:
             user_id="cpf",
             status=["Ativo"],
             cohortes=["2025-03-01"],
+            grupo=["Criança"],
+            has_bolsa_familia=True,
         )
 
         assert result.camada == "bairro"
@@ -103,6 +105,8 @@ class TestGetDetalhesRegiao:
             bypass_cache=False,
             status=["Ativo"],
             cohortes=["2025-03-01"],
+            grupo=["Criança"],
+            has_bolsa_familia=True,
         )
         # Protocolos ordenados por secretaria/descrição
         assert [p.protocolo_id for p in result.protocolos] == [
@@ -124,6 +128,8 @@ class TestGetDetalhesRegiao:
             bypass_cache=False,
             status=None,
             cohortes=None,
+            grupo=None,
+            has_bolsa_familia=None,
         )
 
     @pytest.mark.asyncio
@@ -180,6 +186,8 @@ class TestGetDetalhesRegiao:
             user_id="cpf",
             status=["Ativo"],
             protocolo_id="smas_acesso_alimentacao",
+            grupo=["Gestante"],
+            has_bolsa_familia=False,
         )
         repo.fetch_protocolo_geral.assert_awaited_once_with(
             protocolo_id="smas_acesso_alimentacao",
@@ -188,6 +196,8 @@ class TestGetDetalhesRegiao:
             bypass_cache=False,
             status=["Ativo"],
             cohortes=None,
+            grupo=["Gestante"],
+            has_bolsa_familia=False,
         )
         assert result.protocolo_geral is not None
         assert result.protocolo_geral.taxa_regularidade == 99.6
