@@ -1342,8 +1342,8 @@ class TestSection8Disparos:
         )
         assert result.disparos.taxa_entrega == round(50 / 60 * 100, 1)
         assert result.disparos.taxa_falha == round(2 / 60 * 100, 1)
-        # 30d quantities stay untouched for the UI descriptions
-        assert result.disparos.entregues_30d == 90
+        # 240d quantities stay untouched for the UI descriptions
+        assert result.disparos.entregues_240d == 90
 
     def test_jornada_status_segments_attached(self):
         result = self._compute(
@@ -1541,10 +1541,10 @@ class TestRepositoryDisparos:
 
         d = result.disparos
         assert d is not None
-        # 30d totals
-        assert d.total_30d == 120
-        assert d.entregues_30d == 105
-        assert d.falhas_30d == 15
+        # 240d totals
+        assert d.total_240d == 120
+        assert d.entregues_240d == 105
+        assert d.falhas_240d == 15
         # distinct counts from the Content-Range header
         assert d.alcancados == DISPAROS_ALCANCADOS
         assert d.engajados == DISPAROS_ENGAJADOS
@@ -1582,6 +1582,11 @@ class TestRepositoryDisparos:
 
         reqs = [r for r in fake.requests if r.url.path.endswith(_TABLE_DISPAROS)]
         assert len(reqs) == 6
+        # all six queries are scoped to the 240-day window, with only
+        # in-window disparos (janela_dias=eq.240 + indicator=is.true)
+        for r in reqs:
+            assert r.url.params.get("janela_dias") == "eq.240"
+            assert r.url.params.get("disparo_na_janela_indicador") == "is.true"
         selects = [r.url.params.get("select", "") for r in reqs]
         assert any("disparo_total_quantidade.sum()" in s for s in selects)
         assert any("disparo_status,total:count()" in s for s in selects)

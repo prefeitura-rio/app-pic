@@ -226,9 +226,9 @@ def test_disparos_dashboard_models():
     dd = DisparosDashboard(
         alcancados=60,
         cobertura_percentual=42.9,
-        total_30d=120,
-        entregues_30d=105,
-        falhas_30d=15,
+        total_240d=120,
+        entregues_240d=105,
+        falhas_240d=15,
         taxa_entrega=87.5,
         taxa_falha=12.5,
         engajados=35,
@@ -238,8 +238,8 @@ def test_disparos_dashboard_models():
             DisparoJornadaResumo(
                 jornada="Mutirão de Vacinação",
                 participantes=50,
-                entregues_30d=48,
-                falhas_30d=2,
+                entregues_240d=48,
+                falhas_240d=2,
                 taxa_falha=4.0,
                 status_distribuicao=[
                     DisparoStatusDistribuicao(status="ENTREGUE", total=30),
@@ -251,7 +251,7 @@ def test_disparos_dashboard_models():
     )
     assert dd.alcancados == 60
     assert dd.cobertura_percentual == 42.9
-    assert dd.total_30d == 120
+    assert dd.total_240d == 120
     assert dd.status_distribuicao[0].status == "ENTREGUE"
     assert dd.por_jornada[0].jornada == "Mutirão de Vacinação"
     assert dd.por_jornada[0].taxa_falha == 4.0
