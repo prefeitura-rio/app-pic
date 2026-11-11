@@ -1,10 +1,12 @@
 """PostgREST implementation of the disparos read repository.
 
 Reads `endpoint_whatsapp_disparo` (BigQuery table exposed by the data-proxy,
-one row per participant x campaign) filtered by `id_membro_familia`. The
-request carries the end user's JWT (`with_user_token`) so the data-proxy
-applies RLS; the read is best-effort — a PostgREST/transport failure is
-logged and degrades to `None` so the participant detail stays up.
+one row per participant x campaign x window) filtered by `id_membro_familia`,
+`janela_dias = 240` (janela canônica do produto — a tabela grava 5 janelas:
+30/60/120/180/240) e `disparo_na_janela_indicador = true`. The request
+carries the end user's JWT (`with_user_token`) so the data-proxy applies
+RLS; the read is best-effort — a PostgREST/transport failure is logged and
+degrades to `None` so the participant detail stays up.
 
 Rows where every `disparo_*` column is null mean no disparo happened for
 that campaign and are dropped before mapping, so they never reach the API
@@ -15,7 +17,11 @@ from datetime import datetime
 from typing import Any
 
 from src.pic.application.ports.disparos_repository import DisparosRepository
-from src.pic.domain.models.disparo import Disparo, DisparoMetadados
+from src.pic.domain.models.disparo import (
+    DISPARO_JANELA_DIAS,
+    Disparo,
+    DisparoMetadados,
+)
 from src.pic.infrastructure.postgrest_client.client import PostgrestClient
 from src.pic.infrastructure.postgrest_client.errors import PostgrestError
 from src.pic.infrastructure.postgrest_client.pagination import fetch_pages
@@ -53,9 +59,9 @@ def _row_to_disparo(row: dict[str, Any]) -> Disparo:
         return row.get(column)
 
     metadados_values = {
-        "total_ultimos_30d": _get("disparo_total_quantidade"),
-        "entregues_30d": _get("disparo_entregues_quantidade"),
-        "falhas_30d": _get("disparo_falhas_quantidade"),
+        "total_ultimos_240d": _get("disparo_total_quantidade"),
+        "entregues_240d": _get("disparo_entregues_quantidade"),
+        "falhas_240d": _get("disparo_falhas_quantidade"),
     }
     has_metadados = any(value is not None for value in metadados_values.values())
 
@@ -100,6 +106,8 @@ class PostgrestDisparosRepository(DisparosRepository):
                         .filter(
                             "id_membro_familia", "eq", str(id_membro_familia)
                         )
+                        .eq("janela_dias", DISPARO_JANELA_DIAS)
+                        .filter("disparo_na_janela_indicador", "is", "true")
                     ),
                     limit=None,
                     with_count=False,

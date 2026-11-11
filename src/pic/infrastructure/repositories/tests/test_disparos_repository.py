@@ -1,10 +1,11 @@
 """Tests for the PostgREST disparos repository (`endpoint_whatsapp_disparo`).
 
-Covers the query shape (table, select list, `id_membro_familia=eq`, user
-token forwarding), the row -> `Disparo` mapping (nulls, metadados omission),
-the discard of rows with every `disparo_*` column null (no disparo
-happened), newest-first ordering, and the graceful degradation (`None`) on
-API and transport errors.
+Covers the query shape (table, select list, `id_membro_familia=eq`,
+`janela_dias=eq.240`, `disparo_na_janela_indicador=is.true`, user token
+forwarding), the row -> `Disparo` mapping (nulls, metadados omission), the
+discard of rows with every `disparo_*` column null (no disparo happened),
+the exclusion of other windows/out-of-window rows, newest-first ordering,
+and the graceful degradation (`None`) on API and transport errors.
 """
 
 import httpx
@@ -33,28 +34,32 @@ TABLE = "endpoint_whatsapp_disparo"
 def disparo_row(
     *,
     id_membro_familia: str = "00325420412",
+    janela_dias: int = 240,
+    indicador_na_janela: bool = True,
     data: str = "2026-07-24",
     datahora: str = "2026-07-25T13:58:52",
     campanha: str = "Mutirão de Vacinação",
     secretaria: str = "SMS",
     status: str = "ENTREGUE",
     indicador_falha: bool = False,
-    total_30d: int = 3,
-    entregues_30d: int = 3,
-    falhas_30d: int = 0,
+    total_240d: int = 3,
+    entregues_240d: int = 3,
+    falhas_240d: int = 0,
     **overrides,
 ) -> dict:
     row = {
         "id_membro_familia": id_membro_familia,
+        "janela_dias": janela_dias,
+        "disparo_na_janela_indicador": indicador_na_janela,
         "disparo_data": data,
         "disparo_datahora": datahora,
         "disparo_jornada": campanha,
         "disparo_secretaria_sigla": secretaria,
         "disparo_status": status,
         "disparo_falha_indicador": indicador_falha,
-        "disparo_total_quantidade": total_30d,
-        "disparo_entregues_quantidade": entregues_30d,
-        "disparo_falhas_quantidade": falhas_30d,
+        "disparo_total_quantidade": total_240d,
+        "disparo_entregues_quantidade": entregues_240d,
+        "disparo_falhas_quantidade": falhas_240d,
     }
     row.update(overrides)
     return row
@@ -63,8 +68,9 @@ def disparo_row(
 class FakeDataProxy:
     """Fakes the data-proxy PostgREST behind one MockTransport.
 
-    Honors simple `eq.` column filters over the canned rows; enough for the
-    disparos repository (single table, one filter).
+    Honors simple `eq.` and `is.` column filters over the canned rows; enough
+    for the disparos repository (single table, one table filter plus the
+    fixed window/indicator filters).
     """
 
     def __init__(self, rows: list[dict]):
@@ -82,10 +88,13 @@ class FakeDataProxy:
             if not isinstance(value, str) or "." not in value:
                 continue
             op, _, operand = value.partition(".")
-            if op != "eq":
-                continue
-            if str(row.get(key)) != operand:
-                return False
+            if op == "eq":
+                if str(row.get(key)) != operand:
+                    return False
+            elif op == "is":
+                # PostgREST `is.true`/`is.false`; `is.true` exclui nulos.
+                if row.get(key) is not (operand == "true"):
+                    return False
         return True
 
     async def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -151,6 +160,8 @@ async def test_get_disparos_builds_query_and_maps_rows_newest_first(make_repo):
     assert request.url.path == f"/{TABLE}"
     params = request.url.params
     assert params["id_membro_familia"] == "eq.00325420412"
+    assert params["janela_dias"] == "eq.240"
+    assert params["disparo_na_janela_indicador"] == "is.true"
     select = params["select"]
     assert "disparo_jornada" in select
     assert "disparo_secretaria_sigla" in select
@@ -174,7 +185,7 @@ async def test_get_disparos_builds_query_and_maps_rows_newest_first(make_repo):
     assert first.status == "ENTREGUE"
     assert first.indicador_falha is False
     assert first.metadados == DisparoMetadados(
-        total_ultimos_30d=3, entregues_30d=3, falhas_30d=0
+        total_ultimos_240d=3, entregues_240d=3, falhas_240d=0
     )
 
 
@@ -189,9 +200,9 @@ async def test_get_disparos_discards_rows_with_all_disparo_fields_null(make_repo
                 secretaria=None,
                 status=None,
                 indicador_falha=None,
-                total_30d=None,
-                entregues_30d=None,
-                falhas_30d=None,
+                total_240d=None,
+                entregues_240d=None,
+                falhas_240d=None,
             )
         ]
     )
@@ -212,9 +223,9 @@ async def test_get_disparos_keeps_valid_rows_and_skips_null_rows(make_repo):
                 secretaria=None,
                 status=None,
                 indicador_falha=None,
-                total_30d=None,
-                entregues_30d=None,
-                falhas_30d=None,
+                total_240d=None,
+                entregues_240d=None,
+                falhas_240d=None,
             ),
             disparo_row(campanha="Mutirão de Vacinação"),
         ]
@@ -227,13 +238,42 @@ async def test_get_disparos_keeps_valid_rows_and_skips_null_rows(make_repo):
 
 
 @pytest.mark.asyncio
+async def test_get_disparos_only_reads_the_240_day_window(make_repo):
+    repo, _ = make_repo(
+        [
+            disparo_row(
+                janela_dias=30,
+                campanha="Janela de 30 dias",
+                datahora="2026-09-10T10:16:58",
+            ),
+            disparo_row(
+                janela_dias=240,
+                indicador_na_janela=False,
+                campanha="Fora da janela de 240",
+                datahora="2026-08-20T10:00:00",
+            ),
+            disparo_row(
+                janela_dias=240,
+                indicador_na_janela=True,
+                campanha="Dentro da janela de 240",
+                datahora="2026-09-10T10:16:58",
+            ),
+        ]
+    )
+
+    disparos = await repo.get_disparos("00325420412")
+
+    assert [d.campanha for d in disparos] == ["Dentro da janela de 240"]
+
+
+@pytest.mark.asyncio
 async def test_get_disparos_partial_metadados_are_kept(make_repo):
     repo, _ = make_repo(
         [
             disparo_row(
-                total_30d=5,
-                entregues_30d=None,
-                falhas_30d=1,
+                total_240d=5,
+                entregues_240d=None,
+                falhas_240d=1,
             )
         ]
     )
@@ -241,7 +281,7 @@ async def test_get_disparos_partial_metadados_are_kept(make_repo):
     disparos = await repo.get_disparos("00325420412")
 
     assert disparos[0].metadados == DisparoMetadados(
-        total_ultimos_30d=5, entregues_30d=None, falhas_30d=1
+        total_ultimos_240d=5, entregues_240d=None, falhas_240d=1
     )
 
 

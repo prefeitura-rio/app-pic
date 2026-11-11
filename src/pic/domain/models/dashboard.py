@@ -74,20 +74,20 @@ class DisparoStatusDistribuicao(BaseModel):
 class DisparoJornadaResumo(BaseModel):
     jornada: str | None = None
     participantes: int = 0
-    entregues_30d: int = 0
-    falhas_30d: int = 0
+    entregues_240d: int = 0
+    falhas_240d: int = 0
     taxa_falha: float = 0.0
     status_distribuicao: list[DisparoStatusDistribuicao] = []
 
 
 class DisparosDashboard(BaseModel):
-    """Métricas agregadas de disparos de WhatsApp (snapshot últimos 30 dias)."""
+    """Métricas agregadas de disparos de WhatsApp (snapshot últimos 240 dias)."""
 
     alcancados: int = 0
     cobertura_percentual: float = 0.0
-    total_30d: int = 0
-    entregues_30d: int = 0
-    falhas_30d: int = 0
+    total_240d: int = 0
+    entregues_240d: int = 0
+    falhas_240d: int = 0
     taxa_entrega: float = 0.0
     taxa_falha: float = 0.0
     engajados: int = 0

@@ -144,7 +144,7 @@ def sample_detail() -> Participante:
                 status="ENTREGUE",
                 indicador_falha=False,
                 metadados=DisparoMetadados(
-                    total_ultimos_30d=3, entregues_30d=3, falhas_30d=0
+                    total_ultimos_240d=3, entregues_240d=3, falhas_240d=0
                 ),
             )
         ],
@@ -535,7 +535,7 @@ async def test_detail_returns_full_envelope(client, override_use_cases):
         "metadados",
     }
     assert disparos[0]["status"] == "ENTREGUE"
-    assert disparos[0]["metadados"]["total_ultimos_30d"] == 3
+    assert disparos[0]["metadados"]["total_ultimos_240d"] == 3
 
     # Busca ativa serializada dentro do objeto do participante.
     busca_ativa = data["busca_ativa"]

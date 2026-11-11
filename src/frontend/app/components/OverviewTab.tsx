@@ -1045,7 +1045,7 @@ const OverviewTabComponent = ({
 			</div>
 
 			{/* ===================================================================== */}
-			{/* SEÇÃO 8: DISPAROS WHATSAPP (snapshot 30d) */}
+			{/* SEÇÃO 8: DISPAROS WHATSAPP (snapshot 240d) */}
 			{/* ===================================================================== */}
 			<DashboardWhatsAppDisparosSection
 				disparos={data.disparos ?? null}

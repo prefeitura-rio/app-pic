@@ -79,7 +79,7 @@ def _calculate_disparos_metrics(
 
     Delivery/failure rates come from the status distribution (read implies
     delivery): ``taxa_entrega`` = ENTREGUE + RESPONDIDO + LIDO over all rows
-    with a status, ``taxa_falha`` = FALHOU over the same base. The 30d
+    with a status, ``taxa_falha`` = FALHOU over the same base. The 240d
     quantities stay available for the UI descriptions.
 
     Returns ``None`` when the fetch degraded or the scope has no disparos.
@@ -121,8 +121,8 @@ def _calculate_disparos_metrics(
         DisparoJornadaResumo(
             jornada=row.get("jornada"),
             participantes=int(row.get("participantes") or 0),
-            entregues_30d=int(row.get("entregues") or 0),
-            falhas_30d=int(row.get("falhas") or 0),
+            entregues_240d=int(row.get("entregues") or 0),
+            falhas_240d=int(row.get("falhas") or 0),
             taxa_falha=_percentual(
                 int(row.get("falhas") or 0), int(row.get("participantes") or 0)
             ),
@@ -135,9 +135,9 @@ def _calculate_disparos_metrics(
     return DisparosDashboard(
         alcancados=alcancados,
         cobertura_percentual=_percentual(alcancados, total_participantes),
-        total_30d=total,
-        entregues_30d=entregues,
-        falhas_30d=falhas,
+        total_240d=total,
+        entregues_240d=entregues,
+        falhas_240d=falhas,
         taxa_entrega=_percentual(entregues_efetivos, status_total),
         taxa_falha=_percentual(falhas_status, status_total),
         engajados=engajados,
