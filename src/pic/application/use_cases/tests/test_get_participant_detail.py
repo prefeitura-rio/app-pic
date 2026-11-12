@@ -112,7 +112,7 @@ async def test_execute_attaches_disparos_to_participant():
             status="ENTREGUE",
             indicador_falha=False,
             metadados=DisparoMetadados(
-                total_ultimos_30d=3, entregues_30d=3, falhas_30d=0
+                total_ultimos_240d=3, entregues_240d=3, falhas_240d=0
             ),
         )
     ]

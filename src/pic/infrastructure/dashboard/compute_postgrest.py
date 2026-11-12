@@ -79,8 +79,10 @@ def _calculate_disparos_metrics(
 
     Delivery/failure rates come from the status distribution (read implies
     delivery): ``taxa_entrega`` = ENTREGUE + RESPONDIDO + LIDO over all rows
-    with a status, ``taxa_falha`` = FALHOU over the same base. The 30d
-    quantities stay available for the UI descriptions.
+    with a status, ``taxa_falha`` = FALHOU over the same base. The status-based
+    counts (``entregues_status``/``falhas_status``/``sem_confirmacao``) feed
+    the KPI descriptions so numerator and percentage always agree; the 240d
+    quantities stay available for the participant detail card.
 
     Returns ``None`` when the fetch degraded or the scope has no disparos.
     """
@@ -121,8 +123,8 @@ def _calculate_disparos_metrics(
         DisparoJornadaResumo(
             jornada=row.get("jornada"),
             participantes=int(row.get("participantes") or 0),
-            entregues_30d=int(row.get("entregues") or 0),
-            falhas_30d=int(row.get("falhas") or 0),
+            entregues_240d=int(row.get("entregues") or 0),
+            falhas_240d=int(row.get("falhas") or 0),
             taxa_falha=_percentual(
                 int(row.get("falhas") or 0), int(row.get("participantes") or 0)
             ),
@@ -135,13 +137,17 @@ def _calculate_disparos_metrics(
     return DisparosDashboard(
         alcancados=alcancados,
         cobertura_percentual=_percentual(alcancados, total_participantes),
-        total_30d=total,
-        entregues_30d=entregues,
-        falhas_30d=falhas,
+        total_240d=total,
+        entregues_240d=entregues,
+        falhas_240d=falhas,
         taxa_entrega=_percentual(entregues_efetivos, status_total),
         taxa_falha=_percentual(falhas_status, status_total),
         engajados=engajados,
         taxa_engajamento=_percentual(engajados, alcancados),
+        entregues_status=entregues_efetivos,
+        falhas_status=falhas_status,
+        sem_confirmacao=status_total - entregues_efetivos - falhas_status,
+        status_total=status_total,
         status_distribuicao=status_distribuicao,
         por_jornada=por_jornada,
     )
@@ -161,9 +167,7 @@ def _calculate_busca_ativa_metrics(
 
     totals = busca_ativa.get("totais") or {}
 
-    evolucao: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"smas": 0, "sms": 0}
-    )
+    evolucao: dict[str, dict[str, int]] = defaultdict(lambda: {"smas": 0, "sms": 0})
     for row in busca_ativa.get("mensal") or []:
         fonte = (row.get("fonte") or "").upper()
         mes = row.get("mes")
@@ -598,15 +602,21 @@ def _calculate_dashboard_metrics(
     # =========================================================================
     t1 = perf_time.perf_counter()
     disparos_dashboard = _calculate_disparos_metrics(disparos, total_participantes)
-    logger.info(f"⚡ [postgrest_v2] Seção 8 (disparos): {perf_time.perf_counter() - t1:.3f}s")
+    logger.info(
+        f"⚡ [postgrest_v2] Seção 8 (disparos): {perf_time.perf_counter() - t1:.3f}s"
+    )
 
     # =========================================================================
     # SECTION 9 — Busca Ativa (agregados no PostgREST)
     # =========================================================================
     t1 = perf_time.perf_counter()
     busca_ativa_dashboard = _calculate_busca_ativa_metrics(busca_ativa)
-    logger.info(f"⚡ [postgrest_v2] Seção 9 (busca ativa): {perf_time.perf_counter() - t1:.3f}s")
-    logger.info(f"⚡ [postgrest_v2] total compute: {perf_time.perf_counter() - t0:.3f}s")
+    logger.info(
+        f"⚡ [postgrest_v2] Seção 9 (busca ativa): {perf_time.perf_counter() - t1:.3f}s"
+    )
+    logger.info(
+        f"⚡ [postgrest_v2] total compute: {perf_time.perf_counter() - t0:.3f}s"
+    )
 
     return Dashboard(
         total_participantes=total_participantes,

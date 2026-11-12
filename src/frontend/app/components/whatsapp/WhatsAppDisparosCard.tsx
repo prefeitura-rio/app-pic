@@ -113,19 +113,19 @@ export function WhatsAppDisparosCard({ disparo }: { disparo: Disparo }) {
 				<div className="grid grid-cols-3 gap-2 text-center text-xs pt-2 border-t border-border/50">
 					<div>
 						<p className="text-lg font-bold text-foreground">
-							{metadados.total_ultimos_30d ?? "-"}
+							{metadados.total_ultimos_240d ?? "-"}
 						</p>
-						<p className="text-muted-foreground">Total (30d)</p>
+						<p className="text-muted-foreground">Total (240d)</p>
 					</div>
 					<div>
 						<p className="text-lg font-bold text-green-600 dark:text-green-400">
-							{metadados.entregues_30d ?? "-"}
+							{metadados.entregues_240d ?? "-"}
 						</p>
 						<p className="text-muted-foreground">Entregues</p>
 					</div>
 					<div>
 						<p className="text-lg font-bold text-destructive">
-							{metadados.falhas_30d ?? "-"}
+							{metadados.falhas_240d ?? "-"}
 						</p>
 						<p className="text-muted-foreground">Falhas</p>
 					</div>

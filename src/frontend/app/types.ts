@@ -43,11 +43,11 @@ export interface ProtocoloListagemItem {
 	protocolo_motivo?: ProtocoloMotivo; // array de strings com os motivos de irregularidade, caso existam. Ex: ["Falta de documentação", "Pendência de atualização"]
 }
 
-/** Métricas de 30 dias de uma campanha de disparos de WhatsApp */
+/** Métricas de 240 dias de uma campanha de disparos de WhatsApp */
 export interface DisparoMetadados {
-	total_ultimos_30d?: number | null;
-	entregues_30d?: number | null;
-	falhas_30d?: number | null;
+	total_ultimos_240d?: number | null;
+	entregues_240d?: number | null;
+	falhas_240d?: number | null;
 }
 
 /** Um disparo (campanha) de WhatsApp do participante */
@@ -117,23 +117,27 @@ export interface DisparoStatusDistribuicao {
 export interface DisparoJornadaResumo {
 	jornada?: string | null;
 	participantes?: number | null;
-	entregues_30d?: number | null;
-	falhas_30d?: number | null;
+	entregues_240d?: number | null;
+	falhas_240d?: number | null;
 	taxa_falha?: number | null;
 	status_distribuicao?: DisparoStatusDistribuicao[] | null;
 }
 
-/** Métricas agregadas de disparos de WhatsApp (snapshot 30d) do dashboard */
+/** Métricas agregadas de disparos de WhatsApp (snapshot 240d) do dashboard */
 export interface DisparosDashboard {
 	alcancados: number;
 	cobertura_percentual: number | null;
-	total_30d: number;
-	entregues_30d: number;
-	falhas_30d: number;
+	total_240d: number;
+	entregues_240d: number;
+	falhas_240d: number;
 	taxa_entrega: number;
 	taxa_falha: number;
 	engajados: number;
 	taxa_engajamento: number;
+	entregues_status: number;
+	falhas_status: number;
+	sem_confirmacao: number;
+	status_total: number;
 	status_distribuicao: DisparoStatusDistribuicao[];
 	por_jornada: DisparoJornadaResumo[];
 }
@@ -582,7 +586,7 @@ export interface Dashboard {
 	taxa_resolucao_mensal: TaxaResolucaoMensalPoint[];
 
 	// =========================================================================
-	// SEÇÃO 8: DISPAROS WHATSAPP (snapshot últimos 30 dias)
+	// SEÇÃO 8: DISPAROS WHATSAPP (snapshot últimos 240 dias)
 	// =========================================================================
 	disparos?: DisparosDashboard | null;
 

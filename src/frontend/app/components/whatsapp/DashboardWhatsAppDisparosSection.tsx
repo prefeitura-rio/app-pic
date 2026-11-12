@@ -28,7 +28,7 @@ import type { DisparosDashboard } from "@/app/types";
 /**
  * Seção "Disparos WhatsApp" do dashboard (visão geral): KPIs, distribuição de
  * status e ranking de campanhas com segmentos por status, a partir de
- * `endpoint_whatsapp_disparo` (agregados no backend, snapshot dos últimos 30
+ * `endpoint_whatsapp_disparo` (agregados no backend, snapshot dos últimos 240
  * dias).
  *
  * A "Taxa de Entrega" é efetiva: conta ENTREGUE + RESPONDIDO + LIDO sobre o
@@ -94,7 +94,7 @@ export function DashboardWhatsAppDisparosSection({
 	loading?: boolean;
 }) {
 	if (!disparos) return null;
-	if ((disparos.alcancados ?? 0) === 0 && (disparos.total_30d ?? 0) === 0) {
+	if ((disparos.alcancados ?? 0) === 0 && (disparos.total_240d ?? 0) === 0) {
 		return null;
 	}
 
@@ -128,7 +128,7 @@ export function DashboardWhatsAppDisparosSection({
 					Disparos WhatsApp
 				</h2>
 				<p className="text-sm text-muted-foreground">
-					Comunicação com participantes nos últimos 30 dias
+					Comunicação com participantes nos últimos 240 dias
 				</p>
 			</div>
 
@@ -136,7 +136,7 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Participantes Alcançados"
 					value={disparos.alcancados ?? 0}
-					description="participantes com disparo em 30d"
+					description="participantes com disparo em 240d"
 					icon={<Users className="h-6 w-6" />}
 					variant="default"
 					isLoading={loading}
@@ -144,7 +144,7 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Cobertura"
 					value={`${(disparos.cobertura_percentual ?? 0).toFixed(1)}%`}
-					description="dos participantes do escopo"
+					description="dos participantes do programa"
 					icon={<Target className="h-6 w-6" />}
 					variant="success"
 					isLoading={loading}
@@ -152,7 +152,7 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Taxa de Entrega"
 					value={`${(disparos.taxa_entrega ?? 0).toFixed(1)}%`}
-					description={`${(disparos.entregues_30d ?? 0).toLocaleString("pt-BR")} entregas confirmadas (30d)`}
+					description={`${(disparos.entregues_status ?? 0).toLocaleString("pt-BR")} entregas confirmadas (240d)`}
 					icon={<CheckCircle2 className="h-6 w-6" />}
 					variant="success"
 					isLoading={loading}
@@ -160,12 +160,23 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Taxa de Falha"
 					value={`${(disparos.taxa_falha ?? 0).toFixed(1)}%`}
-					description={`${(disparos.falhas_30d ?? 0).toLocaleString("pt-BR")} disparos falharam (30d)`}
+					description={`${(disparos.falhas_status ?? 0).toLocaleString("pt-BR")} disparos falharam (240d)`}
 					icon={<AlertTriangle className="h-6 w-6" />}
 					variant="destructive"
 					isLoading={loading}
 				/>
 			</div>
+
+			{(disparos.sem_confirmacao ?? 0) > 0 && (
+				<p className="text-xs text-muted-foreground -mt-2">
+					{(disparos.sem_confirmacao ?? 0).toLocaleString("pt-BR")} disparo
+					{(disparos.sem_confirmacao ?? 0) === 1 ? "" : "s"} sem confirmação (
+					{(((disparos.sem_confirmacao ?? 0) / (disparos.status_total || 1)) * 100)
+						.toFixed(1)
+						.replace(".", ",")}
+					%) — Enviado ou Sem retorno, ainda fora das taxas de entrega e falha.
+				</p>
+			)}
 
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				<Card className="relative">
