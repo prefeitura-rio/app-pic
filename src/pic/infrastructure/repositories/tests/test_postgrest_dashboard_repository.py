@@ -323,13 +323,36 @@ TEMPO_PROTOCOLO_ROWS = [
 # Mock de dados AGREGADOS de busca ativa (endpoint_participante_visao_geral_busca_ativa)
 BUSCA_ATIVA_TOTALS = [{"buscas": 40}]
 BUSCA_ATIVA_MENSAL = [
-    {"data_referencia_mensal": "2025-01-01", "fonte": "SMAS", "buscas": 10, "participantes": 8},
-    {"data_referencia_mensal": "2025-01-01", "fonte": "SMS", "buscas": 5, "participantes": 5},
-    {"data_referencia_mensal": "2025-02-01", "fonte": "SMAS", "buscas": 12, "participantes": 9},
+    {
+        "data_referencia_mensal": "2025-01-01",
+        "fonte": "SMAS",
+        "buscas": 10,
+        "participantes": 8,
+    },
+    {
+        "data_referencia_mensal": "2025-01-01",
+        "fonte": "SMS",
+        "buscas": 5,
+        "participantes": 5,
+    },
+    {
+        "data_referencia_mensal": "2025-02-01",
+        "fonte": "SMAS",
+        "buscas": 12,
+        "participantes": 9,
+    },
 ]
 BUSCA_ATIVA_DESFECHO = [
-    {"data_referencia_mensal": "2025-01-01", "smas_desfecho": "localizada", "buscas": 8},
-    {"data_referencia_mensal": "2025-01-01", "smas_desfecho": "nao_localizada", "buscas": 2},
+    {
+        "data_referencia_mensal": "2025-01-01",
+        "smas_desfecho": "localizada",
+        "buscas": 8,
+    },
+    {
+        "data_referencia_mensal": "2025-01-01",
+        "smas_desfecho": "nao_localizada",
+        "buscas": 2,
+    },
 ]
 BUSCA_ATIVA_TIPO = [
     {"smas_tipo": "telefone", "buscas": 15},
@@ -1342,7 +1365,12 @@ class TestSection8Disparos:
         )
         assert result.disparos.taxa_entrega == round(50 / 60 * 100, 1)
         assert result.disparos.taxa_falha == round(2 / 60 * 100, 1)
-        # 240d quantities stay untouched for the UI descriptions
+        # Status-based counts feed the KPI descriptions (same base as the rates)
+        assert result.disparos.entregues_status == 50
+        assert result.disparos.falhas_status == 2
+        assert result.disparos.sem_confirmacao == 8
+        assert result.disparos.status_total == 60
+        # 240d quantities stay untouched for the participant detail card
         assert result.disparos.entregues_240d == 90
 
     def test_jornada_status_segments_attached(self):
@@ -1555,6 +1583,11 @@ class TestRepositoryDisparos:
         assert d.taxa_entrega == round(75 / 83 * 100, 1)
         # FALHOU 8 / 83 statuses
         assert d.taxa_falha == round(8 / 83 * 100, 1)
+        # status-based counts match the rate base (KPI descriptions)
+        assert d.entregues_status == 75
+        assert d.falhas_status == 8
+        assert d.sem_confirmacao == 0
+        assert d.status_total == 83
         assert d.taxa_engajamento == round(35 / 60 * 100, 1)
         # status distribution
         assert {s.status: s.total for s in d.status_distribuicao} == {
@@ -1570,9 +1603,11 @@ class TestRepositoryDisparos:
         ]
         assert d.por_jornada[0].taxa_falha == round(2 / 50 * 100, 1)
         # per-jornada status segments
-        assert {
-            s.status: s.total for s in d.por_jornada[0].status_distribuicao
-        } == {"ENTREGUE": 30, "RESPONDIDO": 18, "FALHOU": 2}
+        assert {s.status: s.total for s in d.por_jornada[0].status_distribuicao} == {
+            "ENTREGUE": 30,
+            "RESPONDIDO": 18,
+            "FALHOU": 2,
+        }
         assert len(fake.requests) == 19
 
     @pytest.mark.asyncio
@@ -1693,9 +1728,7 @@ class TestRepositoryBuscaAtiva:
         await repo.get_dashboard_metrics(filters={})
 
         cutoff = _busca_ativa_cutoff()
-        reqs = [
-            r for r in fake.requests if r.url.path.endswith(_TABLE_BUSCA_ATIVA)
-        ]
+        reqs = [r for r in fake.requests if r.url.path.endswith(_TABLE_BUSCA_ATIVA)]
         assert len(reqs) == 5
         for request in reqs:
             assert request.url.params.get("data_referencia_mensal") == f"gte.{cutoff}"

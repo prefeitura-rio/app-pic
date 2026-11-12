@@ -92,6 +92,10 @@ class DisparosDashboard(BaseModel):
     taxa_falha: float = 0.0
     engajados: int = 0
     taxa_engajamento: float = 0.0
+    entregues_status: int = 0
+    falhas_status: int = 0
+    sem_confirmacao: int = 0
+    status_total: int = 0
     status_distribuicao: list[DisparoStatusDistribuicao] = []
     por_jornada: list[DisparoJornadaResumo] = []
 

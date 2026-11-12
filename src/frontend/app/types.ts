@@ -134,6 +134,10 @@ export interface DisparosDashboard {
 	taxa_falha: number;
 	engajados: number;
 	taxa_engajamento: number;
+	entregues_status: number;
+	falhas_status: number;
+	sem_confirmacao: number;
+	status_total: number;
 	status_distribuicao: DisparoStatusDistribuicao[];
 	por_jornada: DisparoJornadaResumo[];
 }
