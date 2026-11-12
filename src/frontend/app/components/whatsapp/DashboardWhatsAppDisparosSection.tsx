@@ -144,7 +144,7 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Cobertura"
 					value={`${(disparos.cobertura_percentual ?? 0).toFixed(1)}%`}
-					description="dos participantes do escopo"
+					description="dos participantes do programa"
 					icon={<Target className="h-6 w-6" />}
 					variant="success"
 					isLoading={loading}
@@ -152,7 +152,7 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Taxa de Entrega"
 					value={`${(disparos.taxa_entrega ?? 0).toFixed(1)}%`}
-					description={`${(disparos.entregues_240d ?? 0).toLocaleString("pt-BR")} entregas confirmadas (240d)`}
+					description={`${(disparos.entregues_status ?? 0).toLocaleString("pt-BR")} entregas confirmadas (240d)`}
 					icon={<CheckCircle2 className="h-6 w-6" />}
 					variant="success"
 					isLoading={loading}
@@ -160,12 +160,23 @@ export function DashboardWhatsAppDisparosSection({
 				<StatCard
 					title="Taxa de Falha"
 					value={`${(disparos.taxa_falha ?? 0).toFixed(1)}%`}
-					description={`${(disparos.falhas_240d ?? 0).toLocaleString("pt-BR")} disparos falharam (240d)`}
+					description={`${(disparos.falhas_status ?? 0).toLocaleString("pt-BR")} disparos falharam (240d)`}
 					icon={<AlertTriangle className="h-6 w-6" />}
 					variant="destructive"
 					isLoading={loading}
 				/>
 			</div>
+
+			{(disparos.sem_confirmacao ?? 0) > 0 && (
+				<p className="text-xs text-muted-foreground -mt-2">
+					{(disparos.sem_confirmacao ?? 0).toLocaleString("pt-BR")} disparo
+					{(disparos.sem_confirmacao ?? 0) === 1 ? "" : "s"} sem confirmação (
+					{(((disparos.sem_confirmacao ?? 0) / (disparos.status_total || 1)) * 100)
+						.toFixed(1)
+						.replace(".", ",")}
+					%) — Enviado ou Sem retorno, ainda fora das taxas de entrega e falha.
+				</p>
+			)}
 
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				<Card className="relative">
