@@ -18,6 +18,7 @@ from src.pic.presentation.v2.acordo_resultados import (
     router as v2_acordo_resultados_router,
 )
 from src.pic.presentation.v2.admin import router as v2_admin_router
+from src.pic.presentation.v2.atualizacoes import router as v2_atualizacoes_router
 from src.pic.presentation.v2.dashboard import router as v2_dashboard_router
 from src.pic.presentation.v2.debug import router as v2_debug_router
 from src.pic.presentation.v2.filters import router as v2_filters_router
@@ -148,5 +149,6 @@ app.include_router(v2_acordo_resultados_router, prefix="/api/v2")
 app.include_router(v2_admin_router, prefix="/api/v2")
 app.include_router(v2_geospatial_router, prefix="/api/v2")
 app.include_router(v2_monitoring_router, prefix="/api/v2")
+app.include_router(v2_atualizacoes_router, prefix="/api/v2")
 if DEBUG_ENDPOINT_ENABLED:
     app.include_router(v2_debug_router, prefix="/api/v2")

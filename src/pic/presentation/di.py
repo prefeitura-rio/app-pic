@@ -1,6 +1,9 @@
 import asyncio
 
 from src.pic.application.ports.admin_repository import IAdminRepository
+from src.pic.application.ports.atualizacoes_repository import (
+    IAtualizacoesRepository,
+)
 from src.pic.application.ports.busca_ativa_repository import (
     BuscaAtivaRepository,
 )
@@ -33,6 +36,9 @@ from src.pic.application.use_cases.export_busca_ativa import (
 from src.pic.application.use_cases.export_participants import ExportParticipantsUseCase
 from src.pic.application.use_cases.get_acordo_resultados import (
     GetAcordoResultadosUseCase,
+)
+from src.pic.application.use_cases.get_atualizacoes_regionais import (
+    GetAtualizacoesRegionaisUseCase,
 )
 from src.pic.application.use_cases.get_busca_ativa import (
     GetBuscaAtivaEventsUseCase,
@@ -84,6 +90,9 @@ from src.pic.infrastructure.repositories.hybrid_admin import (
 )
 from src.pic.infrastructure.repositories.postgrest_acordo_resultados_repository import (
     PostgrestAcordoResultadosRepository,
+)
+from src.pic.infrastructure.repositories.postgrest_atualizacoes_repository import (
+    PostgrestAtualizacoesRepository,
 )
 from src.pic.infrastructure.repositories.postgrest_dashboard_repository import (
     PostgrestDashboardRepository,
@@ -277,6 +286,25 @@ async def get_monitoring_repo() -> IMonitoringRepository:
         get_redis_client(),
     )
     return PostgrestMonitoringRepository(postgrest_client, redis_client=redis_client)
+
+
+async def get_atualizacoes_repo() -> IAtualizacoesRepository:
+    """Repositório do Painel de Atualizações (PostgREST + Redis lazy).
+
+    Cache por usuário (TTL 15 min): a resposta varia pela RLS do token.
+    """
+    postgrest_client, redis_client = await asyncio.gather(
+        get_postgrest_client(),
+        get_redis_client(),
+    )
+    return PostgrestAtualizacoesRepository(postgrest_client, redis_client=redis_client)
+
+
+async def get_atualizacoes_regionais_use_case() -> GetAtualizacoesRegionaisUseCase:
+    return GetAtualizacoesRegionaisUseCase(
+        repository=await get_atualizacoes_repo(),
+        geo_repository=await get_geospatial_repo(),
+    )
 
 
 async def get_monitoring_protocol_series_use_case() -> (
