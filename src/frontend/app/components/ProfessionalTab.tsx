@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 import { useAnonymizeData } from "@/app/hooks/useAnonymizeData";
+import { AtualizacoesPainel } from "@/app/components/atualizacoes-painel/AtualizacoesPainel";
 import { Badge } from "@/app/components/ui/badge";
 import { CartaoPicBadge } from "@/app/components/CartaoPicBadge";
 import { Button } from "@/app/components/ui/button";
@@ -384,6 +385,10 @@ const ProfessionalTabComponent = ({
 					ver os detalhes de uma pessoa específica
 				</p>
 			</div>
+
+			{/* Painel de Atualizações — segue os ACESSOS do usuário (RLS), não os
+			    filtros da busca; monta/oculta pelo flag da própria resposta (§10). */}
+			<AtualizacoesPainel />
 
 			<FilterCard
 				filters={filters}
