@@ -31,6 +31,7 @@ import type {
 	UnitType,
 	UserAccessRecord,
 } from "../types";
+import type { AtualizacoesRegionaisResponse } from "@/app/components/atualizacoes-painel/types";
 
 // Use server-side proxy to access backend API
 // This allows reading API_URL from runtime environment (Infisical)
@@ -970,5 +971,23 @@ export const apiService = {
 		const res = await fetchFn();
 
 		return handleResponse<MonitoringSeriesResponse>(res, fetchFn);
+	},
+
+	/**
+	 * Painel de Atualizações (Busca Individual) — agregado da última semana
+	 * fechada do escopo do usuário. Sem camada/região: a RLS do data-proxy
+	 * define o recorte (o painel segue os acessos, não os filtros da busca).
+	 * `semanasComparacao` = janela do delta (1 | 2 | 4, default 4).
+	 * GET /api/v2/dashboard/atualizacoes-regionais
+	 */
+	async getAtualizacoesRegionais(
+		semanasComparacao: 1 | 2 | 4 = 4,
+		signal?: AbortSignal,
+	): Promise<AtualizacoesRegionaisResponse> {
+		const url = `${BASE_URL}/api/v2/dashboard/atualizacoes-regionais?semanas_comparacao=${semanasComparacao}`;
+		const fetchFn = () => fetch(url, { cache: "no-store", signal });
+		const res = await fetchFn();
+
+		return handleResponse<AtualizacoesRegionaisResponse>(res, fetchFn);
 	},
 };
