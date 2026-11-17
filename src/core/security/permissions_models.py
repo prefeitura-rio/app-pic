@@ -81,6 +81,28 @@ class UserPermissions(BaseModel):
         """Super admins have full access to all data"""
         return self.is_super_admin
 
+    def protocol_secretarias_filter(self) -> list[str] | None:
+        """Filtro de ``protocolo_secretaria`` nas consultas de protocolo.
+
+        A RLS do data-proxy recorta **unidade**, não secretaria — então toda
+        consulta que lista protocolos precisa aplicar este filtro (usuário com
+        acesso só a SMAS não pode ver protocolos de SMS/SME).
+
+        Retorna:
+            - ``None`` → sem filtro (super admin ou as 3 secretarias);
+            - ``[]``   → sem acesso a protocolos (lista vazia no dado);
+            - ``[..]`` → subset permitido.
+
+        Usa SEMPRE a lista ``secretarias_acesso`` — nunca o shim
+        ``secretaria_acesso``, que devolve ``"TODOS"`` (permissivo) para
+        combinações de 2 de 3 secretarias.
+        """
+        if self.is_super_admin:
+            return None
+        if set(self.secretarias_acesso) >= _ALL_SECRETARIAS:
+            return None
+        return list(self.secretarias_acesso or [])
+
     def get_filter_ids(self, id_type: str) -> list[str]:
         """
         Get list of IDs for a specific type (e.g., 'id_cras').
