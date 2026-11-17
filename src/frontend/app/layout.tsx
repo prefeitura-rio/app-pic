@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
-import { ThemeProvider } from "@/app/components/ThemeProvider";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Toaster } from "@/components/ui/sonner";
-import { QueryProvider } from "@/app/providers/QueryProvider";
-import { AnonymizeProvider } from "@/app/providers/AnonymizeProvider";
 import { ErrorBoundary } from "@/app/components/ErrorBoundary";
 import { ServiceWorkerRegister } from "@/app/components/ServiceWorkerRegister";
+import { ThemeProvider } from "@/app/components/ThemeProvider";
+import { AnonymizeProvider } from "@/app/providers/AnonymizeProvider";
+import { QueryProvider } from "@/app/providers/QueryProvider";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Retry de chunks JS que falharam ao carregar.
 //
@@ -54,52 +54,61 @@ const SCRIPT_RETRY_INLINE = `
 `;
 
 const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+	variable: "--font-geist-sans",
+	subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+	variable: "--font-geist-mono",
+	subsets: ["latin"],
+});
+
+const interFont = Inter({
+	variable: "--font-inter",
+	subsets: ["latin"],
+	display: "swap",
+	weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "PIC Panel",
-  description: "Dashboad acompanhamento PIC",
+	title: "PIC Panel",
+	description: "Dashboad acompanhamento PIC",
 };
 
 export default function RootLayout({
-  children,
+	children,
 }: Readonly<{
-  children: React.ReactNode;
+	children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground`}>
-        <Script
-          id="chunk-retry"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: SCRIPT_RETRY_INLINE }}
-        />
-        <ErrorBoundary>
-          <QueryProvider>
-            <AnonymizeProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-              >
-                <TooltipProvider delayDuration={200}>
-                    {children}
-                    <Toaster />
-                </TooltipProvider>
-              </ThemeProvider>
-            </AnonymizeProvider>
-          </QueryProvider>
-        </ErrorBoundary>
-        <ServiceWorkerRegister />
-      </body>
-    </html>
-  );
+	return (
+		<html lang="en" suppressHydrationWarning>
+			<body
+				className={`${geistSans.variable} ${geistMono.variable} ${interFont.variable} bg-background text-foreground`}
+			>
+				<Script
+					id="chunk-retry"
+					strategy="beforeInteractive"
+					dangerouslySetInnerHTML={{ __html: SCRIPT_RETRY_INLINE }}
+				/>
+				<ErrorBoundary>
+					<QueryProvider>
+						<AnonymizeProvider>
+							<ThemeProvider
+								attribute="class"
+								defaultTheme="system"
+								enableSystem
+								disableTransitionOnChange
+							>
+								<TooltipProvider delayDuration={200}>
+									{children}
+									<Toaster />
+								</TooltipProvider>
+							</ThemeProvider>
+						</AnonymizeProvider>
+					</QueryProvider>
+				</ErrorBoundary>
+				<ServiceWorkerRegister />
+			</body>
+		</html>
+	);
 }

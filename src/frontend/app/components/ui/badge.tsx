@@ -17,10 +17,21 @@ const badgeVariants = cva(
         outline: "text-foreground",
         success: "border-transparent bg-success text-success-foreground shadow hover:bg-success/80",
         warning: "border-transparent bg-warning text-warning-foreground shadow hover:bg-warning/80",
+        // Painel de Atualizações (§8 da doc): chips com fundo suave e texto
+        // forte — contraste AA em light e dark.
+        "soft-success":
+          "border-transparent bg-success-light text-success-strong hover:bg-success-light/80",
+        "soft-destructive":
+          "border-transparent bg-destructive-light text-destructive-strong hover:bg-destructive-light/80",
+      },
+      size: {
+        sm: "px-2.5 py-0.5 text-xs",
+        md: "px-3 py-1 text-sm",
       },
     },
     defaultVariants: {
       variant: "default",
+      size: "sm",
     },
   }
 )
@@ -29,9 +40,9 @@ export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+function Badge({ className, variant, size, ...props }: BadgeProps) {
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <div className={cn(badgeVariants({ variant, size }), className)} {...props} />
   )
 }
 
