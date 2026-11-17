@@ -42,6 +42,7 @@ from postgrest.exceptions import APIError
 
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
 from src.pic.domain.models.dashboard import Dashboard
+from src.pic.domain.models.disparo import DISPARO_JANELA_DIAS
 from src.pic.infrastructure.dashboard.compute_postgrest import (
     _calculate_dashboard_metrics,
 )
@@ -98,6 +99,7 @@ _EXACT_COLUMNS: frozenset[str] = frozenset(
         "id_equipe_familia",
         "pic_cohort",
         "cohort",
+        "janela_dias",
     }
 )
 
@@ -783,7 +785,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
         """WhatsApp disparos metrics (dashboard section 8).
 
         Six aggregate queries on `endpoint_whatsapp_disparo`, all executed
-        concurrently: 30d totals, distinct participants reached, distinct
+        concurrently: 240d totals, distinct participants reached, distinct
         participants engaged, status distribution, per-jornada breakdown and
         per-jornada status breakdown (segments of the stacked bar chart).
         GROUP BY/COUNT DISTINCT work is done by PostgREST — the distinct
@@ -793,7 +795,15 @@ class PostgrestDashboardRepository(IDashboardRepository):
         Degrades to `None` on any PostgREST error (the dashboard keeps
         serving the other seven sections).
         """
-        disparo_filters = self._disparo_filters(filters)
+        # O mart grava 5 janelas por disparo (30/60/120/180/240); sem o filtro
+        # de janela cada disparo entraria 5x nas somas/contagens. A janela
+        # canônica do produto é 240 dias; `disparo_na_janela_indicador=true`
+        # descarta disparos com status que caem fora dessa janela.
+        disparo_filters = {
+            **self._disparo_filters(filters),
+            "janela_dias": DISPARO_JANELA_DIAS,
+            "disparo_na_janela_indicador": True,
+        }
         _t0 = time.perf_counter()
         try:
             (
@@ -836,7 +846,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
     async def _fetch_disparos_totals(
         self, filters: dict[str, object]
     ) -> dict[str, int]:
-        """30d totals: SUM over the whole filtered table (single row)."""
+        """240d totals: SUM over the whole filtered table (single row)."""
         result = await self._execute(
             _apply_filters(
                 self._client.table(_TABLE_DISPAROS)
