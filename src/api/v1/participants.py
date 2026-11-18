@@ -17,6 +17,7 @@ from src.api.v1.schemas import (
     SortParams,
 )
 from src.core.security.jwt import CurrentUserPermissions, verify_jwt
+from src.pic.domain.constants import aplicar_filtro_piloto
 from src.utils.data_manager import DataManager
 from src.utils.log import logger
 
@@ -167,6 +168,10 @@ async def get_participants(
                         v.strip() for v in filter_value.split("|") if v.strip()
                     ]
                 column_filters[column_name] = filter_value
+
+        # Piloto (Apenas Piloto Meier-Iraja) sobrescreve a seleção de RA —
+        # regra compartilhada com o dashboard (src/pic/domain/constants.py).
+        aplicar_filtro_piloto(column_filters, filters_dict.pop("piloto", None))
 
         # Validar e mapear coluna de ordenação
         sort_column = None
@@ -571,6 +576,9 @@ async def export_participants_csv(
                 if isinstance(filter_value, str) and "|" in filter_value:
                     filter_value = [v.strip() for v in filter_value.split("|") if v.strip()]
                 column_filters[column_name] = filter_value
+
+        # Piloto (Apenas Piloto Meier-Iraja) sobrescreve a seleção de RA.
+        aplicar_filtro_piloto(column_filters, filters_dict.pop("piloto", None))
 
         sort_column = None
         sort_descending = False

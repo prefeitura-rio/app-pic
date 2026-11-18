@@ -23,6 +23,7 @@ import {
 } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
+import { PILOTO_OPTIONS } from "@/app/utils/constants";
 import type { ParticipantFilters } from "@/app/types";
 
 const CARTAO_PIC_STATUS_OPTIONS = [
@@ -108,6 +109,37 @@ const FilterCardComponent = ({
 			} else {
 				onFilterChange({ ...filters, [key]: value === "true" });
 			}
+		},
+		[filters, onFilterChange],
+	);
+
+	// Pilotos sobrescreve a seleção manual de RA no backend — exclusão mútua
+	// aqui evita combinação silenciosamente vazia (mesma regra da Visão Geral).
+	const handlePilotoUpdate = useCallback(
+		(value: string) => {
+			const updated: Record<string, unknown> = { ...filters };
+			if (value === "todos" || value === "") {
+				delete updated.piloto;
+			} else {
+				updated.piloto = value;
+				delete updated.regiao_administrativa;
+			}
+			onFilterChange(updated as ParticipantFilters);
+		},
+		[filters, onFilterChange],
+	);
+
+	// Selecionar RA manualmente desliga o piloto (que a sobrescreveria).
+	const handleRAFilterUpdate = useCallback(
+		(values: string[]) => {
+			const updated: Record<string, unknown> = { ...filters };
+			if (values.length > 0) {
+				updated.regiao_administrativa = values;
+				delete updated.piloto;
+			} else {
+				delete updated.regiao_administrativa;
+			}
+			onFilterChange(updated as ParticipantFilters);
 		},
 		[filters, onFilterChange],
 	);
@@ -364,6 +396,16 @@ const FilterCardComponent = ({
 							defaultLabel="Todos os Status de Cartão PIC"
 						/>
 
+						{/* Pilotos - Single select (escopo do programa, fixo) */}
+						<VirtualizedSelect
+							options={PILOTO_OPTIONS}
+							value={filters.piloto || "todos"}
+							onSelect={handlePilotoUpdate}
+							disabled={loading}
+							placeholder="Pilotos"
+							defaultLabel="Todas as campanhas de mensageria"
+						/>
+
 						{/* Busca Ativa - Multi-select */}
 						<LazyFilterMultiSelect
 							field="busca_ativa"
@@ -485,9 +527,7 @@ const FilterCardComponent = ({
 										? [filters.regiao_administrativa]
 										: []
 							}
-							onSelect={(values) =>
-								handleMultiFilterUpdate("regiao_administrativa", values)
-							}
+							onSelect={handleRAFilterUpdate}
 							disabled={loading}
 							placeholder="Regiões Administrativas"
 							defaultLabel="Todas as Regiões Adm."
