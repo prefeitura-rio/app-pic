@@ -348,6 +348,37 @@ async def test_grupo_filter_forwarded(override_auth_superadmin):
 
 
 @pytest.mark.asyncio
+async def test_piloto_query_param_injeta_regioes(override_auth_superadmin):
+    """piloto=meier_iraja must restrict the RA filter to the pilot regions."""
+    fake = _make_fake_use_case()
+    app.dependency_overrides[get_dashboard_use_case] = lambda: fake
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer fake-jwt-token"},
+    ) as ac:
+        response = await ac.get("/api/v2/dashboard?piloto=meier_iraja")
+
+    app.dependency_overrides.pop(get_dashboard_use_case, None)
+
+    assert response.status_code == 200
+    call_kwargs = fake._repository.get_dashboard_metrics.call_args.kwargs
+    assert call_kwargs.get("filters", {}).get("regiao_administrativa") == [
+        "13ª Meier",
+        "14ª Iraja",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_piloto_query_param_invalido_422(client):
+    """Valores fora do Literal devem ser rejeitados com 422."""
+    response = await client.get("/api/v2/dashboard?piloto=abc")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_histogram_has_four_fixed_faixas(client):
     """distribuicao_tempo_irregularidade must always have exactly 4 faixas."""
     response = await client.get("/api/v2/dashboard")
