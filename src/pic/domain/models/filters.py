@@ -105,3 +105,4 @@ class FilterCriteria(BaseModel):
     protocolo_secretaria: str | None = None
     cartao_pic_status: str | None = None
     busca_ativa: str | None = None
+    piloto: Literal["meier_iraja"] | None = None  # Apenas Piloto Meier-Iraja

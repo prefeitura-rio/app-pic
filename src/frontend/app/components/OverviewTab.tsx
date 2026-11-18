@@ -1045,19 +1045,21 @@ const OverviewTabComponent = ({
 			</div>
 
 			{/* ===================================================================== */}
-			{/* SEÇÃO 8: DISPAROS WHATSAPP (snapshot 240d) */}
-			{/* ===================================================================== */}
-			<DashboardWhatsAppDisparosSection
-				disparos={data.disparos ?? null}
-				loading={loading}
-			/>
-
-			{/* ===================================================================== */}
-			{/* SEÇÃO 9: BUSCA ATIVA */}
+			{/* SEÇÃO 9 (exibida primeiro): BUSCA ATIVA — ordem de exibição pedida
+			    pelo produto (Busca Ativa acima de Disparos); os números 8/9 são
+			    identificadores de feature, não de ordem. */}
 			{/* ===================================================================== */}
 			<BuscaAtivaVisaoGeralSection
 				data={data.busca_ativa}
 				showSMAS={showSMAS}
+				loading={loading}
+			/>
+
+			{/* ===================================================================== */}
+			{/* SEÇÃO 8: DISPAROS WHATSAPP (snapshot 240d) */}
+			{/* ===================================================================== */}
+			<DashboardWhatsAppDisparosSection
+				disparos={data.disparos ?? null}
 				loading={loading}
 			/>
 		</div>
