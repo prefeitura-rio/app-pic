@@ -45,18 +45,6 @@ class CamadaRegularidadeAggregate(BaseModel):
     total_irregulares: int = 0
 
 
-# Coluna do consolidado usada no GROUP BY do PostgREST por camada territorial.
-# "bairro" e "ra" são as camadas implementadas; "cas"/"cre"/"ap" usam os ids
-# das regionalizações (fase 3d do plano de mapas).
-CAMADA_GROUP_COLUMN: dict[str, str] = {
-    "bairro": "bairro",
-    "ra": "regiao_administrativa",
-    "cas": "id_cas",
-    "cre": "id_cre",
-    "ap": "id_ap",
-}
-
-
 class ProtocoloOption(BaseModel):
     """Opção de filtro de protocolo (fonte: endpoint_participante_visao_geral_protocolos)."""
 

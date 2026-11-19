@@ -56,7 +56,7 @@ class PostgrestClient:
                 "request": [self._encode_query_spaces, self._auth.on_request],
                 "response": [self._auth.on_response],
             },
-            timeout=20.0,
+            timeout=60.0,
             transport=transport,
         )
         self._postgrest = AsyncPostgrestClient(

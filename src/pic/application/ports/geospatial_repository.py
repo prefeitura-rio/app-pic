@@ -18,8 +18,7 @@ class IGeospatialRepository(ABC):
         column_filters: dict[str, object],
         user_token: str | None = None,
         bypass_cache: bool = False,
-    ) -> list[GeospatialLayer]:
-        ...
+    ) -> list[GeospatialLayer]: ...
 
     @abstractmethod
     async def fetch_regularidade_por_camada(
@@ -31,18 +30,24 @@ class IGeospatialRepository(ABC):
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
         protocolo_id: str | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> list[CamadaRegularidadeAggregate]:
         """Regularidade agregada por região da camada (RLS aplicada pelo PostgREST).
 
         ``camada`` define a coluna do GROUP BY no consolidado (ver
-        ``CAMADA_GROUP_COLUMN``): ``"bairro"``, ``"ra"``, ``"cas"``, ``"cre"``
-        ou ``"ap"``.
+        ``CAMADA_COLUMN`` em ``domain/models/territorio.py``): ``"bairro"``,
+        ``"ra"``, ``"cas"``, ``"cre"`` ou ``"ap"``.
 
         Filtros opcionais (multiselect — mesmo padrão da Visão Geral):
         - ``status``: lista de ``"Ativo"``/``"Inativo"`` → ``pic_status=in.(...)``
         - ``cohortes``: lista de meses ``"YYYY-MM-DD"`` → ``pic_cohort=in.(...)``
         - ``protocolo_id``: troca a fonte para a visão geral de protocolos
           (métrica ``protocolo_regular_*`` daquele protocolo — FR-007)
+        - ``grupo``: lista de ``"Criança"``/``"Gestante"``/``"Puérpera"`` →
+          ``pic_grupo=in.(...)``
+        - ``has_bolsa_familia``: ``True``/``False`` →
+          ``has_bolsa_familia=eq.true|false``
         """
 
     @abstractmethod
@@ -64,6 +69,8 @@ class IGeospatialRepository(ABC):
         bypass_cache: bool = False,
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> list[RegiaoProtocoloAggregate]:
         """Métrica de TODOS os protocolos numa região da camada (fase 3j).
 
@@ -71,7 +78,8 @@ class IGeospatialRepository(ABC):
         ``"3ª Rio Comprido"`` para RA) — o use case o descobre pelos
         agregados gerais e repassa aqui para filtrar com ``eq`` no PostgREST
         (consulta pequena, ≤ número de protocolos). Filtros ``status``/
-        ``cohortes`` aplicados como no restante do geospatial.
+        ``cohortes``/``grupo``/``has_bolsa_familia`` aplicados como no
+        restante do geospatial.
         """
 
     @abstractmethod
@@ -83,13 +91,16 @@ class IGeospatialRepository(ABC):
         bypass_cache: bool = False,
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> RegiaoRegularidadeResumo | None:
         """Métrica de um protocolo em TODAS as regiões (fase 3k).
 
         Agrega a visão geral de protocolos sem filtro de região (``eq`` no
-        ``protocolo_id`` + filtros ``status``/``cohortes``) — o valor é o
-        MESMO para qualquer região, então o cache é compartilhado entre
-        cliques. Usado no comparativo "acima/abaixo da média geral".
+        ``protocolo_id`` + filtros ``status``/``cohortes``/``grupo``/
+        ``has_bolsa_familia``) — o valor é o MESMO para qualquer região, então
+        o cache é compartilhado entre cliques. Usado no comparativo
+        "acima/abaixo da média geral".
         """
 
     @abstractmethod

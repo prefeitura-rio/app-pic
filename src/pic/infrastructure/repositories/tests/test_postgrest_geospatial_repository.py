@@ -33,6 +33,9 @@ from src.pic.infrastructure.repositories.postgrest_geospatial_repository import 
     PostgrestGeospatialRepository,
     _make_filter_cache_key,
     _make_layers_cache_key,
+    _make_protocolo_geral_cache_key,
+    _make_protocolos_regiao_cache_key,
+    _make_regularidade_cache_key,
 )
 
 # ---------------------------------------------------------------------------
@@ -121,7 +124,7 @@ class FakeDataProxy:
         params = dict(request.url.params)
         offset = int(params.get("offset", 0))
         limit = int(params.get("limit", len(self.all_rows)))
-        page = self.all_rows[offset: offset + limit]
+        page = self.all_rows[offset : offset + limit]
 
         headers = {}
         prefer = request.headers.get("prefer", "")
@@ -465,8 +468,13 @@ class TestGetFilterOptions:
     async def test_all_valid_field_names(self):
         """All 7 field names must be accepted without error."""
         valid_fields = [
-            "tipos_camada", "categorias", "regionais", "bairros",
-            "regioes_administrativas", "subprefeituras", "nomes",
+            "tipos_camada",
+            "categorias",
+            "regionais",
+            "bairros",
+            "regioes_administrativas",
+            "subprefeituras",
+            "nomes",
         ]
         col_map = {
             "tipos_camada": "tipo_camada",
@@ -661,9 +669,7 @@ class TestFetchRegularidadePorCamada:
         repo, fake = _make_regularidade_repo(
             {"endpoint_participante_visao_geral_consolidado": rows}
         )
-        await repo.fetch_regularidade_por_camada(
-            "bairro", user_token="user-jwt-789"
-        )
+        await repo.fetch_regularidade_por_camada("bairro", user_token="user-jwt-789")
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         for req in data_reqs:
             assert req.headers.get("authorization") == "Bearer user-jwt-789"
@@ -690,9 +696,7 @@ class TestFetchRegularidadePorCamada:
         )
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         params = data_reqs[0].url.params
-        assert params.get_list("pic_cohort") == [
-            "in.(2025-03-01,2026-07-01)"
-        ]
+        assert params.get_list("pic_cohort") == ["in.(2025-03-01,2026-07-01)"]
 
     @pytest.mark.asyncio
     async def test_cohorte_unico(self):
@@ -700,9 +704,7 @@ class TestFetchRegularidadePorCamada:
         repo, fake = _make_regularidade_repo(
             {"endpoint_participante_visao_geral_consolidado": rows}
         )
-        await repo.fetch_regularidade_por_camada(
-            "bairro", cohortes=["2025-03-01"]
-        )
+        await repo.fetch_regularidade_por_camada("bairro", cohortes=["2025-03-01"])
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         params = data_reqs[0].url.params
         assert params.get_list("pic_cohort") == ["in.(2025-03-01)"]
@@ -744,6 +746,44 @@ class TestFetchRegularidadePorCamada:
         path = data_reqs[0].url.path
         assert "visao_geral_consolidado" in path
         assert "protocolo_id" not in data_reqs[0].url.params
+
+    @pytest.mark.asyncio
+    async def test_grupo_multiselect_filter_applied(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada(
+            "bairro", grupo=["Criança", "Gestante"]
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = dict(data_reqs[0].url.params)
+        assert params.get("pic_grupo") == "in.(Criança,Gestante)"
+
+    @pytest.mark.asyncio
+    async def test_bolsa_familia_filter_applied(self):
+        rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_consolidado": rows}
+        )
+        await repo.fetch_regularidade_por_camada("bairro", has_bolsa_familia=True)
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = dict(data_reqs[0].url.params)
+        assert params.get("has_bolsa_familia") == "eq.True"
+
+    def test_regularidade_cache_key_varia_com_grupo_e_bolsa(self):
+        base = _make_regularidade_cache_key("bairro", "cpf")
+        com_grupo = _make_regularidade_cache_key("bairro", "cpf", grupo=["Criança"])
+        com_bolsa = _make_regularidade_cache_key(
+            "bairro", "cpf", has_bolsa_familia=True
+        )
+        assert base != com_grupo
+        assert base != com_bolsa
+        assert com_grupo != com_bolsa
+        # Determinística: mesma entrada, mesma chave
+        assert com_grupo == _make_regularidade_cache_key(
+            "bairro", "cpf", grupo=["Criança"]
+        )
 
 
 class TestFetchProtocolos:
@@ -853,6 +893,33 @@ class TestFetchProtocolosPorRegiao:
         params = dict(data_reqs[0].url.params)
         assert params.get("regiao_administrativa") == "eq.3ª Rio Comprido"
         assert params.get("pic_cohort") == "in.(2025-03-01)"
+
+    @pytest.mark.asyncio
+    async def test_grupo_e_bolsa_filtros_aplicados(self):
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": []}
+        )
+        await repo.fetch_protocolos_por_regiao(
+            camada="bairro",
+            regiao="Centro",
+            grupo=["Gestante"],
+            has_bolsa_familia=False,
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = dict(data_reqs[0].url.params)
+        assert params.get("pic_grupo") == "in.(Gestante)"
+        assert params.get("has_bolsa_familia") == "eq.False"
+
+    def test_protocolos_regiao_cache_key_varia_com_filtros(self):
+        base = _make_protocolos_regiao_cache_key("bairro", "Centro", "cpf")
+        com_grupo = _make_protocolos_regiao_cache_key(
+            "bairro", "Centro", "cpf", grupo=["Criança"]
+        )
+        com_bolsa = _make_protocolos_regiao_cache_key(
+            "bairro", "Centro", "cpf", has_bolsa_familia=True
+        )
+        assert base != com_grupo
+        assert base != com_bolsa
 
     @pytest.mark.asyncio
     async def test_lista_vazia_nao_escreve_cache(self):
@@ -1004,15 +1071,31 @@ class TestFetchProtocoloGeral:
         )
         redis.set.assert_awaited_once()
 
-    def test_cache_key_depende_de_protocolo_e_filtros(self):
-        from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
-            _make_protocolo_geral_cache_key,
+    @pytest.mark.asyncio
+    async def test_grupo_e_bolsa_filtros_aplicados(self):
+        rows = [{"regular": 1, "den": 2}]
+        repo, fake = _make_regularidade_repo(
+            {"endpoint_participante_visao_geral_protocolos": rows}
         )
+        await repo.fetch_protocolo_geral(
+            protocolo_id="sme_frequencia_escolar",
+            grupo=["Criança"],
+            has_bolsa_familia=True,
+        )
+        data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
+        params = dict(data_reqs[0].url.params)
+        assert params.get("pic_grupo") == "in.(Criança)"
+        assert params.get("has_bolsa_familia") == "eq.True"
 
+    def test_cache_key_depende_de_protocolo_e_filtros(self):
         base = _make_protocolo_geral_cache_key("p1", "u")
         assert base != _make_protocolo_geral_cache_key("p2", "u")
         assert base != _make_protocolo_geral_cache_key("p1", "u2")
         assert base != _make_protocolo_geral_cache_key("p1", "u", status=["Ativo"])
+        assert base != _make_protocolo_geral_cache_key("p1", "u", grupo=["Criança"])
+        assert base != _make_protocolo_geral_cache_key(
+            "p1", "u", has_bolsa_familia=False
+        )
         # Ordem das listas não altera a chave
         assert _make_protocolo_geral_cache_key(
             "p1", "u", cohortes=["a", "b"]
@@ -1021,25 +1104,17 @@ class TestFetchProtocoloGeral:
 
 class TestRegularidadeCacheKey:
     def test_key_depends_on_camada_and_user(self):
-        from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
-            _make_regularidade_cache_key,
-        )
-
-        assert _make_regularidade_cache_key("bairro", "a") != _make_regularidade_cache_key(
-            "ra", "a"
-        )
-        assert _make_regularidade_cache_key("bairro", "a") != _make_regularidade_cache_key(
-            "bairro", "b"
-        )
-        assert _make_regularidade_cache_key("bairro", "a") == _make_regularidade_cache_key(
+        assert _make_regularidade_cache_key(
             "bairro", "a"
-        )
+        ) != _make_regularidade_cache_key("ra", "a")
+        assert _make_regularidade_cache_key(
+            "bairro", "a"
+        ) != _make_regularidade_cache_key("bairro", "b")
+        assert _make_regularidade_cache_key(
+            "bairro", "a"
+        ) == _make_regularidade_cache_key("bairro", "a")
 
     def test_key_depends_on_filters(self):
-        from src.pic.infrastructure.repositories.postgrest_geospatial_repository import (
-            _make_regularidade_cache_key,
-        )
-
         base = _make_regularidade_cache_key("bairro", "a")
         assert base != _make_regularidade_cache_key("bairro", "a", status=["Ativo"])
         assert base != _make_regularidade_cache_key(
@@ -1050,6 +1125,10 @@ class TestRegularidadeCacheKey:
         )
         assert base != _make_regularidade_cache_key(
             "bairro", "a", protocolo_id="sms_vacinacao_pentavalente"
+        )
+        assert base != _make_regularidade_cache_key("bairro", "a", grupo=["Criança"])
+        assert base != _make_regularidade_cache_key(
+            "bairro", "a", has_bolsa_familia=True
         )
         assert _make_regularidade_cache_key(
             "bairro", "a", status=["Ativo"], cohortes=["2025-03-01"]
@@ -1062,6 +1141,9 @@ class TestRegularidadeCacheKey:
         ) == _make_regularidade_cache_key(
             "bairro", "a", cohortes=["2025-04-01", "2025-03-01"]
         )
+        assert _make_regularidade_cache_key(
+            "bairro", "a", grupo=["Criança", "Gestante"]
+        ) == _make_regularidade_cache_key("bairro", "a", grupo=["Gestante", "Criança"])
 
 
 # ---------------------------------------------------------------------------

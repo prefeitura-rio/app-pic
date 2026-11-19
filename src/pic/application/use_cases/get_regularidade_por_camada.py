@@ -18,64 +18,14 @@ Camadas suportadas: ``bairro``, ``ra``, ``cas``, ``cre``, ``ap``.
 """
 
 import asyncio
-import re
-import unicodedata
 from typing import Any
 
 from src.pic.application.ports.geospatial_repository import IGeospatialRepository
+from src.pic.domain.models.territorio import CAMADAS_SUPORTADAS, NORMALIZERS
 from src.pic.infrastructure.repositories.geometrias_estaticas_repository import (
     fetch_geometria_estatica,
 )
 from src.utils.log import logger
-
-_CAMADAS_SUPORTADAS = ("bairro", "ra", "cas", "cre", "ap")
-
-# Prefixo de ordinal do consolidado em RA ("3ª Rio Comprido" → "Rio Comprido").
-_ORDINAL_PREFIX_RE = re.compile(r"^\d+\s*ª\s*")
-
-# Só dígitos (para joins por código das camadas estáticas).
-_DIGITOS_RE = re.compile(r"\D")
-
-# Grafias divergentes do consolidado → datario (mesmo padrão de "Portuaria").
-# A chave/valor já estão normalizados.
-_RA_NOME_ALIASES: dict[str, str] = {
-    "santa tereza": "santa teresa",
-}
-
-
-def normalize_bairro_nome(nome: str | None) -> str:
-    """Normaliza nome de região para join: sem acentos, lowercase, sem espaços extras."""
-    if not nome:
-        return ""
-    decomposed = unicodedata.normalize("NFKD", str(nome))
-    ascii_only = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return ascii_only.strip().lower()
-
-
-def normalize_ra_nome(nome: str | None) -> str:
-    """Normaliza nome de RA removendo o ordinal ("3ª ") e aplicando aliases de grafia."""
-    normalized = normalize_bairro_nome(_ORDINAL_PREFIX_RE.sub("", nome or ""))
-    return _RA_NOME_ALIASES.get(normalized, normalized)
-
-
-def normalize_codigo(codigo: str | None) -> str:
-    """Chave de join por código: só dígitos, sem zeros à esquerda.
-
-    Absorve as diferenças de formato entre consolidado e camadas do data.rio:
-    ``"01ª CAS"`` → ``"1"`` (vs ``cas_label`` ``"1ª CAS"`` → ``"1"``),
-    ``"AP 3.1"`` → ``"31"`` (vs ``id_ap`` ``"31"``), ``"01"`` → ``"1"``.
-    ``"0"``/``"SEM VÍNCULO"`` → ``""`` (nunca casa → fica no meta).
-    """
-    return _DIGITOS_RE.sub("", str(codigo or "")).lstrip("0")
-
-
-_NORMALIZERS: dict[str, Any] = {
-    "bairro": normalize_bairro_nome,
-    "ra": normalize_ra_nome,
-    "cas": normalize_codigo,
-    "cre": normalize_codigo,
-    "ap": normalize_codigo,
-}
 
 # Fonte de geometria e campos por camada. `nome_field` é o campo usado na
 # chave de join E no tooltip (nome exibido); `id_field` alimenta
@@ -113,13 +63,15 @@ class GetRegularidadePorCamadaUseCase:
         status: list[str] | None = None,
         cohortes: list[str] | None = None,
         protocolo_id: str | None = None,
+        grupo: list[str] | None = None,
+        has_bolsa_familia: bool | None = None,
     ) -> RegularidadePorCamadaOutput:
-        if camada not in _CAMADAS_SUPORTADAS:
+        if camada not in CAMADAS_SUPORTADAS:
             raise ValueError(
-                f"Camada {camada!r} não suportada (esperado: {_CAMADAS_SUPORTADAS})"
+                f"Camada {camada!r} não suportada (esperado: {CAMADAS_SUPORTADAS})"
             )
 
-        normalize = _NORMALIZERS[camada]
+        normalize = NORMALIZERS[camada]
         id_field = _GEOMETRIA_SOURCES[camada]["id_field"]
         nome_field = _GEOMETRIA_SOURCES[camada]["nome_field"]
 
@@ -132,6 +84,8 @@ class GetRegularidadePorCamadaUseCase:
                 status=status,
                 cohortes=cohortes,
                 protocolo_id=protocolo_id,
+                grupo=grupo,
+                has_bolsa_familia=has_bolsa_familia,
             ),
             _fetch_geometria(camada),
         )
@@ -178,9 +132,7 @@ class GetRegularidadePorCamadaUseCase:
             )
 
         # Agregados sem geometria correspondente na camada
-        nomes_geometria = {
-            normalize(f["properties"][nome_field]) for f in geometrias
-        }
+        nomes_geometria = {normalize(f["properties"][nome_field]) for f in geometrias}
         agregados_sem_geometria = sorted(
             agg.regiao
             for agg in aggregates

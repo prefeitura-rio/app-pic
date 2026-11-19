@@ -33,6 +33,8 @@ interface VirtualizedSelectProps {
   loading?: boolean;
   /** Dispara quando o dropdown abre (para carregar opções sob demanda) */
   onOpen?: () => void;
+  /** Nome acessível do trigger (combobox). */
+  ariaLabel?: string;
 }
 
 export function VirtualizedSelect({
@@ -48,6 +50,7 @@ export function VirtualizedSelect({
   showAllOption = true,
   loading = false,
   onOpen,
+  ariaLabel,
 }: VirtualizedSelectProps) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -133,6 +136,7 @@ export function VirtualizedSelect({
             variant="outline"
             role="combobox"
             aria-expanded={open}
+            aria-label={ariaLabel}
             title={displayText}
             className="w-full justify-between font-normal px-3"
             disabled={disabled}

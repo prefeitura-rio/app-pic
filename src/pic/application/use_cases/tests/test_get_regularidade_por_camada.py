@@ -16,11 +16,13 @@ import pytest
 
 from src.pic.application.use_cases.get_regularidade_por_camada import (
     GetRegularidadePorCamadaUseCase,
+)
+from src.pic.domain.models.geospatial import CamadaRegularidadeAggregate
+from src.pic.domain.models.territorio import (
     normalize_bairro_nome,
     normalize_codigo,
     normalize_ra_nome,
 )
-from src.pic.domain.models.geospatial import CamadaRegularidadeAggregate
 
 
 def _agg(regiao: str, regulares: int, irregulares: int) -> CamadaRegularidadeAggregate:
@@ -52,7 +54,9 @@ def _feature_ra(nome: str, id_ra: str = "3") -> dict:
     }
 
 
-def _feature_estatica(nome: str, id_valor: object = None, id_field: str = "codigo") -> dict:
+def _feature_estatica(
+    nome: str, id_valor: object = None, id_field: str = "codigo"
+) -> dict:
     return {
         "type": "Feature",
         "properties": {id_field: id_valor, "nome": nome},
@@ -143,6 +147,8 @@ async def test_bairro_merge_com_taxa_e_meta():
         status=None,
         cohortes=None,
         protocolo_id=None,
+        grupo=None,
+        has_bolsa_familia=None,
     )
 
 
@@ -160,6 +166,8 @@ async def test_filtros_forwarded_ao_repositorio():
             status=["Ativo"],
             cohortes=["2025-03-01", "2026-07-01"],
             protocolo_id="sms_vacinacao_pentavalente",
+            grupo=["Criança", "Gestante"],
+            has_bolsa_familia=True,
         )
 
     fake_repo.fetch_regularidade_por_camada.assert_awaited_once_with(
@@ -170,6 +178,8 @@ async def test_filtros_forwarded_ao_repositorio():
         status=["Ativo"],
         cohortes=["2025-03-01", "2026-07-01"],
         protocolo_id="sms_vacinacao_pentavalente",
+        grupo=["Criança", "Gestante"],
+        has_bolsa_familia=True,
     )
 
 

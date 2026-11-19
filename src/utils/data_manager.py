@@ -22,7 +22,6 @@ from src.utils.text_utils import TextNormalizer
 
 if TYPE_CHECKING:
     from src.api.v1.schemas import (
-        FilterOptionItem,
         PaginationMeta,
         SmartFilterOptions,
     )
@@ -49,13 +48,14 @@ def natural_sort_key(text: str) -> tuple:
         Tupla (número ou infinito, texto completo) para ordenação
     """
     import re
-    match = re.match(r'^(\d+)', text)
+
+    match = re.match(r"^(\d+)", text)
     if match:
         # Se começa com número, ordenar por (número, resto da string)
         return (int(match.group(1)), text)
     else:
         # Se não começa com número, ordenar alfabeticamente (com prioridade baixa)
-        return (float('inf'), text)
+        return (float("inf"), text)
 
 
 # =============================================================================
@@ -320,7 +320,11 @@ class DataManager:
 
             # Verificar se pode usar cache: sem filtros E sem governança (ou super admin)
             has_governance = user_permissions and not user_permissions.has_full_access()
-            can_use_precomputed = precomputed_filter_options and active_filter_count == 0 and not has_governance
+            can_use_precomputed = (
+                precomputed_filter_options
+                and active_filter_count == 0
+                and not has_governance
+            )
 
             if can_use_precomputed:
                 # Converter dict para SmartFilterOptions (instant)
@@ -330,7 +334,9 @@ class DataManager:
                         for k, v in precomputed_filter_options.items()
                     }
                 )
-                logger.info("⚡ Using precomputed filter options (instant, with equipment filtering)")
+                logger.info(
+                    "⚡ Using precomputed filter options (instant, with equipment filtering)"
+                )
             else:
                 # Fallback: calcular dinamicamente (quando há filtros ativos)
                 # OTIMIZAÇÃO: Passar AMBOS DataFrames para evitar recálculos
@@ -356,7 +362,9 @@ class DataManager:
         if page_size is None or page_size == -1:
             total_pages = 1
             df_result = df_filtered
-            logger.info(f"⬇️ Returning ALL {total_rows} rows (no pagination, download mode)")
+            logger.info(
+                f"⬇️ Returning ALL {total_rows} rows (no pagination, download mode)"
+            )
         else:
             total_pages = ceil(total_rows / page_size) if total_rows > 0 else 0
             start_idx = (page - 1) * page_size
@@ -404,7 +412,9 @@ class DataManager:
             df_result,
             PaginationMeta(
                 page=page,
-                page_size=page_size if page_size != -1 else None,  # -1 -> None na metadata
+                page_size=page_size
+                if page_size != -1
+                else None,  # -1 -> None na metadata
                 total_rows=total_rows,
                 total_pages=total_pages,
                 cache_hit=cache_hit,
@@ -487,16 +497,22 @@ class DataManager:
                     raw_data = query_cache.get(query)
                     if raw_data is not None:
                         if isinstance(raw_data, CachedDataset):
-                            logger.info("✅ Cache HIT (populated while waiting for semaphore)")
+                            logger.info(
+                                "✅ Cache HIT (populated while waiting for semaphore)"
+                            )
                             return raw_data.df, True, raw_data.filter_options_cache
                         elif isinstance(raw_data, pl.DataFrame):
                             return raw_data, True, None
                         else:
                             return pl.DataFrame(raw_data), True, None
 
-                logger.info("❌ Cache MISS confirmed - Fetching from BigQuery (thread pool)")
+                logger.info(
+                    "❌ Cache MISS confirmed - Fetching from BigQuery (thread pool)"
+                )
 
-                def _fetch_and_cache() -> tuple[pl.DataFrame, bool, dict[str, list] | None]:
+                def _fetch_and_cache() -> tuple[
+                    pl.DataFrame, bool, dict[str, list] | None
+                ]:
                     bq_start = time.perf_counter()
                     df = execute_query(query, return_polars=True)  # Polars via Arrow!
                     bq_time = time.perf_counter() - bq_start
@@ -513,7 +529,9 @@ class DataManager:
                             df, filter_columns_config
                         )
                         precompute_time = time.perf_counter() - precompute_start
-                        logger.info(f"📊 Precomputed filter options: {precompute_time:.3f}s")
+                        logger.info(
+                            f"📊 Precomputed filter options: {precompute_time:.3f}s"
+                        )
 
                     # Criar e salvar CachedDataset
                     cached_dataset = CachedDataset(
@@ -523,7 +541,9 @@ class DataManager:
                     cache_write_start = time.perf_counter()
                     query_cache.set(query, cached_dataset)
                     cache_write_time = time.perf_counter() - cache_write_start
-                    logger.info(f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s")
+                    logger.info(
+                        f"💾 Cache write (CachedDataset): {cache_write_time:.3f}s"
+                    )
 
                     total_time = time.perf_counter() - start_time
                     logger.info(
@@ -569,7 +589,9 @@ class DataManager:
                     )
                     options = [
                         {"id": id_val, "label": label_val}
-                        for id_val, label_val in sorted(pairs, key=lambda x: natural_sort_key(x[1]))
+                        for id_val, label_val in sorted(
+                            pairs, key=lambda x: natural_sort_key(x[1])
+                        )
                         if id_val and id_val.strip()
                     ]
                 else:
@@ -612,9 +634,7 @@ class DataManager:
             # Criar opções consolidadas (um nome pode representar múltiplos IDs)
             options = []
             for label, ids in label_to_ids.items():
-                options.append(
-                    {"id": "|".join(ids), "label": label}
-                )
+                options.append({"id": "|".join(ids), "label": label})
 
             options.sort(key=lambda x: natural_sort_key(x["label"]))
             result[result_key] = options
@@ -865,7 +885,9 @@ class DataManager:
 
             # Log para debug de filtros booleanos
             if col == "active":
-                logger.info(f"🔍 [apply_filters] Processing 'active' filter: value={filter_value}, types={[type(v).__name__ for v in filter_value]}")
+                logger.info(
+                    f"🔍 [apply_filters] Processing 'active' filter: value={filter_value}, types={[type(v).__name__ for v in filter_value]}"
+                )
 
             # Pular valores vazios ou valores especiais (todos, todas)
             # IMPORTANTE: Manter False (boolean) pois é valor válido para filtros boolean
@@ -950,10 +972,14 @@ class DataManager:
                     rows_before = df.filter(filter_expr).height
                     filter_expr = filter_expr & pl.col(col).is_in(bool_values)
                     rows_after = df.filter(filter_expr).height
-                    logger.info(f"🔍 Boolean filter on '{col}': {bool_values} -> {rows_before} to {rows_after} rows")
+                    logger.info(
+                        f"🔍 Boolean filter on '{col}': {bool_values} -> {rows_before} to {rows_after} rows"
+                    )
             else:
                 # Filtro padrão para strings (case-insensitive)
-                normalized_filter_values = [str(v).lower().strip() for v in filter_value]
+                normalized_filter_values = [
+                    str(v).lower().strip() for v in filter_value
+                ]
                 col_expr = pl.col(col).cast(pl.Utf8).str.to_lowercase()
                 filter_expr = filter_expr & col_expr.is_in(normalized_filter_values)
 
@@ -1088,16 +1114,25 @@ class DataManager:
             return []
 
         pairs = (
-            df_exploded.select([
-                pl.col(array_col).struct.field(id_field).cast(pl.Utf8).alias("id"),
-                pl.col(array_col).struct.field(label_field).cast(pl.Utf8).alias("label"),
-            ])
+            df_exploded.select(
+                [
+                    pl.col(array_col).struct.field(id_field).cast(pl.Utf8).alias("id"),
+                    pl.col(array_col)
+                    .struct.field(label_field)
+                    .cast(pl.Utf8)
+                    .alias("label"),
+                ]
+            )
             .drop_nulls()
             .unique(subset=["id"])
             .to_dicts()
         )
 
-        return [(r["id"].strip(), r["label"].strip()) for r in pairs if r["id"] and r["id"].strip()]
+        return [
+            (r["id"].strip(), r["label"].strip())
+            for r in pairs
+            if r["id"] and r["id"].strip()
+        ]
 
     @staticmethod
     def _extract_unique_from_array_with_filter_polars(
@@ -1321,7 +1356,9 @@ class DataManager:
                     )
                     options = [
                         FilterOptionItem(id=id_val, label=label_val)
-                        for id_val, label_val in sorted(pairs, key=lambda x: natural_sort_key(x[1]))
+                        for id_val, label_val in sorted(
+                            pairs, key=lambda x: natural_sort_key(x[1])
+                        )
                         if id_val and id_val.strip()
                     ]
                 elif array_col_name in active_array_filters:
@@ -1391,11 +1428,7 @@ class DataManager:
             # Criar opções consolidadas (um nome pode representar múltiplos IDs)
             options = []
             for label, ids in label_to_ids.items():
-                options.append(
-                    FilterOptionItem(
-                        id="|".join(ids), label=label
-                    )
-                )
+                options.append(FilterOptionItem(id="|".join(ids), label=label))
 
             # Ordenação natural: considera números no início da string
             # Ex: "3ª Rio" vem antes de "10ª Centro" (ao invés de ordem alfabética)
@@ -1503,7 +1536,11 @@ class DataManager:
         # unknown/property kwargs) leaving secretarias_acesso as [].
         raw_secretaria = row_dict.pop("secretaria_acesso", None)
         if raw_secretaria == SECRETARIA_TODOS:
-            row_dict["secretarias_acesso"] = [SECRETARIA_SME, SECRETARIA_SMS, SECRETARIA_SMAS]
+            row_dict["secretarias_acesso"] = [
+                SECRETARIA_SME,
+                SECRETARIA_SMS,
+                SECRETARIA_SMAS,
+            ]
         elif raw_secretaria:
             row_dict["secretarias_acesso"] = [raw_secretaria]
         else:
@@ -1527,7 +1564,7 @@ class DataManager:
                             "id": item.get("id", item.get(id_type, "")),
                             "nome": item.get(
                                 "nome",
-                                item.get(f'nome_{id_type.replace("id_", "")}', ""),
+                                item.get(f"nome_{id_type.replace('id_', '')}", ""),
                             ),
                         }
                         for item in row_dict[list_key]
@@ -1574,8 +1611,7 @@ class DataManager:
 
         # Apply protocol filtering by secretarias_acesso
         df_filtered = filter_and_recalculate_by_secretaria(
-            df_filtered,
-            user_permissions.secretarias_acesso
+            df_filtered, user_permissions.secretarias_acesso
         )
 
         logger.info(

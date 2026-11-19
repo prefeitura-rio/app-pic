@@ -30,7 +30,11 @@ from src.pic.presentation.di import (
 
 
 class FakeLayersUseCase:
-    def __init__(self, layers: list[GeospatialLayer] | None = None, error: Exception | None = None):
+    def __init__(
+        self,
+        layers: list[GeospatialLayer] | None = None,
+        error: Exception | None = None,
+    ):
         self.layers = layers or [
             GeospatialLayer(
                 tipo_camada="BAIRRO",
@@ -69,9 +73,7 @@ class FakeFilterOptionsUseCase:
         self.error = error
         self.received: dict = {}
 
-    async def execute(
-        self, field, filters=None, user_token=None, bypass_cache=False
-    ):
+    async def execute(self, field, filters=None, user_token=None, bypass_cache=False):
         self.received = {
             "field": field,
             "filters": filters.model_dump(exclude_none=True)
@@ -107,6 +109,8 @@ class FakeRegularidadeUseCase:
         status=None,
         cohortes=None,
         protocolo_id=None,
+        grupo=None,
+        has_bolsa_familia=None,
     ):
         self.received = {
             "camada": camada,
@@ -116,6 +120,8 @@ class FakeRegularidadeUseCase:
             "status": status,
             "cohortes": cohortes,
             "protocolo_id": protocolo_id,
+            "grupo": grupo,
+            "has_bolsa_familia": has_bolsa_familia,
         }
         if self.error:
             raise self.error
@@ -188,6 +194,8 @@ class FakeDetalhesRegiaoUseCase:
         status=None,
         cohortes=None,
         protocolo_id=None,
+        grupo=None,
+        has_bolsa_familia=None,
     ):
         self.received = {
             "camada": camada,
@@ -198,6 +206,8 @@ class FakeDetalhesRegiaoUseCase:
             "status": status,
             "cohortes": cohortes,
             "protocolo_id": protocolo_id,
+            "grupo": grupo,
+            "has_bolsa_familia": has_bolsa_familia,
         }
         if self.error:
             raise self.error
@@ -290,7 +300,14 @@ def detalhes_regiao_use_case():
 
 
 @pytest.fixture
-def override_use_cases(layers_use_case, filter_options_use_case, vocabulary_use_case, regularidade_use_case, protocolos_use_case, detalhes_regiao_use_case):
+def override_use_cases(
+    layers_use_case,
+    filter_options_use_case,
+    vocabulary_use_case,
+    regularidade_use_case,
+    protocolos_use_case,
+    detalhes_regiao_use_case,
+):
     app.dependency_overrides[get_geospatial_layers_use_case] = lambda: layers_use_case
     app.dependency_overrides[get_geospatial_filter_options_use_case] = (
         lambda: filter_options_use_case
@@ -346,27 +363,21 @@ class TestGetGeospatialLayers:
         assert resp.status_code in (401, 403)
 
     @pytest.mark.asyncio
-    async def test_filter_forwarded_to_use_case(
-        self, client, layers_use_case
-    ):
+    async def test_filter_forwarded_to_use_case(self, client, layers_use_case):
         await client.get("/api/v2/geospatial/layers?tipo_camada=BAIRRO")
         assert layers_use_case.received_filters.get("tipo_camada") == "BAIRRO"
 
     @pytest.mark.asyncio
-    async def test_x_access_token_wins_over_id_token(
-        self, client, layers_use_case
-    ):
+    async def test_x_access_token_wins_over_id_token(self, client, layers_use_case):
         """The access token (X-Access-Token) wins over the id token for the
         data-proxy call (same semantic as participants)."""
         await client.get("/api/v2/geospatial/layers")
         assert layers_use_case.received_user_token == "fake-access-token"
 
     @pytest.mark.asyncio
-    async def test_500_on_use_case_error(
-        self, override_auth, override_use_cases
-    ):
-        app.dependency_overrides[get_geospatial_layers_use_case] = lambda: FakeLayersUseCase(
-            error=RuntimeError("boom")
+    async def test_500_on_use_case_error(self, override_auth, override_use_cases):
+        app.dependency_overrides[get_geospatial_layers_use_case] = (
+            lambda: FakeLayersUseCase(error=RuntimeError("boom"))
         )
         transport = ASGITransport(app=app)
         async with AsyncClient(
@@ -471,9 +482,7 @@ class TestGetRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_camadas_estaticas_accepted(self, client):
         for camada in ("cas", "cre", "ap"):
-            resp = await client.get(
-                f"/api/v2/geospatial/regularidade?camada={camada}"
-            )
+            resp = await client.get(f"/api/v2/geospatial/regularidade?camada={camada}")
             assert resp.status_code == 200, camada
             assert resp.json()["meta"]["camada"] == camada
 
@@ -499,8 +508,7 @@ class TestGetRegularidadePorCamada:
         await client.get("/api/v2/geospatial/regularidade?camada=bairro&status=Ativo")
         assert regularidade_use_case.received["status"] == ["Ativo"]
         await client.get(
-            "/api/v2/geospatial/regularidade?camada=bairro"
-            "&status=Ativo&status=Inativo"
+            "/api/v2/geospatial/regularidade?camada=bairro&status=Ativo&status=Inativo"
         )
         assert regularidade_use_case.received["status"] == ["Ativo", "Inativo"]
 
@@ -539,6 +547,15 @@ class TestGetRegularidadePorCamada:
             regularidade_use_case.received["protocolo_id"]
             == "sms_vacinacao_pentavalente"
         )
+
+    @pytest.mark.asyncio
+    async def test_grupo_e_bolsa_familia_forwarded(self, client, regularidade_use_case):
+        await client.get(
+            "/api/v2/geospatial/regularidade?camada=bairro"
+            "&grupo=Criança&grupo=Gestante&has_bolsa_familia=true"
+        )
+        assert regularidade_use_case.received["grupo"] == ["Criança", "Gestante"]
+        assert regularidade_use_case.received["has_bolsa_familia"] is True
 
     @pytest.mark.asyncio
     async def test_x_access_token_wins_over_id_token(
@@ -580,9 +597,7 @@ class TestGetProtocolos:
         assert proto["protocolo_secretaria"] == "SMS"
 
     @pytest.mark.asyncio
-    async def test_x_access_token_wins_over_id_token(
-        self, client, protocolos_use_case
-    ):
+    async def test_x_access_token_wins_over_id_token(self, client, protocolos_use_case):
         await client.get("/api/v2/geospatial/protocolos")
         assert protocolos_use_case.received["user_token"] == "fake-access-token"
 
@@ -630,9 +645,7 @@ class TestGetRegiaoDetalhes:
     async def test_missing_params_return_422(self, client):
         resp = await client.get("/api/v2/geospatial/regiao/detalhes")
         assert resp.status_code == 422
-        resp = await client.get(
-            "/api/v2/geospatial/regiao/detalhes?camada=bairro"
-        )
+        resp = await client.get("/api/v2/geospatial/regiao/detalhes?camada=bairro")
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -655,6 +668,17 @@ class TestGetRegiaoDetalhes:
             "2025-03-01",
             "2026-07-01",
         ]
+
+    @pytest.mark.asyncio
+    async def test_grupo_e_bolsa_familia_forwarded(
+        self, client, detalhes_regiao_use_case
+    ):
+        await client.get(
+            "/api/v2/geospatial/regiao/detalhes?camada=bairro&regiao=Centro"
+            "&grupo=Puérpera&has_bolsa_familia=false"
+        )
+        assert detalhes_regiao_use_case.received["grupo"] == ["Puérpera"]
+        assert detalhes_regiao_use_case.received["has_bolsa_familia"] is False
 
     @pytest.mark.asyncio
     async def test_invalid_status_returns_422(self, client):

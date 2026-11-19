@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
+import {
+	keepPreviousData,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import DeckGL from "@deck.gl/react";
 import { GeoJsonLayer } from "@deck.gl/layers";
 import { WebMercatorViewport } from "@deck.gl/core";
@@ -9,16 +13,17 @@ import type { Layer, MapViewState, PickingInfo } from "@deck.gl/core";
 import { Map as MapGL } from "react-map-gl/maplibre";
 import {
 	Activity,
+	ArrowDown,
 	Filter,
 	Layers,
 	Loader2,
 	RefreshCw,
-	TrendingDown,
-	TrendingUp,
 	X,
 } from "lucide-react";
 import { apiService } from "@/app/services/api";
-import { LazyFilterMultiSelect } from "@/app/components/LazyFilterSelects";
+import { EvolucaoSemanal } from "@/app/components/monitoring/EvolucaoSemanal";
+import { REGULARIDADE_SCALE, taxaToHex } from "@/app/components/monitoring/escala";
+import { LazyFilterMultiSelect, LazyFilterSelect } from "@/app/components/LazyFilterSelects";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -32,7 +37,6 @@ import {
 import type {
 	CamadaTerritorial,
 	DashboardFilterValues,
-	RegiaoDetalhesResponse,
 	RegiaoRegularidadeProperties,
 	RegiaoRegularidadeResponse,
 } from "@/app/types";
@@ -123,34 +127,6 @@ function clampToCidade(
 	return { ...vs, longitude, latitude };
 }
 
-/**
- * Escala oficial de cores da regularidade (0% → 100%), opaca (alpha FF):
- * 0% é o vermelho #BE2A3E e 100% é o verde #22763F, passando por tons de
- * amarelo. A taxa é mapeada por índice (round(taxa * (N - 1))).
- */
-const REGULARIDADE_SCALE = [
-	"#BE2A3E", "#C02E3F", "#C2323F", "#C53540", "#C73941",
-	"#C93C41", "#CB3F42", "#CD4242", "#CF4643", "#D24944",
-	"#D44C44", "#D64F45", "#D85245", "#DA5546", "#DD5847",
-	"#DF5B47", "#E15E48", "#E36148", "#E46449", "#E56749",
-	"#E76A49", "#E86D49", "#E9704A", "#EB724A", "#EC754A",
-	"#EE784B", "#EF7B4B", "#F07E4B", "#F1814C", "#F3844C",
-	"#F4874C", "#F5894C", "#F78C4D", "#F88F4D", "#F8934E",
-	"#F89750", "#F89C51", "#F8A053", "#F8A454", "#F8A856",
-	"#F8AC57", "#F7B059", "#F7B45A", "#F7B85C", "#F6BC5D",
-	"#F6C05F", "#F6C361", "#F5C762", "#F5CB64", "#F4CF65",
-	"#F1D066", "#EBCF65", "#E5CE65", "#DFCC65", "#DACB64",
-	"#D4C964", "#CEC864", "#C8C763", "#C2C563", "#BCC463",
-	"#B6C262", "#B0C162", "#A9BF61", "#A3BE61", "#9DBC61",
-	"#96BB60", "#90B960", "#8CB760", "#88B560", "#84B460",
-	"#81B260", "#7DB060", "#79AE60", "#75AC60", "#71AA60",
-	"#6CA960", "#68A760", "#64A560", "#60A35F", "#5BA15F",
-	"#57A05F", "#529E5F", "#4D9C5F", "#4A9A5E", "#47985C",
-	"#45955A", "#439358", "#409156", "#3E8E54", "#3C8C52",
-	"#398A50", "#37884E", "#34864C", "#32834A", "#2F8148",
-	"#2D7F47", "#2A7D45", "#277A43", "#257841", "#22763F",
-];
-
 // Cinza neutro (CSS "gray") para regiões sem dados — opaco.
 const SEM_DADOS_COLOR: [number, number, number, number] = [128, 128, 128, 255];
 
@@ -180,14 +156,6 @@ const CAMADA_DESCRICAO: Record<CamadaTerritorial, string> = {
 	ap: "10 APs — Áreas Programáticas de Saúde (SMS).",
 };
 
-// Secretaria das camadas especializadas: os cards "Protocolos nesta região"
-// exibem apenas protocolos da secretaria da camada (bairro/RA mostram todos).
-const CAMADA_SECRETARIA: Partial<Record<CamadaTerritorial, string>> = {
-	cas: "SMAS",
-	cre: "SME",
-	ap: "SMS",
-};
-
 /** Converte "#RRGGBB" em RGB. */
 function hexToRgb(hex: string): [number, number, number] {
 	const value = hex.replace("#", "");
@@ -196,19 +164,6 @@ function hexToRgb(hex: string): [number, number, number] {
 		parseInt(value.slice(2, 4), 16),
 		parseInt(value.slice(4, 6), 16),
 	];
-}
-
-/**
- * Cor da taxa como hex CSS na escala oficial; null/undefined → cinza
- * "#808080" (sem dados). Usada tanto no mapa quanto nos cards de detalhe.
- */
-function taxaToHex(taxa: number | null | undefined): string {
-	if (taxa === null || taxa === undefined) {
-		return "#808080";
-	}
-	const t = Math.min(100, Math.max(0, taxa)) / 100; // 1 = 100% regular
-	const index = Math.round(t * (REGULARIDADE_SCALE.length - 1));
-	return REGULARIDADE_SCALE[index];
 }
 
 /** Mapeia taxa_regularidade (0-100) para a cor RGBA da escala; null → cinza. */
@@ -231,61 +186,12 @@ function regiaoKey(
 	return properties.id ?? properties.nome;
 }
 
-/**
- * Mini-card de métrica com faixa lateral na cor da região no mapa.
- * ``trend`` (3k) adiciona a linha de variação padrão do MetaCard — seta +
- * delta colorido + rótulo — mantendo o estilo dos cards daqui.
- */
-function MetricaCard({
-	rotulo,
-	valor,
-	detalhe,
-	cor,
-	trend,
-}: {
-	rotulo: string;
-	valor: string;
-	detalhe?: string;
-	cor: string;
-	trend?: {
-		valor: string;
-		positivo: boolean;
-		label?: string;
-	};
-}) {
-	return (
-		<div
-			className="flex flex-col justify-center rounded-lg border bg-muted/40 p-3"
-			style={{ borderLeft: `4px solid ${cor}` }}
-		>
-			<p className="text-xs font-medium text-muted-foreground">{rotulo}</p>
-			<p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
-				{valor}
-			</p>
-			{trend && (
-				<p
-					className={`mt-1 flex items-center gap-1 text-xs font-semibold ${
-						trend.positivo ? "text-emerald-600" : "text-red-600"
-					}`}
-				>
-					{trend.positivo ? (
-						<TrendingUp className="h-3.5 w-3.5 shrink-0" />
-					) : (
-						<TrendingDown className="h-3.5 w-3.5 shrink-0" />
-					)}
-					{trend.valor}
-					{trend.label && (
-						<span className="ml-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-							{trend.label}
-						</span>
-					)}
-				</p>
-			)}
-			{detalhe && (
-				<p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>
-			)}
-		</div>
-	);
+/** Ordena seleções multiselect — chaves de cache estáveis independentes
+ *  da ordem de seleção (o backend também ordena no hash do Redis; aqui
+ *  evita refetch quando o usuário seleciona os mesmos valores em outra
+ *  ordem). */
+function ordenarFiltros(valores: string[]): string[] {
+	return [...valores].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 /**
@@ -298,43 +204,48 @@ function MetricaCard({
  * os valores; legenda fixa abaixo do mapa.
  *
  * Os filtros usam os MESMOS componentes e endpoint da aba Visão Geral
- * (multiselect lazy com cascata): Status (default Ativos) e Meses de
+ * (multiselect lazy com cascata): Status (default todos) e Meses de
  * Ingresso. O filtro de protocolo troca a fonte da métrica (FR-007).
  *
  * A troca de camada mantém o mapa visível (placeholderData), com indicador
  * de loading não bloqueante — FR-011 do fluxo.
  *
- * Ações de clique (3i): clicar numa região rola a página até um card de
- * detalhes abaixo do mapa. Trocar de camada OU de filtro limpa a seleção —
- * o mapa nunca fica com borda marcada "sobrando"; o botão Atualizar mantém
- * a seleção e renova os números.
+ * Ações de clique (3i): clicar numa região a adiciona à seleção (multiselect
+ * — as regiões são SOMADAS na Evolução semanal, OR na coluna da camada);
+ * clicar numa região já selecionada a remove; clicar no vazio limpa tudo.
+ * A seleção fica visível em chips abaixo do mapa e no badge da seção
+ * "Evolução semanal". Trocar de camada OU de filtro limpa a seleção — o mapa
+ * nunca fica com borda marcada "sobrando"; o botão Atualizar mantém a
+ * seleção e renova os números. O scroll até a seção é explícito (botão
+ * "Ver evolução") — sem rolagem automática, para não atrapalhar a escolha
+ * de mais de uma região.
  *
- * Card de detalhes (3j/3k): 3 cards principais — Participantes,
- * % Regulares (+ quantidade) e % Irregulares (+ quantidade), com faixa na
- * cor da região. Com "Regularidade geral" (sem protocolo), lista os cards
- * de CADA protocolo com dados na região (fonte /geospatial/regiao/
- * detalhes). Com protocolo selecionado, o "% Regulares" ganha a variação
- * "VS MÉDIA GERAL" (p.p., acima/abaixo) e a seção de comparativo mostra
- * apenas 2 cards: média geral do protocolo em todas as regiões e a
- * quantidade de regulares acima/abaixo do esperado.
+ * O card de detalhes da região (3j/3k) foi removido: com OU sem protocolo,
+ * os números vivem na seção "Evolução semanal" (fonte única
+ * /v2/monitoring/series — semana final do período × INÍCIO do período).
  */
 export const MonitoramentoTab = () => {
 	const [viewState, setViewState] = useState<MapViewState>(INITIAL_VIEW_STATE);
 	const [camada, setCamada] = useState<CamadaTerritorial>("bairro");
-	const [statuses, setStatuses] = useState<string[]>(["Ativo"]);
+	const [statuses, setStatuses] = useState<string[]>([]);
 	const [cohortes, setCohortes] = useState<string[]>([]);
+	const [grupos, setGrupos] = useState<string[]>([]);
+	const [hasBolsaFamilia, setHasBolsaFamilia] = useState<boolean | undefined>(
+		undefined,
+	);
 	const [protocoloId, setProtocoloId] = useState("");
 	const [bypassCache, setBypassCache] = useState(false);
-	// Região clicada no mapa: guardamos a CHAVE (id oficial, fallback nome);
-	// os dados exibidos no card são DERIVADOS da resposta atual (sem efeito
-	// de sincronização).
-	const [selecaoKey, setSelecaoKey] = useState<string | null>(null);
+	// Regiões clicadas no mapa (multiselect): guardamos as CHAVES (id oficial,
+	// fallback nome); os dados exibidos são DERIVADOS da resposta atual (sem
+	// efeito de sincronização). Múltiplas regiões são somadas na evolução
+	// semanal (OR na coluna da camada).
+	const [selecaoKeys, setSelecaoKeys] = useState<string[]>([]);
 	// Região sob o mouse (borda branca no hover). O handler onHover dispara
 	// a cada movimento, mas setar o MESMO valor não re-renderiza — só
 	// entrar/sair de uma região muda o estado.
 	const [hoverKey, setHoverKey] = useState<string | null>(null);
-	// Alvo do scroll ao clicar numa região.
-	const detalheRef = useRef<HTMLDivElement | null>(null);
+	// Alvo do scroll ao clicar numa região (seção "Evolução semanal").
+	const evolucaoRef = useRef<HTMLDivElement | null>(null);
 	// Container do mapa (medidas usadas no reenquadramento por camada).
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -348,17 +259,24 @@ export const MonitoramentoTab = () => {
 	// Filtros ativos repassados aos multiselects lazy (mesmo formato da
 	// Visão Geral — DashboardFilterValues).
 	const lazyFilters: DashboardFilterValues = useMemo(
-		() => ({ status: statuses, cohort: cohortes }),
-		[statuses, cohortes],
+		() => ({
+			status: statuses,
+			cohort: cohortes,
+			grupo: grupos,
+			has_bolsa_familia: hasBolsaFamilia,
+		}),
+		[statuses, cohortes, grupos, hasBolsaFamilia],
 	);
 
-	const { data, isFetching, isError, error, refetch } =
+	const { data, isFetching, isError, error } =
 		useQuery<RegiaoRegularidadeResponse>({
 			queryKey: [
 				"regularidadeCamada",
 				camada,
 				statuses,
 				cohortes,
+				grupos,
+				hasBolsaFamilia,
 				protocoloId,
 				bypassCache,
 			],
@@ -368,6 +286,8 @@ export const MonitoramentoTab = () => {
 					{
 						statuses: statuses.length > 0 ? statuses : undefined,
 						cohortes: cohortes.length > 0 ? cohortes : undefined,
+						grupo: grupos.length > 0 ? grupos : undefined,
+						hasBolsaFamilia,
 						protocoloId: protocoloId || undefined,
 					},
 					bypassCache,
@@ -378,69 +298,43 @@ export const MonitoramentoTab = () => {
 			refetchOnWindowFocus: false,
 		});
 
-	// Dados da região selecionada, DERIVADOS da resposta atual: a seleção é
-	// limpa nos handlers de troca de camada/filtro, então a derivação só
-	// acompanha trocas de DADOS com os mesmos filtros (ex.: Atualizar) — se
-	// a região continua existindo, os números atualizam; se sumiu, o card
-	// some sozinho.
-	const regiaoSelecionada = useMemo(() => {
-		if (selecaoKey === null) {
-			return null;
+	// Dados das regiões selecionadas, DERIVADOS da resposta atual: a seleção
+	// é limpa nos handlers de troca de camada/filtro, então a derivação só
+	// acompanha trocas de DADOS com os mesmos filtros (ex.: Atualizar) — se a
+	// região continua existindo, os números atualizam; se sumiu, sai da lista
+	// sozinha.
+	const selecaoDetalhes = useMemo(() => {
+		if (selecaoKeys.length === 0 || !data) {
+			return [];
 		}
-		return (
-			data?.features.find((f) => regiaoKey(f.properties) === selecaoKey)
-				?.properties ?? null
-		);
-	}, [data, selecaoKey]);
+		const detalhes: { key: string; nome: string }[] = [];
+		for (const k of selecaoKeys) {
+			const feature = data.features.find(
+				(f) => regiaoKey(f.properties) === k,
+			);
+			if (feature) {
+				detalhes.push({ key: k, nome: feature.properties?.nome ?? k });
+			}
+		}
+		return detalhes.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+	}, [data, selecaoKeys]);
 
-	// Rola a página até o card de detalhes quando uma região é clicada.
-	// (Efeito só sincroniza sistema externo — o scroll — sem setState.)
-	useEffect(() => {
-		if (selecaoKey === null) {
-			return;
-		}
+	// Nomes exibidos (ordenados — chave de cache estável no backend/front).
+	const regioesSelecionadas = useMemo(
+		() => selecaoDetalhes.map((d) => d.nome),
+		[selecaoDetalhes],
+	);
+
+	// Scroll explícito até a seção "Evolução semanal" (sem rolagem
+	// automática: o multiselect não pode perder o mapa a cada clique).
+	const scrollToEvolucao = useCallback(() => {
 		requestAnimationFrame(() => {
-			detalheRef.current?.scrollIntoView({
+			evolucaoRef.current?.scrollIntoView({
 				behavior: "smooth",
 				block: "start",
 			});
 		});
-	}, [selecaoKey]);
-
-	// Detalhes da região clicada (3j): geral + protocolos da região.
-	// Liga apenas com região selecionada; a seleção é limpa ao trocar
-	// camada/filtros, então a query desliga sozinha nesses casos.
-	const { data: detalhesData, isFetching: detalhesFetching } =
-		useQuery<RegiaoDetalhesResponse>({
-			queryKey: [
-				"regiaoDetalhes",
-				camada,
-				regiaoSelecionada?.nome ?? null,
-				statuses,
-				cohortes,
-				protocoloId,
-				bypassCache,
-			],
-			queryFn: ({ signal }) => {
-				if (!regiaoSelecionada) {
-					throw new Error("Região não selecionada");
-				}
-				return apiService.getRegiaoDetalhes(
-					camada,
-					regiaoSelecionada.nome,
-					{
-						statuses: statuses.length > 0 ? statuses : undefined,
-						cohortes: cohortes.length > 0 ? cohortes : undefined,
-						protocoloId: protocoloId || undefined,
-					},
-					bypassCache,
-					signal,
-				);
-			},
-			enabled: regiaoSelecionada !== null,
-			staleTime: 5 * 60 * 1000, // cache do backend é 30 min
-			refetchOnWindowFocus: false,
-		});
+	}, []);
 
 	const deckLayers = useMemo(() => {
 		if (!data?.features?.length) return [];
@@ -462,32 +356,38 @@ export const MonitoramentoTab = () => {
 			}),
 		];
 
-		// Destaque (hover OU seleção) numa camada overlay DESENHADA POR
+		// Destaque (hover OU seleções) numa camada overlay DESENHADA POR
 		// CIMA: a borda opaca cobre a borda padrão semi-transparente do
 		// vizinho — sem blend (que gerava cinza na aresta compartilhada).
-		if (selecaoKey !== null || hoverKey !== null) {
+		if (selecaoKeys.length > 0 || hoverKey !== null) {
+			const selecao = new Set(selecaoKeys);
 			layers.push(
 				new GeoJsonLayer({
-					// id ÚNICO por chave: força o deck.gl a recriar a camada
-					// a cada mudança de seleção/hover — elimina qualquer
-					// resquício de estado/cache interno entre regiões.
-					id: `regularidade-destaque-${selecaoKey ?? hoverKey ?? "vazio"}`,
+					// id ÚNICO por conjunto de chaves: força o deck.gl a
+					// recriar a camada a cada mudança de seleção/hover —
+					// elimina qualquer resquício de estado/cache interno.
+					id: `regularidade-destaque-${
+						[...selecaoKeys].sort().join("|") || hoverKey || "vazio"
+					}`,
 					data: data.features.filter((f) => {
 						const key = regiaoKey(f.properties);
 						return (
-							(selecaoKey !== null && key === selecaoKey) ||
-							(hoverKey !== null && key === hoverKey)
+							(key !== null && selecao.has(key)) || key === hoverKey
 						);
 					}),
 					filled: false, // só borda — o fill continua na cor da escala
 					stroked: true,
 					// Seleção tem prioridade sobre o hover (mesma região).
-					getLineColor: (d) =>
-						regiaoKey(d.properties) === selecaoKey
+					getLineColor: (d) => {
+						const key = regiaoKey(d.properties);
+						return key !== null && selecao.has(key)
 							? SELECTION_BORDER_COLOR
-							: HOVER_BORDER_COLOR,
-					getLineWidth: (d) =>
-						regiaoKey(d.properties) === selecaoKey ? 2.5 : 2,
+							: HOVER_BORDER_COLOR;
+					},
+					getLineWidth: (d) => {
+						const key = regiaoKey(d.properties);
+						return key !== null && selecao.has(key) ? 2.5 : 2;
+					},
 					lineWidthUnits: "pixels",
 					pickable: false, // picking/clique continuam na camada base
 				}),
@@ -495,10 +395,11 @@ export const MonitoramentoTab = () => {
 		}
 
 		return layers;
-	}, [data, selecaoKey, hoverKey]);
+	}, [data, selecaoKeys, hoverKey]);
 
 	/**
-	 * Clique no mapa: seleciona a região clicada (clique no vazio limpa).
+	 * Clique no mapa: alterna a região clicada na seleção (multiselect);
+	 * clique no vazio limpa todas.
 	 * Sem guarda anti-drag: no deck.gl 9 o evento "click" vem do Hammer
 	 * TapRecognizer, que só dispara se o ponteiro quase não se moveu entre
 	 * down/up — pan e zoom não geram clique.
@@ -508,7 +409,16 @@ export const MonitoramentoTab = () => {
 		// anterior (o deck.gl pode não informar hover nulo em todo fluxo —
 		// ex.: sair do canvas direto, toque, movimento rápido).
 		setHoverKey(null);
-		setSelecaoKey(regiaoKey(object?.properties));
+		const key = regiaoKey(object?.properties);
+		if (key === null) {
+			setSelecaoKeys([]);
+			return;
+		}
+		setSelecaoKeys((prev) =>
+			prev.includes(key)
+				? prev.filter((k) => k !== key)
+				: ordenarFiltros([...prev, key]),
+		);
 	}, []);
 
 	const handleMapHover = useCallback(({ object }: PickingInfo) => {
@@ -525,6 +435,8 @@ export const MonitoramentoTab = () => {
 			taxa === null || taxa === undefined
 				? "Sem dados"
 				: `${taxa.toFixed(1).replace(".", ",")}% regular`;
+		const key = regiaoKey(p);
+		const selecionada = key !== null && selecaoKeys.includes(key);
 
 		return {
 			html: `
@@ -534,7 +446,12 @@ export const MonitoramentoTab = () => {
 					<span style="color: #60a5fa;">Participantes:</span> ${p.total_participantes ?? 0}<br/>
 					<span style="color: #60a5fa;">Regulares:</span> ${p.total_regulares ?? 0}<br/>
 					<span style="color: #60a5fa;">Irregulares:</span> ${p.total_irregulares ?? 0}<br/>
-					<span style="color: #4ade80; font-weight: 600;">${taxaLabel}</span>
+					<span style="color: #4ade80; font-weight: 600;">${taxaLabel}</span><br/>
+					${
+						selecionada
+							? `<span style="color: #fbbf24;">Selecionada — clique para remover</span>`
+							: `<span style="color: #94a3b8;">Clique para adicionar à seleção</span>`
+					}
 				</div>
 			`,
 			style: {
@@ -544,76 +461,65 @@ export const MonitoramentoTab = () => {
 				boxShadow: "0 4px 6px rgba(0, 0, 0, 0.3)",
 			},
 		};
+	}, [selecaoKeys]);
+
+	const queryClient = useQueryClient();
+
+	/**
+	 * Atualizar: roda uma rodada com `bypass_cache` (dados frescos da
+	 * fonte) e depois volta às chaves normais. O bypass NÃO fica
+	 * permanente — as chaves sem bypass são invalidadas ao final para
+	 * revalidarem do cache do backend, que acabou de ser regravado com
+	 * dados frescos (o backend grava no cache mesmo em bypass).
+	 */
+	const handleRefresh = async () => {
+		if (bypassCache) {
+			return; // rodada já em andamento
+		}
+		setBypassCache(true);
+		// Deixa o render com as novas chaves (bypass) disparar os fetches
+		// e aguarda TODOS concluírem antes de voltar às chaves normais.
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		await Promise.all([
+			queryClient.refetchQueries({ queryKey: ["regularidadeCamada"] }),
+			queryClient.refetchQueries({ queryKey: ["monitoringSeries"] }),
+		]);
+		setBypassCache(false);
+		await Promise.all([
+			queryClient.invalidateQueries({ queryKey: ["regularidadeCamada"] }),
+			queryClient.invalidateQueries({ queryKey: ["monitoringSeries"] }),
+		]);
+	};
+
+	// Handler estável para o EvolucaoSemanal (memo): recriado a cada
+	// render, invalidaria o memo a cada pan/hover do mapa.
+	const handleClearProtocolo = useCallback(() => {
+		setProtocoloId("");
+		setSelecaoKeys([]);
 	}, []);
 
-	const handleRefresh = () => {
-		setBypassCache(true);
-		refetch();
-	};
+	// Trocar um filtro multiselect limpa a seleção do mapa (o destaque
+	// nunca fica "sobrando" com filtros diferentes) e aplica o valor
+	// ordenado (chave de cache estável no backend/front).
+	const aoMudarMultiselect = useCallback(
+		(setter: (v: string[]) => void) => (v: string[]) => {
+			setSelecaoKeys([]);
+			setter(ordenarFiltros(v));
+		},
+		[],
+	);
 
 	const clearFilters = () => {
 		setStatuses([]);
 		setCohortes([]);
+		setGrupos([]);
+		setHasBolsaFamilia(undefined);
 		setProtocoloId("");
-		setSelecaoKey(null);
+		setSelecaoKeys([]);
 	};
 
 	const meta = data?.meta;
 	const camadaLabel = CAMADA_LABEL[camada];
-
-	// Valores derivados da região selecionada (card de detalhes abaixo do mapa).
-	const taxaSelecionada = regiaoSelecionada?.taxa_regularidade;
-	const temDadosSelecao =
-		taxaSelecionada !== null && taxaSelecionada !== undefined;
-	const corSelecao = taxaToHex(taxaSelecionada);
-	const formatarNumero = (valor: number | null | undefined) =>
-		temDadosSelecao ? (valor ?? 0).toLocaleString("pt-BR") : "—";
-	const formatarTaxa = (valor: number | null | undefined) =>
-		valor === null || valor === undefined
-			? "—"
-			: `${valor.toFixed(1).replace(".", ",")}%`;
-
-	// 3k: comparativo da região × média geral do protocolo selecionado.
-	const comparativo = useMemo(() => {
-		const geral = detalhesData?.protocolo_geral;
-		if (
-			!regiaoSelecionada ||
-			!geral ||
-			!temDadosSelecao ||
-			geral.total_participantes === 0 ||
-			geral.taxa_regularidade === null
-		) {
-			return null;
-		}
-		const taxaRegiao = taxaSelecionada ?? 0;
-		const taxaGeral = geral.taxa_regularidade;
-		const deltaPP = taxaRegiao - taxaGeral;
-		const acima = deltaPP >= 0;
-		// Quantidade acima/abaixo do esperado pela média geral (mesma
-		// fórmula do "Gap para a Meta" do Acordo de Resultados).
-		const gap = Math.round(
-			(regiaoSelecionada.total_regulares ?? 0) -
-				(taxaGeral / 100) * (regiaoSelecionada.total_participantes ?? 0),
-		);
-		return {
-			deltaLabel: `${acima ? "+" : "-"}${Math.abs(deltaPP).toFixed(1).replace(".", ",")} p.p.`,
-			acima,
-			gap,
-			taxaGeral,
-			geral,
-		};
-	}, [detalhesData, regiaoSelecionada, taxaSelecionada, temDadosSelecao]);
-
-	// Protocolos com dados na região, restritos à secretaria da camada
-	// (CAS→SMAS, CRE→SME, AP→SMS; bairro/RA mostram todos).
-	const protocolosRegiao = useMemo(() => {
-		const secretaria = CAMADA_SECRETARIA[camada];
-		return (detalhesData?.protocolos ?? []).filter(
-			(p) =>
-				p.total_participantes > 0 &&
-				(!secretaria || p.protocolo_secretaria === secretaria),
-		);
-	}, [detalhesData, camada]);
 
 	// Reenquadra o mapa na extensão da cidade (chamado ao trocar de camada:
 	// o usuário pode estar com zoom num bairro ao mudar para CAS/CRE/AP).
@@ -658,7 +564,7 @@ export const MonitoramentoTab = () => {
 							// entre camadas, ex.: id_bairro vs id_ra) e reenquadra
 							// o mapa na extensão da cidade.
 							setCamada(value as CamadaTerritorial);
-							setSelecaoKey(null);
+							setSelecaoKeys([]);
 							fitCamada();
 						}}
 					>
@@ -719,10 +625,7 @@ export const MonitoramentoTab = () => {
 								field="status_list"
 								filters={lazyFilters}
 								value={statuses}
-								onSelect={(v) => {
-									setSelecaoKey(null);
-									setStatuses(v);
-								}}
+								onSelect={aoMudarMultiselect(setStatuses)}
 								disabled={isFetching}
 								placeholder="Status"
 								defaultLabel="Todos os Status"
@@ -732,13 +635,39 @@ export const MonitoramentoTab = () => {
 								field="cohorts"
 								filters={lazyFilters}
 								value={cohortes}
-								onSelect={(v) => {
-									setSelecaoKey(null);
-									setCohortes(v);
-								}}
+								onSelect={aoMudarMultiselect(setCohortes)}
 								disabled={isFetching}
 								placeholder="Meses de Ingresso"
 								defaultLabel="Todos os Meses de Ingresso"
+							/>
+
+							<LazyFilterMultiSelect
+								field="grupos"
+								filters={lazyFilters}
+								value={grupos}
+								onSelect={aoMudarMultiselect(setGrupos)}
+								disabled={isFetching}
+								placeholder="Grupos"
+								defaultLabel="Todos os Grupos"
+							/>
+
+							<LazyFilterSelect
+								field="bolsa_familia"
+								filters={lazyFilters}
+								value={
+									hasBolsaFamilia !== undefined
+										? String(hasBolsaFamilia)
+										: "todas"
+								}
+								onSelect={(v) => {
+									setSelecaoKeys([]);
+									setHasBolsaFamilia(
+										v === "todas" ? undefined : v === "true",
+									);
+								}}
+								disabled={isFetching}
+								placeholder="Todos Bolsa Família"
+								defaultLabel="Todos Bolsa Família"
 							/>
 
 							<VirtualizedSelect
@@ -748,7 +677,7 @@ export const MonitoramentoTab = () => {
 								}))}
 								value={protocoloId || "todos"}
 								onSelect={(value) => {
-									setSelecaoKey(null);
+									setSelecaoKeys([]);
 									setProtocoloId(value === "todos" ? "" : value);
 								}}
 								disabled={isFetching}
@@ -805,7 +734,8 @@ export const MonitoramentoTab = () => {
 								{protocoloId
 									? "Regularidade do protocolo selecionado por região (substitui a regularidade geral)."
 									: "Taxa de regularidade por região (participantes regulares / total de participantes) — visualização geográfica."}{" "}
-								Clique em uma região para ver os detalhes abaixo.
+								Clique em uma ou mais regiões para somá-las na evolução
+								semanal; clique numa região selecionada para removê-la.
 							</p>
 						</CardHeader>
 						<CardContent className="pt-4">
@@ -873,203 +803,89 @@ export const MonitoramentoTab = () => {
 								</div>
 							</div>
 
-							<div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+							{/* Seleção de regiões (multiselect) — chips removíveis */}
+							{selecaoDetalhes.length > 0 && (
+								<div className="mt-3 flex flex-wrap items-center gap-1.5">
+									<span className="text-xs text-muted-foreground">
+										Selecionadas:
+									</span>
+									{selecaoDetalhes.map(({ key, nome }) => (
+										<Badge
+											key={key}
+											variant="secondary"
+											className="gap-1 pr-1 text-xs font-normal"
+										>
+											{nome}
+											<button
+												type="button"
+												onClick={() =>
+													setSelecaoKeys((prev) =>
+														prev.filter((k) => k !== key),
+													)
+												}
+												aria-label={`Remover ${nome} da seleção`}
+												className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+											>
+												<X className="h-3 w-3" />
+											</button>
+										</Badge>
+									))}
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-6 text-xs text-muted-foreground"
+										onClick={() => setSelecaoKeys([])}
+									>
+										Limpar
+									</Button>
+								</div>
+							)}
+
+							<div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
 								<span>
 									{meta
 										? `${meta.regioes_com_dados} regiões com dados · ${meta.regioes_sem_dados} sem dados · ${meta.total_regioes} no mapa`
 										: `${data?.features?.length ?? 0} regiões carregadas`}
 								</span>
-								{bypassCache && (
-									<span className="text-primary">consulta fresca</span>
-								)}
+								<div className="flex items-center gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										className="h-7 text-xs"
+										onClick={scrollToEvolucao}
+									>
+										<ArrowDown className="mr-1 h-3 w-3" />
+										Ver evolução
+										{selecaoKeys.length > 0
+											? ` (${selecaoKeys.length})`
+											: ""}
+									</Button>
+									{bypassCache && (
+										<span className="text-primary">consulta fresca</span>
+									)}
+								</div>
 							</div>
 						</CardContent>
 					</Card>
 
-					{/* Detalhes da região clicada (3i) — scroll alvo do clique */}
-					{regiaoSelecionada && (
-						<Card
-							ref={detalheRef}
-							className="scroll-mt-4"
-							style={{ borderLeft: `4px solid ${corSelecao}` }}
-						>
-							<CardHeader className="pb-3">
-								<div className="flex items-start justify-between gap-3">
-									<div className="flex min-w-0 items-center gap-2">
-										<CardTitle className="truncate text-xl font-bold">
-											{regiaoSelecionada.nome}
-										</CardTitle>
-										<Badge variant="outline" className="shrink-0">
-											{CAMADA_LABEL[camada]}
-										</Badge>
-									</div>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setSelecaoKey(null)}
-										aria-label="Fechar detalhes da região"
-										className="h-8 w-8 shrink-0 p-0"
-									>
-										<X className="h-4 w-4" />
-									</Button>
-								</div>
-								<p className="text-sm text-muted-foreground">
-									{camada === "bairro" &&
-									regiaoSelecionada.nome_regiao_administrativa
-										? `${regiaoSelecionada.nome_regiao_administrativa} · `
-										: ""}
-									{temDadosSelecao
-										? protocoloId
-											? "Regularidade do protocolo selecionado"
-											: "Regularidade geral"
-										: "Sem dados para os filtros selecionados"}
-								</p>
-							</CardHeader>
-							<CardContent className="pt-0">
-								{/* 3j: Participantes → % Regulares (+qtd) → % Irregulares (+qtd) */}
-								<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-									<MetricaCard
-										rotulo="Participantes"
-										valor={formatarNumero(
-											regiaoSelecionada.total_participantes,
-										)}
-										cor={corSelecao}
-									/>
-									<MetricaCard
-										rotulo="% Regulares"
-										valor={formatarTaxa(taxaSelecionada)}
-										trend={
-											protocoloId && comparativo
-												? {
-														valor: comparativo.deltaLabel,
-														positivo: comparativo.acima,
-														label: "vs média geral",
-													}
-												: undefined
-										}
-										detalhe={
-											temDadosSelecao
-												? `${formatarNumero(regiaoSelecionada.total_regulares)} regulares de ${formatarNumero(regiaoSelecionada.total_participantes)} participantes`
-												: undefined
-										}
-										cor={corSelecao}
-									/>
-									<MetricaCard
-										rotulo="% Irregulares"
-										valor={
-											temDadosSelecao
-												? formatarTaxa(100 - (taxaSelecionada ?? 0))
-												: "—"
-										}
-										detalhe={
-											temDadosSelecao
-												? `${formatarNumero(regiaoSelecionada.total_irregulares)} irregulares de ${formatarNumero(regiaoSelecionada.total_participantes)} participantes`
-												: undefined
-										}
-										cor={corSelecao}
-									/>
-								</div>
-
-								{/* 3j: modo Regularidade geral → cards de cada protocolo
-								    com dados na região */}
-								{!protocoloId && (
-									<div className="mt-6 space-y-3">
-										<h3 className="text-sm font-semibold text-foreground">
-											Protocolos nesta região
-										</h3>
-										{detalhesFetching && !detalhesData ? (
-											<div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-												<Loader2 className="h-4 w-4 animate-spin" />
-												Carregando protocolos…
-											</div>
-										) : protocolosRegiao.length > 0 ? (
-											<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-												{protocolosRegiao.map((p) => (
-														<div
-															key={p.protocolo_id}
-															className="flex flex-col justify-center rounded-lg border bg-muted/40 p-3"
-															style={{
-																borderLeft: `4px solid ${taxaToHex(p.taxa_regularidade)}`,
-															}}
-														>
-															<p className="text-sm font-semibold line-clamp-2">
-																{p.protocolo_secretaria
-																	? `${p.protocolo_secretaria} — ${p.protocolo_descricao ?? p.protocolo_id}`
-																	: (p.protocolo_descricao ?? p.protocolo_id)}
-															</p>
-															<div className="mt-2 flex items-baseline gap-2">
-																<span className="text-xl font-bold tabular-nums">
-																	{formatarTaxa(p.taxa_regularidade)}
-																</span>
-																<span className="text-xs text-muted-foreground">
-																	regular
-																</span>
-															</div>
-															<p className="mt-1 text-xs text-muted-foreground">
-																{p.total_regulares.toLocaleString("pt-BR")} de{" "}
-																{p.total_participantes.toLocaleString("pt-BR")}{" "}
-																participantes
-															</p>
-														</div>
-													))}
-											</div>
-										) : (
-											<p className="text-sm text-muted-foreground">
-												Sem dados de protocolo nesta região.
-											</p>
-										)}
-									</div>
-								)}
-
-								{/* 3k: modo protocolo específico → comparativo com a
-								    média geral do protocolo. A variação vive no card
-								    "% Regulares" acima (sem repetição); aqui ficam
-								    apenas os 2 cards: média geral + quantidade. */}
-								{protocoloId && (
-									<div className="mt-6 space-y-3">
-										<h3 className="text-sm font-semibold text-foreground">
-											Comparativo com a média geral do protocolo
-										</h3>
-										{detalhesFetching && !detalhesData ? (
-											<div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-												<Loader2 className="h-4 w-4 animate-spin" />
-												Carregando comparativo…
-											</div>
-										) : comparativo ? (
-											<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-												<MetricaCard
-													rotulo="Média geral do protocolo"
-													valor={formatarTaxa(
-														comparativo.geral.taxa_regularidade,
-													)}
-													cor={corSelecao}
-													detalhe={`${formatarNumero(comparativo.geral.total_regulares)} regulares de ${formatarNumero(comparativo.geral.total_participantes)} participantes em todas as regiões`}
-												/>
-												<MetricaCard
-													rotulo="Acima/Abaixo da média"
-													valor={Math.abs(
-														comparativo.gap,
-													).toLocaleString("pt-BR")}
-													cor={corSelecao}
-													trend={{
-														valor: comparativo.acima
-															? "ACIMA DA MÉDIA"
-															: "ABAIXO DA MÉDIA",
-														positivo: comparativo.acima,
-													}}
-													detalhe={`participantes regulares ${comparativo.acima ? "acima" : "abaixo"} do esperado pela média geral de ${formatarTaxa(comparativo.taxaGeral)}`}
-												/>
-											</div>
-										) : (
-											<p className="text-sm text-muted-foreground">
-												Sem dados da média geral deste protocolo.
-											</p>
-										)}
-									</div>
-								)}
-							</CardContent>
-						</Card>
-					)}
+					{/* Acompanhamento — evolução semanal. Consome a seleção do
+					    mapa (camada + regiões) e os filtros compartilhados; sem
+					    seleção, a série é da cidade inteira; com várias, elas
+					    são somadas (OR). O protocolo é compartilhado com o
+					    filtro do mapa. */}
+					<div ref={evolucaoRef}>
+						<EvolucaoSemanal
+							camada={camada}
+							regioes={regioesSelecionadas}
+							statuses={statuses}
+							cohortes={cohortes}
+							grupos={grupos}
+							hasBolsaFamilia={hasBolsaFamilia}
+							protocoloId={protocoloId}
+							onClearProtocolo={handleClearProtocolo}
+							bypassCache={bypassCache}
+						/>
+					</div>
 				</>
 			)}
 		</div>
