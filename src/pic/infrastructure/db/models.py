@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.pic.infrastructure.db.base import Base
 
-# Sentinel for the subject's "base" row (identity/super_admin bypass row),
+# Wildcard grant of every row of the schema,
 # used instead of NULL/NULL so the (schema, subject, unit_type, unit_id)
 # unique constraint behaves correctly on upsert (Postgres treats NULL <> NULL
 # in unique constraints, which would let two upsert attempts for the base row
@@ -34,8 +34,8 @@ from src.pic.infrastructure.db.base import Base
 # convention; the data-proxy's `rls.access_policy.unit_type`/`unit_id` stay
 # nullable (shared table, outside our control) but we never write NULL into
 # them either. See plan.md section 3.2.
-BASE_UNIT_TYPE = "_base"
-BASE_UNIT_ID = "_base"
+GENERAL_VIEW_UNIT_TYPE = "*"
+GENERAL_VIEW_UNIT_ID = "*"
 
 
 class User(Base):
@@ -67,9 +67,14 @@ class User(Base):
     # "Admin comum": manages a subset of users (own units' subset). Pure app
     # business rule, validated in the backend — never sent to the data-proxy.
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Manages every user AND sees every row of data. Mirrors to `is_admin=true`
-    # on this subject's base `policy` row (unit_type/unit_id NULL).
+    # Manages every user. Implies the general view.
     is_super_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Sees every row of data. Mirrors to the `policy` row
+    # (GENERAL_VIEW_UNIT_TYPE, GENERAL_VIEW_UNIT_ID), which the data-proxy reads
+    # as a grant of every row of the schema.
+    general_view: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     # Soft delete for the whole account. Mirrors to a revoke (DELETE) of every
     # `policy` row for this subject on the data-proxy.
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -129,17 +134,15 @@ class PolicyRow(Base):
     schema: Mapped[str] = mapped_column(String, nullable=False)
     subject: Mapped[str] = mapped_column(String, ForeignKey(User.cpf), nullable=False)
 
-    # True only on the super_admin's base row (unit_type/unit_id ==
-    # BASE_UNIT_TYPE/BASE_UNIT_ID) — never combined with a specific unit. See
-    # plan.md section 4.
+    # Always false: the data-proxy no longer has this column.
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Local soft-delete flag (the data-proxy's `access_policy` no longer has
     # this column): `false` means the sync must DELETE the corresponding row
     # there — see `AccessPolicySync`.
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    # BASE_UNIT_TYPE/BASE_UNIT_ID = the subject's "base" row (identity/
-    # super_admin bypass row). Otherwise one of: cras, escola, cre, ap, cas,
+    # GENERAL_VIEW_UNIT_TYPE/GENERAL_VIEW_UNIT_ID = the grant of every row of
+    # the schema. Otherwise one of: cras, escola, cre, ap, cas,
     # clinica_familia, equipe_familia, secretaria.
     unit_type: Mapped[str] = mapped_column(String, nullable=False)
     unit_id: Mapped[str] = mapped_column(String, nullable=False)
