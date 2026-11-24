@@ -39,9 +39,9 @@ CONFIG = PostgrestClientConfig(
     client_secret="pic-secret",
 )
 
-_TABLE_CONSOLIDADO = "endpoint_participante_visao_geral_consolidado"
-_TABLE_PROTOCOLOS = "endpoint_participante_visao_geral_protocolos"
-_TABLE_SERIES = "endpoint_participante_visao_geral_series"
+_TABLE_CONSOLIDADO = "endpoint_vg_consolidado"
+_TABLE_PROTOCOLOS = "endpoint_vg_protocolos"
+_TABLE_SERIES = "endpoint_vg_series"
 _TABLE_WIDE = "endpoint_participante_protocolos_wide"
 
 

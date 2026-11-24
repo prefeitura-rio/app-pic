@@ -1,6 +1,6 @@
 """PostgREST implementation of IMonitoringRepository.
 
-Fonte: ``endpoint_participante_visao_geral_semanal_protocolos`` (agregada por
+Fonte: ``endpoint_vg_semanal_protocolos`` (agregada por
 protocolo/semana, particionada por ``data_referencia_semana_inicio``, janela
 móvel de 35 partições).
 
@@ -31,7 +31,7 @@ from src.pic.domain.models.monitoring import (
 from src.pic.domain.models.territorio import CAMADA_COLUMN
 from src.utils.log import logger
 
-_TABLE = "endpoint_participante_visao_geral_semanal_protocolos"
+_TABLE = "endpoint_vg_semanal_protocolos"
 
 _CACHE_TTL = 3600
 _SERIES_CACHE_PREFIX = "pic:monitoring:series:v1:"
