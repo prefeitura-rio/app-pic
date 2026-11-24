@@ -31,7 +31,7 @@ class GeospatialFilterOptions(BaseModel):
 class CamadaRegularidadeAggregate(BaseModel):
     """Agregado de regularidade por região de uma camada territorial.
 
-    Fonte: ``endpoint_vg_consolidado`` (mesma métrica
+    Fonte: ``endpoint_participante_visao_geral_consolidado`` (mesma métrica
     do dashboard: participantes regulares — situação Regular + Atenção —
     sobre o total de participantes). Vem de uma query agregada do PostgREST
     (RLS aplicada antes do GROUP BY). O campo ``regiao`` é o identificador
@@ -46,7 +46,7 @@ class CamadaRegularidadeAggregate(BaseModel):
 
 
 class ProtocoloOption(BaseModel):
-    """Opção de filtro de protocolo (fonte: endpoint_vg_protocolos)."""
+    """Opção de filtro de protocolo (fonte: endpoint_participante_visao_geral_protocolos)."""
 
     protocolo_id: str
     protocolo_secretaria: str | None = None

@@ -60,9 +60,9 @@ from src.utils.log import logger
 # ---------------------------------------------------------------------------
 # Table names (same data-proxy endpoints used by the dashboard)
 # ---------------------------------------------------------------------------
-_TABLE_CONSOLIDADO = "endpoint_vg_consolidado"
-_TABLE_PROTOCOLOS = "endpoint_vg_protocolos"
-_TABLE_SERIES = "endpoint_vg_series"
+_TABLE_CONSOLIDADO = "endpoint_participante_visao_geral_consolidado"
+_TABLE_PROTOCOLOS = "endpoint_participante_visao_geral_protocolos"
+_TABLE_SERIES = "endpoint_participante_visao_geral_series"
 _TABLE_WIDE = "endpoint_participante_protocolos_wide"
 
 _MAPA_SERIE: dict[str, str] = {

@@ -299,7 +299,7 @@ RESOLUCAO_ROWS = [
     },
 ]
 
-# Mock de dados AGREGADOS por protocolo (endpoint_vg_tempo_irregular_protocolo)
+# Mock de dados AGREGADOS por protocolo (endpoint_participante_visao_geral_tempo_irregular_protocolo)
 # PostgREST retorna 1 linha por protocolo com aliases definidos no select
 TEMPO_PROTOCOLO_ROWS = [
     {
@@ -320,7 +320,7 @@ TEMPO_PROTOCOLO_ROWS = [
     },
 ]
 
-# Mock de dados AGREGADOS de busca ativa (endpoint_vg_busca_ativa)
+# Mock de dados AGREGADOS de busca ativa (endpoint_participante_visao_geral_busca_ativa)
 BUSCA_ATIVA_TOTALS = [{"buscas": 40}]
 BUSCA_ATIVA_MENSAL = [
     {
@@ -1691,7 +1691,7 @@ class TestRepositoryDisparos:
 
 
 class TestRepositoryBuscaAtiva:
-    """Busca Ativa fetches (section 9) over endpoint_vg_busca_ativa."""
+    """Busca Ativa fetches (section 9) over endpoint_participante_visao_geral_busca_ativa."""
 
     @pytest.mark.asyncio
     async def test_full_pipeline_includes_busca_ativa(self):

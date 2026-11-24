@@ -117,7 +117,7 @@ def _make_redis(cached: object | None = None) -> MagicMock:
     return redis
 
 
-_TABLE = "endpoint_vg_semanal_protocolos"
+_TABLE = "endpoint_participante_visao_geral_semanal_protocolos"
 
 
 def _data_params(fake: FakeMonitoringDataProxy) -> dict[str, str]:
