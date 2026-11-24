@@ -62,12 +62,12 @@ _TABLE = "endpoint_camadas_geoespaciais"
 # Tabela consolidado do dashboard (RLS nas 7 colunas de unidade). É a mesma
 # fonte das métricas da Visão Geral: participantes regulares/irregulares por
 # bairro (participante_regular_numerador/denominador).
-_BAIRROS_TABLE = "endpoint_vg_consolidado"
+_BAIRROS_TABLE = "endpoint_participante_visao_geral_consolidado"
 
 # Mesmo cubo do consolidado, com granularidade de protocolo (FR-007 do fluxo
 # de mapas): métrica própria por protocolo (protocolo_regular_numerador/
 # denominador) — usada quando protocolo_id está selecionado.
-_PROTOCOLOS_TABLE = "endpoint_vg_protocolos"
+_PROTOCOLOS_TABLE = "endpoint_participante_visao_geral_protocolos"
 
 # Pages fetched concurrently per window (rolling window strategy)
 _FETCH_WINDOW = 2
@@ -347,7 +347,7 @@ class PostgrestGeospatialRepository(IGeospatialRepository):
         ``pic_cohort=in``; ``grupo`` (lista) → ``pic_grupo=in``;
         ``has_bolsa_familia`` (bool) → ``has_bolsa_familia=eq``;
         ``protocolo_id`` troca a fonte para
-        ``endpoint_vg_protocolos`` com a métrica própria
+        ``endpoint_participante_visao_geral_protocolos`` com a métrica própria
         do protocolo (``protocolo_regular_*`` — FR-007).
 
         Sem ``protocolo_id``: ``regular`` soma ``participante_regular_numerador``

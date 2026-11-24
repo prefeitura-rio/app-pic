@@ -1,6 +1,6 @@
 """Modelos de domínio do Acompanhamento semanal (fase temporal do Monitoramento).
 
-Fonte: ``endpoint_vg_semanal_protocolos`` — agregada por
+Fonte: ``endpoint_participante_visao_geral_semanal_protocolos`` — agregada por
 protocolo/semana, sem identidade de participante. A evolução é **líquida**:
 marginais por semana do grupo definido pelos filtros (não há transição
 individual).

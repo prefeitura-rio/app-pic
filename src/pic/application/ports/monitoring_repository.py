@@ -1,6 +1,6 @@
 """Port do repositório do Acompanhamento semanal (monitoring).
 
-Fonte única: ``endpoint_vg_semanal_protocolos`` no
+Fonte única: ``endpoint_participante_visao_geral_semanal_protocolos`` no
 data-proxy (PostgREST), com RLS aplicada ANTES da agregação — o escopo de
 unidades do usuário é respeitado em todas as consultas.
 
