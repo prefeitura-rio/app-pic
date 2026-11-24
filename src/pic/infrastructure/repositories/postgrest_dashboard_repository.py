@@ -11,7 +11,7 @@ Design notes:
   `endpoint_whatsapp_disparo` table via five aggregate queries (GROUP BY done
   server-side — no pagination), accepting only the filter columns that exist
   on that table; failures degrade to `disparos=None`. Section 6B (tempo por
-  protocolo) reads `endpoint_participante_visao_geral_tempo_irregular_protocolo`
+  protocolo) reads `endpoint_vg_tempo_irregular_protocolo`
   and also degrades gracefully (empty list) when the table is missing.
 - The data-proxy enforces row-level security server-side when the request
   carries the end-user JWT (`with_user_token`). The *secretaria* query param
@@ -54,14 +54,14 @@ from src.utils.log import logger
 # ---------------------------------------------------------------------------
 # Table names
 # ---------------------------------------------------------------------------
-_TABLE_CONSOLIDADO = "endpoint_participante_visao_geral_consolidado"
-_TABLE_PROTOCOLOS = "endpoint_participante_visao_geral_protocolos"
-_TABLE_SERIES = "endpoint_participante_visao_geral_series"
-_TABLE_TEMPO = "endpoint_participante_visao_geral_tempo_irregular"
-_TABLE_TEMPO_PROTOCOLO = "endpoint_participante_visao_geral_tempo_irregular_protocolo"
-_TABLE_RESOLUCAO = "endpoint_participante_visao_geral_resolucao_alertas"
+_TABLE_CONSOLIDADO = "endpoint_vg_consolidado"
+_TABLE_PROTOCOLOS = "endpoint_vg_protocolos"
+_TABLE_SERIES = "endpoint_vg_series"
+_TABLE_TEMPO = "endpoint_vg_tempo_irregular"
+_TABLE_TEMPO_PROTOCOLO = "endpoint_vg_tempo_irregular_protocolo"
+_TABLE_RESOLUCAO = "endpoint_vg_resolucao_alertas"
 _TABLE_DISPAROS = "endpoint_whatsapp_disparo"
-_TABLE_BUSCA_ATIVA = "endpoint_participante_visao_geral_busca_ativa"
+_TABLE_BUSCA_ATIVA = "endpoint_vg_busca_ativa"
 
 # Filters of the dashboard screen that map to columns present on the raw
 # disparos table. Keys are the filter names used by the other sections;
@@ -1092,7 +1092,7 @@ class PostgrestDashboardRepository(IDashboardRepository):
         self, filters: dict[str, object]
     ) -> dict[str, Any] | None:
         """Busca Ativa metrics (Visão Geral) from
-        `endpoint_participante_visao_geral_busca_ativa`.
+        `endpoint_vg_busca_ativa`.
 
         Five aggregate queries (SUM + GROUP BY server-side — never raw rows),
         all limited to the last ``BUSCA_ATIVA_JANELA_MESES`` months, run
