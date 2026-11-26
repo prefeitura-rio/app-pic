@@ -1640,6 +1640,9 @@ class TestRepositoryDisparos:
         assert len(count_reqs) == 2
         for r in count_reqs:
             assert "count=exact" in r.headers.get("prefer", "")
+            # The limit keeps the count out of the data-proxy cache path
+            # (206 answers are not stored), so Content-Range survives a HIT.
+            assert r.url.params.get("limit") == "1"
 
     @pytest.mark.asyncio
     async def test_filter_mapping_and_incompatible_ignored(self):
