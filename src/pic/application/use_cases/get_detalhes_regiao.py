@@ -7,7 +7,7 @@ ou AP) e os filtros ativos (status/cohortes — mesmo padrão da Visão Geral):
   sem protocolo — reusa os agregados do consolidado, cujo cache já foi
   aquecido pela consulta do mapa);
 - ``protocolos``: métrica de CADA protocolo na região (fonte
-  ``endpoint_participante_visao_geral_protocolos``, filtrada por ``eq`` na
+  ``endpoint_vg_protocolos``, filtrada por ``eq`` na
   coluna da camada com o valor RAW descoberto nos agregados gerais);
 - ``protocolo_geral`` (3k): quando ``protocolo_id`` é informado, a métrica
   do MESMO protocolo em TODAS as regiões (média geral) — base do

@@ -229,7 +229,7 @@ async def test_filtro_com_espaco_vai_como_porcento_20():
 
     async with client.with_user_token("good-token"):
         query = (
-            client.table("endpoint_participante_visao_geral_protocolos")
+            client.table("endpoint_vg_protocolos")
             .select("protocolo_id")
             .eq("bairro", "Senador Camará")
         )

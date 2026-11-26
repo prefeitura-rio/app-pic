@@ -568,9 +568,7 @@ class TestFetchRegularidadePorCamada:
                 "irreg": 407,
             },
         ]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         result = await repo.fetch_regularidade_por_camada("bairro")
         assert len(result) == 1
         agg = result[0]
@@ -593,9 +591,7 @@ class TestFetchRegularidadePorCamada:
                 "irreg": 50,
             },
         ]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         result = await repo.fetch_regularidade_por_camada("ra")
         assert result[0].regiao == "3ª Rio Comprido"
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
@@ -615,7 +611,7 @@ class TestFetchRegularidadePorCamada:
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
         redis = _make_redis(None)
         repo, _ = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows},
+            {"endpoint_vg_consolidado": rows},
             redis_client=redis,
         )
         await repo.fetch_regularidade_por_camada("bairro", user_id="cpf")
@@ -651,7 +647,7 @@ class TestFetchRegularidadePorCamada:
         redis = _make_redis(cached)
         repo, fake = _make_regularidade_repo(
             {
-                "endpoint_participante_visao_geral_consolidado": [
+                "endpoint_vg_consolidado": [
                     {"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}
                 ]
             },
@@ -666,9 +662,7 @@ class TestFetchRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_requests_carry_user_token(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada("bairro", user_token="user-jwt-789")
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         for req in data_reqs:
@@ -677,9 +671,7 @@ class TestFetchRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_status_multiselect_filter_applied(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada("bairro", status=["Ativo"])
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         params = dict(data_reqs[0].url.params)
@@ -688,9 +680,7 @@ class TestFetchRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_cohortes_multiselect_filter_applied(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada(
             "bairro", cohortes=["2025-03-01", "2026-07-01"]
         )
@@ -701,9 +691,7 @@ class TestFetchRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_cohorte_unico(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada("bairro", cohortes=["2025-03-01"])
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         params = data_reqs[0].url.params
@@ -718,9 +706,7 @@ class TestFetchRegularidadePorCamada:
                 "den": 300,
             }
         ]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": rows})
         result = await repo.fetch_regularidade_por_camada(
             "bairro", protocolo_id="sms_vacinacao_pentavalente"
         )
@@ -738,21 +724,17 @@ class TestFetchRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_sem_protocolo_usa_consolidado(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada("bairro")
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         path = data_reqs[0].url.path
-        assert "visao_geral_consolidado" in path
+        assert "vg_consolidado" in path
         assert "protocolo_id" not in data_reqs[0].url.params
 
     @pytest.mark.asyncio
     async def test_grupo_multiselect_filter_applied(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada(
             "bairro", grupo=["Criança", "Gestante"]
         )
@@ -763,9 +745,7 @@ class TestFetchRegularidadePorCamada:
     @pytest.mark.asyncio
     async def test_bolsa_familia_filter_applied(self):
         rows = [{"bairro": "Centro", "regular": 1, "den": 2, "irreg": 1}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_consolidado": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_consolidado": rows})
         await repo.fetch_regularidade_por_camada("bairro", has_bolsa_familia=True)
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         params = dict(data_reqs[0].url.params)
@@ -788,7 +768,7 @@ class TestFetchRegularidadePorCamada:
 
 class TestFetchProtocolos:
     @pytest.mark.asyncio
-    async def test_retorna_distintos_da_visao_geral_protocolos(self):
+    async def test_retorna_distintos_da_vg_protocolos(self):
         rows = [
             {
                 "protocolo_id": "sme_frequencia_escolar",
@@ -803,16 +783,14 @@ class TestFetchProtocolos:
                 "count": 50,
             },
         ]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": rows})
         result = await repo.fetch_protocolos()
         assert len(result) == 2
         assert result[0].protocolo_id == "sme_frequencia_escolar"
         assert result[1].protocolo_secretaria == "SMS"
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         path = data_reqs[0].url.path
-        assert "visao_geral_protocolos" in path
+        assert "vg_protocolos" in path
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_postgrest(self):
@@ -850,9 +828,7 @@ class TestFetchProtocolosPorRegiao:
                 "den": 0,
             },
         ]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": rows})
         result = await repo.fetch_protocolos_por_regiao(
             camada="bairro",
             regiao="Centro",
@@ -872,7 +848,7 @@ class TestFetchProtocolosPorRegiao:
         data_reqs = [r for r in fake.requests if r.url.host != "keycloak.example"]
         assert len(data_reqs) == 1
         path = data_reqs[0].url.path
-        assert "visao_geral_protocolos" in path
+        assert "vg_protocolos" in path
         params = dict(data_reqs[0].url.params)
         assert params.get("bairro") == "eq.Centro"
         assert params.get("pic_status") == "in.(Ativo)"
@@ -883,9 +859,7 @@ class TestFetchProtocolosPorRegiao:
 
     @pytest.mark.asyncio
     async def test_ra_usa_coluna_regiao_administrativa(self):
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": []}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": []})
         await repo.fetch_protocolos_por_regiao(
             camada="ra", regiao="3ª Rio Comprido", cohortes=["2025-03-01"]
         )
@@ -896,9 +870,7 @@ class TestFetchProtocolosPorRegiao:
 
     @pytest.mark.asyncio
     async def test_grupo_e_bolsa_filtros_aplicados(self):
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": []}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": []})
         await repo.fetch_protocolos_por_regiao(
             camada="bairro",
             regiao="Centro",
@@ -927,7 +899,7 @@ class TestFetchProtocolosPorRegiao:
         (ex.: logo após deploy/sync da tabela de protocolos)."""
         redis = _make_redis(None)
         repo, _ = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": []},
+            {"endpoint_vg_protocolos": []},
             redis_client=redis,
         )
         result = await repo.fetch_protocolos_por_regiao(
@@ -954,9 +926,7 @@ class TestFetchProtocolosPorRegiao:
                 "den": 10,
             },
         ]
-        repo, _ = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows}
-        )
+        repo, _ = _make_regularidade_repo({"endpoint_vg_protocolos": rows})
         result = await repo.fetch_protocolos_por_regiao(camada="bairro", regiao="X")
         assert [p.protocolo_id for p in result] == ["sms_vacinacao_pentavalente"]
 
@@ -973,7 +943,7 @@ class TestFetchProtocolosPorRegiao:
         ]
         redis = _make_redis(None)
         repo, _ = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows},
+            {"endpoint_vg_protocolos": rows},
             redis_client=redis,
         )
         await repo.fetch_protocolos_por_regiao(
@@ -1009,9 +979,7 @@ class TestFetchProtocoloGeral:
     @pytest.mark.asyncio
     async def test_agrega_protocolo_sem_filtro_de_regiao(self):
         rows = [{"regular": 996, "den": 1000}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": rows})
         result = await repo.fetch_protocolo_geral(
             protocolo_id="smas_acesso_alimentacao",
             user_id="cpf",
@@ -1034,9 +1002,7 @@ class TestFetchProtocoloGeral:
 
     @pytest.mark.asyncio
     async def test_sem_linhas_retorna_none(self):
-        repo, _ = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": []}
-        )
+        repo, _ = _make_regularidade_repo({"endpoint_vg_protocolos": []})
         result = await repo.fetch_protocolo_geral(protocolo_id="inexistente")
         assert result is None
 
@@ -1063,7 +1029,7 @@ class TestFetchProtocoloGeral:
         rows = [{"regular": 1, "den": 2}]
         redis = _make_redis(None)
         repo, _ = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows},
+            {"endpoint_vg_protocolos": rows},
             redis_client=redis,
         )
         await repo.fetch_protocolo_geral(
@@ -1074,9 +1040,7 @@ class TestFetchProtocoloGeral:
     @pytest.mark.asyncio
     async def test_grupo_e_bolsa_filtros_aplicados(self):
         rows = [{"regular": 1, "den": 2}]
-        repo, fake = _make_regularidade_repo(
-            {"endpoint_participante_visao_geral_protocolos": rows}
-        )
+        repo, fake = _make_regularidade_repo({"endpoint_vg_protocolos": rows})
         await repo.fetch_protocolo_geral(
             protocolo_id="sme_frequencia_escolar",
             grupo=["Criança"],
