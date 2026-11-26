@@ -1,7 +1,6 @@
 from typing import Any
 
 from src.pic.application.ports.dashboard_repository import IDashboardRepository
-from src.pic.domain.constants import aplicar_filtro_piloto
 from src.pic.domain.models.dashboard import Dashboard
 
 
@@ -25,7 +24,6 @@ class GetDashboardUseCase:
         secretaria: str | None = None,
         subprefeitura: str | None = None,
         regiao_administrativa: str | None = None,
-        piloto: str | None = None,
         bairro: str | None = None,
         cre: str | None = None,
         ap: str | None = None,
@@ -53,7 +51,6 @@ class GetDashboardUseCase:
             status=status,
             subprefeitura=subprefeitura,
             regiao_administrativa=regiao_administrativa,
-            piloto=piloto,
             bairro=bairro,
             cre=cre,
             ap=ap,
@@ -91,7 +88,6 @@ class GetDashboardUseCase:
         status: str | None = None,
         subprefeitura: str | None = None,
         regiao_administrativa: str | None = None,
-        piloto: str | None = None,
         bairro: str | None = None,
         cre: str | None = None,
         ap: str | None = None,
@@ -111,11 +107,7 @@ class GetDashboardUseCase:
             filters["pic_status"] = cls._parse_multi_select(status)
         if subprefeitura:
             filters["subprefeitura"] = cls._parse_multi_select(subprefeitura)
-        if piloto:
-            # Sobrescreve a seleção manual de RA (regra única — ver
-            # src/pic/domain/constants.py).
-            aplicar_filtro_piloto(filters, piloto)
-        elif regiao_administrativa:
+        if regiao_administrativa:
             filters["regiao_administrativa"] = cls._parse_multi_select(regiao_administrativa)
         if bairro:
             filters["bairro"] = cls._parse_multi_select(bairro)

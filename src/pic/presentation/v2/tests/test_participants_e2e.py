@@ -401,25 +401,6 @@ async def test_list_participants_returns_exact_envelope(client, override_use_cas
 
 
 @pytest.mark.asyncio
-async def test_list_participants_piloto_filter_forwarded(client, override_use_cases):
-    response = await client.get(
-        "/api/v2/participants", params={"piloto": "meier_iraja", "page": "1", "page_size": "50"}
-    )
-
-    assert response.status_code == 200
-    list_use_case, _, _ = override_use_cases
-    assert list_use_case.received["filters"].piloto == "meier_iraja"
-
-
-@pytest.mark.asyncio
-async def test_list_participants_piloto_invalido_422(client):
-    response = await client.get(
-        "/api/v2/participants", params={"piloto": "outro"}
-    )
-    assert response.status_code == 422
-
-
-@pytest.mark.asyncio
 async def test_list_participants_download_mode_meta(client):
     response = await client.get("/api/v2/participants", params={"page_size": "-1"})
 

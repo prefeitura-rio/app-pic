@@ -1,6 +1,6 @@
 import json
 from datetime import date, datetime
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 from pydantic import (
     BaseModel,
@@ -62,9 +62,6 @@ class CommonFilters(BaseModel):
     protocolo_status: str | None = None  # Multi-select
     protocolo_secretaria: str | None = (
         None  # Filtro por secretaria do protocolo (SME, SMAS, SMS)
-    )
-    piloto: Literal["meier_iraja"] | None = (
-        None  # "meier_iraja" = Apenas Piloto Meier-Iraja (sobrescreve RA)
     )
 
 

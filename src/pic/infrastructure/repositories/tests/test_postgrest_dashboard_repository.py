@@ -1464,20 +1464,6 @@ class TestRepositoryFetches:
         assert any("is.true" in str(p) for p in params_list)
 
     @pytest.mark.asyncio
-    async def test_piloto_regioes_serializam_como_in(self):
-        # Os valores RAW do piloto ("14ª Iraja" sem acento) precisam chegar
-        # como in.(...) — grafia diferente retornaria vazio silenciosamente.
-        repo, fake = _make_repo(ALL_TABLES)
-        await repo.get_dashboard_metrics(
-            filters={"regiao_administrativa": ["13ª Meier", "14ª Iraja"]}
-        )
-        params_list = [
-            str(r.url.params.get_list("regiao_administrativa"))
-            for r in fake.requests
-        ]
-        assert any("in.(13ª Meier,14ª Iraja)" in p for p in params_list)
-
-    @pytest.mark.asyncio
     async def test_nineteen_requests_sent(self):
         """3 consolidado + 5 other tables + 6 disparos + 5 busca ativa = 19."""
         repo, fake = _make_repo(ALL_TABLES)

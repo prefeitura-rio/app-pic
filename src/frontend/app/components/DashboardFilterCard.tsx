@@ -6,7 +6,6 @@ import { VirtualizedSelect } from "@/app/components/ui/virtualized-select";
 import { LazyFilterMultiSelect, LazyFilterSelect } from "@/app/components/LazyFilterSelects";
 import { Button } from "@/app/components/ui/button";
 import { Filter, X, RefreshCw, Download } from "lucide-react";
-import { PILOTO_OPTIONS } from "@/app/utils/constants";
 import type { DashboardFilterValues } from "@/app/types";
 
 interface DashboardFilterCardProps {
@@ -75,25 +74,11 @@ const DashboardFilterCardComponent = ({
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
 
-  // Pilotos sobrescreve a seleção manual de RA no backend — exclusão mútua
-  // aqui evita combinação silenciosamente vazia.
-  const handlePilotoUpdate = useCallback((value: string) => {
-    const newFilters = { ...filters };
-    if (value === "todos" || value === "") {
-      delete newFilters.piloto;
-    } else {
-      newFilters.piloto = value;
-      delete newFilters.regiao_administrativa;
-    }
-    onFilterChange(newFilters);
-  }, [filters, onFilterChange]);
-
-  // Selecionar RA manualmente desliga o piloto (que a sobrescreveria).
+  // Atualiza a seleção manual de regiões administrativas.
   const handleRAFilterUpdate = useCallback((values: string[]) => {
     const newFilters = { ...filters };
     if (values.length > 0) {
       newFilters.regiao_administrativa = values;
-      delete newFilters.piloto;
     } else {
       delete newFilters.regiao_administrativa;
     }
@@ -217,16 +202,6 @@ const DashboardFilterCardComponent = ({
               placeholder="Secretaria"
               defaultLabel="Todas as Secretarias"
               options={SECRETARIA_OPTIONS}
-            />
-
-            {/* Pilotos - Single select (escopo do programa, fixo) */}
-            <VirtualizedSelect
-              value={filters.piloto || "todos"}
-              onSelect={handlePilotoUpdate}
-              disabled={loading}
-              placeholder="Pilotos"
-              defaultLabel="Todas as campanhas de mensageria"
-              options={PILOTO_OPTIONS}
             />
 
             {/* Bolsa Família */}

@@ -477,24 +477,6 @@ async def test_list_multi_value_filter_uses_in(make_repo):
     assert fake.requests[0].url.params["bairro"] == "in.(A,B)"
 
 
-async def test_list_piloto_filter_overrides_regiao(make_repo):
-    # Piloto sobrescreve a seleção manual de RA com as RAs RAW do piloto
-    # (14ª Iraja sem acento — grafia conferida no BQ dev).
-    repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
-    await repo.list_participants(
-        filters=FilterCriteria(
-            piloto="meier_iraja", regiao_administrativa="15ª Madureira"
-        ),
-        pagination=PaginationParams(page=1, page_size=20),
-        sort=SortParams(),
-        permissions=SUPER_ADMIN,
-    )
-    assert (
-        fake.requests[0].url.params["regiao_administrativa"]
-        == "in.(13ª Meier,14ª Iraja)"
-    )
-
-
 async def test_list_boolean_filter_uses_is(make_repo):
     repo, fake = make_repo({"endpoint_participante_protocolos_wide": []})
     await repo.list_participants(
