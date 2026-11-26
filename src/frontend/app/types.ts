@@ -405,7 +405,9 @@ export type FilterFieldKey =
 	| "protocolo_status_list"
 	| "bolsa_familia"
 	| "protocolo_secretarias"
-	| "busca_ativa";
+	| "busca_ativa"
+	| "disparo_jornadas"
+	| "disparo_status_list";
 
 export interface FilterFieldOptionsResponse {
 	field: string;
@@ -684,6 +686,8 @@ export interface ParticipantFilters {
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
 	busca_ativa?: string | string[]; // Filtro por busca ativa (SMAS, SMS, SME — multi-select)
 	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
+	disparo_jornada?: string | string[]; // Filtro por campanha de disparo WhatsApp (multi-select)
+	disparo_status?: string | string[]; // Filtro por status do disparo (multi-select; exige campanha)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }

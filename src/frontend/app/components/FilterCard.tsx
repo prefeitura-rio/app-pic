@@ -126,6 +126,21 @@ const FilterCardComponent = ({
 		[filters, onFilterChange],
 	);
 
+	// Campanha de disparo: ao esvaziar, remove também o status (que exige campanha).
+	const handleDisparoJornadaUpdate = useCallback(
+		(values: string[]) => {
+			const updated: Record<string, unknown> = { ...filters };
+			if (values.length > 0) {
+				updated.disparo_jornada = values;
+			} else {
+				delete updated.disparo_jornada;
+				delete updated.disparo_status;
+			}
+			onFilterChange(updated as ParticipantFilters);
+		},
+		[filters, onFilterChange],
+	);
+
 	const clearFilters = useCallback(() => {
 		setSearchInput("");
 		onFilterChange({});
@@ -150,6 +165,18 @@ const FilterCardComponent = ({
 		(label: string) => label.charAt(0).toUpperCase() + label.slice(1),
 		[],
 	);
+
+	// Valores do filtro de disparo (campanha/status) normalizados como array.
+	const disparoJornadaValues = Array.isArray(filters.disparo_jornada)
+		? filters.disparo_jornada
+		: filters.disparo_jornada
+			? [filters.disparo_jornada]
+			: [];
+	const disparoStatusValues = Array.isArray(filters.disparo_status)
+		? filters.disparo_status
+		: filters.disparo_status
+			? [filters.disparo_status]
+			: [];
 
 	return (
 		<Card className="relative border-2">
@@ -661,6 +688,39 @@ const FilterCardComponent = ({
 								defaultLabel="Todas as Equipes"
 							/>
 						}
+					</div>
+				</div>
+
+				{/* Terceiro Nível - Filtros de Disparos de WhatsApp */}
+				<div className="space-y-1.5">
+					<div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+						Filtros de Disparos de WhatsApp
+					</div>
+					<div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+						{/* Campanha - Multi-select */}
+						<LazyFilterMultiSelect
+							field="disparo_jornadas"
+							filters={filters}
+							value={disparoJornadaValues}
+							onSelect={handleDisparoJornadaUpdate}
+							disabled={loading}
+							placeholder="Campanhas"
+							defaultLabel="Todas as Campanhas"
+						/>
+
+						{/* Status do Disparo - Multi-select (liberado após campanha) */}
+						<LazyFilterMultiSelect
+							field="disparo_status_list"
+							filters={filters}
+							show={disparoJornadaValues.length > 0}
+							value={disparoStatusValues}
+							onSelect={(values) =>
+								handleMultiFilterUpdate("disparo_status", values)
+							}
+							disabled={loading}
+							placeholder="Status do Disparo"
+							defaultLabel="Todos os Status"
+						/>
 					</div>
 				</div>
 

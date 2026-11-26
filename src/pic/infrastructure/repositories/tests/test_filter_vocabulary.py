@@ -171,3 +171,52 @@ def test_busca_ativa_options_empty_when_no_access():
         FILTER_OPTION_CONFIGS["busca_ativa"], [], allowed_secretarias=set()
     )
     assert options == []
+
+
+def test_disparo_jornada_options_dedupe_and_sort():
+    rows = [
+        {"disparo_jornada": "Campanha B", "disparo_secretaria_sigla": "SMAS", "count": 2},
+        {"disparo_jornada": "Campanha A", "disparo_secretaria_sigla": "SME", "count": 1},
+        {"disparo_jornada": "Campanha A", "disparo_secretaria_sigla": "SME", "count": 1},
+        {"disparo_jornada": None, "disparo_secretaria_sigla": "SME", "count": 1},
+        {"disparo_jornada": "Campanha C", "disparo_secretaria_sigla": None, "count": 1},
+    ]
+    options = build_options(FILTER_OPTION_CONFIGS["disparo_jornadas"], rows)
+    assert [(o.id, o.label) for o in options] == [
+        ("Campanha A", "Campanha A"),
+        ("Campanha B", "Campanha B"),
+    ]
+
+
+def test_disparo_jornada_options_intersect_with_access():
+    rows = [
+        {"disparo_jornada": "Campanha SME", "disparo_secretaria_sigla": "SME", "count": 1},
+        {"disparo_jornada": "Campanha SMAS", "disparo_secretaria_sigla": "SMAS", "count": 1},
+    ]
+    restricted = build_options(
+        FILTER_OPTION_CONFIGS["disparo_jornadas"],
+        rows,
+        allowed_secretarias={"SMAS"},
+    )
+    assert [o.id for o in restricted] == ["Campanha SMAS"]
+
+
+def test_disparo_jornada_options_full_access_keeps_all():
+    rows = [
+        {"disparo_jornada": "Campanha SME", "disparo_secretaria_sigla": "SME", "count": 1},
+    ]
+    options = build_options(
+        FILTER_OPTION_CONFIGS["disparo_jornadas"], rows, allowed_secretarias=None
+    )
+    assert [o.id for o in options] == ["Campanha SME"]
+
+
+def test_disparo_status_options_fixed_order_and_labels():
+    options = build_options(FILTER_OPTION_CONFIGS["disparo_status_list"], [])
+    assert [(o.id, o.label) for o in options] == [
+        ("LIDO", "Lida"),
+        ("ENTREGUE", "Entregue"),
+        ("RESPONDIDO", "Respondido"),
+        ("ENVIADO", "Enviado"),
+        ("FALHOU", "Falha"),
+    ]

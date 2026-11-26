@@ -2573,3 +2573,388 @@ async def test_export_columns_no_access_keeps_only_base_columns(make_repo):
     ):
         assert column not in columns
 
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp disparo filters (two-step resolution via endpoint_whatsapp_disparo)
+# ---------------------------------------------------------------------------
+
+DISPAROS = "endpoint_whatsapp_disparo"
+
+
+def disparo_row(
+    membro_id: str,
+    *,
+    jornada: str = "Infrequência Escolar",
+    status: str | None = "LIDO",
+    secretaria: str = "SME",
+    janela_dias: int = 240,
+    na_janela: bool = True,
+    bairro: str = "Centro",
+):
+    """One `endpoint_whatsapp_disparo` row (most recent disparo, 240d)."""
+    return {
+        "id_membro_familia": membro_id,
+        "janela_dias": janela_dias,
+        "disparo_na_janela_indicador": na_janela,
+        "disparo_jornada": jornada,
+        "disparo_status": status,
+        "disparo_secretaria_sigla": secretaria,
+        "bairro": bairro,
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_disparo_jornada_resolves_ids_then_restricts_wide(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [
+                disparo_row("1", jornada="Campanha A"),
+                disparo_row("2", jornada="Campanha B"),
+            ],
+            "endpoint_participante_protocolos_wide": [wide_row("1"), wide_row("2")],
+        }
+    )
+
+    await repo.list_participants(
+        filters=FilterCriteria(disparo_jornada="Campanha A|Campanha B"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+        user_token=USER_TOKEN,
+    )
+
+    assert len(fake.requests) == 2
+    lookup = fake.requests[0]
+    assert lookup.url.path == f"/{DISPAROS}"
+    assert lookup.url.params["select"] == "id_membro_familia"
+    assert lookup.url.params["janela_dias"] == "eq.240"
+    assert lookup.url.params["disparo_na_janela_indicador"] == "is.true"
+    assert lookup.url.params["disparo_jornada"] == "in.(Campanha A,Campanha B)"
+    assert "disparo_status" not in lookup.url.params
+    assert "disparo_secretaria_sigla" not in lookup.url.params
+    assert lookup.headers["authorization"] == f"Bearer {USER_TOKEN}"
+
+    wide_req = fake.requests[1]
+    assert wide_req.url.path == "/endpoint_participante_protocolos_wide"
+    assert wide_req.url.params["id_membro_familia"] == "in.(1,2)"
+
+
+@pytest.mark.asyncio
+async def test_list_disparo_jornada_status_adds_status_param(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1", status="LIDO")],
+            "endpoint_participante_protocolos_wide": [wide_row("1")],
+        }
+    )
+
+    await repo.list_participants(
+        filters=FilterCriteria(
+            disparo_jornada="Infrequência Escolar", disparo_status="LIDO"
+        ),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert fake.requests[0].url.params["disparo_status"] == "in.(LIDO)"
+
+
+@pytest.mark.asyncio
+async def test_list_disparo_partial_access_restricts_sigla(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [
+                disparo_row("1", jornada="Campanha SMAS", secretaria="SMAS")
+            ],
+            "endpoint_participante_protocolos_wide": [wide_row("1")],
+        }
+    )
+
+    await repo.list_participants(
+        filters=FilterCriteria(disparo_jornada="Campanha SMAS"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=PARTIAL_SMAS,
+        user_token=USER_TOKEN,
+    )
+
+    assert fake.requests[0].url.params["disparo_secretaria_sigla"] == "in.(SMAS)"
+
+
+@pytest.mark.asyncio
+async def test_list_disparo_no_match_returns_empty_without_wide(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1", jornada="Outra Campanha")],
+            "endpoint_participante_protocolos_wide": [wide_row("1")],
+        }
+    )
+
+    data, meta = await repo.list_participants(
+        filters=FilterCriteria(disparo_jornada="Campanha X"),
+        pagination=PaginationParams(page=1, page_size=20),
+        sort=SortParams(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert data == []
+    assert meta.total_rows == 0
+    assert len(fake.requests) == 1  # only the disparos lookup
+    assert fake.requests[0].url.path == f"/{DISPAROS}"
+
+
+@pytest.mark.asyncio
+async def test_list_disparo_status_without_jornada_raises_validation_error(make_repo):
+    repo, fake = make_repo({})
+
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(disparo_status="LIDO"),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_disparo_status_invalid_raises_validation_error(make_repo):
+    repo, fake = make_repo({})
+
+    with pytest.raises(ValidationError):
+        await repo.list_participants(
+            filters=FilterCriteria(
+                disparo_jornada="Campanha A", disparo_status="NAO_EXISTE"
+            ),
+            pagination=PaginationParams(page=1, page_size=20),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+        )
+    assert len(fake.requests) == 0
+
+
+@pytest.mark.asyncio
+async def test_export_wide_rows_applies_disparo_filter(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1")],
+            "endpoint_participante_protocolos_wide": [wide_row("1"), wide_row("2")],
+        }
+    )
+
+    pages = await _export_pages(
+        repo, filters=FilterCriteria(disparo_jornada="Infrequência Escolar")
+    )
+
+    # 1 lookup + 3 prefetch pages of the export window (concurrent fetches).
+    assert len(fake.requests) == 4
+    assert fake.requests[0].url.path == f"/{DISPAROS}"
+    wide_reqs = fake.requests[1:]
+    assert all(
+        req.url.path == "/endpoint_participante_protocolos_wide"
+        and req.url.params["id_membro_familia"] == "in.(1)"
+        for req in wide_reqs
+    )
+    assert [row["id_membro_familia"] for row in pages[0]] == ["1"]
+
+
+@pytest.mark.asyncio
+async def test_export_busca_ativa_rows_applies_disparo_filter(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1")],
+            "endpoint_participante_protocolos_wide": [wide_row("1"), wide_row("2")],
+        }
+    )
+
+    pages = [
+        page
+        async for page in repo.export_busca_ativa_rows(
+            filters=FilterCriteria(disparo_jornada="Infrequência Escolar"),
+            sort=SortParams(),
+            permissions=SUPER_ADMIN,
+            user_token=USER_TOKEN,
+        )
+    ]
+
+    # 1 lookup + 3 prefetch pages of the export window (concurrent fetches).
+    assert len(fake.requests) == 4
+    assert fake.requests[0].url.path == f"/{DISPAROS}"
+    wide_reqs = fake.requests[1:]
+    assert all(
+        req.url.path == "/endpoint_participante_protocolos_wide"
+        and req.url.params["id_membro_familia"] == "in.(1)"
+        for req in wide_reqs
+    )
+    assert [row["id_membro_familia"] for row in pages[0]] == ["1"]
+
+
+@pytest.mark.asyncio
+async def test_export_wide_rows_disparo_no_match_yields_nothing(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1", jornada="Outra Campanha")],
+            "endpoint_participante_protocolos_wide": [wide_row("1")],
+        }
+    )
+
+    pages = await _export_pages(
+        repo, filters=FilterCriteria(disparo_jornada="Campanha X")
+    )
+
+    assert pages == []
+    assert len(fake.requests) == 1  # only the lookup
+
+
+@pytest.mark.asyncio
+async def test_filter_options_disparo_jornadas_from_disparos_table(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [
+                disparo_row("1", jornada="Campanha B", secretaria="SMAS"),
+                disparo_row("2", jornada="Campanha A", secretaria="SME"),
+                disparo_row("3", jornada="Campanha A", secretaria="SME"),
+            ],
+        }
+    )
+
+    options = await repo.get_filter_options(
+        field="disparo_jornadas",
+        filters=FilterCriteria(),
+        permissions=SUPER_ADMIN,
+        user_token=USER_TOKEN,
+    )
+
+    assert len(fake.requests) == 1
+    req = fake.requests[0]
+    assert req.url.path == f"/{DISPAROS}"
+    assert req.url.params["select"] == (
+        "disparo_jornada,disparo_secretaria_sigla,count()"
+    )
+    assert req.url.params["janela_dias"] == "eq.240"
+    assert req.url.params["disparo_na_janela_indicador"] == "is.true"
+    assert req.url.params["disparo_jornada"] == "not.is.null"
+    assert "disparo_secretaria_sigla" not in req.url.params
+    assert [o.id for o in options] == ["Campanha A", "Campanha B"]
+
+
+@pytest.mark.asyncio
+async def test_filter_options_disparo_jornadas_restricted_by_access(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [
+                disparo_row("1", jornada="Campanha SME", secretaria="SME"),
+                disparo_row("2", jornada="Campanha SMAS", secretaria="SMAS"),
+            ],
+        }
+    )
+
+    options = await repo.get_filter_options(
+        field="disparo_jornadas",
+        filters=FilterCriteria(),
+        permissions=PARTIAL_SMAS,
+        user_token=USER_TOKEN,
+    )
+
+    assert fake.requests[0].url.params["disparo_secretaria_sigla"] == "in.(SMAS)"
+    assert [o.id for o in options] == ["Campanha SMAS"]
+
+
+@pytest.mark.asyncio
+async def test_filter_options_disparo_jornadas_cascades_status_and_scalars(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [
+                disparo_row("1", jornada="Campanha A", status="LIDO"),
+                disparo_row("2", jornada="Campanha B", status="FALHOU"),
+            ],
+        }
+    )
+
+    options = await repo.get_filter_options(
+        field="disparo_jornadas",
+        filters=FilterCriteria(
+            disparo_jornada="Campanha A",
+            disparo_status="LIDO",
+            bairro="Centro",
+        ),
+        permissions=SUPER_ADMIN,
+        user_token=USER_TOKEN,
+    )
+
+    # Own campaign filter is excluded (only the null-drop remains); status and
+    # mapped scalars cascade.
+    params = fake.requests[0].url.params
+    assert params["disparo_status"] == "in.(LIDO)"
+    assert params["bairro"] == "ilike.Centro"
+    assert params["disparo_jornada"] == "not.is.null"
+    assert [o.id for o in options] == ["Campanha A"]
+
+
+@pytest.mark.asyncio
+async def test_filter_options_disparo_status_list_static_no_query(make_repo):
+    repo, fake = make_repo({})
+
+    options = await repo.get_filter_options(
+        field="disparo_status_list",
+        filters=FilterCriteria(),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert len(fake.requests) == 0
+    assert [(o.id, o.label) for o in options] == [
+        ("LIDO", "Lida"),
+        ("ENTREGUE", "Entregue"),
+        ("RESPONDIDO", "Respondido"),
+        ("ENVIADO", "Enviado"),
+        ("FALHOU", "Falha"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_filter_options_wide_field_cascades_with_disparo_ids(make_repo):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1")],
+            "endpoint_participante_protocolos_wide": [wide_row("1")],
+        }
+    )
+
+    options = await repo.get_filter_options(
+        field="bairros",
+        filters=FilterCriteria(disparo_jornada="Infrequência Escolar"),
+        permissions=SUPER_ADMIN,
+        user_token=USER_TOKEN,
+    )
+
+    assert len(fake.requests) == 2
+    assert fake.requests[0].url.path == f"/{DISPAROS}"
+    wide_req = fake.requests[1]
+    assert wide_req.url.path == "/endpoint_participante_protocolos_wide"
+    assert wide_req.url.params["id_membro_familia"] == "in.(1)"
+    assert [o.id for o in options] == ["Centro"]
+
+
+@pytest.mark.asyncio
+async def test_filter_options_wide_field_empty_when_disparo_matches_nothing(
+    make_repo,
+):
+    repo, fake = make_repo(
+        {
+            DISPAROS: [disparo_row("1", jornada="Outra Campanha")],
+            "endpoint_participante_protocolos_wide": [wide_row("1")],
+        }
+    )
+
+    options = await repo.get_filter_options(
+        field="bairros",
+        filters=FilterCriteria(disparo_jornada="Campanha X"),
+        permissions=SUPER_ADMIN,
+    )
+
+    assert options == []
+    assert len(fake.requests) == 1  # only the lookup

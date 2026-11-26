@@ -43,6 +43,8 @@ FilterField = Literal[
     "bolsa_familia",
     "protocolo_secretarias",
     "busca_ativa",
+    "disparo_jornadas",
+    "disparo_status_list",
 ]
 
 
@@ -105,3 +107,7 @@ class FilterCriteria(BaseModel):
     protocolo_secretaria: str | None = None
     cartao_pic_status: str | None = None
     busca_ativa: str | None = None
+    # WhatsApp disparos: campanha (`disparo_jornada`) e status do disparo mais
+    # recente (`disparo_status`, exige campanha). Multi-select via pipe.
+    disparo_jornada: str | None = None
+    disparo_status: str | None = None

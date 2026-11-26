@@ -401,6 +401,24 @@ async def test_list_participants_returns_exact_envelope(client, override_use_cas
 
 
 @pytest.mark.asyncio
+async def test_list_participants_disparo_filters_forwarded(client, override_use_cases):
+    response = await client.get(
+        "/api/v2/participants",
+        params={
+            "disparo_jornada": "Campanha A|Campanha B",
+            "disparo_status": "LIDO",
+            "page": "1",
+            "page_size": "50",
+        },
+    )
+
+    assert response.status_code == 200
+    list_use_case, _, _ = override_use_cases
+    assert list_use_case.received["filters"].disparo_jornada == "Campanha A|Campanha B"
+    assert list_use_case.received["filters"].disparo_status == "LIDO"
+
+
+@pytest.mark.asyncio
 async def test_list_participants_download_mode_meta(client):
     response = await client.get("/api/v2/participants", params={"page_size": "-1"})
 
