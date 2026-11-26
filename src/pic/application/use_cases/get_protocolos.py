@@ -1,6 +1,6 @@
 """Use case do vocabulário de protocolos para o filtro do mapa (fase 3e).
 
-Retorna os protocolos distintos da ``endpoint_participante_visao_geral_protocolos``
+Retorna os protocolos distintos da ``endpoint_vg_protocolos``
 (RLS aplicada pelo data-proxy) para popular o seletor de protocolo da aba
 Mapas — FR-007 do fluxo: a seleção substitui a regularidade geral pela
 regularidade daquele protocolo.
