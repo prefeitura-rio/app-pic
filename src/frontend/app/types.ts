@@ -405,7 +405,9 @@ export type FilterFieldKey =
 	| "protocolo_status_list"
 	| "bolsa_familia"
 	| "protocolo_secretarias"
-	| "busca_ativa";
+	| "busca_ativa"
+	| "disparo_jornadas"
+	| "disparo_status_list";
 
 export interface FilterFieldOptionsResponse {
 	field: string;
@@ -682,9 +684,10 @@ export interface ParticipantFilters {
 	protocolo_descricao?: string | string[]; // Filtro por descrição do protocolo (multi-select)
 	protocolo_status?: string | string[]; // Filtro por status do protocolo (multi-select)
 	protocolo_secretaria?: string; // Filtro por secretaria do protocolo (SME, SMAS, SMS)
-	piloto?: string; // Pilotos: "meier_iraja" = Apenas Piloto Meier-Iraja (ausente = Todas as campanhas de mensageria)
 	busca_ativa?: string | string[]; // Filtro por busca ativa (SMAS, SMS, SME — multi-select)
 	cartao_pic_status?: string; // Filtro por status do cartão PIC (retirado|nao_retirou|sem_direito)
+	disparo_jornada?: string | string[]; // Filtro por campanha de disparo WhatsApp (multi-select)
+	disparo_status?: string | string[]; // Filtro por status do disparo (multi-select; exige campanha)
 	sort_by?: string; // Coluna para ordenação
 	sort_order?: SortOrder; // Direção da ordenação (asc/desc)
 }
@@ -699,7 +702,6 @@ export interface DashboardFilterValues {
 	cohort?: string | string[]; // pic_cohort (safra) (multi-select)
 	status?: string | string[]; // pic_status (multi-select)
 	secretaria?: string; // secretaria (SMAS, SME, SMS) (single-select apenas)
-	piloto?: string; // Pilotos: "meier_iraja" = Apenas Piloto Meier-Iraja (single-select; ausente = Todas as campanhas de mensageria)
 	subprefeitura?: string | string[]; // subprefeitura (multi-select)
 	regiao_administrativa?: string | string[]; // regiao_administrativa (multi-select)
 	bairro?: string | string[]; // bairro (multi-select)

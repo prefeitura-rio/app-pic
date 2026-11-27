@@ -32,7 +32,6 @@ from typing import Any
 
 from postgrest import AsyncSelectRequestBuilder
 
-from src.pic.domain.constants import aplicar_filtro_piloto
 from src.pic.domain.errors import ForbiddenError, ValidationError
 from src.pic.domain.models.filters import FilterCriteria
 from src.pic.infrastructure.repositories.helpers.participant_columns import (
@@ -138,10 +137,6 @@ def split_filters(
             values = clean_values(split_values(value))
             if values:
                 column_filters[FILTER_COLUMN_MAP[key]] = values
-
-    # Piloto (Apenas Piloto Meier-Iraja) sobrescreve a seleção manual de RA —
-    # regra compartilhada com o dashboard (src/pic/domain/constants.py).
-    aplicar_filtro_piloto(column_filters, filters_dict.pop("piloto", None))
 
     if "cartao_pic_status" in filters_dict:
         cartao_values = clean_values(

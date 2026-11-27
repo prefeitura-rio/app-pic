@@ -5,14 +5,6 @@ export const bairros = [
   "Maré", "Rocinha", "Vidigal", "Cidade de Deus", "Anchieta"
 ];
 
-// Filtro "Pilotos" (Visão Geral e Busca Individual). O id "meier_iraja" é o
-// valor do query param `piloto`; as RAs RAW do piloto são resolvidas no
-// backend (src/pic/domain/constants.py). Sem opção selecionada, o select
-// mostra o defaultLabel "Todas as campanhas de mensageria".
-export const PILOTO_OPTIONS = [
-  { id: "meier_iraja", label: "Apenas Piloto Meier-Iraja" },
-];
-
 // Áreas Programáticas (Saúde)
 export const coordenadoriasAP: Record<string, string[]> = {
   "AP 1.0": [],

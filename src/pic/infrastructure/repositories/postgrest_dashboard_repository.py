@@ -878,14 +878,29 @@ class PostgrestDashboardRepository(IDashboardRepository):
         participant; the exact count comes from the `Content-Range` header
         (`Prefer: count=exact`), so the response body (capped at 1000 rows)
         is irrelevant and dropped with `limit(1)`.
+
+        The `limit(1)` is functional, not just cosmetic: with `count=exact`
+        AND a `limit`, the data-proxy resolves the count in its own pushdown
+        and answers `206` — which its cache does not store — so the header
+        survives a later cache hit. Without the limit, a cached answer loses
+        `Content-Range` and this method silently returns 0 (see the warning
+        below).
         """
-        query = self._client.table(_TABLE_DISPAROS).select(
-            "id_membro_familia,count()", count="exact"
+        query = (
+            self._client.table(_TABLE_DISPAROS)
+            .select("id_membro_familia,count()", count="exact")
+            .limit(1)
         )
         query = query.not_.is_("disparo_status", "null")
         if statuses:
             query = query.filter("disparo_status", "in", f"({','.join(statuses)})")
         result = await self._execute(_apply_filters(query, filters))
+        if result.count is None:
+            logger.warning(
+                "[dashboard] disparos distinct count missing: Content-Range "
+                "ausente na resposta (count=exact não resolvido pelo "
+                "data-proxy) — métrica de participantes será 0"
+            )
         return result.count or 0
 
     async def _fetch_disparos_status(

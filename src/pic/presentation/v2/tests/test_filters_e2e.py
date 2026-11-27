@@ -196,3 +196,34 @@ async def test_filters_require_authentication(override_use_cases):
         response = await ac.get("/api/v2/filters", params={"field": "bairros"})
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_filters_disparo_jornadas_field_and_filters_forwarded(
+    client, override_use_cases
+):
+    response = await client.get(
+        "/api/v2/filters",
+        params={
+            "field": "disparo_jornadas",
+            "disparo_jornada": "Campanha A",
+            "disparo_status": "LIDO",
+        },
+    )
+
+    assert response.status_code == 200
+    options_use_case, _ = override_use_cases
+    assert options_use_case.received["field"] == "disparo_jornadas"
+    assert options_use_case.received["filters"].disparo_jornada == "Campanha A"
+    assert options_use_case.received["filters"].disparo_status == "LIDO"
+
+
+@pytest.mark.asyncio
+async def test_filters_disparo_status_list_field_accepted(client, override_use_cases):
+    response = await client.get(
+        "/api/v2/filters", params={"field": "disparo_status_list"}
+    )
+
+    assert response.status_code == 200
+    options_use_case, _ = override_use_cases
+    assert options_use_case.received["field"] == "disparo_status_list"

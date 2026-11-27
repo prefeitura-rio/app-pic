@@ -36,6 +36,7 @@ def build_list_query(
     sort_descending: bool,
     busca_ativa_values: list[str] | None = None,
     allowed_secretarias: set[str] | None = None,
+    disparo_participant_ids: list[str] | None = None,
     count: str | None = None,
 ) -> AsyncSelectRequestBuilder:
     # One row per participant on the wide table, so the Content-Range
@@ -45,6 +46,15 @@ def build_list_query(
     )
     for column, values in column_filters.items():
         query = apply_scalar_filter(query, column, values)
+    if disparo_participant_ids:
+        # WhatsApp disparo filters: participants whose most recent disparo
+        # matched the selected campaigns/statuses (resolved by the caller
+        # from `endpoint_whatsapp_disparo`).
+        query = query.filter(
+            "id_membro_familia",
+            "in",
+            f"({','.join(disparo_participant_ids)})",
+        )
     if search_term:
         query = query.or_(search_or_term(search_term))
     query = apply_wide_protocolo_filters(query, protocolo_filters)
@@ -73,18 +83,26 @@ def build_vocab_query(
     secretaria_or_terms: str | None,
     busca_ativa_values: list[str] | None = None,
     allowed_secretarias: set[str] | None = None,
+    disparo_participant_ids: list[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """One aggregate (GROUP BY) query for a single option list.
 
     Applies every active filter except the field's own (cascade), the
     free-text search, and — for partial access — the secretaria
-    restriction (`or=(<prefix>_protocolos_total.gt.0,...)`).
+    restriction (`or=(<prefix>_protocolos_total.gt.0,...)`). The WhatsApp
+    disparo filters cascade through `disparo_participant_ids`.
     """
     query = client.table(TABLE_PROTOCOLOS_WIDE).select(",".join(columns) + ",count()")
     for column, values in scalar_filters.items():
         if column == exclude_column:
             continue
         query = apply_scalar_filter(query, column, values)
+    if disparo_participant_ids:
+        query = query.filter(
+            "id_membro_familia",
+            "in",
+            f"({','.join(disparo_participant_ids)})",
+        )
     protocolo_cascade = {
         field: values
         for field, values in protocolo_filters.items()
@@ -113,6 +131,7 @@ def build_wide_aggregate_query(
     secretaria_or_terms: str | None,
     busca_ativa_values: list[str] | None = None,
     allowed_secretarias: set[str] | None = None,
+    disparo_participant_ids: list[str] | None = None,
 ) -> AsyncSelectRequestBuilder:
     """Single-row pure-aggregate query over the wide table.
 
@@ -128,6 +147,12 @@ def build_wide_aggregate_query(
     query = client.table(TABLE_PROTOCOLOS_WIDE).select(",".join(select_columns))
     for column, values in scalar_filters.items():
         query = apply_scalar_filter(query, column, values)
+    if disparo_participant_ids:
+        query = query.filter(
+            "id_membro_familia",
+            "in",
+            f"({','.join(disparo_participant_ids)})",
+        )
     protocolo_cascade = {
         field: values
         for field, values in protocolo_filters.items()

@@ -1,5 +1,4 @@
 import time
-from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
 from fastapi.security import HTTPAuthorizationCredentials
@@ -52,13 +51,6 @@ async def get_dashboard(
     secretaria: str | None = Query(None),
     subprefeitura: str | None = Query(None),
     regiao_administrativa: str | None = Query(None),
-    piloto: Literal["meier_iraja"] | None = Query(
-        None,
-        description=(
-            "Filtro Pilotos: 'meier_iraja' restringe às RAs do piloto "
-            "(13ª Meier + 14ª Iraja). Sobrescreve regiao_administrativa"
-        ),
-    ),
     bairro: str | None = Query(None),
     cre: str | None = Query(None),
     ap: str | None = Query(None),
@@ -86,7 +78,6 @@ async def get_dashboard(
             secretaria=secretaria,
             subprefeitura=subprefeitura,
             regiao_administrativa=regiao_administrativa,
-            piloto=piloto,
             bairro=bairro,
             cre=cre,
             ap=ap,

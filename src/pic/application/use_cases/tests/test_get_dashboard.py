@@ -65,42 +65,8 @@ async def test_todas_as_secretarias_acessa():
     fake_repo.get_dashboard_metrics.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
-# Filtro Pilotos (escopo "Apenas Piloto Meier e Irajá")
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_piloto_injeta_regioes_administrativas():
-    use_case, fake_repo = _make_use_case()
-
-    await use_case.execute(
-        permissions=_perms(secretarias=["SME", "SMS", "SMAS"]),
-        user_token="jwt",
-        piloto="meier_iraja",
-    )
-
-    kwargs = fake_repo.get_dashboard_metrics.await_args.kwargs
-    assert kwargs["filters"]["regiao_administrativa"] == ["13ª Meier", "14ª Iraja"]
-
-
-@pytest.mark.asyncio
-async def test_piloto_sobrescreve_selecao_manual_de_ra():
-    use_case, fake_repo = _make_use_case()
-
-    await use_case.execute(
-        permissions=_perms(secretarias=["SME", "SMS", "SMAS"]),
-        user_token="jwt",
-        piloto="meier_iraja",
-        regiao_administrativa="15ª Madureira",
-    )
-
-    kwargs = fake_repo.get_dashboard_metrics.await_args.kwargs
-    assert kwargs["filters"]["regiao_administrativa"] == ["13ª Meier", "14ª Iraja"]
-
-
-@pytest.mark.asyncio
-async def test_sem_piloto_preserva_selecao_manual_de_ra():
+async def test_selecao_manual_de_ra_e_aplicada():
     use_case, fake_repo = _make_use_case()
 
     await use_case.execute(

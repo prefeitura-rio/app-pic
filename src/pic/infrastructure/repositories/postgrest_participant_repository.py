@@ -59,6 +59,11 @@ from src.pic.infrastructure.postgrest_client.pagination import (
 from src.pic.infrastructure.repositories.helpers import (
     participant_governance as governance,
 )
+from src.pic.infrastructure.repositories.helpers.disparo_filtering import (
+    build_disparo_campaigns_query,
+    build_disparo_ids_query,
+    split_disparo_filters,
+)
 from src.pic.infrastructure.repositories.helpers.filter_vocabulary import (
     FILTER_OPTION_CONFIGS,
     SECRETARIA_ORDER,
@@ -130,9 +135,14 @@ class PostgrestParticipantRepository(ParticipantRepository):
         search_term, situacao_values, protocolo_filters, column_filters, busca_ativa_values = split_filters(
             filters
         )
+        disparo_jornadas, disparo_statuses = split_disparo_filters(filters)
 
         profiling.filters_applied = (
-            len(column_filters) + (1 if situacao_values else 0) + len(protocolo_filters)
+            len(column_filters)
+            + (1 if situacao_values else 0)
+            + len(protocolo_filters)
+            + len(disparo_jornadas or [])
+            + len(disparo_statuses or [])
         )
 
         secretarias_acesso, full_access = governance.resolve_access(permissions)
@@ -168,15 +178,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 return cached
 
         if no_protocolo_match:
-            meta = PaginationMeta(
-                page=page,
-                page_size=page_size if page_size != -1 else None,
-                total_rows=0,
-                total_pages=0,
-                cache_hit=False,
-                profiling=profiling.to_dict(),
-                can_view_dashboard=None,
-            )
+            meta = self._empty_meta(page, page_size, profiling)
             if cache_key:
                 # Empty result: short TTL (see EMPTY_CACHE_TTL_SECONDS).
                 await self._cache.set_list(
@@ -193,6 +195,28 @@ class PostgrestParticipantRepository(ParticipantRepository):
         # every participant has at least one accessible protocol).
         async with self._client.with_user_token(user_token):
             fetch_start = time.perf_counter()
+
+            # WhatsApp disparo filters: resolve the matching participant ids
+            # from `endpoint_whatsapp_disparo` (RLS + secretaria access), then
+            # restrict the wide query with `id_membro_familia=in.(...)`.
+            # No match -> empty result without querying the wide table.
+            disparo_ids: list[str] | None = None
+            if disparo_jornadas:
+                disparo_ids = await self._resolve_disparo_ids(
+                    disparo_jornadas, disparo_statuses, allowed_secretarias
+                )
+                if not disparo_ids:
+                    meta = self._empty_meta(page, page_size, profiling)
+                    if cache_key:
+                        await self._cache.set_list(
+                            cache_key, [], meta, ttl=EMPTY_CACHE_TTL_SECONDS
+                        )
+                    logger.info(
+                        f"[participants] disparo filter matched nothing: "
+                        f"cpf={user_id} page={page}"
+                    )
+                    return [], meta
+
             limit = None if page_size == -1 else page_size
             rows, total_rows = await fetch_pages(
                 self._client,
@@ -208,6 +232,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                     sort_descending=sort_descending,
                     busca_ativa_values=busca_ativa_values,
                     allowed_secretarias=allowed_secretarias,
+                    disparo_participant_ids=disparo_ids,
                     count=count,
                 ),
                 limit=limit,
@@ -301,6 +326,50 @@ class PostgrestParticipantRepository(ParticipantRepository):
             f"(page={page}, page_size={page_size}, in_app={not full_access})"
         )
         return data, meta
+
+    @staticmethod
+    def _empty_meta(
+        page: int, page_size: int, profiling: ProfilingData
+    ) -> PaginationMeta:
+        """Zero-row pagination meta (no protocol/disparo match paths)."""
+        return PaginationMeta(
+            page=page,
+            page_size=page_size if page_size != -1 else None,
+            total_rows=0,
+            total_pages=0,
+            cache_hit=False,
+            profiling=profiling.to_dict(),
+            can_view_dashboard=None,
+        )
+
+    async def _resolve_disparo_ids(
+        self,
+        jornadas: list[str],
+        statuses: list[str] | None,
+        allowed_secretarias: set[str] | None,
+    ) -> list[str]:
+        """Ids of participants whose most recent disparo (240d) matches.
+
+        Must run inside a `with_user_token` block so the data-proxy applies
+        the user's RLS. Returns a deduplicated list (empty = no match).
+        """
+        rows, _ = await fetch_pages(
+            self._client,
+            lambda count=None: build_disparo_ids_query(
+                self._client,
+                jornadas=jornadas,
+                statuses=statuses,
+                allowed_secretarias=allowed_secretarias,
+            ),
+            limit=None,
+            with_count=False,
+        )
+        ids: dict[str, None] = {}
+        for row in rows:
+            value = row.get("id_membro_familia")
+            if value is not None:
+                ids[str(value)] = None
+        return list(ids)
 
     async def get_participant_by_id(
         self,
@@ -442,6 +511,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
         search_term, situacao_values, protocolo_filters, column_filters, busca_ativa_values = split_filters(
             filters
         )
+        disparo_jornadas, disparo_statuses = split_disparo_filters(filters)
 
         secretarias_acesso, full_access = governance.resolve_access(permissions)
         allowed_secretarias = None if full_access else set(secretarias_acesso)
@@ -459,6 +529,17 @@ class PostgrestParticipantRepository(ParticipantRepository):
 
         if no_protocolo_match:
             return
+
+        # WhatsApp disparo filters restrict the exported rows to the matching
+        # participants (same two-step resolution as the list pipeline).
+        disparo_ids: list[str] | None = None
+        if disparo_jornadas:
+            async with self._client.with_user_token(user_token):
+                disparo_ids = await self._resolve_disparo_ids(
+                    disparo_jornadas, disparo_statuses, allowed_secretarias
+                )
+            if not disparo_ids:
+                return
 
         hidden = export_hidden_columns(
             full_access,
@@ -481,6 +562,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 sort_descending=sort_descending,
                 busca_ativa_values=busca_ativa_values,
                 allowed_secretarias=allowed_secretarias,
+                disparo_participant_ids=disparo_ids,
             )
 
         # The user token context is scoped to each prefetch window (enter and
@@ -525,6 +607,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
         search_term, situacao_values, protocolo_filters, column_filters, busca_ativa_values = split_filters(
             filters
         )
+        disparo_jornadas, disparo_statuses = split_disparo_filters(filters)
 
         secretarias_acesso, full_access = governance.resolve_access(permissions)
         allowed_secretarias = None if full_access else set(secretarias_acesso)
@@ -543,6 +626,17 @@ class PostgrestParticipantRepository(ParticipantRepository):
         if no_protocolo_match:
             return
 
+        # WhatsApp disparo filters restrict the exported rows to the matching
+        # participants (same two-step resolution as the list pipeline).
+        disparo_ids: list[str] | None = None
+        if disparo_jornadas:
+            async with self._client.with_user_token(user_token):
+                disparo_ids = await self._resolve_disparo_ids(
+                    disparo_jornadas, disparo_statuses, allowed_secretarias
+                )
+            if not disparo_ids:
+                return
+
         def build_query() -> AsyncSelectRequestBuilder:
             return build_list_query(
                 self._client,
@@ -556,6 +650,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 sort_descending=sort_descending,
                 busca_ativa_values=busca_ativa_values,
                 allowed_secretarias=allowed_secretarias,
+                disparo_participant_ids=disparo_ids,
             )
 
         offset = 0
@@ -628,6 +723,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
         )
         if situacao_values:
             scalar_filters["situacao"] = situacao_values
+        disparo_jornadas, disparo_statuses = split_disparo_filters(filters)
 
         allowed_secretarias = (
             None if full_access or not secretarias_acesso else set(secretarias_acesso)
@@ -654,10 +750,43 @@ class PostgrestParticipantRepository(ParticipantRepository):
                 )
 
         async with self._client.with_user_token(user_token):
+            # Disparo filters cascade into every wide-based field: resolve the
+            # matching participant ids once and inject them as an
+            # `id_membro_familia=in.(...)` restriction. The campaign field is
+            # computed from the disparos table itself, and the status list is
+            # static — neither needs the ids.
+            disparo_ids: list[str] | None = None
+            if disparo_jornadas and kind not in (
+                "disparo_jornadas",
+                "static_disparo_status",
+            ):
+                disparo_ids = await self._resolve_disparo_ids(
+                    disparo_jornadas, disparo_statuses, allowed_secretarias
+                )
+                if not disparo_ids:
+                    if cache_key:
+                        await self._cache.set_vocab(cache_key, [])
+                    return []
+
             if kind == "static_status":
                 rows: list[dict[str, Any]] = []
             elif kind == "busca_ativa":
                 rows: list[dict[str, Any]] = []
+            elif kind == "static_disparo_status":
+                rows: list[dict[str, Any]] = []
+            elif kind == "disparo_jornadas":
+                rows, _ = await fetch_pages(
+                    self._client,
+                    lambda count=None: build_disparo_campaigns_query(
+                        self._client,
+                        statuses=disparo_statuses,
+                        allowed_secretarias=allowed_secretarias,
+                        column_filters=scalar_filters,
+                        search_term=search_term,
+                    ),
+                    limit=None,
+                    with_count=False,
+                )
             elif kind == "wide_counts":
                 rows, _ = await fetch_pages(
                     self._client,
@@ -674,6 +803,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         secretaria_or_terms=secretaria_or_terms,
                         busca_ativa_values=busca_ativa_values,
                         allowed_secretarias=allowed_secretarias,
+                        disparo_participant_ids=disparo_ids,
                     ),
                     limit=None,
                     with_count=False,
@@ -695,6 +825,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         secretaria_or_terms=secretaria_or_terms,
                         busca_ativa_values=busca_ativa_values,
                         allowed_secretarias=allowed_secretarias,
+                        disparo_participant_ids=disparo_ids,
                     ),
                     limit=None,
                     with_count=False,
@@ -713,6 +844,7 @@ class PostgrestParticipantRepository(ParticipantRepository):
                         secretaria_or_terms=secretaria_or_terms,
                         busca_ativa_values=busca_ativa_values,
                         allowed_secretarias=allowed_secretarias,
+                        disparo_participant_ids=disparo_ids,
                     ),
                     limit=None,
                     with_count=False,

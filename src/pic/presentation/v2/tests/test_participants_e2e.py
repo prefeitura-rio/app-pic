@@ -401,22 +401,21 @@ async def test_list_participants_returns_exact_envelope(client, override_use_cas
 
 
 @pytest.mark.asyncio
-async def test_list_participants_piloto_filter_forwarded(client, override_use_cases):
+async def test_list_participants_disparo_filters_forwarded(client, override_use_cases):
     response = await client.get(
-        "/api/v2/participants", params={"piloto": "meier_iraja", "page": "1", "page_size": "50"}
+        "/api/v2/participants",
+        params={
+            "disparo_jornada": "Campanha A|Campanha B",
+            "disparo_status": "LIDO",
+            "page": "1",
+            "page_size": "50",
+        },
     )
 
     assert response.status_code == 200
     list_use_case, _, _ = override_use_cases
-    assert list_use_case.received["filters"].piloto == "meier_iraja"
-
-
-@pytest.mark.asyncio
-async def test_list_participants_piloto_invalido_422(client):
-    response = await client.get(
-        "/api/v2/participants", params={"piloto": "outro"}
-    )
-    assert response.status_code == 422
+    assert list_use_case.received["filters"].disparo_jornada == "Campanha A|Campanha B"
+    assert list_use_case.received["filters"].disparo_status == "LIDO"
 
 
 @pytest.mark.asyncio

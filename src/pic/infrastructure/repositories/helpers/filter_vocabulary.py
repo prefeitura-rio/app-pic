@@ -22,13 +22,20 @@ Semantics are a faithful port of the old pipeline:
   partial/no access, v1 parity);
 - protocol-derived fields are empty when the user has no secretaria access;
 - `bolsa_familia` and `protocolo_secretarias` are now dynamic (previously
-  hardcoded in the frontend).
+  hardcoded in the frontend);
+- `disparo_jornadas` comes from `endpoint_whatsapp_disparo` (one aggregate
+  row per campaign × secretaria sigla, canonical 240d window, intersected
+  with user access); `disparo_status_list` is a fixed backend-owned list.
 """
 
 import re
 from typing import Any
 
 from src.pic.domain.models.filters import FilterOption
+from src.pic.infrastructure.repositories.helpers.disparo_filtering import (
+    DISPARO_STATUS_IDS,
+    DISPARO_STATUS_LABELS,
+)
 from src.pic.infrastructure.repositories.helpers.participant_query_mapping import (
     BUSCA_ATIVA_SEM_ID,
     PROTOCOLO_SECRETARIA,
@@ -160,6 +167,15 @@ FILTER_OPTION_CONFIGS: dict[str, dict[str, Any]] = {
         "kind": "busca_ativa",
         "filter_key": "busca_ativa",
         "needs_access": True,
+    },
+    "disparo_jornadas": {
+        "kind": "disparo_jornadas",
+        "filter_key": "disparo_jornada",
+        "needs_access": True,
+    },
+    "disparo_status_list": {
+        "kind": "static_disparo_status",
+        "filter_key": "disparo_status",
     },
 }
 
@@ -355,6 +371,40 @@ def _static_status_options() -> list[FilterOption]:
     return [FilterOption(id=value, label=value) for value in values]
 
 
+def _disparo_jornada_options(
+    rows: list[dict[str, Any]],
+    allowed_secretarias: set[str] | None,
+) -> list[FilterOption]:
+    """Campaign options from the `disparo_jornada` aggregate rows.
+
+    Dedupes campaigns by name and drops campaigns whose secretaria sigla is
+    outside the user's access (`None` = full access → every campaign).
+    """
+    siglas_by_jornada: dict[str, set[str]] = {}
+    for row in rows:
+        jornada = row.get("disparo_jornada")
+        sigla = row.get("disparo_secretaria_sigla")
+        if not jornada or not sigla:
+            continue
+        siglas_by_jornada.setdefault(str(jornada), set()).add(str(sigla))
+
+    options = [
+        FilterOption(id=jornada, label=jornada)
+        for jornada, siglas in siglas_by_jornada.items()
+        if allowed_secretarias is None or siglas & allowed_secretarias
+    ]
+    options.sort(key=lambda option: _natural_sort_key(option.label))
+    return options
+
+
+def _static_disparo_status_options() -> list[FilterOption]:
+    """Fixed disparo status list (backend-owned, UI order — no natural sort)."""
+    return [
+        FilterOption(id=status, label=DISPARO_STATUS_LABELS[status])
+        for status in DISPARO_STATUS_IDS
+    ]
+
+
 def _busca_ativa_options(
     allowed_secretarias: set[str] | None,
 ) -> list[FilterOption]:
@@ -396,4 +446,8 @@ def build_options(
         return _static_status_options()
     if kind == "busca_ativa":
         return _busca_ativa_options(allowed_secretarias)
+    if kind == "disparo_jornadas":
+        return _disparo_jornada_options(rows, allowed_secretarias)
+    if kind == "static_disparo_status":
+        return _static_disparo_status_options()
     raise ValueError(f"Unknown filter option kind: {kind}")

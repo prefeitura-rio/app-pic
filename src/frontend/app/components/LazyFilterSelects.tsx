@@ -40,6 +40,8 @@ const FIELD_OWN_FILTER_KEYS: Record<FilterFieldKey, string> = {
 	bolsa_familia: "has_bolsa_familia",
 	protocolo_secretarias: "protocolo_secretaria",
 	busca_ativa: "busca_ativa",
+	disparo_jornadas: "disparo_jornada",
+	disparo_status_list: "disparo_status",
 };
 
 // Filtros que o backend ignora no cálculo de opções (não entram na assinatura).
